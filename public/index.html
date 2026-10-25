@@ -714,15 +714,18 @@ chosen = cur_in_group  # 100% 粘性锁定原节点，零跳点！</code></pre>
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <div class="glass-card rounded-2xl p-5 space-y-3">
           <div class="flex items-center justify-between">
-            <h3 class="text-sm font-bold text-white">1. 一键安装与平滑覆盖升级</h3>
+            <h3 class="text-sm font-bold text-white">1. 在线一键安装（自动检测 / 自动下载 / 自动安装）</h3>
             <button type="button" data-copy-target="code-install-block" class="btn-copy px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-[11px] font-semibold">复制</button>
           </div>
-          <pre id="code-install-block" class="text-xs bg-slate-950 p-3.5 rounded-xl border border-slate-800 text-slate-200 overflow-x-auto"><code># 上传发布包至 /tmp 并解压安装
-cd /tmp
-tar -xzf AI-LINK-v1.0.0.tar.gz
-cd ai-link-openwrt
-chmod +x install.sh
-./install.sh</code></pre>
+          <pre id="code-install-block" class="text-xs bg-slate-950 p-3.5 rounded-xl border border-slate-800 text-slate-200 overflow-x-auto"><code># 一行命令：自动检测 → 下载 → 校验 → 安装
+curl -fsSL https://ai-link-official.pages.dev/install.sh | sh
+
+# 国内网络强制走加速镜像
+curl -fsSL https://ai-link-official.pages.dev/install.sh \
+  | AI_LINK_MIRROR=https://ghfast.top/https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v1.0.0 sh
+
+# 只检测环境 + 下载校验，不安装
+curl -fsSL https://ai-link-official.pages.dev/install.sh | sh -s -- --dry-run</code></pre>
           <p class="text-xs text-slate-400">
             安装后访问 <code>http://&lt;路由器IP&gt;:9099</code> 或 LuCI 后台 <code>服务 -&gt; AI-LINK</code>。直接运行新包 <code>./install.sh</code> 可平滑升级并保留全部现有订阅与节点。
           </p>
@@ -816,8 +819,17 @@ ai-link uninstall</code></pre>
         <button id="btn-close-quick-install" type="button" class="text-slate-400 hover:text-white text-sm font-bold px-2 py-1">✕</button>
       </div>
       <div class="space-y-3 text-xs">
-        <p class="text-slate-300">1. 将 <code>AI-LINK-v1.0.0.tar.gz</code> 上传至 OpenWrt <code>/tmp</code> 目录后执行：</p>
-        <pre id="modal-cmd-text" class="bg-slate-950 p-3.5 rounded-xl border border-slate-800 text-cyan-200 overflow-x-auto"><code>cd /tmp &amp;&amp; tar -xzf AI-LINK-v1.0.0.tar.gz &amp;&amp; cd ai-link-openwrt &amp;&amp; chmod +x install.sh &amp;&amp; ./install.sh</code></pre>
+        <p class="text-slate-300">1. SSH 登录路由器，执行这一行（自动检测环境 → 下载 → 校验 MD5 → 安装）：</p>
+        <pre id="modal-cmd-text" class="bg-slate-950 p-3.5 rounded-xl border border-slate-800 text-cyan-200 overflow-x-auto"><code>curl -fsSL https://ai-link-official.pages.dev/install.sh | sh</code></pre>
+        <p class="text-slate-400">
+          脚本会自动按 <code>官方源 → ghfast.top → gh-proxy.com → GitHub</code> 顺序重试，国内网络无需额外设置。
+        </p>
+        <p class="text-slate-300">国内网络想强制走加速镜像（可选）：</p>
+        <pre id="modal-cmd-cn" class="bg-slate-950 p-3.5 rounded-xl border border-slate-800 text-emerald-200 overflow-x-auto"><code>curl -fsSL https://ai-link-official.pages.dev/install.sh | AI_LINK_MIRROR=https://ghfast.top/https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v1.0.0 sh</code></pre>
+        <p class="text-slate-400">
+          想先看它要做什么？加 <code>--dry-run</code> 只检测环境并下载校验、不实际安装：<br>
+          <code class="text-cyan-300">curl -fsSL https://ai-link-official.pages.dev/install.sh | sh -s -- --dry-run</code>
+        </p>
         <p class="text-slate-300">2. 安装完成后访问地址：</p>
         <ul class="list-disc pl-5 text-slate-200 space-y-1">
           <li>独立极光大屏面板：<code>http://&lt;路由器LAN_IP&gt;:9099</code></li>
