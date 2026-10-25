@@ -728,8 +728,25 @@ curl -fsSL https://ai-link-official.pages.dev/install.sh \
 # 只检测环境 + 下载校验，不安装
 curl -fsSL https://ai-link-official.pages.dev/install.sh | sh -s -- --dry-run</code></pre>
           <p class="text-xs text-slate-400">
-            安装后访问 <code>http://&lt;路由器IP&gt;:9099</code> 或 LuCI 后台 <code>服务 -&gt; AI-LINK</code>。直接运行新包 <code>./install.sh</code> 可平滑升级并保留全部现有订阅与节点。
+            安装后访问 <code>http://&lt;路由器IP&gt;:9099</code> 或 LuCI 后台 <code>服务 -&gt; AI-LINK</code>。
           </p>
+          <div class="mt-1 pt-3 border-t border-slate-800">
+            <div class="flex items-center justify-between mb-1.5">
+              <span class="text-xs font-bold text-emerald-300">已有旧版？一行命令直接升级</span>
+              <button type="button" data-copy-target="code-upgrade-block" class="btn-copy px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-[11px] font-semibold">复制</button>
+            </div>
+            <pre id="code-upgrade-block" class="text-xs bg-slate-950 p-3.5 rounded-xl border border-emerald-900/60 text-emerald-100 overflow-x-auto"><code># 一键在线升级（自动比对版本 → 下载 → 校验 → 备份 → 升级）
+curl -fsSL https://ai-link-official.pages.dev/upgrade.sh | sh
+
+# 只检查有没有新版本，不动系统
+curl -fsSL https://ai-link-official.pages.dev/upgrade.sh | sh -s -- --check
+
+# 强制重装当前版本（修复用）
+curl -fsSL https://ai-link-official.pages.dev/upgrade.sh | sh -s -- --force</code></pre>
+            <p class="text-xs text-slate-400 mt-2">
+              升级前会自动备份配置到 <code>/root/ai-link-final-backup/pre-upgrade-*.tgz</code>，并保留订阅、节点、分流规则、面板密码与已装的音乐解锁等附加组件。
+            </p>
+          </div>
         </div>
 
         <div class="glass-card rounded-2xl p-5 space-y-3">
