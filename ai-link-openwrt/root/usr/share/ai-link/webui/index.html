@@ -1513,6 +1513,19 @@
           </div>
           <div class="ailink-subcard rounded-2xl p-4 space-y-3 text-xs">
             <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="font-bold text-white">⚙️ 服务总开关</span>
+                <span id="svc-badge" class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-500/20 text-slate-300 border border-slate-400/30">检测中…</span>
+                <span id="svc-meta" class="text-[11px] text-slate-400"></span>
+              </div>
+              <div class="flex items-center gap-2 flex-wrap">
+                <button id="btn-svc-restart" type="button" class="px-3 py-1.5 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 border border-sky-400/35 text-sky-200 font-semibold">🔄 重启服务</button>
+              </div>
+            </div>
+            <div id="svc-hint" class="text-[11px] text-slate-400 leading-relaxed"></div>
+          </div>
+          <div class="ailink-subcard rounded-2xl p-4 space-y-3 text-xs">
+            <div class="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <span class="font-bold text-white">⬆️ 插件版本与在线更新</span>
                 <span id="ota-sub" class="text-[11px] text-slate-400 ml-2">当前 v1.0.1 · 点击「检查更新」获取最新版本</span>
@@ -6167,6 +6180,63 @@
           showToast('✓ 所有模块状态检查完成！', 'success');
         });
       }
+      // ================= 服务总开关 (v1.0.1) =================
+      // 面板本身就是 daemon 提供的：能打开面板说明 daemon 一定在跑。
+      // 所以这里只提供「看状态」+「重启服务」；真正的启停入口在 LuCI（服务停掉也能用）。
+      const svcRender = (s) => {
+        const badge = document.getElementById('svc-badge');
+        const meta = document.getElementById('svc-meta');
+        const hint = document.getElementById('svc-hint');
+        if (!badge || !s) return;
+        if (s.ok === false) {
+          badge.textContent = '状态未知';
+          badge.className = 'px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-500/20 text-slate-300 border border-slate-400/30';
+          if (meta) meta.textContent = '无法读取服务状态';
+          return;
+        }
+        const running = !!s.daemon, coreUp = !!s.core, nftUp = !!s.nft;
+        badge.textContent = running ? (coreUp ? '● 运行中' : '◐ 部分运行（内核未起）') : '⏹ 已停止';
+        badge.className = 'px-2 py-0.5 rounded-full text-[11px] font-bold ' + (running
+          ? (coreUp ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30'
+                    : 'bg-amber-500/20 text-amber-300 border border-amber-400/30')
+          : 'bg-rose-500/20 text-rose-300 border border-rose-400/30');
+        if (meta) {
+          meta.innerHTML = `开机自启: <b class="${s.boot ? 'text-emerald-300' : 'text-rose-300'}">${s.boot ? '已启用' : '已禁用'}</b>` +
+            ` · 透明代理接管: <b class="${s.enabled ? 'text-emerald-300' : 'text-slate-400'}">${s.enabled ? '开启' : '暂停'}</b>` +
+            ` · nftables: <b class="${nftUp ? 'text-emerald-300' : 'text-slate-400'}">${nftUp ? '已挂载' : '未挂载'}</b>` +
+            ` · 端口: <b class="text-cyan-300">:${s.port || 9099}</b>`;
+        }
+        if (hint) {
+          if (!coreUp && s.enabled) {
+            hint.innerHTML = '⚠️ <b class="text-amber-300">守护进程在运行，但 sing-box 内核未启动</b>，流量接管可能异常。建议点「🔄 重启服务」。';
+          } else {
+            hint.innerHTML = '「停止服务」需在 LuCI 概览页操作（面板本身由守护进程提供，停掉后本页会断开）。此处提供状态查看与一键重启。';
+          }
+        }
+      };
+      const svcPoll = async () => {
+        try {
+          const r = await callRouterApi('system/service/status', 'GET');
+          if (r && r.service) svcRender(r.service);
+        } catch (e) {}
+      };
+      const svcRestartBtn = document.getElementById('btn-svc-restart');
+      if (svcRestartBtn) {
+        svcRestartBtn.addEventListener('click', async () => {
+          if (!window.confirm('确认重启 AI-LINK 服务？\n\n· 面板会断开约 5-10 秒，稍后自动恢复\n· 代理会短暂中断（几秒）\n· 配置与节点数据不受影响')) return;
+          svcRestartBtn.disabled = true;
+          svcRestartBtn.textContent = '⏳ 重启中...';
+          const r = await callRouterApi('system/service/restart', 'POST', {});
+          showToast((r && r.ok) ? '🔄 服务正在重启，请稍候刷新页面' : '❌ 重启失败', (r && r.ok) ? 'info' : 'error');
+          setTimeout(() => {
+            svcRestartBtn.disabled = false;
+            svcRestartBtn.textContent = '🔄 重启服务';
+          }, 4000);
+        });
+      }
+      setTimeout(svcPoll, 600);
+      setInterval(svcPoll, 5000);
+
       // ================= OTA 在线更新 (v1.0.1+) =================
       let otaTimer = null;
       const otaRender = (p) => {

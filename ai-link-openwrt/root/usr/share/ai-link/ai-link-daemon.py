@@ -13398,6 +13398,67 @@ def acknowledge_update_result() -> dict:
         return {"ok": False, "error": str(e)}
 
 
+# ==============================================================================
+# 服务总开关 (v1.0.1)
+# ------------------------------------------------------------------------------
+# LuCI 侧走 fs.exec -> /etc/init.d/ai-link，不依赖面板，所以服务停掉也能拉起。
+# 面板侧（本模块）只负责「看状态」与「重启」，因为面板本身就是 daemon 提供的：
+# 面板能打开，说明 daemon 一定在跑，此时「启动」没有意义，「重启」才有用。
+# ==============================================================================
+SERVICE_INIT = "/etc/init.d/ai-link"
+
+
+def get_service_state() -> dict:
+    """调用 init 脚本的 svc_state，返回结构化状态。"""
+    st = {"ok": False, "daemon": False, "core": False, "nft": False,
+          "enabled": True, "boot": False, "bypass": False, "port": 9099}
+    try:
+        r = subprocess.run([SERVICE_INIT, "svc_state"], capture_output=True, text=True, timeout=6)
+        out = (r.stdout or "").strip()
+        kv = {}
+        for tok in out.split():
+            if "=" in tok:
+                k, v = tok.split("=", 1)
+                kv[k.strip()] = v.strip()
+        if "daemon" not in kv:
+            return st
+        st.update({
+            "ok": True,
+            "daemon": kv.get("daemon") == "1",
+            "core": kv.get("core") == "1",
+            "nft": kv.get("nft") == "1",
+            "enabled": kv.get("enabled") == "1",
+            "boot": kv.get("boot") == "1",
+            "bypass": kv.get("bypass") == "1",
+            "port": int(kv.get("port") or 9099) if str(kv.get("port") or "").isdigit() else 9099,
+        })
+    except Exception as e:
+        st["error"] = f"{type(e).__name__}: {e}"
+    return st
+
+
+def restart_service_async(delay: float = 1.0) -> dict:
+    """延迟重启服务。必须异步：重启会杀掉本 daemon，同步做的话 HTTP 响应发不出去。"""
+    try:
+        UPDATE_DIR.mkdir(parents=True, exist_ok=True)
+        sh = UPDATE_DIR / "svc_restart.sh"
+        sh.write_text(
+            "#!/bin/sh\n"
+            f"sleep {max(0.2, float(delay)):.1f}\n"
+            f"{SERVICE_INIT} restart >/dev/null 2>&1\n",
+            encoding="utf-8", newline="\n",
+        )
+        sh.chmod(0o755)
+        subprocess.Popen(
+            ["/bin/sh", str(sh)],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL,
+            start_new_session=True, close_fds=True,
+        )
+        return {"ok": True, "restarting": True, "message": f"服务将在 {delay:.0f} 秒后重启，面板会短暂断开"}
+    except Exception as e:
+        return {"ok": False, "error": str(e), "message": f"重启失败: {e}"}
+
+
 _REAL_EGRESS_PROBE_CACHE = {"ts": 0.0, "node": "", "ok": True, "delay_ms": 0, "error": ""}
 
 _EGRESS_BG_PROBING = False
@@ -14341,6 +14402,9 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
         if req_path == "/api/system/update/status":
             self._send_json({"ok": True, "current": APP_VERSION, "progress": read_update_progress()})
             return
+        if req_path == "/api/system/service/status":
+            self._send_json({"ok": True, "version": APP_VERSION, "service": get_service_state()})
+            return
         if req_path == "/api/homelink/port_check":
             chk_port = int(qs.get("port") or 9443)
             chk_proto = str(qs.get("protocol") or "vless-reality")
@@ -14549,6 +14613,9 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             return
         if clean_path == "/api/system/update/ack":
             self._send_json(acknowledge_update_result())
+            return
+        if clean_path == "/api/system/service/restart":
+            self._send_json(restart_service_async())
             return
         if clean_path == "/api/wol":
             mac = payload.get("mac", "A4:83:E7:2B:91:04")

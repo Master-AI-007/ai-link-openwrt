@@ -289,8 +289,10 @@ reload_service() {
 		python3 -B "$PROG_DAEMON" --hot-reload >/dev/null 2>&1 || true
 	fi
 
-	# If sing-box was stopped when enabled was 0, start the service cleanly so sing-box spawns
-	if ! pgrep -x sing-box >/dev/null 2>&1; then
+	# 兜底：daemon（:9099 面板）或 sing-box 任一未运行，就整体重新 start。
+	# 否则会出现「服务被 stop 后，在 LuCI 勾选 enabled 并保存也无法拉起」的死锁：
+	# reload 只会重载运行中的实例，不会创建新实例。
+	if ! pgrep -f "ai-link-dae[m]on.py" >/dev/null 2>&1 || ! pgrep -x sing-box >/dev/null 2>&1; then
 		start
 		return 0
 	fi
@@ -315,10 +317,27 @@ service_triggers() {
 	procd_add_reload_trigger "ai-link"
 }
 
-EXTRA_COMMANDS="status_check recover_direct restore_proxy"
-EXTRA_HELP="	status_check	Verify nftables table, policy route and daemon ports
+EXTRA_COMMANDS="svc_state status_check recover_direct restore_proxy"
+EXTRA_HELP="	svc_state	Machine-readable service state: daemon= core= nft= enabled= boot= bypass= port=
+	status_check	Verify nftables table, policy route and daemon ports
 	recover_direct	Emergency bypass: remove nftables rules, clean dnsmasq upstream, and restore direct internet immediately
 	restore_proxy	Exit emergency bypass and re-mount nftables rules + dnsmasq upstream"
+
+# 供 LuCI / 面板「服务总开关」使用的机器可读状态（单行 key=value，便于前端解析）
+svc_state() {
+	config_load 'ai-link'
+	local enabled panel_port daemon_up core_up nft_up boot_on bypass_up
+	config_get_bool enabled 'global' 'enabled' '1'
+	config_get panel_port 'global' 'panel_port' '9099'
+	daemon_up=0; core_up=0; nft_up=0; boot_on=0; bypass_up=0
+	pgrep -f "ai-link-dae[m]on.py" >/dev/null 2>&1 && daemon_up=1
+	pgrep -x sing-box >/dev/null 2>&1 && core_up=1
+	nft list table inet ai_link >/dev/null 2>&1 && nft_up=1
+	ls /etc/rc.d/S*ai-link >/dev/null 2>&1 && boot_on=1
+	[ -f "$RUN_DIR/bypass" ] && bypass_up=1
+	echo "daemon=${daemon_up} core=${core_up} nft=${nft_up} enabled=${enabled} boot=${boot_on} bypass=${bypass_up} port=${panel_port}"
+	return 0
+}
 
 recover_direct() {
 	mkdir -p "$RUN_DIR" /tmp/ai-link-run

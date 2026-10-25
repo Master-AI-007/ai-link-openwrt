@@ -3,6 +3,7 @@
 'require form';
 'require uci';
 'require poll';
+'require fs';
 
 return view.extend({
 	load: function() {
@@ -46,10 +47,37 @@ return view.extend({
 		s = m.section(form.NamedSection, 'global', globalSecType, _('实时运行中枢与快捷控制'));
 		s.anonymous = true;
 
+		// ---- 服务总开关卡片（独立于 :9099 面板，服务停掉也能从这里拉起）----
+		var svcCardHtml = function() {
+			var btn = function(id, label, bg, fg, border) {
+				return '<button type="button" id="' + id + '" style="padding:7px 14px; border-radius:8px; border:1px solid ' + border +
+					'; background:' + bg + '; color:' + fg + '; font-size:12.5px; font-weight:700; cursor:pointer;">' + label + '</button>';
+			};
+			return '<div style="margin: 6px 0 12px 0; padding: 14px 18px; background: linear-gradient(135deg,#0b1220 0%,#101d33 100%); border-radius: 12px; border: 1px solid rgba(56,189,248,0.3); color:#e2e8f0;">' +
+				'<div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">' +
+					'<div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">' +
+						'<strong style="font-size:14px; color:#e2e8f0;">⚙️ 服务总开关</strong>' +
+						'<span id="luci-svc-badge" style="padding:3px 10px; border-radius:999px; font-size:12px; font-weight:700; background:rgba(148,163,184,0.15); color:#cbd5e1; border:1px solid rgba(148,163,184,0.3);">检测中…</span>' +
+						'<span id="luci-svc-meta" style="font-size:12px; color:#94a3b8;"></span>' +
+					'</div>' +
+					'<div style="display:flex; gap:8px; flex-wrap:wrap;">' +
+						btn('luci-btn-svc-start', '▶ 启动服务', 'rgba(16,185,129,0.2)', '#6ee7b7', 'rgba(16,185,129,0.5)') +
+						btn('luci-btn-svc-stop', '⏹ 停止服务', 'rgba(239,68,68,0.16)', '#fca5a5', 'rgba(239,68,68,0.45)') +
+						btn('luci-btn-svc-restart', '🔄 重启服务', 'rgba(2,132,199,0.22)', '#bae6fd', 'rgba(56,189,248,0.45)') +
+						btn('luci-btn-svc-boot', '🔁 开机自启', 'rgba(148,163,184,0.14)', '#cbd5e1', 'rgba(148,163,184,0.35)') +
+					'</div>' +
+				'</div>' +
+				'<div id="luci-svc-hint" style="margin-top:9px; font-size:12px; color:#94a3b8; line-height:1.6;">' +
+					'这里的「停止服务」会真正结束守护进程与内核（面板 :9099 同时下线）；下方「启用 AI-LINK 透明代理服务」只控制是否接管流量，不控制进程启停。' +
+				'</div>' +
+			'</div>';
+		};
+
 		o = s.option(form.DummyValue, '_webui_link', _('中枢控制台'));
 		o.rawhtml = true;
 		o.cfgvalue = function() {
-			return '<div style="margin: 6px 0 14px 0; padding: 18px 20px; background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border-radius: 14px; border: 1px solid rgba(56,189,248,0.32); color: #f8fafc; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.3);">' +
+			return svcCardHtml() +
+			'<div style="margin: 6px 0 14px 0; padding: 18px 20px; background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border-radius: 14px; border: 1px solid rgba(56,189,248,0.32); color: #f8fafc; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.3);">' +
 				'<div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:14px;">' +
 					'<div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">' +
 						'<span style="font-size:17px; font-weight:800; color:#38bdf8; letter-spacing:0.4px;">⚡ AI-LINK 智能分流网关 v' + escapeHtml(currentVer) + '</span>' +
@@ -382,6 +410,150 @@ return view.extend({
 				var el = mapEl.querySelector(sel);
 				if (el) el.addEventListener('click', fn);
 			};
+
+			// ================= 服务总开关 (v1.0.1) =================
+			// 关键点：这条路走 LuCI 自己的 fs.exec -> /etc/init.d/ai-link，
+			// 不依赖 :9099 面板 API。所以即使守护进程已经停了，也能从这里把它拉起来。
+			var svcBusy = false;
+			var svcLast = {};
+
+			var svcReadState = function() {
+				return fs.exec('/etc/init.d/ai-link', ['svc_state']).then(function(r) {
+					var out = (r && r.stdout) ? String(r.stdout) : '';
+					var st = {};
+					out.trim().split(/\s+/).forEach(function(kv) {
+						var i = kv.indexOf('=');
+						if (i > 0) st[kv.slice(0, i)] = kv.slice(i + 1);
+					});
+					return st;
+				}).catch(function() { return {}; });
+			};
+
+			var svcRender = function(st) {
+				var badge = mapEl.querySelector('#luci-svc-badge');
+				var meta = mapEl.querySelector('#luci-svc-meta');
+				var hint = mapEl.querySelector('#luci-svc-hint');
+				var bStart = mapEl.querySelector('#luci-btn-svc-start');
+				var bStop = mapEl.querySelector('#luci-btn-svc-stop');
+				var bRestart = mapEl.querySelector('#luci-btn-svc-restart');
+				var bBoot = mapEl.querySelector('#luci-btn-svc-boot');
+				if (!badge) return;
+
+				var has = function(k) { return st && st[k] !== undefined; };
+				svcLast = st || {};
+				if (!has('daemon')) {
+					badge.textContent = '状态未知';
+					badge.style.background = 'rgba(148,163,184,0.15)';
+					badge.style.color = '#cbd5e1';
+					badge.style.borderColor = 'rgba(148,163,184,0.3)';
+					if (meta) meta.textContent = '无法读取服务状态（/etc/init.d/ai-link svc_state 执行失败）';
+					return;
+				}
+
+				var running = st.daemon === '1';
+				var coreUp = st.core === '1';
+				var nftUp = st.nft === '1';
+				var enabled = st.enabled === '1';
+				var bootOn = st.boot === '1';
+
+				badge.textContent = running ? (coreUp ? '● 运行中' : '◐ 部分运行（内核未起）') : '⏹ 已停止';
+				badge.style.background = running ? (coreUp ? 'rgba(16,185,129,0.18)' : 'rgba(245,158,11,0.2)') : 'rgba(239,68,68,0.18)';
+				badge.style.color = running ? (coreUp ? '#34d399' : '#fde68a') : '#fca5a5';
+				badge.style.borderColor = running ? (coreUp ? 'rgba(16,185,129,0.45)' : 'rgba(245,158,11,0.45)') : 'rgba(239,68,68,0.45)';
+
+				if (meta) {
+					meta.innerHTML =
+						'开机自启: <b style="color:' + (bootOn ? '#34d399' : '#f87171') + ';">' + (bootOn ? '已启用' : '已禁用') + '</b>' +
+						' · 透明代理接管: <b style="color:' + (enabled ? '#34d399' : '#94a3b8') + ';">' + (enabled ? '开启' : '暂停') + '</b>' +
+						' · nftables: <b style="color:' + (nftUp ? '#34d399' : '#94a3b8') + ';">' + (nftUp ? '已挂载' : '未挂载') + '</b>' +
+						' · 面板端口: <b style="color:#bae6fd;">:' + escapeHtml(st.port || '9099') + '</b>';
+				}
+
+				if (hint) {
+					if (!running) {
+						hint.innerHTML = '⚠️ <b style="color:#fca5a5;">守护进程未运行</b>，面板 :' + escapeHtml(st.port || '9099') +
+							' 当前不可访问。点「▶ 启动服务」即可恢复（无需 SSH）。';
+						hint.style.color = '#fca5a5';
+					} else if (!coreUp && enabled) {
+						hint.innerHTML = '⚠️ 守护进程在运行，但 sing-box 内核未启动，流量接管可能异常。建议点「🔄 重启服务」。';
+						hint.style.color = '#fde68a';
+					} else {
+						hint.innerHTML = '这里的「停止服务」会真正结束守护进程与内核（面板 :' + escapeHtml(st.port || '9099') +
+							' 同时下线）；下方「启用 AI-LINK 透明代理服务」只控制是否接管流量，不控制进程启停。';
+						hint.style.color = '#94a3b8';
+					}
+				}
+
+				var setBtn = function(el, on) {
+					if (!el) return;
+					el.disabled = !on || svcBusy;
+					el.style.opacity = (on && !svcBusy) ? '1' : '0.45';
+					el.style.cursor = (on && !svcBusy) ? 'pointer' : 'not-allowed';
+				};
+				setBtn(bStart, !running);
+				setBtn(bStop, running);
+				setBtn(bRestart, true);
+				if (bBoot) {
+					bBoot.textContent = bootOn ? '🔁 关闭开机自启' : '🔁 开启开机自启';
+					setBtn(bBoot, true);
+				}
+			};
+
+			var svcRefresh = function() {
+				return svcReadState().then(function(st) { svcRender(st); return st; });
+			};
+
+			var svcRun = function(action, label) {
+				if (svcBusy) return;
+				svcBusy = true;
+				var badge = mapEl.querySelector('#luci-svc-badge');
+				if (badge) {
+					badge.textContent = '⏳ ' + label + '中…';
+					badge.style.background = 'rgba(2,132,199,0.2)';
+					badge.style.color = '#bae6fd';
+					badge.style.borderColor = 'rgba(56,189,248,0.45)';
+				}
+				svcRefresh();
+				fs.exec('/etc/init.d/ai-link', [action]).then(function(r) {
+					var code = (r && typeof r.code === 'number') ? r.code : 0;
+					var errTxt = (r && r.stderr) ? String(r.stderr).trim() : '';
+					if (code !== 0 && errTxt) {
+						showMsg('❌ ' + label + '失败（退出码 ' + code + '）：' + errTxt.slice(0, 200), true);
+					}
+					// 服务启停需要时间：先等 1.5s，再连续探 3 次
+					return new Promise(function(res) { setTimeout(res, 1500); });
+				}).then(function() {
+					return svcRefresh();
+				}).then(function() {
+					return new Promise(function(res) { setTimeout(res, 2000); });
+				}).then(function() {
+					return svcRefresh();
+				}).then(function() {
+					svcBusy = false;
+					svcRefresh();
+					// 服务刚起来时面板 API 可能还没就绪，稍后再刷一次总览
+					setTimeout(function() { refreshStatus(); }, 2500);
+				}).catch(function(e) {
+					svcBusy = false;
+					showMsg('❌ ' + label + '请求失败：' + (e && e.message ? e.message : e), true);
+					svcRefresh();
+				});
+			};
+
+			bindBtn('#luci-btn-svc-start', function() { svcRun('start', '启动服务'); });
+			bindBtn('#luci-btn-svc-stop', function() {
+				if (!window.confirm('确认停止 AI-LINK 服务？\n\n· 守护进程与 sing-box 内核都会结束\n· 面板 :9099 将无法访问\n· 网络会恢复为纯直连（不影响正常上网）\n\n停止后可在本页「▶ 启动服务」随时恢复。')) return;
+				svcRun('stop', '停止服务');
+			});
+			bindBtn('#luci-btn-svc-restart', function() { svcRun('restart', '重启服务'); });
+			bindBtn('#luci-btn-svc-boot', function() {
+				var bootNow = svcLast.boot === '1';
+				svcRun(bootNow ? 'disable' : 'enable', bootNow ? '关闭开机自启' : '开启开机自启');
+			});
+
+			// 首次渲染后立刻读一次状态，之后每 5 秒刷新
+			setTimeout(function() { svcRefresh(); }, 300);
+			setInterval(function() { if (!svcBusy) svcRefresh(); }, 5000);
 
 			// ================= OTA 在线更新 (v1.0.1+) =================
 			var otaTimer = null;

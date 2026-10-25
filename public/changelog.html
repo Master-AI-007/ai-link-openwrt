@@ -54,6 +54,34 @@
       <p class="text-sm text-slate-400 mb-6">主题：<strong class="text-slate-200">在线更新体系 + 面板密码安全修复</strong></p>
 
       <section class="mb-6">
+        <h3 class="text-sm font-bold text-cyan-300 mb-3 flex items-center gap-2">⚙️ 服务总开关（新功能）</h3>
+        <p class="text-[13px] text-slate-400 leading-relaxed mb-3">
+          v1.0.0 有个隐藏死锁：服务一旦被停掉，LuCI 概览页<b class="text-slate-200">所有按钮全部失效</b>——因为它们都去调
+          <code class="text-slate-300">:9099</code> 的 API，而面板已经没了；「启用透明代理」那个勾选框只管流量接管、不管进程启停，
+          用户勾了也没用，只能 SSH 进去手动 <code class="text-slate-300">start</code>。
+        </p>
+        <div class="rounded-xl bg-slate-950/60 border border-slate-800 p-4 mb-3">
+          <div class="text-xs font-bold text-slate-300 mb-2">LuCI 概览页顶部新增独立卡片</div>
+          <ul class="grid sm:grid-cols-2 gap-2 text-[12.5px] text-slate-400">
+            <li><span class="text-cyan-400">●</span> 状态徽章：<b class="text-slate-200">运行中 / 部分运行 / 已停止</b></li>
+            <li><span class="text-cyan-400">●</span> 元信息：开机自启 · 代理接管 · nftables · 端口</li>
+            <li><span class="text-cyan-400">●</span> 按钮：<b class="text-slate-200">启动 / 停止 / 重启 / 开机自启</b></li>
+            <li><span class="text-cyan-400">●</span> 每 5 秒自动同步真实状态</li>
+          </ul>
+        </div>
+        <p class="text-[13px] text-emerald-300/90 leading-relaxed">
+          <b>关键设计：这条通路不依赖 :9099。</b>
+          它走 LuCI 自己的 <code class="text-slate-300">fs.exec</code> →
+          <code class="text-slate-300">/etc/init.d/ai-link svc_state|start|stop|restart</code>，
+          所以<b>即使守护进程已经停了，也能在网页上一键把它拉起来</b>，完全不需要 SSH。
+        </p>
+        <p class="mt-3 text-[12.5px] text-slate-400 leading-relaxed">
+          语义澄清：<b class="text-slate-200">⚙️ 服务总开关</b> 管进程生命周期；
+          <b class="text-slate-200">☑️ 启用 AI-LINK 透明代理服务</b> 只管是否接管流量。两者独立。
+        </p>
+      </section>
+
+      <section class="mb-6">
         <h3 class="text-sm font-bold text-rose-300 mb-3 flex items-center gap-2">🔐 安全修复</h3>
         <ul class="space-y-2.5 text-sm text-slate-300 leading-relaxed">
           <li class="flex gap-2.5"><span class="text-rose-400 shrink-0">●</span><div><strong class="text-white">LuCI 概览页「面板密码」显示为一串 <code class="text-rose-300">sha256:xxxx</code> 哈希</strong>
