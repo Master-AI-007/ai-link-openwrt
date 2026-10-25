@@ -12934,9 +12934,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "1.0.1"
+APP_VERSION = "1.0.2"
 APP_CHANNEL = "stable"
-APP_BUILD = "1.0.1-release-20261026"
+APP_BUILD = "1.0.2-release-20261026"
 
 UPDATE_MANIFEST_PRIMARY = "https://ai-link-official.pages.dev/version.json"
 UPDATE_MANIFEST_GITHUB = "https://raw.githubusercontent.com/Master-AI-007/ai-link-openwrt/main/version.json"
@@ -14236,7 +14236,7 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 # SEC-2 (v1.0.2): 鉴权状态必须进缓存键。
                 # 否则「已鉴权客户端」缓存的完整应答会被后续未鉴权请求命中，
                 # 脱敏等于没做。
-                bool(self._is_loopback_client() or self._is_request_authenticated()),
+                bool(self._auth_ok()),
                 _CORE_RELOAD_STATE["config_seq"],
                 _CORE_RELOAD_STATE["reload_seq"],
                 bool(is_bypass_active()),
@@ -14427,7 +14427,11 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             if self._try_send_wire_memo():
                 return
             status_payload = build_status_api_response(CONF_DIR)
-            if not (self._is_loopback_client() or self._is_request_authenticated()):
+            # 与访问控制同口径：只有「令牌 / 回环 / trusted_cidr」都放行时才给完整数据。
+            # 默认配置下局域网属于 trusted_cidr（与历史行为一致，避免面板里
+            # 回家 URI、订阅地址突然变成 ***）；一旦打开「强制内网登录」，
+            # 或客户端不在信任网段，就必须脱敏。
+            if not self._auth_ok():
                 status_payload = _mask_status_secrets(status_payload)
             self._send_json(status_payload)
             return

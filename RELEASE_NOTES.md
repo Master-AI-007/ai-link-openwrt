@@ -1,4 +1,4 @@
-# AI-LINK v1.0.1
+# AI-LINK v1.0.2
 
 > OpenWrt 下一代「永不断连」智能透明代理 · 异地组网回家 · DNS 净网护盾
 > 发布日期：2026-10-26 ｜ 适用：OpenWrt 23.05 / 24.10 / ImmortalWrt / LEDE（`fw4` + `nftables`）
@@ -7,202 +7,79 @@
 
 ## 本版主题
 
-**服务总开关 + 在线更新体系 + 面板密码安全修复。**
-
-v1.0.1 是**第一个支持在线一键升级的版本**。从这一版起，插件可以自己检查新版本、自己下载、自己校验、自己升级、失败自动回滚。
-
----
-
-## ⚙️ 服务总开关（新功能）
-
-### 解决了什么问题
-
-v1.0.0 有一个隐藏死锁：一旦服务被停掉（`/etc/init.d/ai-link stop`），
-LuCI 概览页上**所有按钮全部失效**——因为它们都去调 `:9099` 的 API，而面板已经没了。
-而「启用 AI-LINK 透明代理服务」那个勾选框只管**流量接管**、不管**进程启停**，
-用户勾了也没用，只能 SSH 进去手动 `start`。
-
-### 现在怎么做
-
-LuCI 概览页顶部新增独立的「⚙️ 服务总开关」卡片：
-
-| 能力 | 说明 |
-|---|---|
-| 状态徽章 | `● 运行中` / `◐ 部分运行（内核未起）` / `⏹ 已停止` |
-| 元信息 | 开机自启 · 透明代理接管 · nftables 挂载 · 面板端口 |
-| 四个按钮 | **▶ 启动服务** / **⏹ 停止服务** / **🔄 重启服务** / **🔁 开机自启开关** |
-| 自动刷新 | 每 5 秒同步一次真实状态 |
-
-**关键设计：这条通路不依赖 `:9099`。**
-它走 LuCI 自己的 `fs.exec` → `/etc/init.d/ai-link svc_state|start|stop|restart`，
-所以**即使守护进程已经停了，也能在网页上一键把它拉起来**，完全不需要 SSH。
-
-### 语义澄清
-
-| 开关 | 管什么 |
-|---|---|
-| ⚙️ **服务总开关**（新增） | 进程生命周期：启动 / 停止 / 重启 / 开机自启 |
-| ☑️ 启用 AI-LINK 透明代理服务（原有） | 是否接管流量（nftables / dnsmasq / sing-box） |
-
-两者独立：`enabled=0` 时设计上面板仍在线，只是不接管流量。
-
-### 其他改动
-
-- **`reload_service()` 兜底**：`enabled=1` 时若 daemon 或 sing-box 任一未运行，直接整体 `start`
-- **新增 init 动作 `svc_state`**：输出单行 `daemon= core= nft= enabled= boot= bypass= port=`，供前端统一解析
-- **独立面板同步**：设置页新增服务状态卡片 + 「🔄 重启服务」按钮，5 秒自动刷新
+**安全加固 + 启动可靠性修复。** 这一版不加新功能，只把 v1.0.1 暴露出来的三处硬伤修掉：
+面板令牌可以被未登录拿到、状态接口把节点凭据一并吐出来、以及每次启动都要等 25 秒才挂 nftables。
 
 ---
 
-## 🔐 安全修复（建议所有 v1.0.0 用户升级）
+## 🔐 安全修复
 
-| 编号 | 问题 | 说明 |
-|---|---|---|
-| PWD-1 | LuCI「面板密码」显示为 `sha256:xxxx` 哈希 | 改密后 UCI 字段被写入哈希，LuCI 直接把它当密码显示 |
-| PWD-2 | **安装自检会污染生产环境密码字段** | `--self-test` 用临时目录跑改密回归，但函数体无条件 `uci set`，导致每次安装自检 / `ai-link probe` 都把真实 `panel_secret` 覆盖成测试串的哈希 |
-| PWD-3 | 哈希串可直接当密码登录 | `candidate_pw == get_uci_panel_secret()` 旁路已移除 |
-| PWD-4 | **哈希串可直接当 Bearer 令牌绕过登录** | `tok == get_uci_panel_secret()` 旁路已移除，令牌只认签发过的值 |
-| PWD-5 | 认证文件丢失后用户被锁死 | 旧逻辑用哈希当初始密码重建，真密码失效；现回退默认密码供救急 |
+### 1. 面板令牌不再随首页下发（严重）
 
-**新增 LuCI 专用桥接令牌** `luci_bridge_token`：与面板密码完全解耦的 32 位随机串，仅用于 LuCI 页面调用面板 API。改面板密码不影响它，它也不能用来登录面板。
+旧实现会给任何请求 `/` 的客户端塞一个 `Set-Cookie: ailink_token=<有效令牌>`。
+**未登录、零凭据，打开一次面板地址就有令牌**，之后可以调用全部 API；
+即使打开「强制内网登录」也绕得过去，面板一旦被端口转发到公网就等同远程接管。
 
----
+现在：令牌只由 `POST /api/login` 校验密码后签发，客户端自己保存。
 
-## ⬆️ 在线更新体系（新功能）
+### 2. `/api/status` 对未授权客户端脱敏
 
-### 使用方式
+以前该接口会把回家节点的 `password` / `uuid` / `private_key` / `uri`
+和订阅地址（含 `?token=`）一并返回。现在按访问控制同一口径判断，
+未放行即脱敏；鉴权状态也纳入缓存键，避免已鉴权客户端的完整应答被后续请求复用。
 
-| 入口 | 操作 |
-|---|---|
-| **LuCI** 服务 → AI-LINK → 概览页 | 「插件版本与在线更新」卡片 → 检查更新 → 立即更新 |
-| **独立面板** :9099 → 设置 | 同款卡片，位于「核心库与订阅更新」上方 |
-| **SSH 命令行** | `ai-link update`（只检查）／`ai-link update --apply`（检查并升级） |
+### 3. 回家节点脱敏覆盖 `uri`
 
-### 升级流程（八步）
-
-1. 拉取 `version.json` —— Cloudflare Pages 主源 → `gh_mirror` 加速镜像 → GitHub raw 直连，自动重试
-2. 下载升级包 —— 清单内多源依次重试
-3. **校验大小 + MD5 + SHA256** —— 任一不符立即中止，绝不执行未校验的包
-4. 解压并校验包结构
-5. 备份用户配置到 `/root/ai-link-final-backup/pre-update-v{版本}-{时间戳}.tgz`（自动保留最近 3 份）；空间充足时额外备份旧代码
-6. 执行 `install.sh --upgrade`
-7. 重启服务并做健康检查
-8. 健康检查失败 → **自动回滚**并再次验证
-
-### 工程要点
-
-- **升级进程与主服务解耦**：升级脚本用 `setsid` 脱离 daemon 会话，安装脚本重启服务不会把它杀掉；进度实时落盘，重启后新进程接着读，因此用户能看到完整结果，而不是"页面转圈然后失联"。
-- **安全护栏**：清单缺 MD5 直接拒绝升级；同一时间只允许一个升级任务；升级中重复点击被拒绝。
-- **代理环境变量免疫**：清单与升级包请求显式绕过 `http_proxy`/`https_proxy`，避免路由器上残留的代理变量把 OTA 误判成"清单不可达"。
-
-### 新增 API
-
-| 方法 | 路径 | 说明 |
-|---|---|---|
-| GET | `/api/system/version` | 当前版本、构建号、清单源列表 |
-| GET | `/api/system/update/check` | 拉取清单并比较版本（`?force=1` 跳过 5 分钟缓存） |
-| GET | `/api/system/update/status` | 升级进度与最近日志 |
-| POST | `/api/system/update/apply` | 启动升级 |
-| POST | `/api/system/update/ack` | 清除已完成的升级结果 |
+`mask_all_secrets` 以前只遮字段，`uri` 里内嵌的明文密码/UUID 仍然裸露，现在一并处理。
 
 ---
 
-## 🛠 安装脚本
+## 🚀 启动可靠性
 
-- 新增 `install.sh --upgrade` 升级模式：
-  - 不再停止/禁用其他代理服务（避免误伤用户后装的组件）
-  - **不再删除音乐解锁组件**（原安装流程会 `rm -rf` 掉，在线升级时会造成"静默卸载"）
-  - 其余流程保持幂等，用户配置与 UCI 设置全部保留
+### 4. 修复 `ss` 探针不存在
 
----
+`init.d` 的端口就绪探针只用 `ss`，而 ImmortalWrt 25.x 默认不带 `ss`（`ash: ss: not found`）。
+结果每次启动都等满 25 秒、打印「TProxy port not listening」并跳过 nftables 挂载，
+只靠看门狗事后补挂。现在改用 `netstat` 为主、`ss` 与 `/proc/net/tcp` 兜底，预算放宽到 60 秒。
 
-## 📦 下载
+### 5. 修复 BusyBox `pgrep -x` 失效
 
-| 文件 | 大小 | MD5 |
-|---|---:|---|
-| `AI-LINK-v1.0.1.tar.gz` | 1,200,649 B | `4375dddea1dc4bdd6b8cadb330ace239` |
-| `version.json` | 2,083 B | 见文件内 `sha256` 字段 |
-| `CHANGELOG.md` | 7,459 B | — |
-
-SHA256：`b548232f3bfe0eef136df6c49c85391b62369794b122d9cfe870677f2c12c769`
-
-> 校验：`md5sum AI-LINK-v1.0.1.tar.gz` 应等于上表值。
+BusyBox 1.37 的 `pgrep -x sing-box` 匹配不到 `/usr/bin/sing-box`，导致
+`svc_state` 恒报 `core=0`、每次 reload 退化成整机重启、`restore_proxy` 误判核心没起来。
+统一换成 `pidof` 探针。
 
 ---
 
-## 安装 / 升级
+## ♻️ 升级回滚
 
-### v1.0.0 用户（需手动升级一次）
+### 6. 回滚收尾立即重挂透明代理
 
-v1.0.0 尚未内置在线更新模块，请手动执行一次：
+回滚后不再等 10 秒自愈，立即 `restore_proxy`，避免「面板正常但流量不走代理」的空窗。
+
+---
+
+## ⬆️ 升级方式
 
 ```sh
-curl -fsSL https://ai-link-official.pages.dev/install.sh | sh
-```
-
-### v1.0.1 及以后（在线一键）
-
-```sh
+# 设备上直接升级
 ai-link update --apply
+
+# 或者一键脚本（会自动识别已安装并升级）
+curl -fsSL https://ai-link-official.pages.dev/upgrade.sh | sh
 ```
 
-或在面板 / LuCI 点「立即更新」。
-
-### 全新安装
-
-```sh
-curl -fsSL https://ai-link-official.pages.dev/install.sh | sh
-```
-
-国内网络强制走加速镜像：
-
-```sh
-curl -fsSL https://ai-link-official.pages.dev/install.sh | AI_LINK_MIRROR=https://ghfast.top/https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v1.0.1 sh
-```
-
-### 手动安装
-
-```sh
-tar -xzf AI-LINK-v1.0.1.tar.gz
-cd ai-link-openwrt
-sh install.sh
-```
-
-安装完成后访问 `http://<路由器IP>:9099`（独立面板）或 LuCI → 服务 → AI-LINK 智能代理。
-
-**卸载**：
-
-```sh
-ai-link uninstall -y             # 彻底卸载（自动归档 /etc/ai-link）
-ai-link uninstall --keep-config  # 保留配置卸载
-```
+升级失败会自动回滚到升级前版本，配置与节点数据不受影响。
 
 ---
 
-## 验收状态
+## 📌 已知限制
 
-| 项 | 结果 |
-|---|---|
-| 发布门禁（13 项） | **13 / 13 PASS** |
-| OTA 端到端测试（19 项） | **19 / 19 PASS** |
-| 面板密码缺陷 A/B 对照 | 3 条漏洞全部堵死，真密码/真令牌/默认密码救急未回归 |
-| 静态门禁 | `py_compile` ✓ · `node --check` ✓ · `bash -n` ✓ · symtable 未定义 0 ✓ |
-| HTML 标签配平 | overview.js `34/34` · index.html `842/842` |
-| 面板内联脚本语法 | 4 块全部通过 |
-| 版本一致性 | daemon / install.sh / version 文件 / 面板徽章 四处一致 |
+- 面板默认信任局域网（`require_lan_auth=false`）。若面板端口可能暴露到公网，
+  请开启「强制内网登录」，或把 `trusted_cidr` 收窄到管理网段。
+- v1.0.0 用户仍需手动升级一次（v1.0.0 没有 OTA 模块）。
 
 ---
 
-## 已知问题
+## 包指纹
 
-1. **v1.0.0 → v1.0.1 必须手动升级一次**（v1.0.0 没有 OTA 模块）。
-2. 面板与 LuCI 的升级进度在服务重启瞬间会短暂断连，属正常现象，2 秒轮询会自动恢复。
-3. `auto_nodes.json` 含实时探测数据，daemon 运行时会持续重写，**不适合作为备份一致性比对项**。
-
----
-
-## 反馈
-
-- 问题与建议：本仓库 Issues
-- 更新日志：<https://ai-link-official.pages.dev/changelog.html>
-- 版本清单：<https://ai-link-official.pages.dev/version.json>
+见 `version.json`（`packages.full.md5` / `sha256` / `size`）。

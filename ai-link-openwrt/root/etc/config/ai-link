@@ -1,7 +1,7 @@
 config ai-link 'global'
 	option enabled '1'
 	option build_mode 'auto'
-	option app_version '1.0.1'
+	option app_version '1.0.2'
 	option panel_port '9099'
 	option panel_secret 'ai-link-2026'
 	option tproxy_port '7893'

@@ -10,6 +10,69 @@
 
 ---
 
+## v1.0.2 · 2026-10-26
+
+> 主题：**安全加固 + 启动可靠性修复**
+
+### 🔐 安全修复
+
+- **面板令牌不再随首页下发（严重）**
+  旧实现在 `end_headers` 里给任何请求 `/` 或 `/index.html` 的客户端塞
+  `Set-Cookie: ailink_token=<第一个有效令牌>`。也就是说**未登录、不带任何凭据**，
+  只要打开一次面板地址就能拿到可用令牌，进而调用全部 API。
+  「强制内网登录」打开也拦不住（令牌校验在 CIDR 校验之前），
+  面板若被端口转发到公网即等同远程接管。
+  现在令牌只由 `POST /api/login` 校验密码成功后签发，面板自己保存（localStorage + Cookie）。
+- **`/api/status` 对未授权客户端脱敏**
+  该接口会把回家节点的 `password` / `uuid` / `private_key` / `uri` 和订阅地址（含 `?token=`）
+  一并返回。现在按与访问控制相同的口径判断：只有「令牌 / 回环 / trusted_cidr」放行时才给完整数据，
+  否则脱敏；同时把鉴权状态纳入 wire-memo 缓存键，避免「已鉴权客户端缓存的完整应答被后续未鉴权请求命中」。
+- **回家节点脱敏覆盖 `uri` 字段**
+  `build_homelink_api_response` 的 `mask_all_secrets` 以前只遮字段，但 `uri` 里内嵌明文 `password`/`uuid`，
+  等于没遮；现在 `uri` 里的凭据段一并处理。
+- **敏感接口仍强制令牌（回归验证）**
+  `GET /api/ops/backup`、`POST /api/system/update/apply` 等在未授权时返回 401。
+
+### 🚀 启动可靠性修复
+
+- **修复 `ss` 探针不存在导致的「假等待 + 跳过挂载」**
+  `init.d/ai-link` 的端口就绪探针只用了 `ss -lntu`，而 ImmortalWrt 25.x / OpenWrt 24.10+ 默认不带 `ss`
+  （实测返回 `ash: ss: not found`，rc=127）。于是**每次启动都会等满 25 秒**，打印
+  `TProxy port :7893 not listening after 25s! Skipping nftables mount`，然后跳过 nftables 挂载，
+  完全依赖 daemon 的 Self-Healing Watchdog 事后补挂。
+  现在改为 `netstat` 为主、`ss` 与 `/proc/net/tcp{,6}` 兜底，等待预算从 25 秒放宽到 60 秒
+  （`AI_LINK_PORT_WAIT` 可覆盖）。日志回到正常的
+  `TProxy port :7893 ready; nftables table inet ai_link mounted.`
+- **修复 BusyBox `pgrep -x` 探针失效**
+  BusyBox 1.37 的 `pgrep -x sing-box` 匹配不到 `/usr/bin/sing-box`（`/proc/<pid>/comm` 明明是 `sing-box`
+  也返回 1）。影响三处：`svc_state` 恒报 `core=0`、`reload_service` 的兜底恒成立（每次 reload 退化成整机重启）、
+  `restore_proxy` 误判核心未运行。统一改为 `pidof sing-box`（含 `pgrep -f` 兜底）的 `singbox_alive()`。
+
+### ♻️ 在线升级回滚
+
+- **回滚收尾立即重挂透明代理**
+  旧流程回滚后只重启服务，要等 daemon 的 `auto_heal_interval`（默认 10 秒）才把
+  `table inet ai_link` 补回来，这段时间设备处于「面板正常但流量不走代理」的假恢复状态。
+  现在回滚段在重启后主动执行 `/etc/init.d/ai-link restore_proxy`。
+
+### 🛠 发布工具链（仅维护侧，不影响设备）
+
+- 版本同步的 LuCI 兜底正则只认 `| | '1.0.1');`（竖线间带空格），实际源码是 `|| '1.0.1');`，
+  导致 `publish` 卡在第一步；已放宽为 `\|\s*\|\s*`。
+- `version` 文件以前每发一版会多写一行（`r'^.*$'` + `re.M` 命中结尾空行），现在只改写首行。
+- 面板版本徽章的替换丢了 `v` 前缀，导致门禁「四处版本号一致」失败；现已保留 `v`。
+
+### ⬆️ 升级方式
+
+- 设备侧：`ai-link update --apply`，或 `curl -fsSL https://ai-link-official.pages.dev/upgrade.sh | sh`
+- 升级失败自动回滚到升级前版本，配置与节点数据不受影响。
+
+### 📌 已知限制
+
+- 面板默认信任局域网（`require_lan_auth=false`，`trusted_cidr` 覆盖全部私网），
+  这是历史行为，未在本版改动。如果面板端口可能暴露到公网，**请务必开启「强制内网登录」**，
+  或把 `trusted_cidr` 收窄到管理网段。
+
 ## v1.0.1 · 2026-10-26
 
 > 主题：**服务总开关 + 在线更新体系 + 面板密码安全修复**

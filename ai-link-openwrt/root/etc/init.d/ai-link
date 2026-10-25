@@ -132,6 +132,27 @@ mute_conflicting_services() {
 	done
 }
 
+# v1.0.2 FIX: 探针原来只有 `ss -lntu`，而 ImmortalWrt 25.x / OpenWrt 24.10+ 默认不带 ss
+# （实测 `ash: ss: not found`，返回 127），于是每次 start 都会等满 25 秒、打印
+# "TProxy port not listening"、跳过 nftables 挂载，全靠 daemon 的 Self-Healing Watchdog
+# 事后补挂。这里改用 netstat（busybox 自带）为主、ss 与 /proc 兜底。
+port_is_listening() {
+	local p="$1"
+	[ -n "$p" ] || return 1
+	if command -v netstat >/dev/null 2>&1; then
+		netstat -tln 2>/dev/null | grep -q ":$p " && return 0
+	fi
+	if command -v ss >/dev/null 2>&1; then
+		ss -lntu 2>/dev/null | grep -q ":$p " && return 0
+	fi
+	# 最后兜底：直接读 /proc/net/tcp{,6}（local_address 的端口是 16 进制，状态 0A = LISTEN）
+	local hex
+	hex=$(printf '%04X' "$p" 2>/dev/null) || return 1
+	awk -v h="$hex" 'NR>1 { split($2, a, ":"); if (toupper(a[2]) == h && $4 == "0A") { f = 1 } } END { exit(f ? 0 : 1) }' \
+		/proc/net/tcp /proc/net/tcp6 2>/dev/null && return 0
+	return 1
+}
+
 wait_for_ports_And_apply_nft() {
 	local entry_bypass="$1"
 	local block_quic="$2"
@@ -145,12 +166,13 @@ wait_for_ports_And_apply_nft() {
 
 	(
 		local waited=0
-		while [ $waited -lt 25 ]; do
+		local budget="${AI_LINK_PORT_WAIT:-60}"
+		while [ $waited -lt "$budget" ]; do
 			if [ -f "$RUN_DIR/bypass" ] || [ -f "$RUN_DIR/recover_direct.flag" ]; then
 				logger -t ai-link "Direct bypass flag active; skipping nftables mount."
 				exit 0
 			fi
-			if ss -lntu 2>/dev/null | grep -q ":${tproxy_port:-7893} "; then
+			if port_is_listening "${tproxy_port:-7893}"; then
 				break
 			fi
 			sleep 1
@@ -161,8 +183,8 @@ wait_for_ports_And_apply_nft() {
 			exit 0
 		fi
 
-		if ! ss -lntu 2>/dev/null | grep -q ":${tproxy_port:-7893} "; then
-			logger -t ai-link "WARN: TProxy port :${tproxy_port:-7893} not listening after 25s! Skipping nftables mount to protect LAN internet."
+		if ! port_is_listening "${tproxy_port:-7893}"; then
+			logger -t ai-link "WARN: TProxy port :${tproxy_port:-7893} not listening after ${budget}s! Skipping nftables mount to protect LAN internet."
 			exit 0
 		fi
 
