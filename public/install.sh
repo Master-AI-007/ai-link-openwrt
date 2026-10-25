@@ -146,7 +146,13 @@ c_g "✓ 解包完成"
 step "5/5" "执行安装"
 cd "$WORK/ai-link-openwrt"
 chmod +x install.sh uninstall.sh 2>/dev/null || true
-sh ./install.sh
+# 已装过则自动使用 --upgrade 模式：不停止其他代理服务、不删除音乐解锁等附加组件
+INSTALL_ARGS=""
+if [ -f /etc/config/ai-link ] || [ -d /etc/ai-link ]; then
+    INSTALL_ARGS="--upgrade"
+    echo "  · 检测到已安装 AI-LINK，自动使用 --upgrade 模式（保留配置与附加组件）"
+fi
+sh ./install.sh $INSTALL_ARGS
 RC=$?
 
 cd /
