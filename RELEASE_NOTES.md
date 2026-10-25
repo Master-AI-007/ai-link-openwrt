@@ -35,11 +35,11 @@
 
 | 文件 | 大小 | MD5 |
 |---|---:|---|
-| `AI-LINK-v1.0.0-正式版.tar.gz` | 1,176,852 B | `3d2710605ce844b0702bb60926fa5e2c` |
+| `AI-LINK-v1.0.0.tar.gz` | 1,176,852 B | `3d2710605ce844b0702bb60926fa5e2c` |
 | `luci-app-ai-link_2.0.0-r8_all.ipk` | 567,995 B | `875ff6cf138252359bb8102a2667289b` |
-| `AI-LINK-v1.0.0-官方完整介绍与图文使用手册.pdf` | 4,206,280 B | `aaa100db4c90960b08d50b411312973d` |
+| `AI-LINK-v1.0.0-manual.pdf` | 4,064,322 B | `aaa100db4c90960b08d50b411312973d` |
 
-> 校验：`md5sum AI-LINK-v1.0.0-正式版.tar.gz` 应等于上表值。
+> 校验：`md5sum AI-LINK-v1.0.0.tar.gz` 应等于上表值。
 > 注：压缩包与内部构建产物（`6b8f53b6…`）仅差一个 `README.md`（本手册更新版），其余 25 个文件字节一致。
 
 ---
@@ -47,7 +47,7 @@
 ## 安装
 
 ```sh
-tar -xzf AI-LINK-v1.0.0-正式版.tar.gz
+tar -xzf AI-LINK-v1.0.0.tar.gz
 cd ai-link-openwrt
 sh install.sh
 ```
@@ -90,4 +90,4 @@ ai-link uninstall --keep-config # 保留配置卸载
 ## 反馈
 
 - 问题与建议：本仓库 Issues
-- 使用手册：`AI-LINK-v1.0.0-官方完整介绍与图文使用手册.pdf`
+- 使用手册：`AI-LINK-v1.0.0-manual.pdf`
