@@ -120,11 +120,11 @@ LuCI 概览页顶部新增独立的「⚙️ 服务总开关」卡片：
 
 | 文件 | 大小 | MD5 |
 |---|---:|---|
-| `AI-LINK-v1.0.1.tar.gz` | 1,196,610 B | `5582bd0f9eb49105d38813036cb6ca66` |
+| `AI-LINK-v1.0.1.tar.gz` | 1,200,649 B | `4375dddea1dc4bdd6b8cadb330ace239` |
 | `version.json` | 2,083 B | 见文件内 `sha256` 字段 |
 | `CHANGELOG.md` | 7,459 B | — |
 
-SHA256：`49eb2322b5328cbd4b784253de2130123070493c4f44f1058331984a03ee54e8`
+SHA256：`b548232f3bfe0eef136df6c49c85391b62369794b122d9cfe870677f2c12c769`
 
 > 校验：`md5sum AI-LINK-v1.0.1.tar.gz` 应等于上表值。
 
