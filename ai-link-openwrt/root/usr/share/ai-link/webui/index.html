@@ -547,7 +547,7 @@
       <div class="max-w-[1600px] w-full mx-auto flex flex-wrap items-center justify-between gap-2">
         <div class="flex items-center gap-2 flex-wrap">
           <div class="w-7 h-7 rounded-xl overflow-hidden shadow-md flex items-center justify-center shrink-0" title="AI-LINK 智能网关分流中枢"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" class="w-7 h-7 block"><defs><linearGradient id="ailink-hdr-bg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#6d28d9"/><stop offset="52%" stop-color="#4f46e5"/><stop offset="100%" stop-color="#06b6d4"/></linearGradient><linearGradient id="ailink-hdr-fg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#e0f2fe"/></linearGradient></defs><rect width="64" height="64" rx="16" fill="url(#ailink-hdr-bg)"/><rect x="2" y="2" width="60" height="60" rx="14" fill="none" stroke="#ffffff" stroke-opacity="0.22" stroke-width="1.5"/><path d="M32 13 L49 48 H40.5 L36.8 39.5 H27.2 L23.5 48 H15 L32 13 Z M32 24.5 L29.1 33 H34.9 L32 24.5 Z" fill="url(#ailink-hdr-fg)"/><circle cx="32" cy="46.5" r="3.2" fill="#fde047"/></svg></div>
-          <span class="px-2.5 py-1 rounded-full bg-violet-500/20 border border-violet-400/30 text-violet-200 text-xs font-bold tracking-wide">AI-LINK <span class="text-[10px] text-cyan-300 font-mono ml-0.5">v1.0.0</span></span>
+          <span class="px-2.5 py-1 rounded-full bg-violet-500/20 border border-violet-400/30 text-violet-200 text-xs font-bold tracking-wide">AI-LINK <span class="text-[10px] text-cyan-300 font-mono ml-0.5">v1.0.1</span></span>
           <span id="top-core-badge" class="px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-slate-300 text-xs mono">sing-box 1.14.1</span>
           <span id="top-active-node-badge" class="px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-400/25 text-emerald-300 text-xs font-medium truncate max-w-xs sm:max-w-md">⏳ 正在同步网关实时分流状态...</span>
         </div>
@@ -1514,6 +1514,26 @@
           <div class="ailink-subcard rounded-2xl p-4 space-y-3 text-xs">
             <div class="flex flex-wrap items-center justify-between gap-2">
               <div>
+                <span class="font-bold text-white">⬆️ 插件版本与在线更新</span>
+                <span id="ota-sub" class="text-[11px] text-slate-400 ml-2">当前 v1.0.1 · 点击「检查更新」获取最新版本</span>
+              </div>
+              <div class="flex items-center gap-2 flex-wrap">
+                <a id="ota-notes" href="#" target="_blank" rel="noopener noreferrer" class="hidden px-3 py-1.5 rounded-xl bg-cyan-500/15 border border-cyan-400/30 text-cyan-200 font-semibold">📄 更新说明</a>
+                <button id="btn-ota-check" type="button" class="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 text-slate-200 font-semibold">🔍 检查更新</button>
+                <button id="btn-ota-apply" type="button" disabled class="px-3.5 py-1.5 rounded-xl bg-white/5 text-slate-500 font-bold cursor-not-allowed">⬆️ 立即更新</button>
+              </div>
+            </div>
+            <div id="ota-progress-wrap" class="hidden space-y-2">
+              <div class="h-1.5 w-full rounded-full bg-black/50 overflow-hidden border border-white/10">
+                <div id="ota-bar" class="h-full w-0 bg-gradient-to-r from-sky-500 to-cyan-400 transition-all duration-300"></div>
+              </div>
+              <div id="ota-stage" class="text-[11px] text-cyan-300"></div>
+              <pre id="ota-log" class="hidden max-h-40 overflow-auto text-[10px] leading-relaxed text-slate-400 bg-black/40 border border-white/10 rounded-lg p-2 whitespace-pre-wrap"></pre>
+            </div>
+          </div>
+          <div class="ailink-subcard rounded-2xl p-4 space-y-3 text-xs">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div>
                 <span class="font-bold text-white">📦 核心规则库与订阅状态检查及立即更新</span>
                 <span class="text-[11px] text-slate-400 ml-2">点击右侧按钮可单独或全量更新各模块</span>
               </div>
@@ -1648,7 +1668,7 @@
   </div>
 <script>
     const state = {
-      version: '1.0.0',
+      version: '1.0.1',
       proxyEnabled: true,
       failOpenActive: false,
       opsSettings: {
@@ -6147,6 +6167,112 @@
           showToast('✓ 所有模块状态检查完成！', 'success');
         });
       }
+      // ================= OTA 在线更新 (v1.0.1+) =================
+      let otaTimer = null;
+      const otaRender = (p) => {
+        const wrap = document.getElementById('ota-progress-wrap');
+        const bar = document.getElementById('ota-bar');
+        const stage = document.getElementById('ota-stage');
+        const logEl = document.getElementById('ota-log');
+        if (!wrap || !bar || !stage) return;
+        wrap.classList.remove('hidden');
+        const pct = Math.max(0, Math.min(100, parseInt(p.percent, 10) || 0));
+        bar.style.width = pct + '%';
+        bar.className = 'h-full transition-all duration-300 ' + ((p.stage === 'failed')
+          ? 'bg-gradient-to-r from-rose-600 to-rose-400'
+          : 'bg-gradient-to-r from-sky-500 to-cyan-400');
+        const icon = p.stage === 'done' ? '✅ ' : (p.stage === 'failed' ? '❌ ' : '⏳ ');
+        stage.textContent = icon + (p.stage_text || '') + ' · ' + pct + '%' + (p.message ? ' — ' + p.message : '');
+        stage.className = 'text-[11px] ' + (p.stage === 'done' ? 'text-emerald-300' : (p.stage === 'failed' ? 'text-rose-300' : 'text-cyan-300'));
+        if (logEl && Array.isArray(p.log) && p.log.length) {
+          logEl.classList.remove('hidden');
+          logEl.textContent = p.log.slice(-18).join('\n');
+          logEl.scrollTop = logEl.scrollHeight;
+        }
+      };
+      const otaResetApplyBtn = (enabled, label) => {
+        const b = document.getElementById('btn-ota-apply');
+        if (!b) return;
+        b.disabled = !enabled;
+        b.textContent = label || '⬆️ 立即更新';
+        b.className = enabled
+          ? 'px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold shadow'
+          : 'px-3.5 py-1.5 rounded-xl bg-white/5 text-slate-500 font-bold cursor-not-allowed';
+      };
+      const otaPollOnce = async () => {
+        const r = await callRouterApi('system/update/status', 'GET');
+        const p = (r && r.progress) || {};
+        if (!p.stage) return p;
+        otaRender(p);
+        if (p.finished) {
+          if (otaTimer) { clearInterval(otaTimer); otaTimer = null; }
+          otaResetApplyBtn(false);
+          const sub = document.getElementById('ota-sub');
+          if (sub && p.stage === 'done') sub.innerHTML = `已升级到 <b class="text-emerald-300">v${p.target || ''}</b> · 建议刷新页面`;
+          try { await syncBackendStatus(); } catch (e) {}
+        }
+        return p;
+      };
+      const otaStartPolling = () => {
+        if (otaTimer) return;
+        otaPollOnce();
+        otaTimer = setInterval(otaPollOnce, 2000);
+      };
+      const otaCheckBtn = document.getElementById('btn-ota-check');
+      if (otaCheckBtn) {
+        otaCheckBtn.addEventListener('click', async () => {
+          otaCheckBtn.disabled = true;
+          otaCheckBtn.textContent = '⏳ 检查中...';
+          const r = await callRouterApi('system/update/check?force=1', 'GET');
+          otaCheckBtn.disabled = false;
+          otaCheckBtn.textContent = '🔍 检查更新';
+          const sub = document.getElementById('ota-sub');
+          const notes = document.getElementById('ota-notes');
+          if (!r || !r.ok) {
+            showToast('❌ ' + ((r && r.message) || '版本检查失败'), 'error');
+            if (sub) sub.textContent = '当前 v1.0.1 · 版本检查失败（网络不通或清单不可达）';
+            return;
+          }
+          if (notes && r.notes_url) { notes.href = r.notes_url; notes.classList.remove('hidden'); }
+          if (r.has_update) {
+            if (sub) sub.innerHTML = `当前 <b>v${r.current}</b> → 最新 <b class="text-emerald-300">v${r.latest}</b>` + (r.release_date ? ` · 发布于 ${r.release_date}` : '');
+            otaResetApplyBtn(true, '⬆️ 立即更新到 v' + r.latest);
+            showToast(`🎉 发现新版本 v${r.latest}，点击「立即更新」在线升级`, 'success');
+          } else {
+            if (sub) sub.innerHTML = `当前 <b>v${r.current}</b> 已是最新版本`;
+            otaResetApplyBtn(false);
+            showToast('✅ 当前已是最新版本 v' + r.current, 'success');
+          }
+        });
+      }
+      const otaApplyBtn = document.getElementById('btn-ota-apply');
+      if (otaApplyBtn) {
+        otaApplyBtn.addEventListener('click', async () => {
+          if (otaApplyBtn.disabled) return;
+          if (!window.confirm('确认在线升级 AI-LINK 插件？\n\n· 升级约需 1-3 分钟，期间面板与代理会短暂中断\n· 节点、订阅、分流规则、面板密码等配置会自动备份并完整保留\n· 若升级后健康检查失败，会自动回滚到当前版本\n\n是否继续？')) return;
+          otaApplyBtn.disabled = true;
+          otaApplyBtn.textContent = '⏳ 正在启动升级...';
+          const r = await callRouterApi('system/update/apply', 'POST', {});
+          if (!r || !r.ok) {
+            otaResetApplyBtn(true, '⬆️ 重试更新');
+            showToast('❌ ' + ((r && r.message) || '升级启动失败'), 'error');
+            return;
+          }
+          showToast('🚀 ' + (r.message || '升级已开始，请勿关闭页面'), 'info');
+          const wrap = document.getElementById('ota-progress-wrap');
+          if (wrap) wrap.classList.remove('hidden');
+          otaStartPolling();
+        });
+      }
+      setTimeout(() => {
+        callRouterApi('system/update/status', 'GET').then((r) => {
+          const p = (r && r.progress) || {};
+          if (!p.stage) return;
+          otaRender(p);
+          if (p.running) otaStartPolling();
+        }).catch(() => {});
+      }, 1200);
+
       const updAllBtn = document.getElementById('btn-update-all-items');
       if (updAllBtn) {
         updAllBtn.addEventListener('click', async () => {
@@ -7037,7 +7163,7 @@
             '♻️ 一键恢复出厂设置 (备份保护 + 二次确认)',
             `<div class="space-y-3.5 text-xs">
               <div class="p-3 rounded-2xl bg-rose-500/15 border border-rose-400/35 text-rose-200 leading-relaxed space-y-1.5">
-                <div>⚠️ <strong>高危操作提示</strong>：恢复出厂设置将清空当前所有<strong>机场订阅、手动节点、回家节点、自定义分流规则、DNS 重写/黑名单以及历史流量统计</strong>，并将所有系统与防火墙开关恢复为 v1.0.0 初始默认状态（默认密码恢复为 <code class="mono text-white">ai-link-2026</code>）。</div>
+                <div>⚠️ <strong>高危操作提示</strong>：恢复出厂设置将清空当前所有<strong>机场订阅、手动节点、回家节点、自定义分流规则、DNS 重写/黑名单以及历史流量统计</strong>，并将所有系统与防火墙开关恢复为 v1.0.1 初始默认状态（默认密码恢复为 <code class="mono text-white">ai-link-2026</code>）。</div>
                 <div class="text-amber-200 font-semibold">🚨 断流提示：恢复出厂后因节点被清空，路由器将立刻失去海外科学上网能力（国内网络保持正常直连），需重新导入订阅或点击「📦 从备份归档恢复」方可恢复科学上网！</div>
               </div>
               <div class="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-400/25 space-y-2">

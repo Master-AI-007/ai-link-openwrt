@@ -1,10 +1,20 @@
 #!/bin/sh
-# AI-LINK Command Line Utility for OpenWrt SSH Management (v1.0.0)
-# Usage: ai-link [status|password|port|probe|probe-now|check|max-nodes|import-cache|sync-sub|import-nodes|add-test-node|mute-conflicts|recover|restore|restart|uninstall]
+# AI-LINK Command Line Utility for OpenWrt SSH Management (v1.0.1)
+# Usage: ai-link [status|password|port|update|probe|probe-now|check|max-nodes|import-cache|sync-sub|import-nodes|add-test-node|mute-conflicts|recover|restore|restart|uninstall]
 
 export PYTHONDONTWRITEBYTECODE="1"
 PANEL_PORT=$(uci -q get ai-link.global.panel_port || echo "9099")
-PANEL_SECRET=$(uci -q get ai-link.global.panel_secret || echo "ai-link-2026")
+PANEL_SECRET_RAW=$(uci -q get ai-link.global.panel_secret || echo "ai-link-2026")
+# PWD-1: panel_secret 只在「从未改过密码」时是明文初始密码；
+# 用户改过密码后是 __custom__ 哨兵，老版本遗留的 sha256:<hash> 同样不可回显。
+case "$PANEL_SECRET_RAW" in
+	""|__custom__|sha256:*|SHA256:*)
+		PANEL_SECRET="已自定义（不可回显 · 执行 ai-link password <新密码> 重置）"
+		;;
+	*)
+		PANEL_SECRET="$PANEL_SECRET_RAW"
+		;;
+esac
 LAN_IP=$(uci -q get network.lan.ipaddr || echo "192.168.1.1")
 CACHE_DIR=$(uci -q get ai-link.global.host_cache_dir || echo "/tmp/ai-link-cache")
 MAX_NODES=$(cat /etc/ai-link/max_outbounds.txt 2>/dev/null || uci -q get ai-link.global.max_outbounds || echo "120")
@@ -32,6 +42,7 @@ PY
 case "$1" in
 	password)
 		if [ -n "$2" ]; then
+			# 先落明文：若下面的 python 更新失败，仍可凭明文登录（降级不锁死）
 			uci set ai-link.global.panel_secret="$2"
 			uci commit ai-link
 			python3 -B - "$2" <<'PY' 2>/dev/null || true
@@ -40,10 +51,12 @@ spec = importlib.util.spec_from_file_location("d", "/usr/share/ai-link/ai-link-d
 d = importlib.util.module_from_spec(spec); spec.loader.exec_module(d)
 d._update_panel_password(sys.argv[1])
 PY
-			echo "AI-LINK 面板访问密码已更新为: $2"
+			# PWD-1: 不回显密码本身（避免终端留痕 / 截屏泄露）
+			echo "AI-LINK 面板访问密码已更新（${#2} 位字符）。请用新密码登录面板。"
 		else
 			echo "面板地址: http://${LAN_IP}:${PANEL_PORT}"
 			echo "当前密码: ${PANEL_SECRET}"
+			echo "重置密码: ai-link password <新密码>"
 		fi
 		;;
 	port)
@@ -137,7 +150,8 @@ PY
 		wait_core_ready
 		;;
 	-h|--help|help)
-		echo "用法: ai-link [status|password|port|probe|probe-now|check|max-nodes|import-cache|sync-sub|import-nodes|add-test-node|mute-conflicts|recover|restore|restart|uninstall]"
+		echo "用法: ai-link [status|password|port|update|probe|probe-now|check|max-nodes|import-cache|sync-sub|import-nodes|add-test-node|mute-conflicts|recover|restore|restart|uninstall]"
+		echo "在线升级: ai-link update (仅检查)  |  ai-link update --apply (检查并升级)"
 		echo "卸载帮助: ai-link uninstall [--help|-y|--keep-config]"
 		exit 0
 		;;
@@ -201,9 +215,93 @@ PY
 		echo "[AI-LINK] ✅ 卸载完成。"
 		exit 0
 		;;
+	update)
+		APPLY=0
+		for uarg in "$@"; do
+			case "$uarg" in
+				--apply|-y|--yes) APPLY=1 ;;
+			esac
+		done
+		python3 -B - "$PANEL_PORT" "$APPLY" <<'PY'
+import json, sys, time, urllib.request, urllib.error
+
+port, apply_flag = sys.argv[1], sys.argv[2] == "1"
+base = f"http://127.0.0.1:{port}/api/system/update"
+
+
+def get(path, method="GET", payload=None):
+    data = json.dumps(payload).encode() if payload is not None else None
+    req = urllib.request.Request(base + path, data=data, method=method,
+                                 headers={"Content-Type": "application/json"} if data else {})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return json.loads(r.read().decode("utf-8", "replace"))
+    except urllib.error.HTTPError as e:
+        try:
+            return json.loads(e.read().decode("utf-8", "replace"))
+        except Exception:
+            return {"ok": False, "message": f"HTTP {e.code}"}
+    except Exception as e:
+        return {"ok": False, "message": f"{type(e).__name__}: {e}"}
+
+
+print("正在检查 AI-LINK 插件更新（多源探测中）...")
+chk = get("/check?force=1")
+if not chk.get("ok"):
+    print(f"  ❌ 检查失败: {chk.get('message') or chk.get('error')}")
+    for t in (chk.get("sources_tried") or []):
+        print(f"     · {t.get('url')}  ->  {t.get('error')}")
+    sys.exit(1)
+
+cur, latest = chk.get("current"), chk.get("latest")
+print(f"  当前版本 : v{cur}")
+print(f"  最新版本 : v{latest}" + (f"  (发布于 {chk.get('release_date')})" if chk.get("release_date") else ""))
+for h in (chk.get("highlights") or [])[:8]:
+    print(f"    · {h}")
+
+if not chk.get("has_update"):
+    print("  ✅ 当前已是最新版本，无需更新。")
+    sys.exit(0)
+
+print(f"\n  🎉 发现新版本 v{latest}")
+if not apply_flag:
+    print("  执行升级请运行: ai-link update --apply")
+    if chk.get("notes_url"):
+        print(f"  更新说明: {chk['notes_url']}")
+    sys.exit(0)
+
+print("  正在启动在线升级...")
+res = get("/apply", "POST", {})
+if not res.get("ok"):
+    print(f"  ❌ 启动失败: {res.get('message') or res.get('error')}")
+    sys.exit(1)
+print(f"  {res.get('message')}")
+
+last_stage = ""
+for _ in range(150):
+    time.sleep(2)
+    st = get("/status")
+    p = (st.get("progress") or {})
+    if not p.get("stage"):
+        continue
+    line = f"[{p.get('percent', 0):>3}%] {p.get('stage_text') or p.get('stage')} — {p.get('message', '')}"
+    if line != last_stage:
+        print("  " + line)
+        last_stage = line
+    if p.get("finished"):
+        print()
+        if p.get("stage") == "done":
+            print(f"  ✅ 升级完成，当前版本 v{p.get('target')}")
+            sys.exit(0)
+        print("  ❌ 升级失败，详见面板「插件版本与在线更新」日志")
+        sys.exit(1)
+print("  ⚠️ 等待超时，请到面板查看升级进度")
+sys.exit(1)
+PY
+		;;
 	status|*)
 		echo "=========================================================="
-		echo "  AI-LINK 智能透明代理与网络中枢 v1.0.0 (正式版)"
+		echo "  AI-LINK 智能透明代理与网络中枢 v1.0.1 (正式版)"
 		echo "=========================================================="
 		echo "  独立控制面板 : http://${LAN_IP}:${PANEL_PORT}"
 		echo "  面板管理密码 : ${PANEL_SECRET}"
@@ -212,6 +310,7 @@ PY
 		echo "  DNS 分流架构 : dnsmasq -> 127.0.0.1#7874 (TProxy :53 双栈防漏)"
 		echo "  节点预筛上限 : Top ${MAX_NODES} (ai-link max-nodes [N|all])"
 		echo "  宿主机缓存夹 : ${CACHE_DIR}"
+		echo "  在线升级     : ai-link update [--apply] (检查 / 检查并升级到最新版)"
 		echo "  快捷命令用法 : ai-link [status|probe|probe-now|check|max-nodes|import-cache|sync-sub|import-nodes|add-test-node|recover|restore|restart|uninstall]"
 		echo "=========================================================="
 		;;

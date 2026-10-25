@@ -1,0 +1,11 @@
+# 本项目面向 OpenWrt/Linux，仓库内一律使用 LF，避免 Windows 检出把脚本写成 CRLF
+* text=auto eol=lf
+
+# 二进制资产（不做换行转换）
+*.tar.gz binary
+*.ipk    binary
+*.png    binary
+*.ico    binary
+*.webp   binary
+*.pdf    binary
+*.woff2  binary

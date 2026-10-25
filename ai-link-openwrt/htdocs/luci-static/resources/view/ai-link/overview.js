@@ -13,7 +13,18 @@ return view.extend({
 		var m, s, o;
 		var host = window.location.hostname || '10.10.10.77';
 		var port = uci.get('ai-link', 'global', 'panel_port') || '9099';
-		var uciSecret = uci.get('ai-link', 'global', 'panel_secret') || 'ai-link-2026';
+		// PWD-1: panel_secret 只在「从未改过密码」时才是可回显的明文初始密码。
+		// 用户改过密码后 daemon 会写入 __custom__ 哨兵；老版本曾写入 sha256:<hash24>，
+		// 那串哈希绝不能被当作密码展示（它既不是真密码，也不应泄露）。
+		var uciSecretRaw = String(uci.get('ai-link', 'global', 'panel_secret') || '');
+		var pwdIsCustom = (!uciSecretRaw) || uciSecretRaw === '__custom__' || /^sha256:/i.test(uciSecretRaw);
+		var uciSecret = pwdIsCustom ? '' : uciSecretRaw;
+		var luciToken = String(uci.get('ai-link', 'global', 'luci_bridge_token') || '');
+		// 版本号由 daemon 启动时同步写入 UCI（app_version），这里只做兜底
+		var currentVer = String(uci.get('ai-link', 'global', 'app_version') || '1.0.1');
+		var pwdFieldHtml = pwdIsCustom
+			? '<span style="font-size:12px; color:#94a3b8; display:inline-flex; align-items:center; gap:6px;">面板密码: <code id="luci-panel-pwd-mask" style="background:#0f172a; padding:2px 7px; border-radius:5px; color:#e2e8f0; border:1px solid rgba(148,163,184,0.2);">已自定义 · 不回显</code> <span style="font-size:11px; color:#64748b;">（忘记可执行 ai-link password 重置）</span></span>'
+			: '<span style="font-size:12px; color:#94a3b8; display:inline-flex; align-items:center; gap:6px;">面板密码: <code id="luci-panel-pwd-mask" style="background:#0f172a; padding:2px 7px; border-radius:5px; color:#e2e8f0; border:1px solid rgba(148,163,184,0.2);">••••••••</code> <button type="button" id="luci-btn-toggle-pwd" style="padding:2px 8px; border-radius:5px; border:1px solid rgba(148,163,184,0.3); background:rgba(30,41,59,0.8); color:#cbd5e1; font-size:11px; cursor:pointer;">👁️ 查看</button></span>';
 		var panelUrl = 'http://' + host + ':' + port + '/';
 		var apiBase = 'http://' + host + ':' + port + '/api';
 		var pwdVisible = false;
@@ -30,7 +41,7 @@ return view.extend({
 		}
 
 		m = new form.Map('ai-link', _('AI-LINK 智能分流网关'),
-			_('专为全屋智能分流、抗 DNS 污染、回家内网穿透与多区域故障自愈设计的轻量透明代理网关（v1.0.0 正式版 · 纯血 Sing-box 内核）。'));
+			_('专为全屋智能分流、抗 DNS 污染、回家内网穿透与多区域故障自愈设计的轻量透明代理网关（v1.0.1 正式版 · 纯血 Sing-box 内核）。'));
 
 		s = m.section(form.NamedSection, 'global', globalSecType, _('实时运行中枢与快捷控制'));
 		s.anonymous = true;
@@ -41,11 +52,11 @@ return view.extend({
 			return '<div style="margin: 6px 0 14px 0; padding: 18px 20px; background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border-radius: 14px; border: 1px solid rgba(56,189,248,0.32); color: #f8fafc; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.3);">' +
 				'<div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:14px;">' +
 					'<div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">' +
-						'<span style="font-size:17px; font-weight:800; color:#38bdf8; letter-spacing:0.4px;">⚡ AI-LINK 智能分流网关 v1.0.0</span>' +
+						'<span style="font-size:17px; font-weight:800; color:#38bdf8; letter-spacing:0.4px;">⚡ AI-LINK 智能分流网关 v' + escapeHtml(currentVer) + '</span>' +
 						'<span id="luci-ailink-badge" style="padding:3px 10px; border-radius:999px; font-size:12px; font-weight:700; background:rgba(16,185,129,0.18); color:#34d399; border:1px solid rgba(16,185,129,0.4);">正在同步状态...</span>' +
 					'</div>' +
 					'<div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">' +
-						'<span style="font-size:12px; color:#94a3b8; display:inline-flex; align-items:center; gap:6px;">面板密码: <code id="luci-panel-pwd-mask" style="background:#0f172a; padding:2px 7px; border-radius:5px; color:#e2e8f0; border:1px solid rgba(148,163,184,0.2);">••••••••</code> <button type="button" id="luci-btn-toggle-pwd" style="padding:2px 8px; border-radius:5px; border:1px solid rgba(148,163,184,0.3); background:rgba(30,41,59,0.8); color:#cbd5e1; font-size:11px; cursor:pointer;">👁️ 查看</button></span>' +
+						pwdFieldHtml +
 						'<a id="luci-open-panel-link" href="' + escapeHtml(panelUrl) + '" target="_blank" rel="noopener noreferrer" ' +
 						   'style="display:inline-flex; align-items:center; gap:6px; padding:8px 16px; background:linear-gradient(135deg, #0284c7, #2563eb); color:#fff; border-radius:9px; font-weight:700; font-size:13px; text-decoration:none; box-shadow:0 4px 12px rgba(37,99,235,0.35);">' +
 						   '🚀 打开 AI-LINK 独立全功能控制台 (:' + escapeHtml(port) + ')</a>' +
@@ -92,6 +103,26 @@ return view.extend({
 					'<button type="button" id="luci-btn-uninstall" style="margin-left:auto; padding:7px 13px; border-radius:8px; border:1px solid rgba(239,68,68,0.45); background:rgba(239,68,68,0.15); color:#fca5a5; font-size:12.5px; font-weight:700; cursor:pointer;">🗑️ 安全卸载并恢复网络</button>' +
 				'</div>' +
 				'<div id="luci-ailink-msg" style="margin-top:10px; font-size:12px; color:#93c5fd; display:none; padding:7px 11px; border-radius:7px; background:rgba(15,23,42,0.8); border:1px solid rgba(56,189,248,0.3);"></div>' +
+			'</div>' +
+			'<div style="background:linear-gradient(135deg,#0b1220 0%,#101d33 100%); color:#f8fafc; padding:16px 18px; border-radius:12px; border:1px solid rgba(56,189,248,0.28); margin-bottom:10px;">' +
+				'<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">' +
+					'<div>' +
+						'<strong style="font-size:14px; color:#e2e8f0;">⬆️ 插件版本与在线更新</strong>' +
+						'<div id="luci-ota-sub" style="font-size:12px; color:#94a3b8; margin-top:2px;">当前 v' + escapeHtml(currentVer) + ' · 点击「检查更新」获取最新版本</div>' +
+					'</div>' +
+					'<div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">' +
+						'<button type="button" id="luci-btn-ota-check" style="padding:6px 12px; border-radius:7px; border:1px solid rgba(148,163,184,0.35); background:rgba(30,41,59,0.85); color:#e2e8f0; font-size:12px; cursor:pointer;">🔍 检查更新</button>' +
+						'<button type="button" id="luci-btn-ota-apply" disabled style="padding:6px 12px; border-radius:7px; border:1px solid rgba(148,163,184,0.22); background:rgba(30,41,59,0.5); color:#64748b; font-size:12px; font-weight:700; cursor:not-allowed;">⬆️ 立即更新</button>' +
+						'<a id="luci-ota-notes" href="#" target="_blank" rel="noopener noreferrer" style="display:none; padding:6px 12px; border-radius:7px; border:1px solid rgba(56,189,248,0.4); background:rgba(2,132,199,0.18); color:#bae6fd; font-size:12px; text-decoration:none;">📄 更新说明</a>' +
+					'</div>' +
+				'</div>' +
+				'<div id="luci-ota-progress-wrap" style="display:none; margin-top:12px;">' +
+					'<div style="height:6px; background:#0f172a; border-radius:999px; overflow:hidden; border:1px solid rgba(148,163,184,0.18);">' +
+						'<div id="luci-ota-bar" style="height:100%; width:0%; background:linear-gradient(90deg,#0284c7,#38bdf8); transition:width .3s ease;"></div>' +
+					'</div>' +
+					'<div id="luci-ota-stage" style="font-size:12px; color:#bae6fd; margin-top:7px;"></div>' +
+					'<pre id="luci-ota-log" style="display:none; margin-top:8px; max-height:150px; overflow:auto; font-size:11px; line-height:1.5; color:#94a3b8; background:#060a14; border:1px solid rgba(148,163,184,0.15); border-radius:7px; padding:8px 10px; white-space:pre-wrap;"></pre>' +
+				'</div>' +
 			'</div>' +
 			'<div style="background:#0f172a; color:#f8fafc; padding:16px 18px; border-radius:12px; border:1px solid #334155; margin-bottom:10px;">' +
 				'<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">' +
@@ -208,7 +239,14 @@ return view.extend({
 			};
 
 			var callApi = function(path, method, bodyObj) {
-				var opts = { method: method || 'GET', headers: { 'X-AI-Link-Token': uciSecret } };
+				// PWD-1: 面板密码不再充当 API 令牌（否则 LuCI 回显的哈希就是万能令牌）。
+				// LuCI 改用 daemon 生成的独立桥接令牌 luci_bridge_token；
+				// 老版本升级上来时该字段可能还不存在，此时不带令牌头，
+				// 由面板的 trusted_cidr（内网默认放行）兜底。
+				var opts = { method: method || 'GET', headers: {} };
+				if (luciToken) {
+					opts.headers['X-AI-Link-Token'] = luciToken;
+				}
 				if (bodyObj !== undefined) {
 					opts.headers['Content-Type'] = 'application/json';
 					opts.body = JSON.stringify(bodyObj);
@@ -345,10 +383,160 @@ return view.extend({
 				if (el) el.addEventListener('click', fn);
 			};
 
+			// ================= OTA 在线更新 (v1.0.1+) =================
+			var otaTimer = null;
+
+			var otaRenderProgress = function(p) {
+				var wrap = mapEl.querySelector('#luci-ota-progress-wrap');
+				var bar = mapEl.querySelector('#luci-ota-bar');
+				var stage = mapEl.querySelector('#luci-ota-stage');
+				var logEl = mapEl.querySelector('#luci-ota-log');
+				if (!wrap || !bar || !stage) return;
+				wrap.style.display = 'block';
+				var pct = Math.max(0, Math.min(100, parseInt(p.percent, 10) || 0));
+				bar.style.width = pct + '%';
+				bar.style.background = (p.result === 'failed' || p.stage === 'failed')
+					? 'linear-gradient(90deg,#dc2626,#f87171)'
+					: 'linear-gradient(90deg,#0284c7,#38bdf8)';
+				var icon = p.stage === 'done' ? '✅ ' : (p.stage === 'failed' ? '❌ ' : '⏳ ');
+				stage.textContent = icon + (p.stage_text || '') + ' · ' + pct + '%' + (p.message ? ' — ' + p.message : '');
+				stage.style.color = p.stage === 'done' ? '#34d399' : (p.stage === 'failed' ? '#fca5a5' : '#bae6fd');
+				if (logEl && Array.isArray(p.log) && p.log.length) {
+					logEl.style.display = 'block';
+					logEl.textContent = p.log.slice(-18).join('\n');
+					logEl.scrollTop = logEl.scrollHeight;
+				}
+			};
+
+			var otaPollOnce = function() {
+				return callApi('/system/update/status', 'GET').then(function(r) {
+					var p = (r && r.progress) || {};
+					if (!p.stage) return p;
+					otaRenderProgress(p);
+					if (p.finished) {
+						if (otaTimer) { clearInterval(otaTimer); otaTimer = null; }
+						var sub = mapEl.querySelector('#luci-ota-sub');
+						if (sub && p.stage === 'done') {
+							sub.innerHTML = '已升级到 <b style="color:#34d399">v' + escapeHtml(p.target || currentVer) + '</b> · 建议刷新页面查看新版本界面';
+						}
+						var applyBtn = mapEl.querySelector('#luci-btn-ota-apply');
+						if (applyBtn) {
+							applyBtn.disabled = true;
+							applyBtn.textContent = '⬆️ 立即更新';
+							applyBtn.style.borderColor = 'rgba(148,163,184,0.22)';
+							applyBtn.style.background = 'rgba(30,41,59,0.5)';
+							applyBtn.style.color = '#64748b';
+							applyBtn.style.cursor = 'not-allowed';
+						}
+						refreshStatus();
+					}
+					return p;
+				}).catch(function() { return null; });
+			};
+
+			var otaStartPolling = function() {
+				if (otaTimer) return;
+				otaPollOnce();
+				otaTimer = setInterval(otaPollOnce, 2000);
+			};
+
+			bindBtn('#luci-btn-ota-check', function() {
+				var btn = mapEl.querySelector('#luci-btn-ota-check');
+				var applyBtn = mapEl.querySelector('#luci-btn-ota-apply');
+				var sub = mapEl.querySelector('#luci-ota-sub');
+				var notes = mapEl.querySelector('#luci-ota-notes');
+				if (!btn) return;
+				btn.disabled = true;
+				btn.textContent = '⏳ 检查中...';
+				callApi('/system/update/check?force=1', 'GET').then(function(r) {
+					btn.disabled = false;
+					btn.textContent = '🔍 检查更新';
+					if (!r || !r.ok) {
+						showMsg('❌ ' + ((r && r.message) || '版本检查失败，请检查网络后重试'), true);
+						if (sub) sub.textContent = '当前 v' + currentVer + ' · 版本检查失败（网络不通或清单不可达）';
+						return;
+					}
+					if (notes && r.notes_url) {
+						notes.href = r.notes_url;
+						notes.style.display = 'inline-block';
+					}
+					if (r.has_update) {
+						if (sub) sub.innerHTML = '当前 <b>v' + escapeHtml(r.current) + '</b> → 最新 <b style="color:#34d399">v' + escapeHtml(r.latest) + '</b>' +
+							(r.release_date ? ' · 发布于 ' + escapeHtml(r.release_date) : '');
+						if (applyBtn) {
+							applyBtn.disabled = false;
+							applyBtn.textContent = '⬆️ 立即更新到 v' + r.latest;
+							applyBtn.style.borderColor = 'rgba(16,185,129,0.55)';
+							applyBtn.style.background = 'rgba(16,185,129,0.2)';
+							applyBtn.style.color = '#6ee7b7';
+							applyBtn.style.cursor = 'pointer';
+						}
+						var hl = (r.highlights && r.highlights.length) ? ('\n\n本次更新要点：\n· ' + r.highlights.slice(0, 5).join('\n· ')) : '';
+						showMsg('🎉 发现新版本 v' + r.latest + '，点击「立即更新」即可在线升级。' + hl, false);
+					} else {
+						var t = r.checked_at ? new Date(r.checked_at * 1000).toLocaleTimeString() : '';
+						if (sub) sub.innerHTML = '当前 <b>v' + escapeHtml(r.current) + '</b> 已是最新版本' + (t ? '（检查于 ' + t + '）' : '');
+						if (applyBtn) {
+							applyBtn.disabled = true;
+							applyBtn.textContent = '⬆️ 立即更新';
+							applyBtn.style.borderColor = 'rgba(148,163,184,0.22)';
+							applyBtn.style.background = 'rgba(30,41,59,0.5)';
+							applyBtn.style.color = '#64748b';
+							applyBtn.style.cursor = 'not-allowed';
+						}
+						showMsg('✅ 当前已是最新版本 v' + r.current, false);
+					}
+				}).catch(function() {
+					btn.disabled = false;
+					btn.textContent = '🔍 检查更新';
+					showMsg('❌ 版本检查请求失败', true);
+				});
+			});
+
+			bindBtn('#luci-btn-ota-apply', function() {
+				var applyBtn = mapEl.querySelector('#luci-btn-ota-apply');
+				if (!applyBtn || applyBtn.disabled) return;
+				var targetTxt = applyBtn.textContent.replace('⬆️ 立即更新到 ', '').trim();
+				if (!window.confirm('确认在线升级 AI-LINK 插件？\n\n目标版本：' + targetTxt +
+					'\n\n· 升级约需 1-3 分钟，期间面板与代理会短暂中断\n' +
+					'· 节点、订阅、分流规则、面板密码等配置会自动备份并完整保留\n' +
+					'· 若升级后健康检查失败，会自动回滚到当前版本\n\n是否继续？')) return;
+				applyBtn.disabled = true;
+				applyBtn.textContent = '⏳ 正在启动升级...';
+				callApi('/system/update/apply', 'POST', {}).then(function(r) {
+					if (!r || !r.ok) {
+						applyBtn.disabled = false;
+						applyBtn.textContent = '⬆️ 重试更新';
+						showMsg('❌ ' + ((r && r.message) || '升级启动失败'), true);
+						return;
+					}
+					showMsg('🚀 ' + (r.message || '升级已开始，请勿关闭页面'), false);
+					var wrap = mapEl.querySelector('#luci-ota-progress-wrap');
+					if (wrap) wrap.style.display = 'block';
+					otaStartPolling();
+				}).catch(function() {
+					applyBtn.disabled = false;
+					applyBtn.textContent = '⬆️ 重试更新';
+					showMsg('❌ 升级请求发送失败', true);
+				});
+			});
+
+			// 页面打开时：若上次升级刚结束（或仍在跑），直接把状态显示出来
+			setTimeout(function() {
+				callApi('/system/update/status', 'GET').then(function(r) {
+					var p = (r && r.progress) || {};
+					if (!p.stage) return;
+					otaRenderProgress(p);
+					if (p.running) otaStartPolling();
+				}).catch(function() {});
+			}, 900);
+
 			bindBtn('#luci-btn-toggle-pwd', function() {
 				var elMask = mapEl.querySelector('#luci-panel-pwd-mask');
 				var elBtn = mapEl.querySelector('#luci-btn-toggle-pwd');
 				if (!elMask || !elBtn) return;
+				// PWD-1: 自定义密码态下没有可回显的明文，按钮不渲染；这里再兜一层。
+				if (!uciSecret) return;
 				pwdVisible = !pwdVisible;
 				elMask.textContent = pwdVisible ? uciSecret : '••••••••';
 				elBtn.textContent = pwdVisible ? '🙈 隐藏' : '👁️ 查看';

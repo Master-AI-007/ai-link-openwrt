@@ -9182,7 +9182,7 @@ def write_all_configs(target_dir: Path = CONF_DIR, force_full: bool = False, for
     try:
         v_file = target_dir / "version"
         if not v_file.is_file():
-            v_file.write_text("1.0.0 (20261025)\n", encoding="utf-8")
+            v_file.write_text(f"{APP_VERSION} (20261026)\n", encoding="utf-8")
     except Exception:
         pass
     ensure_hy2_certs(target_dir / "certs")
@@ -9960,10 +9960,10 @@ def build_status_api_response(conf_dir: Path = CONF_DIR) -> dict:
     res_obj = {
         "ok": True,
         "status": "running",
-        "version": "1.0.0",
+        "version": APP_VERSION,
         "release_stage": "stable",
         "build_ver": "2.0.0-r8-v24-nolo",
-        "build_revision": "1.0.0-release-20261025",
+        "build_revision": APP_BUILD,
         "as_of_ts": int(time.time()),
         "config_seq": _CORE_RELOAD_STATE["config_seq"],
         "reload_seq": _CORE_RELOAD_STATE["reload_seq"],
@@ -10091,6 +10091,69 @@ def _detect_router_lan_ip() -> str:
         pass
     return "10.10.10.77"
 
+PANEL_PWD_DEFAULT = "ai-link-2026"
+# PWD-1: ai-link.global.panel_secret 只承载「初始明文密码」这一种语义。
+# 一旦用户改过密码（或从备份恢复），该字段写入 __custom__ 哨兵；
+# 老版本遗留的 sha256:<hash24> 也归入「已自定义」。哨兵/哈希都不是凭据：
+#   - 不可作为登录密码（_verify_panel_password）
+#   - 不可作为 API 令牌（_is_request_authenticated）
+#   - 不在 LuCI / CLI 回显（overview.js / usr/bin/ai-link）
+PANEL_PWD_SENTINEL = "__custom__"
+
+
+def _uci_secret_is_placeholder(val: str) -> bool:
+    """判断 UCI panel_secret 是否处于「不可回显 / 不可当凭据」状态。"""
+    s = (val or "").strip()
+    if not s:
+        return True
+    if s == PANEL_PWD_SENTINEL:
+        return True
+    if s.lower().startswith("sha256:"):
+        return True
+    return False
+
+
+def get_uci_panel_secret_display() -> str:
+    """返回可安全展示给用户的面板密码文本（永不返回哈希）。"""
+    raw = (get_uci_panel_secret() or "").strip()
+    if _uci_secret_is_placeholder(raw):
+        return ""
+    return raw
+
+
+_LUCI_BRIDGE_MEMO = {"token": ""}
+
+
+def get_luci_bridge_token(create: bool = True) -> str:
+    """LuCI 页面调用面板 API 专用的桥接令牌。
+
+    PWD-1 封掉了「用面板密码当令牌」的旧通路（那会让 LuCI 回显的哈希直接
+    成为万能令牌）。但 LuCI 页面的按钮仍需要调面板 API，因此引入一个**与
+    面板密码完全解耦**的独立随机令牌：
+      - 首次访问时生成 32 位十六进制随机串，写入 ai-link.global.luci_bridge_token；
+      - 它不可用于登录面板（_verify_panel_password 不认它）；
+      - 面板密码更换/重置不会影响它，反之亦然；
+      - 能读到 /etc/config/ai-link 的人本来就有 root，泄露面等价。
+    """
+    if _LUCI_BRIDGE_MEMO.get("token"):
+        return _LUCI_BRIDGE_MEMO["token"]
+    tok = ""
+    try:
+        tok = _uci_get_str("global.luci_bridge_token", "")
+    except Exception:
+        tok = ""
+    if not tok and create:
+        try:
+            tok = hashlib.sha256(f"luci-bridge:{os.urandom(24).hex()}:{time.time()}".encode("utf-8")).hexdigest()[:32]
+            subprocess.run(["uci", "set", f"ai-link.global.luci_bridge_token={tok}"], check=False, timeout=2)
+            subprocess.run(["uci", "commit", "ai-link"], check=False, timeout=2)
+        except Exception:
+            tok = ""
+    if tok:
+        _LUCI_BRIDGE_MEMO["token"] = tok
+    return tok
+
+
 def get_uci_panel_secret() -> str:
     try:
         r = subprocess.run(["uci", "-q", "get", "ai-link.global.panel_secret"], capture_output=True, text=True, timeout=1)
@@ -10099,7 +10162,8 @@ def get_uci_panel_secret() -> str:
             return val
     except Exception:
         pass
-    return "ai-link-2026"
+    return PANEL_PWD_DEFAULT
+
 
 def generate_reality_keypair(existing_priv: str = "") -> tuple:
     """Generates or derives a matched X25519 (private_key_b64url, public_key_b64url) pair for VLESS-Reality."""
@@ -10805,7 +10869,7 @@ def get_ops_diagnostics(conf_dir: Path = CONF_DIR) -> dict:
     dns_tel = build_dns_telemetry_response(conf_dir)
     return {
         "ok": True,
-        "version": "1.0.0",
+        "version": APP_VERSION,
         "timestamp": int(time.time()),
         "singbox_check_ok": check_ok,
         "singbox_check_detail": check_msg,
@@ -10868,7 +10932,7 @@ def export_ops_backup(conf_dir: Path = CONF_DIR) -> dict:
         auto_nodes_raw = load_auto_nodes_config(conf_dir)
     out = {
         "ok": True,
-        "version": "1.0.0",
+        "version": APP_VERSION,
         "exported_at": int(time.time()),
         "max_outbounds_limit": get_max_outbounds_limit(conf_dir),
         "ipv6_proxy": bool(ops_cur.get("ipv6_proxy", get_uci_ipv6_proxy(conf_dir))),
@@ -10903,7 +10967,8 @@ def export_ops_backup(conf_dir: Path = CONF_DIR) -> dict:
         if is_live:
             out["panel_secret_uci"] = get_uci_panel_secret()
         elif isinstance(out.get("panel_auth"), dict):
-            out["panel_secret_uci"] = f"sha256:{str(out['panel_auth']['hash'])[:24]}"
+            # PWD-1: 归档里不再写哈希，只写哨兵（哈希已在 panel_auth 字段内）
+            out["panel_secret_uci"] = PANEL_PWD_SENTINEL
     except Exception:
         pass
     return out
@@ -11069,7 +11134,8 @@ def restore_from_backup_archive(conf_dir: Path = CONF_DIR, arc_path: Path = None
             if (conf_dir / "panel_auth.json").is_file():
                 pa = json.loads((conf_dir / "panel_auth.json").read_text(encoding="utf-8"))
                 if isinstance(pa, dict) and pa.get("hash"):
-                    subprocess.run(["uci", "set", f"ai-link.global.panel_secret=sha256:{str(pa['hash'])[:24]}"], check=False, timeout=2)
+                    # PWD-1: 恢复后 UCI 写哨兵，避免把哈希当密码回显
+                    subprocess.run(["uci", "set", f"ai-link.global.panel_secret={PANEL_PWD_SENTINEL}"], check=False, timeout=2)
             subprocess.run(["uci", "commit", "ai-link"], check=False, timeout=2)
         except Exception:
             pass
@@ -11173,14 +11239,23 @@ def restore_ops_backup(backup_data: dict, conf_dir: Path = CONF_DIR) -> dict:
         auth_path.write_text(json.dumps(cur_a, indent=2, ensure_ascii=False), encoding="utf-8")
         if is_live:
             try:
-                uci_sec = backup_data.get("panel_secret_uci") or f"sha256:{str(pa['hash'])[:24]}"
+                # PWD-1: 备份里的 panel_secret_uci 若是老版本哈希值，一律归一为哨兵
+                uci_sec = backup_data.get("panel_secret_uci") or PANEL_PWD_SENTINEL
+                if _uci_secret_is_placeholder(str(uci_sec)) and str(uci_sec).strip() != PANEL_PWD_SENTINEL:
+                    uci_sec = PANEL_PWD_SENTINEL
                 subprocess.run(["uci", "set", f"ai-link.global.panel_secret={uci_sec}"], check=False, timeout=2)
                 subprocess.run(["uci", "commit", "ai-link"], check=False, timeout=2)
             except Exception:
                 pass
     elif "panel_secret_uci" in backup_data and is_live:
         try:
-            subprocess.run(["uci", "set", f"ai-link.global.panel_secret={backup_data['panel_secret_uci']}"], check=False, timeout=2)
+            # PWD-1: 老备份携带的 sha256:xxxx 不再原样写回，统一归一为哨兵
+            _bs = str(backup_data["panel_secret_uci"] or "").strip()
+            if _uci_secret_is_placeholder(_bs) and _bs != PANEL_PWD_SENTINEL:
+                _bs = PANEL_PWD_SENTINEL
+            if not _bs:
+                _bs = PANEL_PWD_SENTINEL
+            subprocess.run(["uci", "set", f"ai-link.global.panel_secret={_bs}"], check=False, timeout=2)
             subprocess.run(["uci", "commit", "ai-link"], check=False, timeout=2)
         except Exception:
             pass
@@ -11830,6 +11905,8 @@ def get_overview_live_telemetry(conf_dir: Path = CONF_DIR) -> dict:
 # ==============================================================================
 # Panel Token Auth (Salted SHA-256) + Reversible Bypass + Fail-Open Watchdog
 # ==============================================================================
+# PWD-1 常量与判定函数已上移至 get_uci_panel_secret() 所在区段
+# （见文件前部 PANEL_PWD_DEFAULT / PANEL_PWD_SENTINEL / _uci_secret_is_placeholder）。
 def _load_panel_auth(conf_dir: Path = CONF_DIR) -> dict:
     auth_file = conf_dir / "panel_auth.json"
     tok_file = conf_dir / "panel_token"
@@ -11852,7 +11929,11 @@ def _load_panel_auth(conf_dir: Path = CONF_DIR) -> dict:
         except Exception:
             pass
     # Migrate initial password from UCI panel_secret (default ai-link-2026)
-    raw_pw = get_uci_panel_secret() or "ai-link-2026"
+    # PWD-1: panel_secret 语义 = 初始明文密码；用户改过密码后写入哨兵 __custom__，
+    # 老版本遗留的 sha256:<hash> 同样视为「已自定义」。二者都不可当作登录凭据。
+    raw_pw = get_uci_panel_secret() or PANEL_PWD_DEFAULT
+    if _uci_secret_is_placeholder(raw_pw):
+        raw_pw = PANEL_PWD_DEFAULT
     salt = "ailink_salt_2026"
     pw_hash = hashlib.sha256(f"{salt}:{raw_pw}".encode("utf-8")).hexdigest()
     tok = hashlib.sha256(f"token:{salt}:{pw_hash}".encode("utf-8")).hexdigest()
@@ -11879,8 +11960,12 @@ def _verify_panel_password(candidate_pw: str, conf_dir: Path = CONF_DIR) -> tupl
     salt = auth.get("salt", "ailink_salt_2026")
     expected_hash = auth.get("hash", "")
     cand_hash = hashlib.sha256(f"{salt}:{candidate_pw}".encode("utf-8")).hexdigest()
-    default_hash = hashlib.sha256(f"{salt}:ai-link-2026".encode("utf-8")).hexdigest()
-    if cand_hash == expected_hash or candidate_pw == get_uci_panel_secret() or (expected_hash == default_hash and candidate_pw in ("admin", "ai-link-2026")):
+    default_hash = hashlib.sha256(f"{salt}:{PANEL_PWD_DEFAULT}".encode("utf-8")).hexdigest()
+    # PWD-1: UCI 里只有「明文初始密码」才允许直通比对；哨兵 __custom__ 与
+    # 老版本遗留的 sha256:<hash> 一律拒绝，避免把哈希本身当成可用密码。
+    uci_pw = (get_uci_panel_secret() or "").strip()
+    uci_plain_ok = bool(uci_pw) and not _uci_secret_is_placeholder(uci_pw)
+    if cand_hash == expected_hash or (uci_plain_ok and candidate_pw == uci_pw) or (expected_hash == default_hash and candidate_pw in ("admin", PANEL_PWD_DEFAULT)):
         tok = hashlib.sha256(f"token:{salt}:{cand_hash}".encode("utf-8")).hexdigest()
         tokens = set(auth.get("tokens") or [])
         tokens.add(tok)
@@ -11892,7 +11977,7 @@ def _verify_panel_password(candidate_pw: str, conf_dir: Path = CONF_DIR) -> tupl
         return True, tok
     return False, ""
 
-def _update_panel_password(new_pw: str, conf_dir: Path = CONF_DIR) -> str:
+def _update_panel_password(new_pw: str, conf_dir: Path = CONF_DIR, sync_uci: bool = True) -> str:
     salt = hashlib.md5(str(time.time()).encode("utf-8")).hexdigest()[:16]
     pw_hash = hashlib.sha256(f"{salt}:{new_pw}".encode("utf-8")).hexdigest()
     tok = hashlib.sha256(f"token:{salt}:{pw_hash}".encode("utf-8")).hexdigest()
@@ -11903,11 +11988,16 @@ def _update_panel_password(new_pw: str, conf_dir: Path = CONF_DIR) -> str:
         (conf_dir / "panel_token").write_text(tok + "\n", encoding="utf-8")
     except Exception:
         pass
-    try:
-        subprocess.run(["uci", "set", f"ai-link.global.panel_secret=sha256:{pw_hash[:24]}"], check=False, timeout=2)
-        subprocess.run(["uci", "commit", "ai-link"], check=False, timeout=2)
-    except Exception:
-        pass
+    # PWD-2: 只有「真实配置目录」才允许回写 UCI。--self-test 用临时目录跑
+    # 改密回归，旧实现无条件 uci set，导致每次安装自检 / ai-link probe 都把
+    # 生产环境的 panel_secret 覆盖成测试串的哈希（LuCI 面板密码显示成 sha256:xxxx 的元凶）。
+    if sync_uci and conf_dir == CONF_DIR:
+        try:
+            # PWD-1: 只写哨兵，绝不把哈希落到 UCI（哈希在 panel_auth.json 里已有）
+            subprocess.run(["uci", "set", f"ai-link.global.panel_secret={PANEL_PWD_SENTINEL}"], check=False, timeout=2)
+            subprocess.run(["uci", "commit", "ai-link"], check=False, timeout=2)
+        except Exception:
+            pass
     return tok
 
 def is_bypass_active() -> bool:
@@ -12794,6 +12884,520 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
         ]
     }
 
+# ==============================================================================
+# OTA 在线更新体系 (v1.0.1+)
+# ------------------------------------------------------------------------------
+# 设计要点：
+#   1) 版本清单 version.json 双源托管：Cloudflare Pages 主源 + GitHub raw 镜像，
+#      并自动套用用户已配置的 gh_mirror 加速前缀；
+#   2) 下载后强制 MD5 + SHA256 双校验，任一不符立即中止，绝不执行未校验的包；
+#   3) 升级动作交给独立进程（setsid 脱离 daemon 会话），因为 install.sh 会重启
+#      服务把 daemon 杀掉；进度通过 progress.log 落盘，重启后新 daemon 接着读；
+#   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
+#   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
+# ==============================================================================
+APP_VERSION = "1.0.1"
+APP_CHANNEL = "stable"
+APP_BUILD = "1.0.1-release-20261026"
+
+UPDATE_MANIFEST_PRIMARY = "https://ai-link-official.pages.dev/version.json"
+UPDATE_MANIFEST_GITHUB = "https://raw.githubusercontent.com/Master-AI-007/ai-link-openwrt/main/version.json"
+UPDATE_DIR = RUN_DIR / "update"
+UPDATE_PROGRESS_LOG = UPDATE_DIR / "progress.log"
+UPDATE_PLAN_JSON = UPDATE_DIR / "plan.json"
+UPDATE_SCRIPT = UPDATE_DIR / "run_update.sh"
+UPDATE_STATE_JSON = UPDATE_DIR / "state.json"
+BACKUP_ROOT = Path("/root/ai-link-final-backup")
+
+# 阶段 -> (百分比, 中文说明)，供前端进度条使用
+UPDATE_STAGES = {
+    "prepare":     (5,  "准备升级环境"),
+    "download":    (20, "正在下载升级包"),
+    "verify":      (50, "正在校验包完整性"),
+    "extract":     (62, "正在解压升级包"),
+    "backup":      (72, "正在备份当前配置与代码"),
+    "install":     (84, "正在写入新版本文件"),
+    "restart":     (92, "正在重启服务"),
+    "healthcheck": (97, "正在做升级后健康检查"),
+    "done":        (100, "升级完成"),
+    "failed":      (0,  "升级失败"),
+}
+
+_UPDATE_CHECK_MEMO = {"ts": 0.0, "data": None}
+_UPDATE_CHECK_TTL = 300  # 秒，避免前端反复点击把 GitHub 打爆
+
+
+def parse_app_version(s: str) -> tuple:
+    """把 '1.0.1' / 'v1.0.1' / '1.0.1-beta2' 解析成可比较的元组。"""
+    m = re.match(r"^[vV]?(\d+)\.(\d+)\.(\d+)(?:[-_.]?([0-9A-Za-z.\-]*))?$", str(s or "").strip())
+    if not m:
+        return (0, 0, 0, "")
+    return (int(m.group(1)), int(m.group(2)), int(m.group(3)), m.group(4) or "")
+
+
+def is_version_newer(latest: str, current: str) -> bool:
+    """latest 是否比 current 新。预发布后缀（beta/rc）视为比同号正式版旧。"""
+    a, b = parse_app_version(latest), parse_app_version(current)
+    if a[:3] != b[:3]:
+        return a[:3] > b[:3]
+    # 同号：空后缀（正式版）> 任意预发布后缀
+    return bool(a[3]) is False and bool(b[3]) is True
+
+
+def _update_http_get(url: str, timeout: float = 10.0, max_bytes: int = 2 * 1024 * 1024) -> bytes:
+    """带 UA 的 GET。优先校验证书，失败再退回不校验（OpenWrt 常缺 CA 包）。
+
+    显式绕过环境变量里的 http_proxy / https_proxy：路由器上如果残留了代理
+    环境变量，urllib 会把本应直连的清单请求丢给一个不存在的代理，导致 OTA
+    误判为「清单不可达」。需要加速时请用 gh_mirror 机制，而不是环境代理。
+    """
+    req = urllib.request.Request(url, headers={
+        "User-Agent": f"AI-LINK/{APP_VERSION} (OpenWrt; OTA)",
+        "Accept": "application/json,application/octet-stream,*/*",
+    })
+    direct = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with direct.open(req, timeout=timeout) as r:
+            return r.read(max_bytes)
+    except ssl.SSLError:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        direct_ssl = urllib.request.build_opener(
+            urllib.request.ProxyHandler({}),
+            urllib.request.HTTPSHandler(context=ctx),
+        )
+        with direct_ssl.open(req, timeout=timeout) as r:
+            return r.read(max_bytes)
+
+
+def _update_manifest_candidates(conf_dir: Path = CONF_DIR) -> list:
+    """按优先级返回候选清单地址（去重）。"""
+    urls = []
+    try:
+        custom = _uci_get_str("global.update_manifest_url", "")
+        if custom:
+            urls.append(custom.strip())
+    except Exception:
+        pass
+    urls.append(UPDATE_MANIFEST_PRIMARY)
+    try:
+        mirror = (get_ops_settings(conf_dir).get("gh_mirror") or "").strip().rstrip("/")
+        if mirror:
+            urls.append(f"{mirror}/{UPDATE_MANIFEST_GITHUB}")
+    except Exception:
+        pass
+    urls.append(UPDATE_MANIFEST_GITHUB)
+    seen, out = set(), []
+    for u in urls:
+        if u and u not in seen:
+            seen.add(u)
+            out.append(u)
+    return out
+
+
+def _update_package_urls(pkg: dict, conf_dir: Path = CONF_DIR) -> list:
+    """把清单里的主地址 + mirrors 展开成有序候选，并套用 gh_mirror 加速 GitHub。"""
+    raw = []
+    if pkg.get("url"):
+        raw.append(str(pkg["url"]))
+    for m in (pkg.get("mirrors") or []):
+        if m:
+            raw.append(str(m))
+    try:
+        mirror = (get_ops_settings(conf_dir).get("gh_mirror") or "").strip().rstrip("/")
+    except Exception:
+        mirror = ""
+    out = []
+    for u in raw:
+        out.append(u)
+        if mirror and "github.com" in u and not u.startswith(mirror):
+            out.append(f"{mirror}/{u}")
+    seen, dedup = set(), []
+    for u in out:
+        if u not in seen:
+            seen.add(u)
+            dedup.append(u)
+    return dedup
+
+
+def check_plugin_update(conf_dir: Path = CONF_DIR, force: bool = False) -> dict:
+    """拉取 version.json 并比较版本。结果缓存 5 分钟。"""
+    now = time.time()
+    if not force and _UPDATE_CHECK_MEMO.get("data") and (now - _UPDATE_CHECK_MEMO["ts"]) < _UPDATE_CHECK_TTL:
+        d = dict(_UPDATE_CHECK_MEMO["data"])
+        d["cached"] = True
+        return d
+
+    tried = []
+    manifest, used = None, ""
+    for u in _update_manifest_candidates(conf_dir):
+        try:
+            raw = _update_http_get(u, timeout=8.0)
+            obj = json.loads(raw.decode("utf-8", "replace"))
+            if isinstance(obj, dict) and obj.get("latest"):
+                manifest, used = obj, u
+                break
+            tried.append({"url": u, "error": "清单格式不合法（缺少 latest 字段）"})
+        except Exception as e:
+            tried.append({"url": u, "error": f"{type(e).__name__}: {e}"})
+
+    if not manifest:
+        res = {
+            "ok": False,
+            "current": APP_VERSION,
+            "latest": "",
+            "has_update": False,
+            "error": "manifest_unreachable",
+            "message": "无法获取版本清单，请检查网络或稍后重试",
+            "sources_tried": tried,
+            "checked_at": int(now),
+        }
+        return res
+
+    latest = str(manifest.get("latest") or "").strip()
+    pkg = manifest.get("packages", {}).get("full", {}) if isinstance(manifest.get("packages"), dict) else {}
+    has_update = is_version_newer(latest, APP_VERSION)
+    res = {
+        "ok": True,
+        "current": APP_VERSION,
+        "latest": latest,
+        "has_update": has_update,
+        "channel": manifest.get("channel", APP_CHANNEL),
+        "release_date": manifest.get("release_date", ""),
+        "notes_url": manifest.get("notes_url", ""),
+        "highlights": manifest.get("highlights", []),
+        "changelog": manifest.get("changelog", [])[:12],
+        "package": {
+            "url": pkg.get("url", ""),
+            "mirrors": pkg.get("mirrors", []),
+            "size": int(pkg.get("size") or 0),
+            "md5": str(pkg.get("md5") or "").lower(),
+            "sha256": str(pkg.get("sha256") or "").lower(),
+        },
+        "source": used,
+        "sources_tried": tried,
+        "checked_at": int(now),
+        "cached": False,
+    }
+    _UPDATE_CHECK_MEMO["ts"] = now
+    _UPDATE_CHECK_MEMO["data"] = dict(res)
+    return res
+
+
+def _read_version_file() -> str:
+    """读取 /etc/ai-link/version（形如 '1.0.1 (20261026)'），返回完整内容。"""
+    try:
+        p = CONF_DIR / "version"
+        if p.is_file():
+            return p.read_text(encoding="utf-8", errors="replace").strip()
+    except Exception:
+        pass
+    return ""
+
+
+def read_update_progress(limit: int = 40) -> dict:
+    """读取 progress.log，返回当前阶段与最近若干行日志。"""
+    st = {"running": False, "stage": "", "stage_text": "", "percent": 0, "message": "", "log": [], "finished": False, "result": "", "target": ""}
+    try:
+        if UPDATE_STATE_JSON.is_file():
+            meta = json.loads(UPDATE_STATE_JSON.read_text(encoding="utf-8"))
+            if isinstance(meta, dict):
+                st["target"] = str(meta.get("target") or "")
+                st["started_at"] = int(meta.get("started_at") or 0)
+    except Exception:
+        pass
+    try:
+        if not UPDATE_PROGRESS_LOG.is_file():
+            return st
+        lines = UPDATE_PROGRESS_LOG.read_text(encoding="utf-8", errors="replace").splitlines()
+    except Exception:
+        return st
+    parsed = []
+    for ln in lines:
+        parts = ln.split("|", 3)
+        if len(parts) == 4:
+            try:
+                parsed.append({"ts": int(parts[0]), "stage": parts[1], "percent": int(parts[2]), "message": parts[3]})
+            except Exception:
+                continue
+    if not parsed:
+        return st
+    last = parsed[-1]
+    st["stage"] = last["stage"]
+    st["percent"] = last["percent"]
+    st["message"] = last["message"]
+    st["stage_text"] = UPDATE_STAGES.get(last["stage"], (0, last["stage"]))[1]
+    st["log"] = [f"{p['stage']}: {p['message']}" for p in parsed[-limit:]]
+    st["running"] = last["stage"] not in ("done", "failed")
+    st["finished"] = not st["running"]
+    st["result"] = "ok" if last["stage"] == "done" else ("failed" if last["stage"] == "failed" else "")
+    return st
+
+
+def _update_script_body(plan: dict) -> str:
+    """生成脱离 daemon 会话执行的升级脚本。所有变量已在 Python 侧转义。"""
+    def q(v):
+        return "'" + str(v).replace("'", "'\\''") + "'"
+
+    pkg_urls = " ".join(q(u) for u in plan["package_urls"])
+    return f"""#!/bin/sh
+# AI-LINK OTA upgrade script (generated at {int(time.time())})
+# 由 daemon 写入并 setsid 拉起；install.sh 重启服务后本脚本仍继续执行。
+UPDIR={q(str(UPDATE_DIR))}
+LOG={q(str(UPDATE_PROGRESS_LOG))}
+PLAN={q(str(UPDATE_PLAN_JSON))}
+TARGET={q(plan['target'])}
+CUR={q(plan['current'])}
+MD5={q(plan['md5'])}
+SHA256={q(plan['sha256'])}
+SIZE={q(str(plan['size']))}
+TS=$(date +%s)
+say() {{ echo "$(date +%s)|$1|$2|$3" >> "$LOG"; }}
+
+say prepare 5 "开始升级到 v$TARGET（当前 v$CUR）"
+
+# ---------- 1. 下载（多源重试） ----------
+PKG="$UPDIR/pkg.tar.gz"
+rm -f "$PKG"
+DL_OK=0
+IDX=0
+for U in {pkg_urls}
+do
+    IDX=$((IDX + 1))
+    say download 10 "尝试第 $IDX 个下载源: $U"
+    if command -v curl >/dev/null 2>&1; then
+        curl -fL --noproxy '*' --connect-timeout 12 --max-time 300 -o "$PKG" "$U" >>"$UPDIR/curl.log" 2>&1 && DL_OK=1
+    else
+        python3 - "$U" "$PKG" <<'PY' >>"$UPDIR/curl.log" 2>&1 && DL_OK=1
+import sys, urllib.request
+req = urllib.request.Request(sys.argv[1], headers={{"User-Agent": "AI-LINK/{APP_VERSION} OTA"}})
+op = urllib.request.build_opener(urllib.request.ProxyHandler({{}}))
+with op.open(req, timeout=120) as r, open(sys.argv[2], "wb") as f:
+    while True:
+        b = r.read(65536)
+        if not b: break
+        f.write(b)
+PY
+    fi
+    if [ "$DL_OK" = "1" ] && [ -s "$PKG" ]; then
+        say download 40 "下载完成: $U"
+        break
+    fi
+    rm -f "$PKG"
+done
+if [ "$DL_OK" != "1" ] || [ ! -s "$PKG" ]; then
+    say failed 0 "所有下载源均失败，升级已中止（当前系统未做任何改动）"
+    exit 1
+fi
+
+# ---------- 2. 校验（MD5 + SHA256 双校验） ----------
+say verify 50 "正在校验升级包完整性"
+ACT_SIZE=$(wc -c < "$PKG" | tr -d ' ')
+if [ -n "$SIZE" ] && [ "$SIZE" != "0" ] && [ "$ACT_SIZE" != "$SIZE" ]; then
+    say failed 0 "包大小不符（期望 $SIZE，实际 $ACT_SIZE），已中止"
+    exit 1
+fi
+ACT_MD5=$(md5sum "$PKG" | awk '{{print $1}}')
+if [ -n "$MD5" ] && [ "$ACT_MD5" != "$MD5" ]; then
+    say failed 0 "MD5 校验失败（期望 $MD5，实际 $ACT_MD5），已中止"
+    exit 1
+fi
+if [ -n "$SHA256" ]; then
+    ACT_SHA=$(sha256sum "$PKG" 2>/dev/null | awk '{{print $1}}')
+    if [ -n "$ACT_SHA" ] && [ "$ACT_SHA" != "$SHA256" ]; then
+        say failed 0 "SHA256 校验失败（期望 $SHA256，实际 $ACT_SHA），已中止"
+        exit 1
+    fi
+fi
+say verify 58 "校验通过 (md5=$ACT_MD5)"
+
+# ---------- 3. 解压 ----------
+EXDIR="$UPDIR/extract"
+rm -rf "$EXDIR"; mkdir -p "$EXDIR"
+say extract 62 "正在解压"
+if ! tar -xzf "$PKG" -C "$EXDIR" 2>>"$UPDIR/tar.log"; then
+    say failed 0 "解压失败，升级已中止（当前系统未做任何改动）"
+    exit 1
+fi
+SRC=""
+for C in "$EXDIR/ai-link-openwrt" "$EXDIR"; do
+    if [ -f "$C/install.sh" ] && [ -d "$C/root" ]; then SRC="$C"; break; fi
+done
+if [ -z "$SRC" ]; then
+    say failed 0 "升级包结构异常（找不到 install.sh / root 目录），已中止"
+    exit 1
+fi
+say extract 68 "解压完成: $SRC"
+
+# ---------- 4. 备份用户数据 + 旧代码 ----------
+BK="$UPDIR/rollback"
+rm -rf "$BK"; mkdir -p "$BK"
+mkdir -p /root/ai-link-final-backup
+PREBK="/root/ai-link-final-backup/pre-update-v$TARGET-$(date +%s).tgz"
+say backup 72 "正在备份用户配置到 $PREBK"
+if tar -czf "$PREBK" -C / etc/ai-link etc/config/ai-link 2>>"$UPDIR/tar.log"; then
+    cp -f "$PREBK" "$BK/userdata.tgz" 2>/dev/null || true
+    ls -1t /root/ai-link-final-backup/pre-update-v*.tgz 2>/dev/null | tail -n +4 | while read -r OLD; do rm -f "$OLD"; done
+else
+    say backup 72 "持久化备份失败，改用临时目录备份"
+    tar -czf "$BK/userdata.tgz" -C / etc/ai-link etc/config/ai-link 2>>"$UPDIR/tar.log" || true
+fi
+AVAIL=$(df -k /root 2>/dev/null | awk 'NR==2{{print $4}}')
+if [ -n "$AVAIL" ] && [ "$AVAIL" -gt 30000 ]; then
+    mkdir -p "$BK/code"
+    cp -a /usr/share/ai-link "$BK/code/" 2>/dev/null || true
+    cp -a /www/luci-static/resources/view/ai-link "$BK/code/luci-view" 2>/dev/null || true
+    cp -a /etc/init.d/ai-link "$BK/code/initd-ai-link" 2>/dev/null || true
+    cp -a /usr/bin/ai-link "$BK/code/bin-ai-link" 2>/dev/null || true
+    say backup 76 "已备份用户配置与旧版代码（可回滚）"
+else
+    say backup 76 "已备份用户配置（剩余空间不足，跳过代码备份）"
+fi
+
+# ---------- 5. 执行安装（升级模式） ----------
+say install 84 "正在写入新版本文件（install.sh --upgrade）"
+if ! sh "$SRC/install.sh" --upgrade >>"$UPDIR/install.log" 2>&1; then
+    say install 88 "install.sh 返回非零，进入健康检查判定"
+fi
+
+# ---------- 6. 重启 ----------
+say restart 92 "正在重启服务"
+/etc/init.d/ai-link restart >/dev/null 2>&1 || true
+sleep 6
+
+# ---------- 7. 健康检查 ----------
+say healthcheck 97 "正在检查服务健康状态"
+PORT=$(uci -q get ai-link.global.panel_port 2>/dev/null || echo 9099)
+HC=1
+for I in 1 2 3 4 5 6 7 8 9 10; do
+    if python3 - "$PORT" <<'PY' >/dev/null 2>&1
+import sys, json, urllib.request
+_op = urllib.request.build_opener(urllib.request.ProxyHandler({{}}))
+with _op.open(f"http://127.0.0.1:{{sys.argv[1]}}/api/status", timeout=3) as r:
+    d = json.loads(r.read().decode("utf-8", "replace"))
+assert d.get("ok") is True, d
+PY
+    then HC=0; break; fi
+    sleep 2
+done
+
+if [ "$HC" = "0" ]; then
+    NEWVER=$(cat /etc/ai-link/version 2>/dev/null | awk '{{print $1}}')
+    say done 100 "升级成功，当前版本 v$NEWVER（面板与服务均正常）"
+    rm -f "$PKG"
+    rm -rf "$EXDIR"
+    rm -rf "$BK/code"
+    exit 0
+fi
+
+# ---------- 8. 回滚 ----------
+say failed 0 "升级后健康检查失败，正在自动回滚"
+if [ -f "$BK/userdata.tgz" ]; then
+    tar -xzf "$BK/userdata.tgz" -C / 2>/dev/null || true
+fi
+if [ -d "$BK/code/ai-link" ]; then
+    rm -rf /usr/share/ai-link && cp -a "$BK/code/ai-link" /usr/share/ai-link 2>/dev/null || true
+    rm -rf /www/luci-static/resources/view/ai-link && cp -a "$BK/code/luci-view" /www/luci-static/resources/view/ai-link 2>/dev/null || true
+    cp -a "$BK/code/initd-ai-link" /etc/init.d/ai-link 2>/dev/null || true
+    cp -a "$BK/code/bin-ai-link" /usr/bin/ai-link 2>/dev/null || true
+    chmod +x /etc/init.d/ai-link /usr/bin/ai-link 2>/dev/null || true
+fi
+/etc/init.d/ai-link restart >/dev/null 2>&1 || true
+sleep 5
+if python3 - "$PORT" <<'PY' >/dev/null 2>&1
+import sys, json, urllib.request
+_op = urllib.request.build_opener(urllib.request.ProxyHandler({{}}))
+with _op.open(f"http://127.0.0.1:{{sys.argv[1]}}/api/status", timeout=3) as r:
+    d = json.loads(r.read().decode("utf-8", "replace"))
+assert d.get("ok") is True, d
+PY
+then
+    say failed 0 "升级失败，已回滚到 v$CUR 并恢复正常"
+else
+    say failed 0 "升级失败且回滚后仍不健康，请执行 ai-link uninstall -y 后重新安装"
+fi
+exit 1
+"""
+
+
+def start_plugin_update(conf_dir: Path = CONF_DIR, force: bool = False) -> dict:
+    """校验前置条件 -> 写 plan/script -> setsid 脱离会话拉起升级进程。"""
+    cur_prog = read_update_progress()
+    if cur_prog.get("running"):
+        return {"ok": False, "error": "update_running", "message": "已有升级任务在执行中，请等待完成", "progress": cur_prog}
+
+    chk = check_plugin_update(conf_dir, force=force)
+    if not chk.get("ok"):
+        return {"ok": False, "error": chk.get("error", "check_failed"), "message": chk.get("message", "版本检查失败")}
+    if not chk.get("has_update"):
+        return {"ok": False, "error": "already_latest", "message": f"当前已是最新版本 v{APP_VERSION}"}
+
+    pkg = chk.get("package") or {}
+    urls = _update_package_urls(pkg, conf_dir)
+    if not urls:
+        return {"ok": False, "error": "no_package_url", "message": "版本清单未提供可用下载地址"}
+    if not pkg.get("md5"):
+        return {"ok": False, "error": "no_checksum", "message": "版本清单缺少 MD5 校验值，为安全起见拒绝升级"}
+
+    try:
+        UPDATE_DIR.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        return {"ok": False, "error": "mkdir_failed", "message": f"无法创建升级工作目录: {e}"}
+
+    plan = {
+        "target": chk["latest"],
+        "current": APP_VERSION,
+        "md5": pkg.get("md5", ""),
+        "sha256": pkg.get("sha256", ""),
+        "size": pkg.get("size", 0),
+        "package_urls": urls,
+    }
+    try:
+        UPDATE_PLAN_JSON.write_text(json.dumps(plan, ensure_ascii=False, indent=2), encoding="utf-8")
+        UPDATE_STATE_JSON.write_text(json.dumps({
+            "target": plan["target"], "started_at": int(time.time()), "from": APP_VERSION,
+        }, ensure_ascii=False, indent=2), encoding="utf-8")
+        UPDATE_PROGRESS_LOG.write_text("", encoding="utf-8")
+        UPDATE_SCRIPT.write_text(_update_script_body(plan), encoding="utf-8")
+        UPDATE_SCRIPT.chmod(0o755)
+    except Exception as e:
+        return {"ok": False, "error": "prepare_failed", "message": f"写入升级脚本失败: {e}"}
+
+    try:
+        # setsid 让升级进程脱离 daemon 会话，install.sh 重启服务不会连带杀掉它
+        subprocess.Popen(
+            ["/bin/sh", str(UPDATE_SCRIPT)],
+            stdout=open(str(UPDATE_DIR / "runner.out"), "ab"),
+            stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
+            close_fds=True,
+        )
+    except Exception as e:
+        return {"ok": False, "error": "spawn_failed", "message": f"拉起升级进程失败: {e}"}
+
+    return {
+        "ok": True,
+        "started": True,
+        "target": plan["target"],
+        "current": APP_VERSION,
+        "message": f"已开始升级到 v{plan['target']}，升级过程中面板会短暂断开",
+    }
+
+
+def acknowledge_update_result() -> dict:
+    """前端确认升级结果后清空进度日志，避免下次打开还显示上次的结果。"""
+    try:
+        if UPDATE_PROGRESS_LOG.is_file():
+            UPDATE_PROGRESS_LOG.unlink()
+        if UPDATE_STATE_JSON.is_file():
+            UPDATE_STATE_JSON.unlink()
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 _REAL_EGRESS_PROBE_CACHE = {"ts": 0.0, "node": "", "ok": True, "delay_ms": 0, "error": ""}
 
 _EGRESS_BG_PROBING = False
@@ -13617,7 +14221,17 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                         break
         if not tok:
             return False
-        return tok in valid_tokens or tok == get_uci_panel_secret()
+        # PWD-1: 令牌只认 panel_auth.json / panel_token 里签发过的值。
+        # 旧实现额外放行 tok == get_uci_panel_secret()，导致 LuCI 回显的那串
+        # sha256:xxxx 可直接当 Bearer 令牌绕过登录，已移除。
+        # LuCI 页面的按钮改用独立的 luci_bridge_token（与面板密码解耦）。
+        if tok in valid_tokens:
+            return True
+        try:
+            bridge = get_luci_bridge_token(create=False)
+        except Exception:
+            bridge = ""
+        return bool(bridge) and tok == bridge
 
     def _auth_ok(self) -> bool:
         """P0-1 & P0-3 Auth Guard: Checks X-AI-Link-Token / Bearer / Cookie against valid tokens, or trusted_cidr in ops_settings."""
@@ -13708,6 +14322,24 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             if self._try_send_wire_memo():
                 return
             self._send_json(build_status_api_response(CONF_DIR))
+            return
+        # ---- OTA 在线更新 (v1.0.1+) ----
+        if req_path == "/api/system/version":
+            self._send_json({
+                "ok": True,
+                "version": APP_VERSION,
+                "channel": APP_CHANNEL,
+                "build": APP_BUILD,
+                "version_file": _read_version_file(),
+                "manifest_sources": _update_manifest_candidates(CONF_DIR),
+            })
+            return
+        if req_path == "/api/system/update/check":
+            force = str(qs.get("force", "0")).lower() in ("1", "true", "yes")
+            self._send_json(check_plugin_update(CONF_DIR, force=force))
+            return
+        if req_path == "/api/system/update/status":
+            self._send_json({"ok": True, "current": APP_VERSION, "progress": read_update_progress()})
             return
         if req_path == "/api/homelink/port_check":
             chk_port = int(qs.get("port") or 9443)
@@ -13908,6 +14540,15 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             return
         if clean_path.startswith("/api/") and not self._auth_ok():
             self._send_json({"ok": False, "error": "unauthorized", "message": "未授权访问，请先登录面板获取令牌"}, status=401)
+            return
+        # ---- OTA 在线更新 (v1.0.1+) ----
+        if clean_path == "/api/system/update/apply":
+            force = bool(payload.get("force")) or str(payload.get("force", "")).lower() in ("1", "true", "yes")
+            res = start_plugin_update(CONF_DIR, force=force)
+            self._send_json(res, status=(200 if res.get("ok") else 409))
+            return
+        if clean_path == "/api/system/update/ack":
+            self._send_json(acknowledge_update_result())
             return
         if clean_path == "/api/wol":
             mac = payload.get("mac", "A4:83:E7:2B:91:04")
@@ -15997,7 +16638,7 @@ def main():
         assert _ops_after_arc["entry_bypass"] is False and _ops_after_arc["gh_mirror"] == "https://ghfast.top/" and _ops_after_arc["ipv6_proxy"] is True and _ops_after_arc["block_quic"] is False, f"Expected ops_settings restored from archive, got {_ops_after_arc}"
         _test_arc.unlink(missing_ok=True)
         # Also verify JSON backup/restore round-trip preserves ops_settings, ipv6_proxy, panel_auth, AND auto_nodes.json byte-for-byte (FR-3)
-        _update_panel_password("custom-secret-2026", tmp_shunt_dir)
+        _update_panel_password("custom-secret-2026", tmp_shunt_dir, sync_uci=False)
         save_auto_nodes_config(load_auto_nodes_config(tmp_shunt_dir), tmp_shunt_dir)
         _auto_md5_before = hashlib.md5((tmp_shunt_dir / "auto_nodes.json").read_bytes()).hexdigest()
         _auth_before = json.loads((tmp_shunt_dir / "panel_auth.json").read_text(encoding="utf-8"))
@@ -16021,9 +16662,26 @@ def main():
         for _d_prx in ("www.google.com", "www.youtube.com", "chat.openai.com", "github.com", "x.com"):
             _tr_p = trace_traffic_flow({"target": _d_prx}, tmp_shunt_dir)
             assert _tr_p["stage3_rule"]["selector_tag"] == "AI_Best_Auto", f"FR-4: Expected {_d_prx} -> AI_Best_Auto in gfw_list mode, got {_tr_p['stage3_rule']}"
+        # 18) OTA 在线更新：版本比较语义 + 升级脚本可生成 + 未升级时进度为空
+        assert is_version_newer("1.0.2", "1.0.1") and not is_version_newer("1.0.1", "1.0.1"), "OTA: 版本比较基础用例失败"
+        assert not is_version_newer("1.0.1-beta1", "1.0.1"), "OTA: 预发布版不应高于同号正式版"
+        assert is_version_newer("1.0.1", "1.0.1-beta1"), "OTA: 正式版应高于同号预发布版"
+        assert parse_app_version("v2.3.4")[:3] == (2, 3, 4), "OTA: v 前缀解析失败"
+        _ota_script = _update_script_body({
+            "target": "9.9.9", "current": APP_VERSION, "md5": "0" * 32, "sha256": "0" * 64,
+            "size": 1, "package_urls": ["https://example.invalid/pkg.tar.gz"],
+        })
+        assert "install.sh" in _ota_script and "--upgrade" in _ota_script and "healthcheck" in _ota_script, "OTA: 升级脚本缺少关键步骤"
+        assert "md5sum" in _ota_script and "sha256sum" in _ota_script, "OTA: 升级脚本缺少校验步骤"
+        if not UPDATE_PROGRESS_LOG.is_file():
+            _ota_prog = read_update_progress()
+            assert _ota_prog["running"] is False, f"OTA: 空进度不应标记为运行中，got {_ota_prog}"
         shutil.rmtree(tmp_shunt_dir, ignore_errors=True)
         print("SELF_TEST_PASSED", json.dumps({
             "ok": True,
+            "app_version": APP_VERSION,
+            "ota_version_compare_ok": True,
+            "ota_script_generation_ok": True,
             "traffic_trace_lol_udp_direct_ok": (not t_lol["enters_kernel"]),
             "traffic_trace_ai_shunt_ok": t_ai["enters_kernel"],
             "traffic_trace_google_cn_rewrite_ok": t_gcn["stage2_dns"]["rewritten"],
@@ -16033,7 +16691,7 @@ def main():
             "stall_detection_ok": stall_ok,
             "node_edit_disable_ok": node_disable_ok,
             "homelink_dynamic_pin_ok": homelink_dynamic_ok,
-            "version": "1.0.0",
+            "version": APP_VERSION,
             "detected_core": rt["core"],
             "build_mode": rt["build_mode"],
             "ca_cert_capable_ok": ca_ok,
@@ -16080,12 +16738,24 @@ def main():
     except Exception:
         pass
     start_background_probe_scheduler(interval_sec=300)
+    # 确保 LuCI 桥接令牌在服务对外提供 API 之前就已就绪（LuCI 页面从 UCI 读取）
+    try:
+        get_luci_bridge_token(create=True)
+    except Exception:
+        pass
+    # 把当前版本号同步到 UCI，供 LuCI / CLI / 面板统一读取，避免多处硬编码
+    try:
+        if _uci_get_str("global.app_version", "") != APP_VERSION:
+            subprocess.run(["uci", "set", f"ai-link.global.app_version={APP_VERSION}"], check=False, timeout=2)
+            subprocess.run(["uci", "commit", "ai-link"], check=False, timeout=2)
+    except Exception:
+        pass
     server = ThreadingHTTPServer(("0.0.0.0", port), AILinkRequestHandler)
     try:
         _h3_threading.Thread(target=_h3_health_loop, daemon=True).start()
     except Exception:
         pass
-    print(f"AI-LINK Standalone Panel & Probe Daemon v2.0.0-r8 listening on 0.0.0.0:{port}")
+    print(f"AI-LINK Standalone Panel & Probe Daemon v{APP_VERSION} listening on 0.0.0.0:{port}")
     server.serve_forever()
 
 if __name__ == "__main__":

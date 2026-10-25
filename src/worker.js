@@ -1,31 +1,32 @@
 /**
- * AI-LINK v1.0.0 Official Website & Release Portal Worker
+ * AI-LINK v1.0.1 Official Website & Release Portal Worker
  * Compatible with Cloudflare Workers (Static Assets) & Cloudflare Pages
+ *
+ * /api/version 与 /api/release 直接转发静态清单 /version.json，
+ * 保证「插件 OTA 读到的版本」与「官网展示的版本」永远同源，不会各写一份。
  */
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
     if (url.pathname === "/api/version" || url.pathname === "/api/release") {
-      return new Response(
-        JSON.stringify({
-          name: "AI-LINK (ai-link-openwrt)",
-          version: "v1.0.0",
-          release_date: "2026-10-26",
-          core: "sing-box 1.12+ / 1.14+ & fw4 nftables",
-          highlights: [
-            "Always-On Auto Node Pool (1~5 Priority Groups + Sticky Lock + Dual-Group Probing)",
-            "Single-Arm Side Router Symmetric NAT & Domestic Hardware Bypass (@cn_ip4/@cn_ip6)",
-            "Cert-Free HomeLink (VLESS-Reality & Hysteria2 Dynamic pinSHA256)",
-            "17/17 Byte-Identical Backup/Restore & 0-Residue Lifecycle"
-          ]
-        }, null, 2),
-        {
-          headers: {
-            "content-type": "application/json; charset=utf-8",
-            "access-control-allow-origin": "*"
-          }
+      if (env.ASSETS) {
+        const assetUrl = new URL("/version.json", url.origin);
+        const res = await env.ASSETS.fetch(new Request(assetUrl.toString(), { method: "GET" }));
+        if (res.ok) {
+          return new Response(res.body, {
+            status: 200,
+            headers: {
+              "content-type": "application/json; charset=utf-8",
+              "access-control-allow-origin": "*",
+              "cache-control": "public, max-age=60, must-revalidate"
+            }
+          });
         }
+      }
+      return new Response(
+        JSON.stringify({ ok: false, error: "manifest_unavailable", message: "version.json 暂不可用" }),
+        { status: 503, headers: { "content-type": "application/json; charset=utf-8", "access-control-allow-origin": "*" } }
       );
     }
 
@@ -33,6 +34,6 @@ export default {
       return env.ASSETS.fetch(request);
     }
 
-    return new Response("AI-LINK v1.0.0 Official Site Worker Active", { status: 200 });
+    return new Response("AI-LINK v1.0.1 Official Site Worker Active", { status: 200 });
   }
 };

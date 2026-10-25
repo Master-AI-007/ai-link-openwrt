@@ -1,5 +1,5 @@
 #!/bin/sh
-# AI-LINK Complete Uninstaller (v1.0.0)
+# AI-LINK Complete Uninstaller (v1.0.1)
 # Supports both apk (OpenWrt 24.10+ / ImmortalWrt 25.x) and opkg (iStoreOS / OpenWrt 23.05)
 
 KEEP_CONFIG=0

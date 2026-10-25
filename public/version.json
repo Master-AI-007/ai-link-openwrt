@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "channel": "stable",
+  "latest": "1.0.1",
+  "release_date": "2026-10-26",
+  "notes_url": "https://ai-link-official.pages.dev/changelog.html#v1.0.1",
+  "highlights": [
+    "全新在线更新体系：LuCI 与面板均可一键检查更新、一键升级",
+    "安全修复：面板密码不再以 sha256 哈希形式回显，哈希也不再能当密码/令牌使用",
+    "安全修复：安装自检不再污染生产环境的面板密码字段",
+    "新增 ai-link update 命令行在线升级",
+    "升级前自动备份用户配置，升级失败自动回滚"
+  ],
+  "changelog": [
+    {
+      "version": "1.0.1",
+      "date": "2026-10-26",
+      "type": "security",
+      "title": "在线更新体系 + 面板密码安全修复",
+      "items": [
+        "修复 LuCI「面板密码」显示为 sha256 哈希",
+        "修复哈希串可直接当密码登录",
+        "修复哈希串可直接当 Bearer 令牌绕过登录",
+        "修复 panel_auth.json 丢失后用户被锁死",
+        "新增 LuCI 桥接令牌 luci_bridge_token（与面板密码解耦）",
+        "LuCI 概览页 / 独立面板新增「插件版本与在线更新」卡片",
+        "新增 API：/api/system/version、/api/system/update/{check,status,apply,ack}",
+        "新增 CLI：ai-link update [--apply]",
+        "install.sh 新增 --upgrade 模式，升级不再删除音乐解锁等附加组件",
+        "全量版本号统一为 1.0.1，daemon 内 APP_VERSION 为唯一来源"
+      ]
+    }
+  ],
+  "packages": {
+    "full": {
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v1.0.1/AI-LINK-v1.0.1.tar.gz",
+      "mirrors": [
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v1.0.1.tar.gz"
+      ],
+      "size": 1191381,
+      "md5": "509746cac97c194f33accdddeb29a6da",
+      "sha256": "bb0af37cbddf277484f8eb38276458c8fe2b6181aed20b5f5635299497e5b43c"
+    }
+  }
+}
