@@ -79,8 +79,7 @@
         <a href="#sec-topology" class="px-3 py-1.5 rounded-lg hover:bg-slate-800/70 hover:text-white transition">环境与旁路拓扑</a>
         <a href="#sec-compare" class="px-3 py-1.5 rounded-lg hover:bg-slate-800/70 hover:text-white transition">对比与八大独创</a>
         <a href="#sec-ui-tour" class="px-3 py-1.5 rounded-lg hover:bg-slate-800/70 hover:text-white transition">七大界面图文详解</a>
-        <a href="#sec-install" class="px-3 py-1.5 rounded-lg hover:bg-slate-800/70 hover:text-white transition">安装与开发者手册</a>
-        <a href="#sec-deploy" class="px-3 py-1.5 rounded-lg hover:bg-slate-800/70 hover:text-white transition">Cloudflare &amp; GitHub</a>
+        <a href="#sec-install" class="px-3 py-1.5 rounded-lg hover:bg-slate-800/70 hover:text-white transition">安装与卸载</a>
         <a href="#sec-faq" class="px-3 py-1.5 rounded-lg hover:bg-slate-800/70 hover:text-white transition">FAQ</a>
       </nav>
 
@@ -123,14 +122,14 @@
         </h1>
 
         <p class="text-sm sm:text-base text-slate-300 leading-relaxed max-w-3xl mx-auto">
-          <strong>AI-LINK (<code>ai-link-openwrt</code>) v1.0.0 正式版</strong> 将高性能 <code>sing-box 1.12+/1.14+</code> 内核、<strong>独创 1~5 组瀑布流自动节点池与粘性状态锁</strong>、<strong>内核态 <code>nftables</code> 硬件级国内零损耗直连（自动挂载单臂旁路对称 NAT 防断网）</strong>、<strong>多协议免证书回家服务（HomeLink）</strong> 以及 <strong>全息 3D 星图与深空引力黑洞可视引擎</strong> 融为一体。小白三分钟开箱即用，开发者全链路可观测。
+          <strong>AI-LINK (<code>ai-link-openwrt</code>) v1.0.0 正式版</strong> 将高性能 <code>sing-box 1.12+/1.14+</code> 内核、<strong>独创 1~5 组瀑布流自动节点池与粘性状态锁</strong>、<strong>内核态 <code>nftables</code> 硬件级国内零损耗直连（自动挂载单臂旁路对称 NAT 防断网）</strong>、<strong>多协议免证书回家服务（HomeLink）</strong> 以及 <strong>全息 3D 星图与深空引力黑洞可视引擎</strong> 融为一体。小白三分钟开箱即用，全链路状态可观测。
         </p>
 
         <!-- Quick Command Bar -->
         <div class="max-w-2xl mx-auto glass-card rounded-2xl p-3 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 border border-cyan-500/30">
           <div class="flex items-center gap-2.5 px-2 text-left overflow-x-auto">
             <span class="text-cyan-400 font-mono text-xs select-none">$</span>
-            <code id="hero-install-cmd" class="text-xs text-slate-200 whitespace-nowrap">cd /tmp &amp;&amp; tar -xzf AI-LINK-v1.0.0-正式版.tar.gz &amp;&amp; cd ai-link-openwrt &amp;&amp; ./install.sh</code>
+            <code id="hero-install-cmd" class="text-xs text-slate-200 whitespace-nowrap">cd /tmp &amp;&amp; tar -xzf AI-LINK-v1.0.0.tar.gz &amp;&amp; cd ai-link-openwrt &amp;&amp; ./install.sh</code>
           </div>
           <div class="flex items-center gap-2 shrink-0">
             <button type="button" data-copy-target="hero-install-cmd" class="btn-copy px-3.5 py-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/40 text-cyan-200 text-xs font-semibold transition">
@@ -685,7 +684,7 @@ chosen = cur_in_group  # 100% 粘性锁定原节点，零跳点！</code></pre>
       <div class="border-l-4 border-amber-400 pl-4">
         <span class="text-xs font-bold uppercase tracking-widest text-amber-400">INSTALLATION &amp; LIFECYCLE · 安装与运维手册</span>
         <h2 class="text-2xl sm:text-3xl font-extrabold text-white mt-1">
-          一键安装、17/17 无损备份、恢复出厂、零残留卸载与开发者工具
+          一键安装、平滑升级、备份恢复与零残留卸载
         </h2>
       </div>
 
@@ -694,7 +693,7 @@ chosen = cur_in_group  # 100% 粘性锁定原节点，零跳点！</code></pre>
           <div>
             <div class="text-sm font-bold text-emerald-300">📦 下载 AI-LINK v1.0.0 正式版</div>
             <p class="text-xs text-slate-400 mt-1.5 leading-relaxed">
-              安装包 <code class="text-cyan-300">AI-LINK-v1.0.0-正式版.tar.gz</code> · 1,176,852 B ·
+              安装包 <code class="text-cyan-300">AI-LINK-v1.0.0.tar.gz</code> · 1,176,852 B ·
               MD5 <code class="text-cyan-300">3d2710605ce844b0702bb60926fa5e2c</code><br>
               同时提供 <code class="text-cyan-300">luci-app-ai-link_2.0.0-r8_all.ipk</code> 与图文使用手册 PDF
             </p>
@@ -712,7 +711,7 @@ chosen = cur_in_group  # 100% 粘性锁定原节点，零跳点！</code></pre>
         </div>
       </div>
 
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <div class="glass-card rounded-2xl p-5 space-y-3">
           <div class="flex items-center justify-between">
             <h3 class="text-sm font-bold text-white">1. 一键安装与平滑覆盖升级</h3>
@@ -720,7 +719,7 @@ chosen = cur_in_group  # 100% 粘性锁定原节点，零跳点！</code></pre>
           </div>
           <pre id="code-install-block" class="text-xs bg-slate-950 p-3.5 rounded-xl border border-slate-800 text-slate-200 overflow-x-auto"><code># 上传发布包至 /tmp 并解压安装
 cd /tmp
-tar -xzf AI-LINK-v1.0.0-正式版.tar.gz
+tar -xzf AI-LINK-v1.0.0.tar.gz
 cd ai-link-openwrt
 chmod +x install.sh
 ./install.sh</code></pre>
@@ -747,71 +746,6 @@ ai-link uninstall</code></pre>
           </p>
         </div>
 
-        <div class="glass-card rounded-2xl p-5 space-y-3">
-          <div class="flex items-center justify-between">
-            <h3 class="text-sm font-bold text-white">3. 随包自动化验收脚本 (scripts/)</h3>
-            <button type="button" data-copy-target="code-verify-block" class="btn-copy px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-[11px] font-semibold">复制</button>
-          </div>
-          <pre id="code-verify-block" class="text-xs bg-slate-950 p-3.5 rounded-xl border border-slate-800 text-slate-200 overflow-x-auto"><code># 校验备份 -> 恢复出厂 -> 恢复后 17/17 一致
-python3 scripts/state_hash.py
-
-# 卸载后扫描全系统确认 0 残留
-python3 scripts/residue_scan.py</code></pre>
-          <p class="text-xs text-slate-400">
-            <code>state_hash.py</code> 验证 8 个 JSON 配置文件 + <code>panel_auth.json</code> 密码哈希 + 9 项 UCI 键值 100% 字节级一致；<code>residue_scan.py</code> 确保卸载后 0 残留。
-          </p>
-        </div>
-      </div>
-    </section>
-
-    <!-- ==================== CLOUDFLARE WORKERS/PAGES & GITHUB DEPLOY GUIDE ==================== -->
-    <section id="sec-deploy" class="scroll-mt-20 space-y-6">
-      <div class="border-l-4 border-orange-400 pl-4">
-        <span class="text-xs font-bold uppercase tracking-widest text-orange-400">CLOUDFLARE WORKERS &amp; PAGES + GITHUB · 官网部署与开源发布</span>
-        <h2 class="text-2xl sm:text-3xl font-extrabold text-white mt-1">
-          一键部署至 Cloudflare Workers &amp; Pages 并同步发布 GitHub 指南
-        </h2>
-        <p class="text-sm text-slate-300 mt-1">
-          本工程已预置全套 <code>wrangler.toml</code>、<code>src/worker.js</code>、<code>public/index.html</code> 与 GitHub Actions 自动部署流水线（<code>.github/workflows/deploy.yml</code>）。
-        </p>
-      </div>
-
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div class="glass-card rounded-2xl p-5 space-y-3 border border-orange-500/30">
-          <div class="flex items-center justify-between">
-            <h3 class="text-base font-bold text-orange-300">☁️ 方式一：Cloudflare Pages / Workers 零配置部署</h3>
-            <button type="button" data-copy-target="code-cf-deploy" class="btn-copy px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-orange-300 text-[11px] font-semibold">复制命令</button>
-          </div>
-          <p class="text-xs text-slate-300">
-            您可以直接在 Cloudflare 控制台拖拽上传 <code>public/</code> 目录，或使用 Wrangler CLI 一键发布全球边缘节点：
-          </p>
-          <pre id="code-cf-deploy" class="text-xs bg-slate-950 p-3.5 rounded-xl border border-slate-800 text-slate-200 overflow-x-auto"><code># 1. 解压官网与 GitHub 工程包
-unzip AI-LINK-v1.0.0-Cloudflare官网与GitHub发布包.zip
-cd ai-link-official-site
-
-# 2. 方式 A：使用 Cloudflare Pages 直接发布静态官网
-npx wrangler pages deploy ./public --project-name=ai-link-official
-
-# 3. 方式 B：使用 Cloudflare Workers (Assets) 部署
-npx wrangler deploy</code></pre>
-        </div>
-
-        <div class="glass-card rounded-2xl p-5 space-y-3 border border-indigo-500/30">
-          <div class="flex items-center justify-between">
-            <h3 class="text-base font-bold text-indigo-300">🐙 方式二：同步推送到 GitHub 并触发自动构建</h3>
-            <button type="button" data-copy-target="code-gh-deploy" class="btn-copy px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-indigo-300 text-[11px] font-semibold">复制命令</button>
-          </div>
-          <p class="text-xs text-slate-300">
-            将仓库推送到 GitHub 后，既可在 Cloudflare 控制台绑定该 GitHub 仓库实现每次 <code>git push</code> 自动更新官网，也可自动发布 Release：
-          </p>
-          <pre id="code-gh-deploy" class="text-xs bg-slate-950 p-3.5 rounded-xl border border-slate-800 text-slate-200 overflow-x-auto"><code># 初始化 Git 仓库并推送到您的 GitHub
-git init
-git branch -M main
-git add .
-git commit -m "release: AI-LINK v1.0.0 Official Release &amp; Website"
-git remote add origin https://github.com/&lt;您的用户名&gt;/ai-link-openwrt.git
-git push -u origin main --tags</code></pre>
-        </div>
       </div>
     </section>
 
@@ -882,8 +816,8 @@ git push -u origin main --tags</code></pre>
         <button id="btn-close-quick-install" type="button" class="text-slate-400 hover:text-white text-sm font-bold px-2 py-1">✕</button>
       </div>
       <div class="space-y-3 text-xs">
-        <p class="text-slate-300">1. 将 <code>AI-LINK-v1.0.0-正式版.tar.gz</code> 上传至 OpenWrt <code>/tmp</code> 目录后执行：</p>
-        <pre id="modal-cmd-text" class="bg-slate-950 p-3.5 rounded-xl border border-slate-800 text-cyan-200 overflow-x-auto"><code>cd /tmp &amp;&amp; tar -xzf AI-LINK-v1.0.0-正式版.tar.gz &amp;&amp; cd ai-link-openwrt &amp;&amp; chmod +x install.sh &amp;&amp; ./install.sh</code></pre>
+        <p class="text-slate-300">1. 将 <code>AI-LINK-v1.0.0.tar.gz</code> 上传至 OpenWrt <code>/tmp</code> 目录后执行：</p>
+        <pre id="modal-cmd-text" class="bg-slate-950 p-3.5 rounded-xl border border-slate-800 text-cyan-200 overflow-x-auto"><code>cd /tmp &amp;&amp; tar -xzf AI-LINK-v1.0.0.tar.gz &amp;&amp; cd ai-link-openwrt &amp;&amp; chmod +x install.sh &amp;&amp; ./install.sh</code></pre>
         <p class="text-slate-300">2. 安装完成后访问地址：</p>
         <ul class="list-disc pl-5 text-slate-200 space-y-1">
           <li>独立极光大屏面板：<code>http://&lt;路由器LAN_IP&gt;:9099</code></li>
@@ -910,7 +844,7 @@ git push -u origin main --tags</code></pre>
         <span>OpenWrt fw4 / nftables / sing-box 全栈智能透明网关</span>
       </div>
       <div>
-        <span>Ready for Cloudflare Workers &amp; Pages · GitHub Open Source Release</span>
+        <span>官方发布 · GitHub Open Source</span>
       </div>
     </div>
   </footer>
