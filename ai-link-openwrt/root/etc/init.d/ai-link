@@ -13,6 +13,15 @@ FW_SCRIPT="/usr/share/ai-link/nftables/apply_nft.sh"
 TABLE_ID=162
 FWMARK=0x162
 
+# v1.0.2 FIX: BusyBox 的 `pgrep -x sing-box` 匹配不到 /usr/bin/sing-box
+# （/proc/<pid>/comm 明明是 sing-box，-x 仍然返回 1），所以统一走这个探针：
+# pidof 依赖 comm，BusyBox 与 procps 都靠得住；再用 pgrep -f 兜一层。
+singbox_alive() {
+	pidof sing-box >/dev/null 2>&1 && return 0
+	pgrep -f "[s]ing-box run" >/dev/null 2>&1 && return 0
+	return 1
+}
+
 setup_tun_and_routing() {
 	modprobe nft_tproxy 2>/dev/null || true
 	modprobe nft_socket 2>/dev/null || true
@@ -292,7 +301,10 @@ reload_service() {
 	# 兜底：daemon（:9099 面板）或 sing-box 任一未运行，就整体重新 start。
 	# 否则会出现「服务被 stop 后，在 LuCI 勾选 enabled 并保存也无法拉起」的死锁：
 	# reload 只会重载运行中的实例，不会创建新实例。
-	if ! pgrep -f "ai-link-dae[m]on.py" >/dev/null 2>&1 || ! pgrep -x sing-box >/dev/null 2>&1; then
+	# v1.0.2 FIX: BusyBox 1.37 的 `pgrep -x sing-box` 匹配不到 /usr/bin/sing-box
+	# （comm 正确也不匹配），导致这里恒为真 -> 每次 reload 都退化成整机重启。
+	# 改用 pidof，并保留 pgrep -f 作兜底。
+	if ! pgrep -f "ai-link-dae[m]on.py" >/dev/null 2>&1 || ! singbox_alive; then
 		start
 		return 0
 	fi
@@ -331,7 +343,7 @@ svc_state() {
 	config_get panel_port 'global' 'panel_port' '9099'
 	daemon_up=0; core_up=0; nft_up=0; boot_on=0; bypass_up=0
 	pgrep -f "ai-link-dae[m]on.py" >/dev/null 2>&1 && daemon_up=1
-	pgrep -x sing-box >/dev/null 2>&1 && core_up=1
+	singbox_alive && core_up=1
 	nft list table inet ai_link >/dev/null 2>&1 && nft_up=1
 	ls /etc/rc.d/S*ai-link >/dev/null 2>&1 && boot_on=1
 	[ -f "$RUN_DIR/bypass" ] && bypass_up=1
@@ -362,7 +374,7 @@ restore_proxy() {
 		python3 -B "$PROG_DAEMON" --sync-uci >/dev/null 2>&1 || true
 		python3 -B "$PROG_DAEMON" --generate-configs >/dev/null 2>&1 || true
 	fi
-	if ! pgrep -x sing-box >/dev/null 2>&1; then
+	if ! singbox_alive; then
 		start
 		echo "AI-LINK: Proxy service started and nftables rules + dnsmasq upstream restored."
 		return 0

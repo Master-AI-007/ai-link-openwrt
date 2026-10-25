@@ -9896,6 +9896,38 @@ def _has_final_backup_archive() -> bool:
     except Exception:
         return False
 
+def _mask_status_secrets(payload: dict) -> dict:
+    """SEC-2 (v1.0.2): 未鉴权的请求不应该拿到节点/订阅凭据。
+
+    /api/status 里带了两处敏感数据：
+      · homelink: 回家节点的 password / uuid / private_key，以及内嵌明文凭据的 uri
+      · subscriptions: 订阅地址常带 ?token=...
+    默认 trusted_cidr 覆盖全部私网，任何局域网设备都能 GET /api/status，
+    因此按「非本机且未鉴权」的条件做脱敏，口径与 /api/homelink、/api/subscriptions 一致。
+    """
+    out = copy.deepcopy(payload)
+    hl = out.get("homelink")
+    if isinstance(hl, dict):
+        for nd in (hl.get("nodes") or []):
+            if not isinstance(nd, dict):
+                continue
+            if nd.get("password"):
+                nd["password"] = "********"
+            if nd.get("uuid"):
+                nd["uuid"] = str(nd["uuid"])[:8] + "-****-****-****"
+            if nd.get("private_key"):
+                nd["private_key"] = "*** (仅本机 127.0.0.1 可读)"
+            if nd.get("uri"):
+                nd["uri"] = re.sub(r"://[^@/]+@", "://***@", str(nd["uri"]))
+    subs = out.get("subscriptions")
+    if isinstance(subs, list):
+        for sub in subs:
+            if isinstance(sub, dict) and sub.get("url"):
+                sub["url"] = re.sub(r"([?&](?:token|key|auth|passwd|password|secret)=)[^&]+",
+                                    r"\1***", str(sub["url"]), flags=re.I)
+    return out
+
+
 def build_status_api_response(conf_dir: Path = CONF_DIR) -> dict:
     """Builds /api/status with st_mtime_ns memoization (< 1.5ms cached hit), exposing build_ver and top-level shield_status."""
     PROBE_ENGINE.load_persisted_selections(RUN_DIR, conf_dir)
@@ -10240,6 +10272,9 @@ def build_homelink_api_response(conf_dir: Path = CONF_DIR, mask_private_key: boo
                             _nd["uuid"] = str(_nd["uuid"])[:8] + "-****-****-****"
                         if "password" in _nd and _nd["password"]:
                             _nd["password"] = "********"
+                        # SEC-3 (v1.0.2): uri 里内嵌明文 password/uuid，只脱敏字段等于没脱
+                        if _nd.get("uri"):
+                            _nd["uri"] = re.sub(r"://[^@/]+@", "://***@", str(_nd["uri"]))
         return _c_hl
     if len(_HOMELINK_API_MEMO) > 16:
         _HOMELINK_API_MEMO.clear()
@@ -10485,6 +10520,9 @@ def build_homelink_api_response(conf_dir: Path = CONF_DIR, mask_private_key: boo
                         _nd["uuid"] = str(_nd["uuid"])[:8] + "-****-****-****"
                     if "password" in _nd and _nd["password"]:
                         _nd["password"] = "********"
+                    # SEC-3 (v1.0.2): uri 里内嵌明文 password/uuid，只脱敏字段等于没脱
+                    if _nd.get("uri"):
+                        _nd["uri"] = re.sub(r"://[^@/]+@", "://***@", str(_nd["uri"]))
         return masked_res
     return _hl_res
 
@@ -13305,6 +13343,11 @@ if [ -d "$BK/code/ai-link" ]; then
 fi
 /etc/init.d/ai-link restart >/dev/null 2>&1 || true
 sleep 5
+# v1.0.2：回滚收尾立刻重挂透明代理。
+# 旧流程要等 daemon 的 auto_heal 周期（默认 10 秒）才把 table inet ai_link 补回来，
+# 这段时间设备是「面板正常但流量不走代理」的假恢复状态。
+/etc/init.d/ai-link restore_proxy >/dev/null 2>&1 || true
+sleep 2
 if python3 - "$PORT" <<'PY' >/dev/null 2>&1
 import sys, json, urllib.request
 _op = urllib.request.build_opener(urllib.request.ProxyHandler({{}}))
@@ -14190,6 +14233,10 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
         if req_path_only in ("/api/status", "/api/nodes", "/api/auto_nodes", "/api/shunt"):
             return (
                 self.path,
+                # SEC-2 (v1.0.2): 鉴权状态必须进缓存键。
+                # 否则「已鉴权客户端」缓存的完整应答会被后续未鉴权请求命中，
+                # 脱敏等于没做。
+                bool(self._is_loopback_client() or self._is_request_authenticated()),
                 _CORE_RELOAD_STATE["config_seq"],
                 _CORE_RELOAD_STATE["reload_seq"],
                 bool(is_bypass_active()),
@@ -14317,15 +14364,12 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
     def end_headers(self):
         self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
         self.send_header("Pragma", "no-cache")
-        req_p = (getattr(self, "path", "") or "").split("?", 1)[0]
-        if req_p in ("/", "/index.html"):
-            try:
-                auth_d = _load_panel_auth(CONF_DIR)
-                toks = auth_d.get("tokens") or []
-                if toks:
-                    self.send_header("Set-Cookie", f"ailink_token={toks[0]}; Path=/; SameSite=Lax")
-            except Exception:
-                pass
+        # SEC-1 (v1.0.2): 旧实现在这里给任何请求 "/" 的客户端下发
+        # Set-Cookie: ailink_token=<第一个有效令牌>，等于把面板密码彻底架空——
+        # 局域网内（甚至端口被转发后的公网）任何人不带任何凭据取一次首页，
+        # 就能拿到可用的 Bearer 令牌，require_lan_auth 也拦不住。
+        # 令牌只应在 POST /api/login 校验密码通过后由客户端自行保存
+        # （面板 index.html 的 promptPanelLoginModal 已经这么做了）。
         super().end_headers()
 
     def do_DELETE(self):
@@ -14382,7 +14426,10 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
         if req_path == "/api/status":
             if self._try_send_wire_memo():
                 return
-            self._send_json(build_status_api_response(CONF_DIR))
+            status_payload = build_status_api_response(CONF_DIR)
+            if not (self._is_loopback_client() or self._is_request_authenticated()):
+                status_payload = _mask_status_secrets(status_payload)
+            self._send_json(status_payload)
             return
         # ---- OTA 在线更新 (v1.0.1+) ----
         if req_path == "/api/system/version":
