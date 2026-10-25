@@ -1,0 +1,218 @@
+#!/bin/sh
+# AI-LINK Command Line Utility for OpenWrt SSH Management (v1.0.0)
+# Usage: ai-link [status|password|port|probe|probe-now|check|max-nodes|import-cache|sync-sub|import-nodes|add-test-node|mute-conflicts|recover|restore|restart|uninstall]
+
+export PYTHONDONTWRITEBYTECODE="1"
+PANEL_PORT=$(uci -q get ai-link.global.panel_port || echo "9099")
+PANEL_SECRET=$(uci -q get ai-link.global.panel_secret || echo "ai-link-2026")
+LAN_IP=$(uci -q get network.lan.ipaddr || echo "192.168.1.1")
+CACHE_DIR=$(uci -q get ai-link.global.host_cache_dir || echo "/tmp/ai-link-cache")
+MAX_NODES=$(cat /etc/ai-link/max_outbounds.txt 2>/dev/null || uci -q get ai-link.global.max_outbounds || echo "120")
+CORE_VER="未安装"
+if command -v sing-box >/dev/null 2>&1; then
+	CORE_VER="sing-box $(sing-box version 2>/dev/null | head -n1 | awk '{print $3}')"
+fi
+BUILD_MODE=$(cat /etc/ai-link/build_mode.txt 2>/dev/null || echo "auto")
+
+wait_core_ready() {
+	python3 -B - <<'PY' 2>/dev/null
+import time, urllib.request
+for _ in range(45):
+    try:
+        urllib.request.urlopen("http://127.0.0.1:9090/proxies", timeout=1).read(32)
+        raise SystemExit(0)
+    except SystemExit:
+        raise
+    except Exception:
+        time.sleep(1)
+raise SystemExit(1)
+PY
+}
+
+case "$1" in
+	password)
+		if [ -n "$2" ]; then
+			uci set ai-link.global.panel_secret="$2"
+			uci commit ai-link
+			python3 -B - "$2" <<'PY' 2>/dev/null || true
+import sys, importlib.util
+spec = importlib.util.spec_from_file_location("d", "/usr/share/ai-link/ai-link-daemon.py")
+d = importlib.util.module_from_spec(spec); spec.loader.exec_module(d)
+d._update_panel_password(sys.argv[1])
+PY
+			echo "AI-LINK 面板访问密码已更新为: $2"
+		else
+			echo "面板地址: http://${LAN_IP}:${PANEL_PORT}"
+			echo "当前密码: ${PANEL_SECRET}"
+		fi
+		;;
+	port)
+		if [ -n "$2" ]; then
+			uci set ai-link.global.panel_port="$2"
+			uci commit ai-link
+			/etc/init.d/ai-link restart
+			echo "AI-LINK 独立面板端口已更新为: $2 (http://${LAN_IP}:$2)"
+		else
+			echo "当前面板端口: ${PANEL_PORT}"
+		fi
+		;;
+	probe)
+		/usr/bin/env python3 -B /usr/share/ai-link/ai-link-daemon.py --self-test
+		;;
+	probe-now)
+		wait_core_ready
+		/usr/bin/env python3 -B /usr/share/ai-link/ai-link-daemon.py --probe-now
+		;;
+	check)
+		/usr/bin/env python3 -B /usr/share/ai-link/ai-link-daemon.py --check-config
+		;;
+	max-nodes)
+		if [ -n "$2" ]; then
+			uci set ai-link.global.max_outbounds="$2" 2>/dev/null || true
+			uci commit ai-link 2>/dev/null || true
+			/usr/bin/env python3 -B /usr/share/ai-link/ai-link-daemon.py --set-max-nodes "$2"
+			/etc/init.d/ai-link restart
+			wait_core_ready
+			echo "已更新订阅节点预筛上限 (max_outbounds=$2) 并完成热重载。"
+		else
+			echo "当前订阅节点写入上限 (max_outbounds): ${MAX_NODES} (用法: ai-link max-nodes [120|200|all])"
+		fi
+		;;
+	import-cache)
+		TARGET_CACHE="${2:-$CACHE_DIR}"
+		echo "正在从宿主机中转目录 [$TARGET_CACHE] 原子导入内核二进制 (自动识别 musl/glibc) 与规则集..."
+		/usr/bin/env python3 -B /usr/share/ai-link/ai-link-daemon.py --import-cache "$TARGET_CACHE"
+		/etc/init.d/ai-link restart
+		wait_core_ready
+		echo "宿主机缓存导入完成并已重启服务！"
+		;;
+	sync-sub)
+		SUB_URL="$2"
+		if [ -z "$SUB_URL" ]; then
+			echo "用法: ai-link sync-sub '<订阅URL>'"
+			exit 1
+		fi
+		echo "正在同步机场订阅 [$SUB_URL]..."
+		/usr/bin/env python3 -B /usr/share/ai-link/ai-link-daemon.py --sync-sub "$SUB_URL"
+		/etc/init.d/ai-link restart
+		wait_core_ready
+		/usr/bin/env python3 -B /usr/share/ai-link/ai-link-daemon.py --probe-now
+		;;
+	import-nodes)
+		if [ -z "$2" ]; then
+			echo "用法: ai-link import-nodes '<vless://... 或 订阅文件路径>'"
+			exit 1
+		fi
+		/usr/bin/env python3 -B /usr/share/ai-link/ai-link-daemon.py --import-nodes "$2"
+		/etc/init.d/ai-link restart
+		wait_core_ready
+		/usr/bin/env python3 -B /usr/share/ai-link/ai-link-daemon.py --probe-now
+		;;
+	add-test-node)
+		echo "正在生成本机 Hysteria2 环回实测节点 (SG-Hy2-Loopback-01 -> 127.0.0.1:20443) 并注册进三大策略组..."
+		/usr/bin/env python3 -B /usr/share/ai-link/ai-link-daemon.py --add-test-node
+		/etc/init.d/ai-link restart
+		wait_core_ready
+		/usr/bin/env python3 -B /usr/share/ai-link/ai-link-daemon.py --probe-now
+		;;
+	mute-conflicts)
+		for svc in nolo nolo-core open-box homeproxy passwall passwall2 nikki momo openclash; do
+			if [ -x "/etc/init.d/$svc" ]; then
+				/etc/init.d/$svc stop 2>/dev/null || true
+				/etc/init.d/$svc disable 2>/dev/null || true
+				echo "已停止并禁用冲突服务: $svc"
+			fi
+		done
+		;;
+	recover)
+		/etc/init.d/ai-link recover_direct
+		echo "已执行紧急直连恢复：nftables 透明代理规则与 dnsmasq 转发已清空，局域网恢复直接上网。"
+		;;
+	restore)
+		/etc/init.d/ai-link restore_proxy
+		echo "已恢复 AI-LINK 透明代理服务。"
+		;;
+	restart)
+		/etc/init.d/ai-link restart
+		wait_core_ready
+		;;
+	-h|--help|help)
+		echo "用法: ai-link [status|password|port|probe|probe-now|check|max-nodes|import-cache|sync-sub|import-nodes|add-test-node|mute-conflicts|recover|restore|restart|uninstall]"
+		echo "卸载帮助: ai-link uninstall [--help|-y|--keep-config]"
+		exit 0
+		;;
+	uninstall)
+		shift
+		for uarg in "$@"; do
+			case "$uarg" in
+				-h|--help|help|--dry-run|--version)
+					echo "用法: ai-link uninstall [-y|--yes] [--keep-config] [--help]"
+					echo "说明: 彻底停止服务、清理防火墙与文件，并将 /etc/ai-link 自动备份至 /root/ai-link-final-backup/etc-ai-link.tgz"
+					exit 0
+					;;
+				-y|--yes|--force|--keep-config)
+					;;
+				-*)
+					echo "[AI-LINK] 未知卸载选项: $uarg (请使用 ai-link uninstall --help 查看用法)" >&2
+					exit 2
+					;;
+			esac
+		done
+		if [ -x /usr/share/ai-link/uninstall.sh ]; then
+			exec /usr/share/ai-link/uninstall.sh "$@"
+		fi
+		# Embedded fallback for both apk and opkg platforms if /usr/share/ai-link/uninstall.sh is missing
+		if [ -d /etc/ai-link ]; then
+			mkdir -p /root/ai-link-final-backup 2>/dev/null || true
+			chmod 700 /root/ai-link-final-backup 2>/dev/null || true
+			tar -czf /root/ai-link-final-backup/etc-ai-link.tgz -C / etc/ai-link 2>/dev/null || true
+			chmod 600 /root/ai-link-final-backup/etc-ai-link.tgz 2>/dev/null || true
+			echo "  -> 📦 已将 /etc/ai-link 备份至: /root/ai-link-final-backup/etc-ai-link.tgz"
+		fi
+		[ -x /etc/init.d/ai-link ] && /etc/init.d/ai-link stop >/dev/null 2>&1 || true
+		[ -x /etc/init.d/ai-link ] && /etc/init.d/ai-link disable >/dev/null 2>&1 || true
+		ubus call service delete '{"name":"ai-link"}' >/dev/null 2>&1 || true
+		for pid in $(pgrep -f "ai-link-daemon.py" 2>/dev/null) $(pidof sing-box 2>/dev/null); do
+			kill -9 "$pid" 2>/dev/null || true
+		done
+		nft delete table inet ai_link 2>/dev/null || true
+		rm -f /tmp/dnsmasq.d/ai-link-adblock.conf /tmp/dnsmasq.cfg*/ai-link-adblock.conf 2>/dev/null || true
+		[ -x /etc/init.d/dnsmasq ] && /etc/init.d/dnsmasq restart >/dev/null 2>&1 || true
+		while ip rule del fwmark 0x162 lookup 162 2>/dev/null; do :; done
+		while ip -6 rule del fwmark 0x162 lookup 162 2>/dev/null; do :; done
+		while ip rule del pref 8999 2>/dev/null; do :; done
+		while ip -6 rule del pref 8999 2>/dev/null; do :; done
+		ip route flush table 162 2>/dev/null || true
+		ip -6 route flush table 162 2>/dev/null || true
+		ip -6 route del fc00::/18 dev br-lan 2>/dev/null || ip -6 route del fc00::/18 2>/dev/null || true
+		if [ -f /var/run/ai-link/sysctl_orig/be_liberal ]; then
+			sysctl -w net.netfilter.nf_conntrack_tcp_be_liberal="$(cat /var/run/ai-link/sysctl_orig/be_liberal)" >/dev/null 2>&1 || sysctl -w net.netfilter.nf_conntrack_tcp_be_liberal=0 >/dev/null 2>&1 || true
+		else
+			sysctl -w net.netfilter.nf_conntrack_tcp_be_liberal=0 >/dev/null 2>&1 || true
+		fi
+		if command -v opkg >/dev/null 2>&1 && opkg status luci-app-ai-link 2>/dev/null | grep -q "Status:.*installed"; then
+			opkg remove luci-app-ai-link >/dev/null 2>&1 || true
+		elif command -v apk >/dev/null 2>&1; then
+			apk del luci-app-ai-link >/dev/null 2>&1 || true
+		fi
+		rm -f /etc/init.d/ai-link /etc/rc.d/*ai-link* /usr/bin/ai-link /etc/config/ai-link /lib/upgrade/keep.d/ai-link 2>/dev/null || true
+		rm -f /usr/share/luci/menu.d/luci-app-ai-link.json /usr/share/rpcd/acl.d/luci-app-ai-link.json 2>/dev/null || true
+		rm -rf /www/luci-static/resources/view/ai-link /usr/share/ai-link /var/run/ai-link /etc/ai-link /tmp/ai-link /tmp/ai-link-run /tmp/ai-link-cache /tmp/ai-link.log /tmp/ai-link-music.log /tmp/.ai-link* /var/log/ai-link.log /var/log/ai-link-music.log 2>/dev/null || true
+		echo "[AI-LINK] ✅ 卸载完成。"
+		exit 0
+		;;
+	status|*)
+		echo "=========================================================="
+		echo "  AI-LINK 智能透明代理与网络中枢 v1.0.0 (正式版)"
+		echo "=========================================================="
+		echo "  独立控制面板 : http://${LAN_IP}:${PANEL_PORT}"
+		echo "  面板管理密码 : ${PANEL_SECRET}"
+		echo "  当前核心版本 : ${CORE_VER} (模式: ${BUILD_MODE})"
+		echo "  核心配置文件 : /etc/ai-link/sing-box.json"
+		echo "  DNS 分流架构 : dnsmasq -> 127.0.0.1#7874 (TProxy :53 双栈防漏)"
+		echo "  节点预筛上限 : Top ${MAX_NODES} (ai-link max-nodes [N|all])"
+		echo "  宿主机缓存夹 : ${CACHE_DIR}"
+		echo "  快捷命令用法 : ai-link [status|probe|probe-now|check|max-nodes|import-cache|sync-sub|import-nodes|add-test-node|recover|restore|restart|uninstall]"
+		echo "=========================================================="
+		;;
+esac

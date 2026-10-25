@@ -1,0 +1,14 @@
+{
+	"admin/services/ai-link": {
+		"title": "AI-LINK 智能代理",
+		"order": 55,
+		"action": {
+			"type": "view",
+			"path": "ai-link/overview"
+		},
+		"depends": {
+			"acl": [ "luci-app-ai-link" ],
+			"uci": { "ai-link": true }
+		}
+	}
+}

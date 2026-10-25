@@ -1,0 +1,14 @@
+{
+  "name": "ai-link-official-site",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI-LINK v1.0.0 Official Website (Cloudflare Workers & Pages) + OpenWrt Plugin Repository",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy:workers": "wrangler deploy",
+    "deploy:pages": "wrangler pages deploy ./public --project-name=ai-link-official"
+  },
+  "devDependencies": {
+    "wrangler": "^3.80.0"
+  }
+}

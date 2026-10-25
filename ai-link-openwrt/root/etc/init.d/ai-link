@@ -1,0 +1,388 @@
+#!/bin/sh /etc/rc.common
+# Copyright (C) 2026 AI-LINK OpenWrt Architecture
+# Procd Service Script with nftables TProxy, Policy Routing & Fail-Safe Rollback
+
+START=99
+STOP=10
+USE_PROCD=1
+
+PROG_DAEMON="/usr/share/ai-link/ai-link-daemon.py"
+CONF_DIR="/etc/ai-link"
+RUN_DIR="/var/run/ai-link"
+FW_SCRIPT="/usr/share/ai-link/nftables/apply_nft.sh"
+TABLE_ID=162
+FWMARK=0x162
+
+setup_tun_and_routing() {
+	modprobe nft_tproxy 2>/dev/null || true
+	modprobe nft_socket 2>/dev/null || true
+	modprobe tun 2>/dev/null || true
+
+	sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1 || true
+	sysctl -w net.ipv6.conf.all.forwarding=1 >/dev/null 2>&1 || true
+	sysctl -w net.ipv6.conf.default.forwarding=1 >/dev/null 2>&1 || true
+	# Loose rp_filter & liberal TCP conntrack for single-armed side-router (br-lan) asymmetric path compatibility
+	sysctl -w net.ipv4.conf.all.rp_filter=2 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.conf.default.rp_filter=2 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.conf.br-lan.rp_filter=2 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.conf.all.send_redirects=0 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.conf.default.send_redirects=0 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.conf.br-lan.send_redirects=0 >/dev/null 2>&1 || true
+	mkdir -p "$RUN_DIR/sysctl_orig"
+	if [ ! -f "$RUN_DIR/sysctl_orig/be_liberal" ]; then
+		sysctl -n net.netfilter.nf_conntrack_tcp_be_liberal > "$RUN_DIR/sysctl_orig/be_liberal" 2>/dev/null || echo 0 > "$RUN_DIR/sysctl_orig/be_liberal"
+	fi
+	sysctl -w net.netfilter.nf_conntrack_tcp_be_liberal=1 >/dev/null 2>&1 || true
+
+	ip rule del fwmark $FWMARK table $TABLE_ID 2>/dev/null || true
+	ip route flush table $TABLE_ID 2>/dev/null || true
+	ip rule add fwmark $FWMARK table $TABLE_ID priority 162
+	ip route add local default dev lo table $TABLE_ID
+
+	local ipv6_proxy
+	config_load 'ai-link'
+	config_get_bool ipv6_proxy 'global' 'ipv6_proxy' '0'
+	ip -6 rule del fwmark $FWMARK table $TABLE_ID 2>/dev/null || true
+	ip -6 route flush table $TABLE_ID 2>/dev/null || true
+	if [ "$ipv6_proxy" -eq 1 ]; then
+		ip -6 rule add fwmark $FWMARK table $TABLE_ID priority 162 2>/dev/null || true
+		ip -6 route add local default dev lo table $TABLE_ID 2>/dev/null || true
+	fi
+}
+
+cleanup_routing_and_nft() {
+	nft delete table inet ai_link 2>/dev/null || true
+	nft delete table ip ai_link 2>/dev/null || true
+	while ip rule del fwmark $FWMARK table $TABLE_ID 2>/dev/null; do :; done
+	while ip -6 rule del fwmark $FWMARK table $TABLE_ID 2>/dev/null; do :; done
+	while ip rule del pref 8999 2>/dev/null; do :; done
+	while ip -6 rule del pref 8999 2>/dev/null; do :; done
+	ip route flush table $TABLE_ID 2>/dev/null || true
+	ip -6 route flush table $TABLE_ID 2>/dev/null || true
+	ip -6 route del fc00::/18 dev br-lan 2>/dev/null || ip -6 route del fc00::/18 2>/dev/null || true
+	if [ -f "$RUN_DIR/sysctl_orig/be_liberal" ]; then
+		sysctl -w net.netfilter.nf_conntrack_tcp_be_liberal="$(cat "$RUN_DIR/sysctl_orig/be_liberal")" >/dev/null 2>&1 || sysctl -w net.netfilter.nf_conntrack_tcp_be_liberal=0 >/dev/null 2>&1 || true
+	else
+		sysctl -w net.netfilter.nf_conntrack_tcp_be_liberal=0 >/dev/null 2>&1 || true
+	fi
+}
+
+cleanup_dnsmasq_upstream() {
+	local removed=0
+	for f in /tmp/dnsmasq.d/ai-link-adblock.conf /tmp/dnsmasq.cfg*/ai-link-adblock.conf /var/etc/dnsmasq.d/ai-link-adblock.conf; do
+		if [ -f "$f" ]; then
+			rm -f "$f" 2>/dev/null || true
+			removed=1
+		fi
+	done
+	if [ "$removed" -eq 1 ] && [ -x /etc/init.d/dnsmasq ]; then
+		/etc/init.d/dnsmasq restart >/dev/null 2>&1 || true
+	fi
+}
+
+stop_core_processes() {
+	for p in $(pidof sing-box 2>/dev/null); do
+		kill -TERM "$p" 2>/dev/null || true
+	done
+	local w=0
+	while [ $w -lt 3 ]; do
+		[ -z "$(pidof sing-box 2>/dev/null)" ] && break
+		sleep 1
+		w=$((w + 1))
+	done
+	for p in $(pidof sing-box 2>/dev/null); do
+		kill -KILL "$p" 2>/dev/null || true
+	done
+}
+
+mute_conflicting_services() {
+	local auto_mute
+	config_load 'ai-link'
+	config_get_bool auto_mute 'global' 'auto_mute_conflicts' '1'
+	[ "$auto_mute" -eq 0 ] && return 0
+
+	mkdir -p "$RUN_DIR"
+	for svc in homeproxy passwall passwall2 openclash nikki shadowsocksr v2ray_server; do
+		if [ -x "/etc/init.d/$svc" ]; then
+			if "/etc/init.d/$svc" running >/dev/null 2>&1 || pgrep -f "$svc" >/dev/null 2>&1; then
+				logger -t ai-link "Muting conflicting proxy service: $svc"
+				"/etc/init.d/$svc" stop >/dev/null 2>&1 || true
+				"/etc/init.d/$svc" disable >/dev/null 2>&1 || true
+				echo "$svc" >> "$RUN_DIR/muted_services.list"
+			fi
+		fi
+	done
+	for tbl in homeproxy fw4_homeproxy passwall passwall2 openclash nikki; do
+		nft delete table inet "$tbl" 2>/dev/null || true
+	done
+	for rule_prio in $(ip rule show | awk '/lookup (100|101|8194|utun)/{gsub(":","",$1); print $1}'); do
+		ip rule del priority "$rule_prio" 2>/dev/null || true
+	done
+	for rule6_prio in $(ip -6 rule show | awk '/lookup (100|101|8194|utun)/{gsub(":","",$1); print $1}'); do
+		ip -6 rule del priority "$rule6_prio" 2>/dev/null || true
+	done
+}
+
+wait_for_ports_And_apply_nft() {
+	local entry_bypass="$1"
+	local block_quic="$2"
+	local game_udp_direct="$3"
+	local ipv6_proxy="$4"
+	local unblock_enabled="0"
+	local unblock_port="5210"
+	local tproxy_port="$7"
+	local mixed_port="$8"
+	local panel_port="$9"
+
+	(
+		local waited=0
+		while [ $waited -lt 25 ]; do
+			if [ -f "$RUN_DIR/bypass" ] || [ -f "$RUN_DIR/recover_direct.flag" ]; then
+				logger -t ai-link "Direct bypass flag active; skipping nftables mount."
+				exit 0
+			fi
+			if ss -lntu 2>/dev/null | grep -q ":${tproxy_port:-7893} "; then
+				break
+			fi
+			sleep 1
+			waited=$((waited + 1))
+		done
+
+		if [ -f "$RUN_DIR/bypass" ] || [ -f "$RUN_DIR/recover_direct.flag" ]; then
+			exit 0
+		fi
+
+		if ! ss -lntu 2>/dev/null | grep -q ":${tproxy_port:-7893} "; then
+			logger -t ai-link "WARN: TProxy port :${tproxy_port:-7893} not listening after 25s! Skipping nftables mount to protect LAN internet."
+			exit 0
+		fi
+
+		sh "$FW_SCRIPT" \
+			--entry-bypass "$entry_bypass" \
+			--block-quic "$block_quic" \
+			--game-udp-direct "$game_udp_direct" \
+			--ipv6-proxy "$ipv6_proxy" \
+			--unblock-enabled "$unblock_enabled" \
+			--unblock-port "$unblock_port" \
+			--tproxy-port "$tproxy_port" \
+			--mixed-port "$mixed_port" \
+			--panel-port "$panel_port" \
+			--dns-port "7874"
+		logger -t ai-link "TProxy port :${tproxy_port:-7893} ready; nftables table inet ai_link mounted."
+	) &
+}
+
+start_service() {
+	config_load 'ai-link'
+	local enabled panel_port tproxy_port mixed_port
+	local entry_bypass block_quic game_udp_direct ipv6_proxy
+	config_get_bool enabled 'global' 'enabled' '1'
+	config_get panel_port 'global' 'panel_port' '9099'
+	config_get tproxy_port 'global' 'tproxy_port' '7893'
+	config_get mixed_port 'global' 'mixed_port' '7890'
+	config_get_bool entry_bypass 'global' 'entry_bypass' '1'
+	config_get_bool block_quic 'global' 'block_quic' '1'
+	config_get_bool game_udp_direct 'global' 'game_udp_direct' '1'
+	config_get_bool ipv6_proxy 'global' 'ipv6_proxy' '0'
+
+	mkdir -p "$CONF_DIR" "$CONF_DIR/rules" "$CONF_DIR/certs" "$RUN_DIR" /var/etc/ai-link
+
+	if [ "$enabled" -eq 1 ]; then
+		rm -f "$RUN_DIR/bypass" "$RUN_DIR/recover_direct.flag" /tmp/ai-link-run/bypass 2>/dev/null || true
+	else
+		date +%s > "$RUN_DIR/bypass" 2>/dev/null || true
+		touch "$RUN_DIR/recover_direct.flag" 2>/dev/null || true
+	fi
+
+	# Sync UCI options into ops_settings.json before launching daemon
+	if command -v python3 >/dev/null 2>&1 && [ -f "$PROG_DAEMON" ]; then
+		python3 -B "$PROG_DAEMON" --sync-uci >/dev/null 2>&1 || true
+	fi
+
+	# Always start the AI-LINK Standalone Web Dashboard & Probe Daemon on :9099
+	# so users can access the WebUI and LuCI control bar even when proxy is paused
+	if command -v python3 >/dev/null 2>&1 && [ -f "$PROG_DAEMON" ]; then
+		procd_open_instance "ai-link-daemon"
+		procd_set_param command python3 -B "$PROG_DAEMON" --daemon --port "$panel_port"
+		procd_set_param respawn 3600 5 5
+		procd_set_param stdout 1
+		procd_set_param stderr 1
+		procd_close_instance
+	fi
+
+	if [ "$enabled" -eq 0 ]; then
+		cleanup_routing_and_nft
+		stop_core_processes
+		cleanup_dnsmasq_upstream
+		logger -t ai-link "Transparent proxy is disabled in UCI (enabled=0); cleaned nftables & dnsmasq upstream, WebUI active on :$panel_port"
+		return 0
+	fi
+
+	mute_conflicting_services
+	stop_core_processes
+
+	if command -v python3 >/dev/null 2>&1 && [ -f "$PROG_DAEMON" ]; then
+		python3 -B "$PROG_DAEMON" --generate-configs >/dev/null 2>&1 || true
+	fi
+	ln -sf "$CONF_DIR/sing-box.json" /var/etc/ai-link/sing-box.json 2>/dev/null || true
+
+	setup_tun_and_routing
+
+	if command -v sing-box >/dev/null 2>&1; then
+		procd_open_instance "ai-link-core"
+		procd_set_param command /usr/bin/sing-box run -c "$CONF_DIR/sing-box.json" -D "$CONF_DIR"
+		procd_set_param respawn 3600 5 5
+		procd_set_param limits nofile="65535 65535"
+		procd_set_param stdout 1
+		procd_set_param stderr 1
+		procd_close_instance
+	else
+		logger -t ai-link "WARN: sing-box binary not found; running in control-plane diagnostic mode."
+		cleanup_dnsmasq_upstream
+	fi
+
+	if [ -f "$FW_SCRIPT" ]; then
+		wait_for_ports_And_apply_nft \
+			"$entry_bypass" "$block_quic" "$game_udp_direct" "$ipv6_proxy" \
+			"0" "5210" "$tproxy_port" "$mixed_port" "$panel_port"
+	fi
+}
+
+stop_service() {
+	cleanup_routing_and_nft
+	stop_core_processes
+	cleanup_dnsmasq_upstream
+	logger -t ai-link "Stopped AI-LINK and rolled back nftables, policy routing, and dnsmasq upstream."
+}
+
+reload_service() {
+	config_load 'ai-link'
+	local enabled panel_port tproxy_port mixed_port
+	local entry_bypass block_quic game_udp_direct ipv6_proxy
+	config_get_bool enabled 'global' 'enabled' '1'
+	config_get panel_port 'global' 'panel_port' '9099'
+	config_get tproxy_port 'global' 'tproxy_port' '7893'
+	config_get mixed_port 'global' 'mixed_port' '7890'
+	config_get_bool entry_bypass 'global' 'entry_bypass' '1'
+	config_get_bool block_quic 'global' 'block_quic' '1'
+	config_get_bool game_udp_direct 'global' 'game_udp_direct' '1'
+	config_get_bool ipv6_proxy 'global' 'ipv6_proxy' '0'
+
+	mkdir -p "$RUN_DIR"
+	if [ "$enabled" -eq 0 ]; then
+		date +%s > "$RUN_DIR/bypass" 2>/dev/null || true
+		touch "$RUN_DIR/recover_direct.flag" 2>/dev/null || true
+		if command -v python3 >/dev/null 2>&1 && [ -f "$PROG_DAEMON" ]; then
+			python3 -B "$PROG_DAEMON" --sync-uci >/dev/null 2>&1 || true
+		fi
+		cleanup_routing_and_nft
+		stop_core_processes
+		cleanup_dnsmasq_upstream
+		logger -t ai-link "Reloaded with enabled=0: transparent proxy paused, nftables & dnsmasq upstream cleaned."
+		return 0
+	fi
+
+	rm -f "$RUN_DIR/bypass" "$RUN_DIR/recover_direct.flag" /tmp/ai-link-run/bypass 2>/dev/null || true
+	if command -v python3 >/dev/null 2>&1 && [ -f "$PROG_DAEMON" ]; then
+		python3 -B "$PROG_DAEMON" --sync-uci >/dev/null 2>&1 || true
+		python3 -B "$PROG_DAEMON" --generate-configs >/dev/null 2>&1 || true
+		python3 -B "$PROG_DAEMON" --hot-reload >/dev/null 2>&1 || true
+	fi
+
+	# If sing-box was stopped when enabled was 0, start the service cleanly so sing-box spawns
+	if ! pgrep -x sing-box >/dev/null 2>&1; then
+		start
+		return 0
+	fi
+
+	setup_tun_and_routing
+	if [ -f "$FW_SCRIPT" ]; then
+		sh "$FW_SCRIPT" \
+			--entry-bypass "$entry_bypass" \
+			--block-quic "$block_quic" \
+			--game-udp-direct "$game_udp_direct" \
+			--ipv6-proxy "$ipv6_proxy" \
+			--unblock-enabled "0" \
+			--unblock-port "5210" \
+			--tproxy-port "$tproxy_port" \
+			--mixed-port "$mixed_port" \
+			--panel-port "$panel_port" \
+			--dns-port "7874"
+	fi
+}
+
+service_triggers() {
+	procd_add_reload_trigger "ai-link"
+}
+
+EXTRA_COMMANDS="status_check recover_direct restore_proxy"
+EXTRA_HELP="	status_check	Verify nftables table, policy route and daemon ports
+	recover_direct	Emergency bypass: remove nftables rules, clean dnsmasq upstream, and restore direct internet immediately
+	restore_proxy	Exit emergency bypass and re-mount nftables rules + dnsmasq upstream"
+
+recover_direct() {
+	mkdir -p "$RUN_DIR" /tmp/ai-link-run
+	date +%s > "$RUN_DIR/bypass"
+	date +%s > "/tmp/ai-link-run/bypass"
+	touch "$RUN_DIR/recover_direct.flag"
+	uci set ai-link.global.enabled='0' 2>/dev/null || true
+	uci commit ai-link 2>/dev/null || true
+	if command -v python3 >/dev/null 2>&1 && [ -f "$PROG_DAEMON" ]; then
+		python3 -B "$PROG_DAEMON" --sync-uci >/dev/null 2>&1 || true
+	fi
+	cleanup_routing_and_nft
+	cleanup_dnsmasq_upstream
+	echo "AI-LINK: Direct internet recovered (nftables table inet ai_link & dnsmasq upstream removed, UCI enabled=0 synced)."
+}
+
+restore_proxy() {
+	rm -f "$RUN_DIR/bypass" "$RUN_DIR/recover_direct.flag" "/tmp/ai-link-run/bypass" 2>/dev/null || true
+	uci set ai-link.global.enabled='1' 2>/dev/null || true
+	uci commit ai-link 2>/dev/null || true
+	if command -v python3 >/dev/null 2>&1 && [ -f "$PROG_DAEMON" ]; then
+		python3 -B "$PROG_DAEMON" --sync-uci >/dev/null 2>&1 || true
+		python3 -B "$PROG_DAEMON" --generate-configs >/dev/null 2>&1 || true
+	fi
+	if ! pgrep -x sing-box >/dev/null 2>&1; then
+		start
+		echo "AI-LINK: Proxy service started and nftables rules + dnsmasq upstream restored."
+		return 0
+	fi
+	setup_tun_and_routing
+	if [ -f "$FW_SCRIPT" ]; then
+		config_load 'ai-link'
+		local panel_port tproxy_port mixed_port
+		local entry_bypass block_quic game_udp_direct ipv6_proxy
+		config_get panel_port 'global' 'panel_port' '9099'
+		config_get tproxy_port 'global' 'tproxy_port' '7893'
+		config_get mixed_port 'global' 'mixed_port' '7890'
+		config_get_bool entry_bypass 'global' 'entry_bypass' '1'
+		config_get_bool block_quic 'global' 'block_quic' '1'
+		config_get_bool game_udp_direct 'global' 'game_udp_direct' '1'
+		config_get_bool ipv6_proxy 'global' 'ipv6_proxy' '0'
+		sh "$FW_SCRIPT" \
+			--entry-bypass "$entry_bypass" \
+			--block-quic "$block_quic" \
+			--game-udp-direct "$game_udp_direct" \
+			--ipv6-proxy "$ipv6_proxy" \
+			--unblock-enabled "0" \
+			--unblock-port "5210" \
+			--tproxy-port "$tproxy_port" \
+			--mixed-port "$mixed_port" \
+			--panel-port "$panel_port" \
+			--dns-port "7874"
+	fi
+	echo "AI-LINK: Transparent proxy nftables rules & dnsmasq upstream restored."
+}
+
+status_check() {
+	echo "=== AI-LINK Service Status ==="
+	echo "Core: $(pgrep -a sing-box || echo 'stopped')"
+	echo "Daemon: $(pgrep -af ai-link-daemon.py || echo 'stopped')"
+	echo "Bypass Flag: $([ -f "$RUN_DIR/bypass" ] && echo 'ACTIVE (Direct Mode)' || echo 'off')"
+	echo "=== Policy Routing (table $TABLE_ID) ==="
+	ip rule show | grep "$TABLE_ID" || echo "No IPv4 rule"
+	ip -6 rule show | grep "$TABLE_ID" || echo "No IPv6 rule (expected when ipv6_proxy=0)"
+	echo "=== nftables Table ==="
+	nft list table inet ai_link 2>/dev/null | head -n 35 || echo "Table inet ai_link not loaded"
+}

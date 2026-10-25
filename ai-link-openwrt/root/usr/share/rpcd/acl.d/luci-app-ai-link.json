@@ -1,0 +1,65 @@
+{
+  "luci-app-ai-link": {
+    "description": "Grant UCI and RPC access for luci-app-ai-link",
+    "read": {
+      "uci": [
+        "ai-link"
+      ],
+      "ubus": {
+        "file": [
+          "exec",
+          "read",
+          "stat"
+        ]
+      },
+      "file": {
+        "/usr/share/ai-link/*": [
+          "read",
+          "exec"
+        ],
+        "/etc/init.d/ai-link": [
+          "exec"
+        ],
+        "/usr/bin/ai-link": [
+          "exec"
+        ],
+        "/usr/bin/curl": [
+          "exec"
+        ],
+        "/var/log/ai-link.log": [
+          "read"
+        ],
+        "/etc/ai-link/panel_token": [
+          "read"
+        ],
+        "/etc/ai-link/*": [
+          "read"
+        ]
+      }
+    },
+    "write": {
+      "uci": [
+        "ai-link"
+      ],
+      "ubus": {
+        "file": [
+          "exec"
+        ]
+      },
+      "file": {
+        "/etc/init.d/ai-link": [
+          "exec"
+        ],
+        "/usr/bin/ai-link": [
+          "exec"
+        ],
+        "/usr/bin/curl": [
+          "exec"
+        ],
+        "/usr/share/ai-link/*": [
+          "exec"
+        ]
+      }
+    }
+  }
+}

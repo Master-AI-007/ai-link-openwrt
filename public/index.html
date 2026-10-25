@@ -1,0 +1,1264 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark scroll-smooth">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI-LINK v1.0.0 官方网站 — OpenWrt 下一代永不断连智能透明代理与回家中枢</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+    :root {
+      color-scheme: dark;
+    }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+      background-color: #050814;
+      color: #e2e8f0;
+      overflow-x: hidden;
+    }
+    code, pre, .font-mono {
+      font-family: 'JetBrains Mono', Consolas, monospace;
+    }
+    .aurora-bg {
+      background:
+        radial-gradient(circle at 15% 10%, rgba(56, 189, 248, 0.14), transparent 38%),
+        radial-gradient(circle at 85% 15%, rgba(139, 92, 246, 0.15), transparent 40%),
+        radial-gradient(circle at 50% 60%, rgba(16, 185, 129, 0.08), transparent 45%),
+        #050814;
+    }
+    .glass-card {
+      background: rgba(15, 23, 42, 0.78);
+      border: 1px solid rgba(148, 163, 184, 0.16);
+      box-shadow: 0 20px 50px rgba(2, 6, 23, 0.65);
+      backdrop-filter: blur(16px);
+    }
+    .glass-subcard {
+      background: rgba(30, 41, 59, 0.55);
+      border: 1px solid rgba(148, 163, 184, 0.14);
+    }
+    .glow-border-cyan {
+      border-color: rgba(56, 189, 248, 0.45);
+      box-shadow: 0 0 28px rgba(56, 189, 248, 0.15);
+    }
+    .glow-border-emerald {
+      border-color: rgba(16, 185, 129, 0.45);
+      box-shadow: 0 0 28px rgba(16, 185, 129, 0.15);
+    }
+    .tab-active {
+      background: linear-gradient(135deg, rgba(14, 165, 233, 0.28), rgba(139, 92, 246, 0.28));
+      border-color: rgba(56, 189, 248, 0.6) !important;
+      color: #ffffff !important;
+      box-shadow: 0 8px 24px rgba(14, 165, 233, 0.22);
+    }
+    .sim-node-pill {
+      transition: all 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+  </style>
+</head>
+<body class="aurora-bg min-h-screen selection:bg-cyan-500/30 selection:text-cyan-200">
+
+  <!-- Top Sticky Navigation -->
+  <header class="sticky top-0 z-50 border-b border-slate-800/80 bg-slate-950/85 backdrop-blur-xl">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-600 via-indigo-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-cyan-500/20 font-extrabold text-white text-lg">
+          A
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="font-extrabold text-white tracking-tight text-base sm:text-lg">AI-LINK</span>
+            <span class="px-2 py-0.5 text-[11px] font-mono font-semibold rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">v1.0.0 正式封版</span>
+          </div>
+          <p class="text-[11px] text-slate-400 hidden sm:block">OpenWrt fw4 · nftables · sing-box 1.12+ 智能透明代理与异地回家中枢</p>
+        </div>
+      </div>
+
+      <nav class="hidden xl:flex items-center gap-1 text-xs font-medium text-slate-300">
+        <a href="#sec-overview" class="px-3 py-1.5 rounded-lg hover:bg-slate-800/70 hover:text-white transition">项目概述</a>
+        <a href="#sec-always-on" class="px-3 py-1.5 rounded-lg bg-cyan-500/10 text-cyan-300 border border-cyan-500/25 hover:bg-cyan-500/20 transition font-semibold">⚡ 节点永不断连专题</a>
+        <a href="#sec-topology" class="px-3 py-1.5 rounded-lg hover:bg-slate-800/70 hover:text-white transition">环境与旁路拓扑</a>
+        <a href="#sec-compare" class="px-3 py-1.5 rounded-lg hover:bg-slate-800/70 hover:text-white transition">对比与八大独创</a>
+        <a href="#sec-ui-tour" class="px-3 py-1.5 rounded-lg hover:bg-slate-800/70 hover:text-white transition">七大界面图文详解</a>
+        <a href="#sec-install" class="px-3 py-1.5 rounded-lg hover:bg-slate-800/70 hover:text-white transition">安装与开发者手册</a>
+        <a href="#sec-deploy" class="px-3 py-1.5 rounded-lg hover:bg-slate-800/70 hover:text-white transition">Cloudflare &amp; GitHub</a>
+        <a href="#sec-faq" class="px-3 py-1.5 rounded-lg hover:bg-slate-800/70 hover:text-white transition">FAQ</a>
+      </nav>
+
+      <div class="flex items-center gap-2">
+        <button id="btn-open-quick-install" type="button" class="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-cyan-500/20 transition">
+          🚀 一键安装指令
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Toast Notification -->
+  <div id="site-toast" class="fixed bottom-6 right-6 z-50 hidden px-4 py-3 rounded-xl bg-slate-900/95 border border-cyan-400/50 text-cyan-200 text-xs font-medium shadow-2xl flex items-center gap-2">
+    <span>✅</span>
+    <span id="site-toast-text">已复制到剪贴板</span>
+  </div>
+
+  <!-- Main Content -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-20">
+
+    <!-- ==================== HERO SECTION ==================== -->
+    <section id="sec-overview" class="pt-4">
+      <div class="text-center max-w-4xl mx-auto space-y-5">
+        <div class="inline-flex flex-wrap items-center justify-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900/90 border border-slate-700/80 text-xs text-slate-300">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span>专为 OpenWrt 23.05 / 24.10 (fw4 + nftables) 打造</span>
+          <span class="text-slate-600">|</span>
+          <span class="text-cyan-300 font-semibold">稳定压倒一切 · 默认不断不切</span>
+          <span class="text-slate-600">|</span>
+          <span class="text-amber-300 font-semibold">17/17 备份一致 &amp; 0 残留认证</span>
+        </div>
+
+        <h1 class="text-3xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-white leading-tight">
+          告别频繁跳点断流与旁路卡死<br />
+          <span class="bg-gradient-to-r from-cyan-400 via-sky-300 to-violet-400 bg-clip-text text-transparent">
+            真正“节点永不断连”的智能网关
+          </span>
+        </h1>
+
+        <p class="text-sm sm:text-base text-slate-300 leading-relaxed max-w-3xl mx-auto">
+          <strong>AI-LINK (<code>ai-link-openwrt</code>) v1.0.0 正式版</strong> 将高性能 <code>sing-box 1.12+/1.14+</code> 内核、<strong>独创 1~5 组瀑布流自动节点池与粘性状态锁</strong>、<strong>内核态 <code>nftables</code> 硬件级国内零损耗直连（自动挂载单臂旁路对称 NAT 防断网）</strong>、<strong>多协议免证书回家服务（HomeLink）</strong> 以及 <strong>全息 3D 星图与深空引力黑洞可视引擎</strong> 融为一体。小白三分钟开箱即用，开发者全链路可观测。
+        </p>
+
+        <!-- Quick Command Bar -->
+        <div class="max-w-2xl mx-auto glass-card rounded-2xl p-3 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 border border-cyan-500/30">
+          <div class="flex items-center gap-2.5 px-2 text-left overflow-x-auto">
+            <span class="text-cyan-400 font-mono text-xs select-none">$</span>
+            <code id="hero-install-cmd" class="text-xs text-slate-200 whitespace-nowrap">cd /tmp &amp;&amp; tar -xzf AI-LINK-v1.0.0-正式版.tar.gz &amp;&amp; cd ai-link-openwrt &amp;&amp; ./install.sh</code>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <button type="button" data-copy-target="hero-install-cmd" class="btn-copy px-3.5 py-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/40 text-cyan-200 text-xs font-semibold transition">
+              📋 复制安装命令
+            </button>
+            <a href="#sec-always-on" class="px-3.5 py-2 rounded-xl bg-violet-600/80 hover:bg-violet-500 text-white text-xs font-semibold transition text-center">
+              🔬 体验不断连沙盘
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hero 3D Preview Card -->
+      <div class="mt-10 glass-card rounded-3xl p-3 sm:p-5 border border-slate-700/70">
+        <div class="flex flex-wrap items-center justify-between gap-2 pb-3 px-2 border-b border-slate-800/80 mb-3 text-xs">
+          <div class="flex items-center gap-2">
+            <span class="w-3 h-3 rounded-full bg-rose-500/80"></span>
+            <span class="w-3 h-3 rounded-full bg-amber-500/80"></span>
+            <span class="w-3 h-3 rounded-full bg-emerald-500/80"></span>
+            <span class="ml-2 font-mono text-slate-400">http://192.168.1.2:9099 — AI-LINK v1.0.0 全息 3D 星图与深空引力黑洞</span>
+          </div>
+          <span class="text-cyan-300 font-medium">✨ 实机 1440×940 渲染截图 · 点击下方“七大界面图文详解”可切换全部 7 个模块</span>
+        </div>
+        <img src="./assets/ui_topology.webp" alt="AI-LINK v1.0.0 3D 星图实机截图" class="w-full h-auto rounded-2xl border border-slate-800" />
+      </div>
+
+      <!-- 4 Core Engineering Pillars -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-8">
+        <div class="glass-card rounded-2xl p-5 border-t-2 border-t-cyan-400">
+          <div class="text-cyan-400 text-xs font-bold uppercase tracking-wider mb-1">准则一 · Always-On</div>
+          <h3 class="text-base font-bold text-white mb-2">🛡️ 节点永不断连（默认不断不切）</h3>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            独创 1~5 组优先级自动池 + 粘性状态锁。只要当前工作节点健康，哪怕其他节点快 50ms 也绝不跳点断流；真故障时从双组热备池 &lt;10ms 内存态秒切。
+          </p>
+        </div>
+        <div class="glass-card rounded-2xl p-5 border-t-2 border-t-emerald-400">
+          <div class="text-emerald-400 text-xs font-bold uppercase tracking-wider mb-1">准则二 · Hardware Bypass</div>
+          <h3 class="text-base font-bold text-white mb-2">🚀 国内硬件级直连 &amp; 旁路防断网</h3>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            大陆 IP (<code>@cn_ip4/@cn_ip6</code>) 在 <code>nftables</code> 层直接放行不进内核；自动挂载同网段 <code>srcnat masquerade</code> + <code>be_liberal=1</code> 根治单臂旁路断流。
+          </p>
+        </div>
+        <div class="glass-card rounded-2xl p-5 border-t-2 border-t-violet-400">
+          <div class="text-violet-400 text-xs font-bold uppercase tracking-wider mb-1">准则三 · HomeLink VPN</div>
+          <h3 class="text-base font-bold text-white mb-2">🏠 免证书回家与科学上网合一</h3>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            内置一键创建 <code>VLESS-Reality</code> 与 <code>Hysteria2</code>（自动绑定 <code>pinSHA256</code> 指纹）回家节点，支持单节点独立三模式权限隔离与实时会话监控。
+          </p>
+        </div>
+        <div class="glass-card rounded-2xl p-5 border-t-2 border-t-amber-400">
+          <div class="text-amber-400 text-xs font-bold uppercase tracking-wider mb-1">准则四 · Zero Residue</div>
+          <h3 class="text-base font-bold text-white mb-2">♻️ 17/17 无损备份与零残留卸载</h3>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            全状态字节级快照备份（含 PBKDF2 密码哈希），恢复出厂后再恢复 17/17 项 MD5 100% 一致；停止/卸载对称回收全部路由与内核参数，0 残留。
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== CORE SPECIAL: ALWAYS-ON AUTO NODE POOL & SHUNT CARDS ==================== -->
+    <section id="sec-always-on" class="scroll-mt-20 space-y-8">
+      <div class="border-l-4 border-cyan-400 pl-4">
+        <span class="text-xs font-bold uppercase tracking-widest text-cyan-400">CORE ARCHITECTURE DEEP DIVE · 核心专题</span>
+        <h2 class="text-2xl sm:text-3xl font-extrabold text-white mt-1">
+          自动节点池与自动分流卡片 —— “节点永不断连”的底层逻辑、实现与用法
+        </h2>
+        <p class="text-sm text-slate-300 mt-1">
+          彻底剖析传统插件为什么频繁断流卡死，以及 AI-LINK 如何通过五重状态机与 1~5 组瀑布流节点池实现真正的“永不断连”。
+        </p>
+      </div>
+
+      <!-- 5 Traditional Pain Points vs AI-LINK Solutions -->
+      <div class="glass-card rounded-3xl p-6 space-y-5">
+        <h3 class="text-lg font-bold text-white flex items-center gap-2">
+          <span>🔥</span>
+          <span>4.1 为什么传统代理插件总是“断连、卡死、跳点”？（五大顽疾 vs. AI-LINK 根治方案）</span>
+        </h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div class="glass-subcard rounded-2xl p-4 space-y-2 border-l-4 border-l-rose-500">
+            <div class="text-xs font-bold text-rose-300">麻烦 1：传统 url-test“唯延迟论”乒乓跳点</div>
+            <p class="text-xs text-slate-300 leading-relaxed">
+              <strong>传统痛点</strong>：每隔 180 秒测一次，节点 B 比当前节点 A 快 5ms 就立即切换。公网出口 IP 突变导致 <strong>ChatGPT 报错 <code>network error</code>、Claude 封号掉登录、SSH 断线、网游瞬移掉线</strong>。
+            </p>
+            <p class="text-xs text-emerald-300 leading-relaxed pt-1 border-t border-slate-700/60">
+              <strong>✅ AI-LINK 解法</strong>：<code>evaluate_single_auto_node()</code> 默认启用<strong>粘性状态锁（🔒不断不切）</strong>——只要当前节点 <code>state=="ok"</code> 且 CDN 握手正常，哪怕别的节点快 50ms 也 100% 锁定原节点绝不跳点！
+            </p>
+          </div>
+
+          <div class="glass-subcard rounded-2xl p-4 space-y-2 border-l-4 border-l-amber-500">
+            <div class="text-xs font-bold text-amber-300">麻烦 2：“假活节点（TCP 通但无吞吐/403）”黑洞</div>
+            <p class="text-xs text-slate-300 leading-relaxed">
+              <strong>传统痛点</strong>：机场中转机存活但落地机欠费、被目标站返回 403、或拉取 Google CDN (<code>dl.google.com</code>) 时 TLS 卡死。传统测速看它秒回错误包误以为延迟极低切进去，结果全屋转圈。
+            </p>
+            <p class="text-xs text-emerald-300 leading-relaxed pt-1 border-t border-slate-700/60">
+              <strong>✅ AI-LINK 解法</strong>：<strong>L4+L7 HTTP 204 真活检验 + Google CDN 双目标验证 + OpenAI/Netflix 业务指纹校验</strong>，把“有响应无正文”的半死节点 100% 拒之门外。
+            </p>
+          </div>
+
+          <div class="glass-subcard rounded-2xl p-4 space-y-2 border-l-4 border-l-orange-500">
+            <div class="text-xs font-bold text-orange-300">麻烦 3：单次偶发丢包引发“误杀雪崩”</div>
+            <p class="text-xs text-slate-300 leading-relaxed">
+              <strong>传统痛点</strong>：跨国链路偶发 1 个 UDP/TCP 包超时完全正常，传统插件单次超时立刻判死切换，反而从优质专线切到了劣质备选线。
+            </p>
+            <p class="text-xs text-emerald-300 leading-relaxed pt-1 border-t border-slate-700/60">
+              <strong>✅ AI-LINK 解法</strong>：<code>_verify_node_cdn_dual_target()</code> 同时检测 <code>dl.google.com (200)</code> 与 <code>play.google.com (204)</code>，<strong>必须双目标同时失败且连续 2 次（<code>fail_streak &gt;= 2</code>）才判死</strong>，零误杀！
+            </p>
+          </div>
+
+          <div class="glass-subcard rounded-2xl p-4 space-y-2 border-l-4 border-l-purple-500">
+            <div class="text-xs font-bold text-purple-300">麻烦 4：全量测速风暴耗光流量与触发风控</div>
+            <p class="text-xs text-slate-300 leading-relaxed">
+              <strong>传统痛点</strong>：对订阅内 300~800 个节点周期性全量并发测速，每天白跑数 GB 流量，还常被机场判定为爬虫滥用封停订阅。
+            </p>
+            <p class="text-xs text-emerald-300 leading-relaxed pt-1 border-t border-slate-700/60">
+              <strong>✅ AI-LINK 解法</strong>：独创<strong>双组去重省流探测</strong>——后台仅探测<strong>“当前工作组 ∪ 组1主力组”</strong>（同名节点去重只测1次），池外数百节点休眠零流量，省流 75% 以上！
+            </p>
+          </div>
+
+          <div class="glass-subcard rounded-2xl p-4 space-y-2 border-l-4 border-l-pink-500">
+            <div class="text-xs font-bold text-pink-300">麻烦 5：绑定单节点挂掉后“死节点粘滞”</div>
+            <p class="text-xs text-slate-300 leading-relaxed">
+              <strong>传统痛点</strong>：把自定义分流组绑定到某个具体节点或国家后，一旦该节点挂掉（<code>ERR</code>），传统插件一直死守坏节点直到人工进后台改配置。
+            </p>
+            <p class="text-xs text-emerald-300 leading-relaxed pt-1 border-t border-slate-700/60">
+              <strong>✅ AI-LINK 解法</strong>：无论分流卡片绑的是自动池、国家优选还是<strong>固定单节点</strong>，20s 看门狗一旦发现原出口死掉，立即自动热切至同地区最快 <code>ok</code> 节点并标注 <code>⚡原出口不可用·已自动重选</code>。
+            </p>
+          </div>
+
+          <div class="glass-subcard rounded-2xl p-4 space-y-2 border-l-4 border-l-sky-500">
+            <div class="text-xs font-bold text-sky-300">麻烦 6：“地区随机/轮询”节点混入专线池</div>
+            <p class="text-xs text-slate-300 leading-relaxed">
+              <strong>传统痛点</strong>：机场常带“⚡高速自动/地区随机”节点，被选入固定地区池后每次新建连接出口国家都在乱跳。
+            </p>
+            <p class="text-xs text-emerald-300 leading-relaxed pt-1 border-t border-slate-700/60">
+              <strong>✅ AI-LINK 解法</strong>：<code>_is_random_region_node()</code> 自动赋予 <code>1.28x</code> 延迟折算系数（28% 容差优先固定地区专线），并自动从节点库提权健康专线节点入池自愈！
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Interactive Simulator: 5-Layer Always-On State Machine -->
+      <div class="glass-card rounded-3xl p-6 border border-cyan-500/35 space-y-6">
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+          <div>
+            <div class="inline-flex items-center gap-2 text-xs font-bold text-cyan-300 mb-1">
+              <span class="px-2 py-0.5 rounded bg-cyan-500/20 border border-cyan-400/40">INTERACTIVE SANDBOX</span>
+              <span>4.2 交互式演练沙盘：亲手测试 AI-LINK “节点永不断连” 五重状态机</span>
+            </div>
+            <h3 class="text-lg sm:text-xl font-bold text-white">点击下方场景按钮，观察自动节点池如何应对延迟波动、偶发丢包、节点故障与主力机房恢复</h3>
+          </div>
+          <button id="btn-sim-reset" type="button" class="self-start lg:self-auto px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-600 transition">
+            🔄 复位初始健康状态
+          </button>
+        </div>
+
+        <!-- Simulator Action Buttons -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
+          <button type="button" data-sim="jitter" class="sim-action-btn p-3 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700 text-left transition">
+            <div class="text-xs font-bold text-cyan-300">① 模拟备选节点更快</div>
+            <div class="text-[11px] text-slate-400 mt-0.5">US-IEPL-02 延迟降至 18ms（比当前节点快 24ms）</div>
+          </button>
+          <button type="button" data-sim="single_loss" class="sim-action-btn p-3 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700 text-left transition">
+            <div class="text-xs font-bold text-amber-300">② 模拟单次偶发丢包</div>
+            <div class="text-[11px] text-slate-400 mt-0.5">当前节点单探针超时 1 次（fail_streak = 1）</div>
+          </button>
+          <button type="button" data-sim="node_dead" class="sim-action-btn p-3 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700 text-left transition">
+            <div class="text-xs font-bold text-rose-300">③ 模拟当前节点真挂</div>
+            <div class="text-[11px] text-slate-400 mt-0.5">US-IEPL-01 连续 2 次双目标失败确认 Dead</div>
+          </button>
+          <button type="button" data-sim="group1_dead" class="sim-action-btn p-3 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700 text-left transition">
+            <div class="text-xs font-bold text-orange-300">④ 模拟组1机房全挂</div>
+            <div class="text-[11px] text-slate-400 mt-0.5">组1全部不可达，触发瀑布流顺延至组2</div>
+          </button>
+          <button type="button" data-sim="group1_recover" class="sim-action-btn p-3 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700 text-left transition">
+            <div class="text-xs font-bold text-emerald-300">⑤ 模拟组1恢复健康</div>
+            <div class="text-[11px] text-slate-400 mt-0.5">点第 1 次进入观察态，连续点第 2 次平滑回切！</div>
+          </button>
+        </div>
+
+        <!-- Simulator Live State Display -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+          <!-- Left: Pool Visual State -->
+          <div class="lg:col-span-7 glass-subcard rounded-2xl p-4 space-y-4 flex flex-col justify-between">
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-700/70 pb-3">
+              <div class="flex items-center gap-2">
+                <span class="text-sm font-bold text-white">🤖 自动节点池：AI 专属永不掉线池</span>
+                <span class="px-2 py-0.5 text-[11px] rounded-full bg-violet-500/20 text-violet-200 border border-violet-400/30">🔒 默认不断不切</span>
+              </div>
+              <div class="flex items-center gap-2 text-xs">
+                <span class="text-slate-400">当前生效出口：</span>
+                <span id="sim-active-egress" class="px-2.5 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 font-mono font-bold">US-IEPL-01 (42ms)</span>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <!-- Group 1 Box -->
+              <div id="sim-grp1-box" class="rounded-xl p-3 bg-slate-900/90 border-2 border-cyan-500/50 space-y-2">
+                <div class="flex items-center justify-between text-xs">
+                  <span class="font-bold text-cyan-300">组1 · 主力组 (美国原生 IEPL)</span>
+                  <span id="sim-grp1-badge" class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">● 当前工作组 · 双组探测中</span>
+                </div>
+                <div id="sim-node-us1" class="sim-node-pill p-2 rounded-lg bg-emerald-500/15 border border-emerald-400/50 flex items-center justify-between text-xs">
+                  <span>🎯 <strong>US-IEPL-01</strong> <span class="text-[10px] text-emerald-300">(当前锁定)</span></span>
+                  <span class="font-mono text-emerald-300">42ms · S级(98分)</span>
+                </div>
+                <div id="sim-node-us2" class="sim-node-pill p-2 rounded-lg bg-slate-800/80 border border-slate-700 flex items-center justify-between text-xs">
+                  <span>⚡ <strong>US-IEPL-02</strong> <span class="text-[10px] text-slate-400">(热备待命)</span></span>
+                  <span class="font-mono text-cyan-300">48ms · S级(96分)</span>
+                </div>
+              </div>
+
+              <!-- Group 2 Box -->
+              <div id="sim-grp2-box" class="rounded-xl p-3 bg-slate-900/75 border border-slate-700/80 space-y-2">
+                <div class="flex items-center justify-between text-xs">
+                  <span class="font-bold text-slate-300">组2 · 备选1 (新加坡/日本原生)</span>
+                  <span id="sim-grp2-badge" class="px-2 py-0.5 rounded bg-slate-800 text-slate-400 text-[10px] font-semibold">⏸ 待命省流 (0探测流量)</span>
+                </div>
+                <div id="sim-node-sg1" class="sim-node-pill p-2 rounded-lg bg-slate-800/80 border border-slate-700 flex items-center justify-between text-xs">
+                  <span>🇸🇬 <strong>SG-CN2-GIA-01</strong></span>
+                  <span class="font-mono text-slate-300">35ms · S级(95分)</span>
+                </div>
+                <div id="sim-node-jp1" class="sim-node-pill p-2 rounded-lg bg-slate-800/80 border border-slate-700 flex items-center justify-between text-xs">
+                  <span>🇯🇵 <strong>JP-Tokyo-IIJ-01</strong></span>
+                  <span class="font-mono text-slate-300">46ms · A级(92分)</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800 text-[11px] text-slate-300">
+              <span>长连接状态：<strong id="sim-conn-status" class="text-emerald-300">✅ ChatGPT / SSH / 游戏长连接 100% 保持不断线</strong></span>
+              <span>主力组回切计数 (<code class="text-cyan-300">primary_recover_streak</code>)：<strong id="sim-streak-val" class="font-mono text-amber-300">0 / 2</strong></span>
+            </div>
+          </div>
+
+          <!-- Right: Decision Engine Code & Explanation -->
+          <div class="lg:col-span-5 glass-subcard rounded-2xl p-4 flex flex-col justify-between space-y-3">
+            <div>
+              <div class="text-xs font-bold text-cyan-300 uppercase tracking-wider mb-1">守护进程状态机实时决策解析 (ai-link-daemon.py)</div>
+              <div id="sim-decision-title" class="text-sm font-bold text-white mb-2">
+                当前状态：组 1 主力节点 US-IEPL-01 粘性锁定中
+              </div>
+              <p id="sim-decision-desc" class="text-xs text-slate-300 leading-relaxed">
+                系统正在使用组 1 的 <code>US-IEPL-01 (42ms)</code>。后台双组探测器仅探测组 1（因为当前工作组就是组 1），组 2 完全休眠不耗机场流量。只要 <code>US-IEPL-01</code> 保持 <code>ok</code>，绝不主动切换出口。
+              </p>
+            </div>
+            <pre id="sim-code-trace" class="text-[11px] bg-slate-950/95 border border-slate-800 rounded-xl p-3 text-cyan-200 overflow-x-auto leading-relaxed"><code># evaluate_single_auto_node() 决策路径：
+smart_en = False  # 默认 🔒不断不切
+cur_in_group = "US-IEPL-01" (state="ok", cdn_tls_ok=True)
+chosen = cur_in_group  # 100% 粘性锁定原节点，零跳点！</code></pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4.3 Golden Pool Templates & 4.4 Shunt Card Usage -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div class="lg:col-span-7 glass-card rounded-3xl p-6 space-y-4">
+          <h3 class="text-base sm:text-lg font-bold text-white">4.3 自动节点池三大实战黄金编排模板（点击切换查看）</h3>
+          <div class="flex flex-wrap gap-2">
+            <button type="button" data-tpl="ai" class="tpl-tab-btn tab-active px-3.5 py-2 rounded-xl border border-slate-700 text-xs font-bold transition">
+              🤖 模板①：AI 专属永不掉线池
+            </button>
+            <button type="button" data-tpl="media" class="tpl-tab-btn px-3.5 py-2 rounded-xl bg-slate-900/80 border border-slate-700 text-slate-300 text-xs font-bold transition">
+              🎬 模板②：4K 流媒体极速池
+            </button>
+            <button type="button" data-tpl="daily" class="tpl-tab-btn px-3.5 py-2 rounded-xl bg-slate-900/80 border border-slate-700 text-slate-300 text-xs font-bold transition">
+              🛡️ 模板③：跨机场全屋主力池
+            </button>
+          </div>
+
+          <div id="tpl-content-box" class="glass-subcard rounded-2xl p-4 space-y-3">
+            <div class="flex items-center justify-between">
+              <span id="tpl-title" class="text-sm font-bold text-cyan-300">① AI 专属永不掉线池（绑定：AI 智能服务卡片）</span>
+              <span id="tpl-l7" class="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[11px] font-semibold">L7 检测：OpenAI / Gemini 指纹校验</span>
+            </div>
+            <div class="space-y-2 text-xs">
+              <div class="p-2.5 rounded-xl bg-slate-900/90 border border-cyan-500/30">
+                <strong class="text-cyan-300">组 1（主力组 · 日常首选）：</strong>
+                <span id="tpl-g1" class="text-slate-200">放入 3~5 个【美国 / 日本 IEPL 原生解锁节点】。平时死锁固定美国/日本原生 IP，连续对话数小时绝不因跳 IP 触发 ChatGPT 报错或 Claude 封号。</span>
+              </div>
+              <div class="p-2.5 rounded-xl bg-slate-900/90 border border-slate-700">
+                <strong class="text-violet-300">组 2（备选 1 · 跨线容灾）：</strong>
+                <span id="tpl-g2" class="text-slate-300">放入 3~5 个【新加坡高质量原生节点】（优选不同中转入口或第二家机场）。万一美日专线维护，0 等待切入组 2 继续对话。</span>
+              </div>
+              <div class="p-2.5 rounded-xl bg-slate-900/90 border border-slate-700">
+                <strong class="text-amber-300">组 3（备选 2 · 终极保底）：</strong>
+                <span id="tpl-g3" class="text-slate-300">放入 3~5 个【台湾 / 欧洲 / 美西直连备用节点】，平时 0 探测流量，仅在前两组全挂时激活兜底。</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="text-xs text-slate-300 space-y-1.5 pt-1">
+            <div class="font-bold text-white">💡 自动节点池卡片上的四大按钮怎么用？</div>
+            <p>• <code class="text-emerald-300">⏫ 立即回切</code>：当处于组 2 备选工作、您知道组 1 主力已恢复且不想等冷却期时，点击立即单轮探测组 1 并秒切回主力组。</p>
+            <p>• <code class="text-cyan-300">⚡ 双组探测</code>：立即手动对“当前工作组 + 组1主力组”执行一次去重 L7 HTTP 204 体检并重算评分。</p>
+            <p>• <code class="text-violet-300">📊 质量排行</code>：查看池内节点近 20 次探测的滑动窗口评分（<code>0.4×全窗 + 0.6×近5次成功率</code>）、抖动率 CV 与火花线。</p>
+            <p>• <code class="text-amber-300">⚠️ 建议剔除 -&gt; 替换</code>：连续 5 次 &lt;50 分且低于组均分 18 分时点亮（只标记不强切），点击“替换”一键用同国 ≥70 分池外节点平替。</p>
+          </div>
+        </div>
+
+        <div class="lg:col-span-5 glass-card rounded-3xl p-6 space-y-4 flex flex-col justify-between">
+          <div class="space-y-3">
+            <h3 class="text-base sm:text-lg font-bold text-white">4.4 自动分流卡片（Shunt Cards）的三种绑定模式与自由编排</h3>
+            <p class="text-xs text-slate-300 leading-relaxed">
+              除首尾固定的“国内直连”与“全局兜底”外，所有业务分流卡片（AI、流媒体、Google、GitHub、Telegram、游戏及自定义卡片）均支持以下三种出口绑定，且<strong>全部接入 20 秒死节点自动逃生看门狗</strong>：
+            </p>
+            <div class="space-y-2.5 text-xs">
+              <div class="glass-subcard rounded-xl p-3 border-l-4 border-l-cyan-400">
+                <div class="font-bold text-white">模式 A：绑定【🤖 分组自动节点池】（旗舰推荐）</div>
+                <p class="text-slate-300 mt-1">将分流卡片交给 1~5 组自动节点池托管，获得完整的跨机房瀑布流容灾、双组省流热备与粘性不断不切保护。</p>
+              </div>
+              <div class="glass-subcard rounded-xl p-3 border-l-4 border-l-emerald-400">
+                <div class="font-bold text-white">模式 B：绑定【🌍 国家/地区智能优选】（懒人福音）</div>
+                <p class="text-slate-300 mt-1">无需建池，直接选如 <code>🇸🇬 新加坡 · 自动优选</code>。系统自动在该国 <code>ok</code> 节点中粘性锁定当前存活出口；一旦原节点死掉，20 秒看门狗自动热切至同国最快节点并标注 <code>⚡原出口不可用·已自动重选</code>。</p>
+              </div>
+              <div class="glass-subcard rounded-xl p-3 border-l-4 border-l-violet-400">
+                <div class="font-bold text-white">模式 C：绑定【📌 指定固定单节点】（带故障自动逃生）</div>
+                <p class="text-slate-300 mt-1">正常时 100% 走该固定节点；一旦该节点彻底失联（<code>ERR</code>），自动触发同地区健康节点临时逃生接管，绝不让业务卡死断网！</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="p-3.5 rounded-2xl bg-cyan-500/10 border border-cyan-400/30 text-xs text-cyan-100 space-y-1">
+            <div class="font-bold">⚡ 自由排序 + 2 秒无感热切 + 路径追踪器</div>
+            <p class="text-slate-300">点击卡片右上角 <code>↑</code> / <code>↓</code> 可自由调整匹配优先级；点击 <code>✏️ 编辑规则</code> 可直接追加自定义域名/IP；切换卡片出口通过 Clash API 内存态在 <strong>约 2 秒内即时生效（无需重启内核）</strong>。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== ENVIRONMENT & NETWORK TOPOLOGY ==================== -->
+    <section id="sec-topology" class="scroll-mt-20 space-y-6">
+      <div class="border-l-4 border-emerald-400 pl-4">
+        <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">NETWORK TOPOLOGY &amp; ENVIRONMENT · 环境与网络拓扑</span>
+        <h2 class="text-2xl sm:text-3xl font-extrabold text-white mt-1">
+          环境配置需求与三大主流网络拓扑指南（小白与进阶必读）
+        </h2>
+      </div>
+
+      <!-- Interactive Topology Switcher -->
+      <div class="glass-card rounded-3xl p-6 space-y-5">
+        <div class="flex flex-wrap gap-2.5">
+          <button type="button" data-topo="side" class="topo-tab-btn tab-active px-4 py-2.5 rounded-xl border border-slate-700 text-xs font-bold transition">
+            🔥 拓扑方案 A：单臂旁路由模式（防国内断流 + 防 IPv6 漏网重点）
+          </button>
+          <button type="button" data-topo="main" class="topo-tab-btn px-4 py-2.5 rounded-xl bg-slate-900/80 border border-slate-700 text-slate-300 text-xs font-bold transition">
+            🏠 拓扑方案 B：主路由拨号模式（零门槛开箱即用）
+          </button>
+          <button type="button" data-topo="ipv6" class="topo-tab-btn px-4 py-2.5 rounded-xl bg-slate-900/80 border border-slate-700 text-slate-300 text-xs font-bold transition">
+            🌐 拓扑方案 C：IPv6 智能双栈分流 vs. 全量代理接管
+          </button>
+        </div>
+
+        <div id="topo-panel-side" class="topo-panel grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+          <div class="lg:col-span-6 glass-subcard rounded-2xl p-5 space-y-3">
+            <h4 class="text-base font-bold text-white">单臂旁路由标准接线与 OpenWrt 接口设置</h4>
+            <p class="text-xs text-slate-300 leading-relaxed">
+              主路由（如硬路由 <code>192.168.1.1</code>）负责 PPPoE 拨号，OpenWrt 旁路由（<code>192.168.1.2</code>）仅用网线插在主路由 LAN 口：
+            </p>
+            <ol class="text-xs text-slate-200 space-y-2 list-decimal pl-4">
+              <li><strong>旁路由 LAN 口 IPv4 设置</strong>：IPv4 设为 <code>192.168.1.2</code>，网关填主路由 <code>192.168.1.1</code>，自定义 DNS 填 <code>192.168.1.1</code> 或 <code>223.5.5.5</code>，DHCP 勾选 <strong>“忽略此接口”</strong>。</li>
+              <li><strong>旁路由 LAN 口 IPv6 设置</strong>：将路由通告服务（RA）、DHCPv6 服务、NDP 代理全部设为 <strong>“已禁用”</strong>（防止与主路由抢发 RA）。</li>
+              <li><strong>终端网关指向</strong>：在主路由 DHCP 中将默认网关（Option 3）和 DNS（Option 6）下发为 <code>192.168.1.2</code>，或在需要代理的设备上手动填写。</li>
+            </ol>
+          </div>
+          <div class="lg:col-span-6 glass-subcard rounded-2xl p-5 space-y-3 border border-emerald-500/30">
+            <h4 class="text-base font-bold text-emerald-300">为什么其它插件在单臂旁路下经常微信发不出图、国内网页卡死，而 AI-LINK 不会？</h4>
+            <p class="text-xs text-slate-300 leading-relaxed">
+              同网段单臂旁路由下，国内直连包去程经旁路由转发给主路由，而主路由回包直接走二层交换机发回终端，导致旁路由 <code>conntrack</code> 只看到 SYN 看不到 SYN-ACK，30 秒后丢弃连接并发送 RST。
+            </p>
+            <div class="p-3 rounded-xl bg-slate-950/90 text-xs text-slate-200 space-y-1.5">
+              <div class="font-bold text-cyan-300">🛡️ AI-LINK 内置三大旁路防断网自动护栏（开启“国内流量不进内核”即自动生效）：</div>
+              <div>1. 在 <code>table inet ai_link</code> 自动挂载 <code>iifname "br-lan" oifname "br-lan" masquerade</code> 对称 NAT；</div>
+              <div>2. 顶层挂载 <code>ct state invalid,untracked tcp flags &amp; (syn|rst) == 0 accept</code> 无状态存量连接放行；</div>
+              <div>3. 自动备份并设置 <code>nf_conntrack_tcp_be_liberal = 1</code>（停止/卸载时 100% 恢复原值）。</div>
+            </div>
+          </div>
+        </div>
+
+        <div id="topo-panel-main" class="topo-panel hidden grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <div class="glass-subcard rounded-2xl p-5 space-y-3">
+            <h4 class="text-base font-bold text-white">主路由模式配置步骤（最简单、推荐新装用户）</h4>
+            <ul class="text-xs text-slate-200 space-y-2 list-disc pl-4">
+              <li>光猫桥接或路由模式接入 OpenWrt WAN 口，全屋电脑、手机、NAS 接入 OpenWrt LAN 口或 Wi-Fi。</li>
+              <li>无需额外修改任何网关或防火墙参数，安装 AI-LINK 后打开 <code>http://&lt;OpenWrt_IP&gt;:9099</code> 导入订阅即可全屋自动透明分流。</li>
+              <li>外网端口映射直接在主路由生效，配合 AI-LINK 的 <strong>回家节点（HomeLink）</strong> 可直接从外网满速连回家中内网。</li>
+            </ul>
+          </div>
+          <div class="glass-subcard rounded-2xl p-5 space-y-3">
+            <h4 class="text-base font-bold text-cyan-300">软硬件环境推荐配置</h4>
+            <ul class="text-xs text-slate-300 space-y-2 list-disc pl-4">
+              <li><strong>系统固件</strong>：OpenWrt 23.05 / 24.10 / ImmortalWrt（原生 <code>fw4</code> + <code>nftables</code>）。</li>
+              <li><strong>CPU 与内存</strong>：支持 <code>x86_64</code>（N100/N5105 等）与 <code>aarch64</code>（MT7986/RK3588 等）；256MB 内存可选 <code>Top 50</code> 节点上限，4GB+ 内存推荐 <code>Top 200/300</code>。</li>
+              <li><strong>核心依赖</strong>：<code>nftables</code>, <code>kmod-nft-tproxy</code>, <code>ip-full</code>, <code>python3-light</code>, <code>sing-box (&gt;=1.12)</code>, <code>dnsmasq-full</code>。</li>
+            </ul>
+          </div>
+        </div>
+
+        <div id="topo-panel-ipv6" class="topo-panel hidden grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <div class="glass-subcard rounded-2xl p-5 space-y-2 border-l-4 border-l-emerald-400">
+            <h4 class="text-base font-bold text-emerald-300">🛡️ 智能双栈分流模式（开关默认关闭 · 95% 用户首选推荐）</h4>
+            <p class="text-xs text-slate-300 leading-relaxed">
+              • <strong>国内真 IPv6 满速直连</strong>：国内域名（B站、PT 站、内网 IPv6 NAS）由 <code>223.5.5.5</code> 正常返回真实 <code>AAAA</code> 记录，直接走主路由原生 IPv6 跑满带宽。<br />
+              • <strong>海外精准抑制 AAAA 防抢答漏网</strong>：命中海外代理规则的域名自动返回 <code>NOERROR</code> 空 <code>AAAA</code> 并分配 IPv4 FakeIP（<code>198.18.0.0/15</code>），100% 强制走旁路由代理隧道出网，彻底解决旁路模式下海外流量从主路由 IPv6 漏网的难题！
+            </p>
+          </div>
+          <div class="glass-subcard rounded-2xl p-5 space-y-2 border-l-4 border-l-cyan-400">
+            <h4 class="text-base font-bold text-cyan-300">🌐 全量 IPv6 代理接管模式（开关开启 · 适合纯 IPv6 海外学术站点）</h4>
+            <p class="text-xs text-slate-300 leading-relaxed">
+              • 启用 <code>fc00::/18</code> FakeIPv6 + 内核 <code>table 162</code> IPv6 TProxy 双栈透明代理；<br />
+              • 内置出站 <code>prefer_ipv4</code> 智能降级保护，即使机场节点仅支持 IPv4 也能正常解析访问双栈海外网站，并支持一键巡检节点 IPv6 出站能力；停止或卸载时自动清理 <code>fc00::/18</code> 路由零残留。
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== COMPARISON TABLE ==================== -->
+    <section id="sec-compare" class="scroll-mt-20 space-y-6">
+      <div class="border-l-4 border-violet-400 pl-4">
+        <span class="text-xs font-bold uppercase tracking-widest text-violet-400">COMPETITIVE ADVANTAGES · 对比与独创设计</span>
+        <h2 class="text-2xl sm:text-3xl font-extrabold text-white mt-1">
+          相对于其他主流插件（OpenClash / PassWall / Nikki / HomeProxy）的全方位优势
+        </h2>
+      </div>
+
+      <div class="glass-card rounded-3xl overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr class="bg-slate-900/95 text-slate-200 border-b border-slate-800">
+                <th class="p-4 font-bold">核心能力维度</th>
+                <th class="p-4 font-bold text-cyan-300 bg-cyan-500/10">AI-LINK v1.0.0 正式版（本项目）</th>
+                <th class="p-4 font-bold">OpenClash / Mihomo 系</th>
+                <th class="p-4 font-bold">PassWall / HomeProxy 系</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800/80 text-slate-300">
+              <tr>
+                <td class="p-3.5 font-semibold text-white">自动选点与不断连</td>
+                <td class="p-3.5 bg-cyan-500/5 text-cyan-100 font-medium">独创 1~5 组瀑布流轮转 + 默认“不断不切”粘性锁 + 主力组连续 2 次恢复平滑回切</td>
+                <td class="p-3.5">原生 <code>url-test</code>，延迟差几毫秒即频繁跳点导致 ChatGPT/游戏断线</td>
+                <td class="p-3.5">简单定时测速切换或单层 <code>urltest</code>，无分组轮转与粘性锁护栏</td>
+              </tr>
+              <tr>
+                <td class="p-3.5 font-semibold text-white">节点真活与防误杀</td>
+                <td class="p-3.5 bg-cyan-500/5 text-cyan-100 font-medium">L4+L7 HTTP 204 + Google CDN 双目标双次失败确认 + OpenAI/Netflix 指纹校验</td>
+                <td class="p-3.5">仅基础状态码探测，难以剔除“连接通但无正文吞吐”的假活节点</td>
+                <td class="p-3.5">多依赖 TCP ping，极易将已被封锁端口误判为可用</td>
+              </tr>
+              <tr>
+                <td class="p-3.5 font-semibold text-white">探测省流与内存保护</td>
+                <td class="p-3.5 bg-cyan-500/5 text-cyan-100 font-medium">双组去重探测（仅测当前工作组+主力组）+ Top-N (50~300) 按需动态挂载</td>
+                <td class="p-3.5">全量节点常驻内核并周期全量探测，极耗机场流量与路由器内存</td>
+                <td class="p-3.5">大订阅全量生成配置慢，低内存设备易卡顿</td>
+              </tr>
+              <tr>
+                <td class="p-3.5 font-semibold text-white">单臂旁路国内防断网</td>
+                <td class="p-3.5 bg-cyan-500/5 text-cyan-100 font-medium">内置 <code>@cn_ip4</code> 硬件旁路 + 自动同网段 <code>srcnat masquerade</code> + <code>be_liberal=1</code></td>
+                <td class="p-3.5">需用户手写防火墙自定义规则，配置门槛高且易出错</td>
+                <td class="p-3.5">需手动开启 LAN 伪装，易导致内网真实客户端源 IP 丢失</td>
+              </tr>
+              <tr>
+                <td class="p-3.5 font-semibold text-white">异地回家 (HomeLink)</td>
+                <td class="p-3.5 bg-cyan-500/5 text-cyan-100 font-medium">内置多节点 VLESS-Reality / Hysteria2 免证书建站 + 独立三模式路由 + 实时会话监控</td>
+                <td class="p-3.5">无内置回家服务端，需另行安装 WireGuard / Tailscale / DDNS</td>
+                <td class="p-3.5">无可视化按节点权限隔离与回家实时会话监控表</td>
+              </tr>
+              <tr>
+                <td class="p-3.5 font-semibold text-white">gfw_list 模式纯净度</td>
+                <td class="p-3.5 bg-cyan-500/5 text-cyan-100 font-medium">精准分离 <code>gfw_only_rs</code>，Bing / Apple / Microsoft / Cloudflare 等未墙外网 100% 直连</td>
+                <td class="p-3.5">常将全部非 CN 域名笼统归入代理组，白白消耗专线流量</td>
+                <td class="p-3.5">规则列表耦合度高，未墙国际站点常误走代理</td>
+              </tr>
+              <tr>
+                <td class="p-3.5 font-semibold text-white">备份恢复与卸载纯净度</td>
+                <td class="p-3.5 bg-cyan-500/5 text-cyan-100 font-medium">17/17 状态字节级无损还原（含密码哈希）+ <code>residue_scan</code> 0 残留认证</td>
+                <td class="p-3.5">卸载后常残留配置文件、自定义链或虚拟网卡路由</td>
+                <td class="p-3.5">卸载偶发残留 dnsmasq 配置导致路由器无法解析域名</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== 7-TAB INTERACTIVE UI WALKTHROUGH ==================== -->
+    <section id="sec-ui-tour" class="scroll-mt-20 space-y-6">
+      <div class="border-l-4 border-sky-400 pl-4">
+        <span class="text-xs font-bold uppercase tracking-widest text-sky-400">VISUAL PRODUCT TOUR · 逐页逐项图文指引</span>
+        <h2 class="text-2xl sm:text-3xl font-extrabold text-white mt-1">
+          完整功能详解与七大实机界面图文交互巡礼
+        </h2>
+        <p class="text-sm text-slate-300 mt-1">
+          点击下方任意导航胶囊，即可切换查看对应页面的 1440×940 实机高清截图与每一项按钮、开关的详细功能说明。
+        </p>
+      </div>
+
+      <div class="glass-card rounded-3xl p-5 sm:p-6 space-y-5">
+        <!-- 7 Tab Buttons -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+          <button type="button" data-uitab="topology" class="ui-tour-btn tab-active px-3 py-2.5 rounded-xl border border-slate-700 text-xs font-bold transition">
+            🌌 1. 3D星图
+          </button>
+          <button type="button" data-uitab="overview" class="ui-tour-btn px-3 py-2.5 rounded-xl bg-slate-900/85 border border-slate-700 text-slate-300 text-xs font-bold transition">
+            🫧 2. 全息概览
+          </button>
+          <button type="button" data-uitab="shunt" class="ui-tour-btn px-3 py-2.5 rounded-xl bg-slate-900/85 border border-slate-700 text-slate-300 text-xs font-bold transition">
+            🎯 3. 代理与分流
+          </button>
+          <button type="button" data-uitab="homelink" class="ui-tour-btn px-3 py-2.5 rounded-xl bg-slate-900/85 border border-slate-700 text-slate-300 text-xs font-bold transition">
+            🏠 4. 回家节点
+          </button>
+          <button type="button" data-uitab="dns" class="ui-tour-btn px-3 py-2.5 rounded-xl bg-slate-900/85 border border-slate-700 text-slate-300 text-xs font-bold transition">
+            🛡️ 5. DNS与过滤
+          </button>
+          <button type="button" data-uitab="nodes" class="ui-tour-btn px-3 py-2.5 rounded-xl bg-slate-900/85 border border-slate-700 text-slate-300 text-xs font-bold transition">
+            ⚡ 6. 订阅与节点
+          </button>
+          <button type="button" data-uitab="settings" class="ui-tour-btn px-3 py-2.5 rounded-xl bg-slate-900/85 border border-slate-700 text-slate-300 text-xs font-bold transition">
+            ⚙️ 7. 连接与设置
+          </button>
+        </div>
+
+        <!-- Screenshot & Feature Breakdown -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          <div class="lg:col-span-8 rounded-2xl overflow-hidden border border-slate-700/80 bg-slate-950 p-2">
+            <img id="ui-tour-img" src="./assets/ui_topology.webp" alt="AI-LINK 界面预览" class="w-full h-auto rounded-xl" />
+          </div>
+          <div class="lg:col-span-4 glass-subcard rounded-2xl p-5 space-y-3">
+            <div id="ui-tour-badge" class="inline-block px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 text-[11px] font-bold">
+              模块 01 · #tab-topology
+            </div>
+            <h3 id="ui-tour-title" class="text-lg font-extrabold text-white">
+              3D 星图与深空引力黑洞可视舱
+            </h3>
+            <p id="ui-tour-desc" class="text-xs text-slate-300 leading-relaxed">
+              将全屋实时连接、国内外分流通道与广告拦截黑洞具象化为四大天体星系，支持拖拽旋转、滚轮缩放与点击母星展开实时详情抽屉。
+            </p>
+            <ul id="ui-tour-bullets" class="text-xs text-slate-200 space-y-2 list-disc pl-4 pt-1">
+              <li><strong>顶部常驻快捷栏</strong>：一键 <code>🔄 更新订阅</code>、<code>⚡ 全量 URL ping 体检</code> 与紧急排障 <code>🛟 直连恢复</code>。</li>
+              <li><strong>🧠 内核中枢母星</strong>：实时查看 <code>sing-box</code> 内存占用、上下行吞吐与局域网在线设备列表。</li>
+              <li><strong>🇨🇳 国内直连 &amp; 🌍 海外代理星系</strong>：环绕淘宝/B站/抖音与 ChatGPT/Gemini/YouTube/GitHub 卫星，实时显示各通道延迟。</li>
+              <li><strong>🕳️ 深空引力黑洞</strong>：卡冈都亚吸积盘特效，实时吞噬广告、追踪器与 PCDN 偷跑流量，点击可展开黑洞拦截 TOP 榜。</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== INSTALL, CLI & DEVELOPER VERIFICATION ==================== -->
+    <section id="sec-install" class="scroll-mt-20 space-y-6">
+      <div class="border-l-4 border-amber-400 pl-4">
+        <span class="text-xs font-bold uppercase tracking-widest text-amber-400">INSTALLATION &amp; LIFECYCLE · 安装与运维手册</span>
+        <h2 class="text-2xl sm:text-3xl font-extrabold text-white mt-1">
+          一键安装、17/17 无损备份、恢复出厂、零残留卸载与开发者工具
+        </h2>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <div class="glass-card rounded-2xl p-5 space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-bold text-white">1. 一键安装与平滑覆盖升级</h3>
+            <button type="button" data-copy-target="code-install-block" class="btn-copy px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-[11px] font-semibold">复制</button>
+          </div>
+          <pre id="code-install-block" class="text-xs bg-slate-950 p-3.5 rounded-xl border border-slate-800 text-slate-200 overflow-x-auto"><code># 上传发布包至 /tmp 并解压安装
+cd /tmp
+tar -xzf AI-LINK-v1.0.0-正式版.tar.gz
+cd ai-link-openwrt
+chmod +x install.sh
+./install.sh</code></pre>
+          <p class="text-xs text-slate-400">
+            安装后访问 <code>http://&lt;路由器IP&gt;:9099</code> 或 LuCI 后台 <code>服务 -&gt; AI-LINK</code>。直接运行新包 <code>./install.sh</code> 可平滑升级并保留全部现有订阅与节点。
+          </p>
+        </div>
+
+        <div class="glass-card rounded-2xl p-5 space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-bold text-white">2. 全局 CLI 工具与零残留卸载</h3>
+            <button type="button" data-copy-target="code-cli-block" class="btn-copy px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-[11px] font-semibold">复制</button>
+          </div>
+          <pre id="code-cli-block" class="text-xs bg-slate-950 p-3.5 rounded-xl border border-slate-800 text-slate-200 overflow-x-auto"><code># 查看状态 / 紧急直连恢复 / 契约自检
+ai-link status
+ai-link bypass
+ai-link self-test
+
+# 停止服务或彻底零残留卸载
+ai-link stop
+ai-link uninstall</code></pre>
+          <p class="text-xs text-slate-400">
+            停止或卸载时自动清理 <code>table inet ai_link</code>、<code>ip rule</code>、<code>fc00::/18</code> 路由并从 <code>/var/run/ai-link/sysctl_orig/be_liberal</code> 恢复原始内核参数。
+          </p>
+        </div>
+
+        <div class="glass-card rounded-2xl p-5 space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-bold text-white">3. 随包自动化验收脚本 (scripts/)</h3>
+            <button type="button" data-copy-target="code-verify-block" class="btn-copy px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-[11px] font-semibold">复制</button>
+          </div>
+          <pre id="code-verify-block" class="text-xs bg-slate-950 p-3.5 rounded-xl border border-slate-800 text-slate-200 overflow-x-auto"><code># 校验备份 -> 恢复出厂 -> 恢复后 17/17 一致
+python3 scripts/state_hash.py
+
+# 卸载后扫描全系统确认 0 残留
+python3 scripts/residue_scan.py</code></pre>
+          <p class="text-xs text-slate-400">
+            <code>state_hash.py</code> 验证 8 个 JSON 配置文件 + <code>panel_auth.json</code> 密码哈希 + 9 项 UCI 键值 100% 字节级一致；<code>residue_scan.py</code> 确保卸载后 0 残留。
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== CLOUDFLARE WORKERS/PAGES & GITHUB DEPLOY GUIDE ==================== -->
+    <section id="sec-deploy" class="scroll-mt-20 space-y-6">
+      <div class="border-l-4 border-orange-400 pl-4">
+        <span class="text-xs font-bold uppercase tracking-widest text-orange-400">CLOUDFLARE WORKERS &amp; PAGES + GITHUB · 官网部署与开源发布</span>
+        <h2 class="text-2xl sm:text-3xl font-extrabold text-white mt-1">
+          一键部署至 Cloudflare Workers &amp; Pages 并同步发布 GitHub 指南
+        </h2>
+        <p class="text-sm text-slate-300 mt-1">
+          本工程已预置全套 <code>wrangler.toml</code>、<code>src/worker.js</code>、<code>public/index.html</code> 与 GitHub Actions 自动部署流水线（<code>.github/workflows/deploy.yml</code>）。
+        </p>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="glass-card rounded-2xl p-5 space-y-3 border border-orange-500/30">
+          <div class="flex items-center justify-between">
+            <h3 class="text-base font-bold text-orange-300">☁️ 方式一：Cloudflare Pages / Workers 零配置部署</h3>
+            <button type="button" data-copy-target="code-cf-deploy" class="btn-copy px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-orange-300 text-[11px] font-semibold">复制命令</button>
+          </div>
+          <p class="text-xs text-slate-300">
+            您可以直接在 Cloudflare 控制台拖拽上传 <code>public/</code> 目录，或使用 Wrangler CLI 一键发布全球边缘节点：
+          </p>
+          <pre id="code-cf-deploy" class="text-xs bg-slate-950 p-3.5 rounded-xl border border-slate-800 text-slate-200 overflow-x-auto"><code># 1. 解压官网与 GitHub 工程包
+unzip AI-LINK-v1.0.0-Cloudflare官网与GitHub发布包.zip
+cd ai-link-official-site
+
+# 2. 方式 A：使用 Cloudflare Pages 直接发布静态官网
+npx wrangler pages deploy ./public --project-name=ai-link-official
+
+# 3. 方式 B：使用 Cloudflare Workers (Assets) 部署
+npx wrangler deploy</code></pre>
+        </div>
+
+        <div class="glass-card rounded-2xl p-5 space-y-3 border border-indigo-500/30">
+          <div class="flex items-center justify-between">
+            <h3 class="text-base font-bold text-indigo-300">🐙 方式二：同步推送到 GitHub 并触发自动构建</h3>
+            <button type="button" data-copy-target="code-gh-deploy" class="btn-copy px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-indigo-300 text-[11px] font-semibold">复制命令</button>
+          </div>
+          <p class="text-xs text-slate-300">
+            将仓库推送到 GitHub 后，既可在 Cloudflare 控制台绑定该 GitHub 仓库实现每次 <code>git push</code> 自动更新官网，也可自动发布 Release：
+          </p>
+          <pre id="code-gh-deploy" class="text-xs bg-slate-950 p-3.5 rounded-xl border border-slate-800 text-slate-200 overflow-x-auto"><code># 初始化 Git 仓库并推送到您的 GitHub
+git init
+git branch -M main
+git add .
+git commit -m "release: AI-LINK v1.0.0 Official Release &amp; Website"
+git remote add origin https://github.com/&lt;您的用户名&gt;/ai-link-openwrt.git
+git push -u origin main --tags</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== SEARCHABLE FAQ ==================== -->
+    <section id="sec-faq" class="scroll-mt-20 space-y-6">
+      <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+        <div class="border-l-4 border-cyan-400 pl-4">
+          <span class="text-xs font-bold uppercase tracking-widest text-cyan-400">FREQUENTLY ASKED QUESTIONS · 使用须知与常见问题</span>
+          <h2 class="text-2xl sm:text-3xl font-extrabold text-white mt-1">使用须知与常见问题排查（支持实时检索）</h2>
+        </div>
+        <div class="w-full sm:w-72">
+          <input id="faq-search-input" type="text" placeholder="🔍 搜索问题（如：不断连、旁路、回家、百度）..." class="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400" />
+        </div>
+      </div>
+
+      <div id="faq-list" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="faq-item glass-card rounded-2xl p-5 space-y-2">
+          <h4 class="text-sm font-bold text-cyan-300">Q1：为什么自动节点池默认显示“🔒 不断不切”，组里有另一个节点延迟更低却不自动切过去？</h4>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            这正是 AI-LINK 实现<strong>“节点永不断连”</strong>的核心设计！频繁因为几毫秒的延迟差切换节点会导致公网出口 IP 改变，从而引起 ChatGPT 报错中断、游戏掉线、SSH 断开。只要当前正在工作的节点处于 <code>ok</code> 状态且 CDN 握手正常，系统严格锁定该节点保持长连接不断开；只有当该节点真正故障掉线时，才在毫秒间无缝切往组内或下一优先级组的存活节点。
+          </p>
+        </div>
+
+        <div class="faq-item glass-card rounded-2xl p-5 space-y-2">
+          <h4 class="text-sm font-bold text-cyan-300">Q2：如果发现自动节点池里的某个节点变慢了，或出现了 ⚠️ 建议剔除 提示怎么处理？</h4>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            系统通过 20 次滑动窗口评分自动监控每个节点的质量。当某个节点连续 5 次评分低于 50 分时，会点亮 <code>⚠️ 建议剔除</code>（为了不打断您正在进行的连接，系统默认只标记不强切）。您只需点击该节点旁边的 <strong>“替换”</strong> 按钮，系统会自动列出同国家、评分 ≥70 分的优质池外节点供您一键平替。
+          </p>
+        </div>
+
+        <div class="faq-item glass-card rounded-2xl p-5 space-y-2">
+          <h4 class="text-sm font-bold text-cyan-300">Q3：为什么在分流页把百度/B站设为了走香港节点，但实际还是显示走国内直连？</h4>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            这是因为您在“连接与设置”中开启了 <strong>“🚀 国内流量不进内核（硬件级旁路）”</strong>。开启后，所有解析为中国大陆 IP（<code>@cn_ip4</code> / <code>@cn_ip6</code>）的流量会在 <code>nftables</code> 防火墙层直接硬件放行，不再进入 <code>sing-box</code> 匹配分流规则。若需强制让某个国内网站走海外代理，只需关闭此开关或为该域名配置一条 DNS 重写即可。
+          </p>
+        </div>
+
+        <div class="faq-item glass-card rounded-2xl p-5 space-y-2">
+          <h4 class="text-sm font-bold text-cyan-300">Q4：切换顶层路由模式 vs. 切换某个分流卡片的出口节点，生效速度有什么区别？</h4>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            在分流卡片上直接切换出口节点（例如把“AI 智能”从日本切到美国，或更换自动节点池），系统通过 Clash API 内存态热切在 <strong>约 2 秒内即时无感生效</strong>，不会重启内核或断开现有连接；而切换顶层五大路由模式或修改底层自定义域名规则集时，系统会自动触发后台内核平滑重载（约 3~5 秒）。
+          </p>
+        </div>
+
+        <div class="faq-item glass-card rounded-2xl p-5 space-y-2">
+          <h4 class="text-sm font-bold text-cyan-300">Q5：回家节点（HomeLink）创建后，手机在外面连不上怎么办？</h4>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            请依次确认三点：① 家里宽带是否有公网 IPv4/IPv6，并在光猫/主路由上将回家节点的入站端口（VLESS-Reality 的 TCP 端口或 Hysteria2 的 UDP 端口）映射到了软路由 IP；② 若外网映射端口与内部监听端口不一致，请在回家节点卡片编辑中填写“外网映射端口”后重新扫码；③ 在“回家隧道实时监控”中查看是否显示为 <code>监听就绪</code>。
+          </p>
+        </div>
+
+        <div class="faq-item glass-card rounded-2xl p-5 space-y-2">
+          <h4 class="text-sm font-bold text-cyan-300">Q6：什么时候建议点击右上角的“🛟 直连恢复”？</h4>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            当遇到光猫重拨、机场全线故障或需要临时测试原始宽带网速时，点击页面右上角的 <strong>“🛟 直连恢复”</strong>（或设置页的“⏸️ 暂停透明代理”），系统会在 1 秒内解除透明代理劫持，全屋设备立即恢复纯宽带直连，且 AI-LINK 面板依然在线随时可点一键恢复代理。
+          </p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Quick Install Modal -->
+  <div id="modal-quick-install" class="fixed inset-0 z-50 hidden bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+    <div class="glass-card rounded-3xl max-w-xl w-full p-6 border border-cyan-500/40 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <h3 class="text-base font-bold text-white">🚀 AI-LINK v1.0.0 正式版 — 快速部署与验证指令</h3>
+        <button id="btn-close-quick-install" type="button" class="text-slate-400 hover:text-white text-sm font-bold px-2 py-1">✕</button>
+      </div>
+      <div class="space-y-3 text-xs">
+        <p class="text-slate-300">1. 将 <code>AI-LINK-v1.0.0-正式版.tar.gz</code> 上传至 OpenWrt <code>/tmp</code> 目录后执行：</p>
+        <pre id="modal-cmd-text" class="bg-slate-950 p-3.5 rounded-xl border border-slate-800 text-cyan-200 overflow-x-auto"><code>cd /tmp &amp;&amp; tar -xzf AI-LINK-v1.0.0-正式版.tar.gz &amp;&amp; cd ai-link-openwrt &amp;&amp; chmod +x install.sh &amp;&amp; ./install.sh</code></pre>
+        <p class="text-slate-300">2. 安装完成后访问地址：</p>
+        <ul class="list-disc pl-5 text-slate-200 space-y-1">
+          <li>独立极光大屏面板：<code>http://&lt;路由器LAN_IP&gt;:9099</code></li>
+          <li>LuCI 原生管理总控：<code>http://&lt;路由器LAN_IP&gt;/cgi-bin/luci/admin/services/ai-link</code></li>
+        </ul>
+      </div>
+      <div class="flex justify-end gap-2 pt-2">
+        <button type="button" data-copy-target="modal-cmd-text" class="btn-copy px-4 py-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/40 text-cyan-200 text-xs font-bold">
+          📋 复制安装命令
+        </button>
+        <button id="btn-close-quick-install-2" type="button" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold">
+          关闭
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="border-t border-slate-800/80 bg-slate-950/90 py-8 mt-16">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-400">
+      <div class="flex items-center gap-2">
+        <span class="font-bold text-white">AI-LINK v1.0.0 Production Release</span>
+        <span>·</span>
+        <span>OpenWrt fw4 / nftables / sing-box 全栈智能透明网关</span>
+      </div>
+      <div>
+        <span>Ready for Cloudflare Workers &amp; Pages · GitHub Open Source Release</span>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    (function () {
+      // Helper: Show Toast
+      var toastTimer = null;
+      function showToast(msg) {
+        var toast = document.getElementById('site-toast');
+        var text = document.getElementById('site-toast-text');
+        if (!toast || !text) return;
+        text.textContent = msg;
+        toast.classList.remove('hidden');
+        if (toastTimer) clearTimeout(toastTimer);
+        toastTimer = setTimeout(function () {
+          toast.classList.add('hidden');
+        }, 2600);
+      }
+
+      // Helper: Copy text with fallback
+      function copyText(str) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(str).then(function () {
+            showToast('已复制到剪贴板！');
+          }).catch(function () {
+            fallbackCopy(str);
+          });
+        } else {
+          fallbackCopy(str);
+        }
+      }
+
+      function fallbackCopy(str) {
+        var ta = document.createElement('textarea');
+        ta.value = str;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try {
+          document.execCommand('copy');
+          showToast('已复制到剪贴板！');
+        } catch (e) {
+          showToast('复制完成');
+        }
+        document.body.removeChild(ta);
+      }
+
+      // Wire Copy Buttons
+      document.querySelectorAll('.btn-copy').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var targetId = btn.getAttribute('data-copy-target');
+          var el = document.getElementById(targetId);
+          if (el) {
+            copyText(el.textContent.trim());
+          }
+        });
+      });
+
+      // Wire Quick Install Modal
+      var modal = document.getElementById('modal-quick-install');
+      var openBtn = document.getElementById('btn-open-quick-install');
+      var closeBtn1 = document.getElementById('btn-close-quick-install');
+      var closeBtn2 = document.getElementById('btn-close-quick-install-2');
+      if (openBtn && modal) {
+        openBtn.addEventListener('click', function () {
+          modal.classList.remove('hidden');
+        });
+      }
+      [closeBtn1, closeBtn2].forEach(function (b) {
+        if (b && modal) {
+          b.addEventListener('click', function () {
+            modal.classList.add('hidden');
+          });
+        }
+      });
+
+      // Interactive Always-On State Machine Simulator
+      var simState = {
+        activeGroup: 1,
+        activeNode: 'US-IEPL-01',
+        recoverStreak: 0
+      };
+
+      function renderSimReset() {
+        simState.activeGroup = 1;
+        simState.activeNode = 'US-IEPL-01';
+        simState.recoverStreak = 0;
+        document.getElementById('sim-active-egress').textContent = 'US-IEPL-01 (42ms)';
+        document.getElementById('sim-active-egress').className = 'px-2.5 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 font-mono font-bold';
+        document.getElementById('sim-grp1-badge').textContent = '● 当前工作组 · 双组探测中';
+        document.getElementById('sim-grp1-badge').className = 'px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-bold';
+        document.getElementById('sim-grp2-badge').textContent = '⏸ 待命省流 (0探测流量)';
+        document.getElementById('sim-grp2-badge').className = 'px-2 py-0.5 rounded bg-slate-800 text-slate-400 text-[10px] font-semibold';
+        document.getElementById('sim-node-us1').innerHTML = '<span>🎯 <strong>US-IEPL-01</strong> <span class="text-[10px] text-emerald-300">(当前锁定)</span></span><span class="font-mono text-emerald-300">42ms · S级(98分)</span>';
+        document.getElementById('sim-node-us1').className = 'sim-node-pill p-2 rounded-lg bg-emerald-500/15 border border-emerald-400/50 flex items-center justify-between text-xs';
+        document.getElementById('sim-node-us2').innerHTML = '<span>⚡ <strong>US-IEPL-02</strong> <span class="text-[10px] text-slate-400">(热备待命)</span></span><span class="font-mono text-cyan-300">48ms · S级(96分)</span>';
+        document.getElementById('sim-node-us2').className = 'sim-node-pill p-2 rounded-lg bg-slate-800/80 border border-slate-700 flex items-center justify-between text-xs';
+        document.getElementById('sim-node-sg1').innerHTML = '<span>🇸🇬 <strong>SG-CN2-GIA-01</strong></span><span class="font-mono text-slate-300">35ms · S级(95分)</span>';
+        document.getElementById('sim-node-sg1').className = 'sim-node-pill p-2 rounded-lg bg-slate-800/80 border border-slate-700 flex items-center justify-between text-xs';
+        document.getElementById('sim-conn-status').textContent = '✅ ChatGPT / SSH / 游戏长连接 100% 保持不断线';
+        document.getElementById('sim-streak-val').textContent = '0 / 2';
+        document.getElementById('sim-decision-title').textContent = '当前状态：组 1 主力节点 US-IEPL-01 粘性锁定中';
+        document.getElementById('sim-decision-desc').innerHTML = '系统正在使用组 1 的 <code>US-IEPL-01 (42ms)</code>。后台双组探测器仅探测组 1（因为当前工作组就是组 1），组 2 完全休眠不耗机场流量。只要 <code>US-IEPL-01</code> 保持 <code>ok</code>，绝不主动切换出口。';
+        document.getElementById('sim-code-trace').innerHTML = '<code># evaluate_single_auto_node() 决策路径：\nsmart_en = False  # 默认 🔒不断不切\ncur_in_group = "US-IEPL-01" (state="ok", cdn_tls_ok=True)\nchosen = cur_in_group  # 100% 粘性锁定原节点，零跳点！</code>';
+      }
+
+      var resetBtn = document.getElementById('btn-sim-reset');
+      if (resetBtn) {
+        resetBtn.addEventListener('click', function () {
+          renderSimReset();
+          showToast('已复位至初始健康状态');
+        });
+      }
+
+      document.querySelectorAll('.sim-action-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var mode = btn.getAttribute('data-sim');
+          if (mode === 'jitter') {
+            renderSimReset();
+            document.getElementById('sim-node-us2').innerHTML = '<span>⚡ <strong>US-IEPL-02</strong> <span class="text-[10px] text-cyan-300">(延迟更低·热备)</span></span><span class="font-mono text-cyan-300">18ms · S级(99分)</span>';
+            document.getElementById('sim-decision-title').textContent = '演练①：US-IEPL-02 快了 24ms，但系统坚持“🔒不断不切”！';
+            document.getElementById('sim-decision-desc').innerHTML = '传统 <code>urltest</code> 此时会立即跳去 <code>US-IEPL-02</code> 导致 ChatGPT 断流报错；而 AI-LINK 检测到当前节点 <code>US-IEPL-01</code> 依然 <code>state=="ok"</code> 且 CDN 握手正常，<strong>严格保持 <code>US-IEPL-01</code> 出口不变</strong>，长连接零中断！';
+            document.getElementById('sim-code-trace').innerHTML = '<code># 粘性状态锁生效 (ai-link-daemon.py:L3641)\nfastest = "US-IEPL-02" (18ms)\ncur_in_group = "US-IEPL-01" (42ms, state="ok")\nif not smart_en:\n    chosen = cur_in_group  # 拒绝乒乓跳点！继续锁定 US-IEPL-01</code>';
+            showToast('演练①：粘性状态锁已拦截无意义的延迟跳点');
+          } else if (mode === 'single_loss') {
+            renderSimReset();
+            document.getElementById('sim-node-us1').innerHTML = '<span>🛡️ <strong>US-IEPL-01</strong> <span class="text-[10px] text-amber-300">(单次波动·防误杀保护)</span></span><span class="font-mono text-amber-300">fail_streak=1/2 · 保持锁定</span>';
+            document.getElementById('sim-decision-title').textContent = '演练②：单次偶发丢包被双目标双次确认机制成功吸收！';
+            document.getElementById('sim-decision-desc').innerHTML = '跨国网络偶发 1 次丢包或单探针超时，<code>_verify_node_cdn_dual_target()</code> 检查发现副探针 <code>play.google.com</code> 正常（或连续失败次数 <code>fail_streak=1 &lt; 2</code>），<strong>绝不误杀当前好节点</strong>！';
+            document.getElementById('sim-code-trace').innerHTML = '<code># _verify_node_cdn_dual_target() 防误杀门禁：\n# 主探针 dl.google.com + 副探针 play.google.com\nfail_streak = 1  # 未达到 confirmed_dual_fail (需 >= 2)\ncdn_tls_ok = True  # 判定为偶发抖动，保持 US-IEPL-01 不断连！</code>';
+            showToast('演练②：双目标双次确认已防止偶发丢包误杀');
+          } else if (mode === 'node_dead') {
+            simState.activeGroup = 1;
+            simState.activeNode = 'US-IEPL-02';
+            document.getElementById('sim-active-egress').textContent = 'US-IEPL-02 (48ms)';
+            document.getElementById('sim-node-us1').innerHTML = '<span>✗ <strong>US-IEPL-01</strong> <span class="text-[10px] text-rose-300">(Dead·已隔离)</span></span><span class="font-mono text-rose-400">TIMEOUT · 已剔除候选</span>';
+            document.getElementById('sim-node-us1').className = 'sim-node-pill p-2 rounded-lg bg-rose-500/15 border border-rose-500/40 flex items-center justify-between text-xs';
+            document.getElementById('sim-node-us2').innerHTML = '<span>🎯 <strong>US-IEPL-02</strong> <span class="text-[10px] text-emerald-300">(0等待秒级接管)</span></span><span class="font-mono text-emerald-300">48ms · S级(96分)</span>';
+            document.getElementById('sim-node-us2').className = 'sim-node-pill p-2 rounded-lg bg-emerald-500/15 border border-emerald-400/50 flex items-center justify-between text-xs';
+            document.getElementById('sim-decision-title').textContent = '演练③：US-IEPL-01 真实故障，同组热备 US-IEPL-02 <10ms 原子接管！';
+            document.getElementById('sim-decision-desc').innerHTML = '当 <code>US-IEPL-01</code> 连续 2 次双目标确认 Dead 后，无需等待全库盲测，系统直接选用组 1 内已热备就绪的 <code>US-IEPL-02</code>，并通过 Clash API <code>PUT /proxies/AI_Auto</code> 在内存态毫秒级完成指针切换，不重启内核！';
+            document.getElementById('sim-code-trace').innerHTML = '<code># 同组热备秒切 (ai-link-daemon.py:L3651)\ncur_in_group = None  # US-IEPL-01 已确认 dead\nchosen = g_nodes[0]  # 直接命中已预热的 US-IEPL-02 (48ms)\nPROBE_ENGINE.hot_switch_core_selector("AI_Auto", "US-IEPL-02") # <10ms</code>';
+            showToast('演练③：已 0 等待热切至同组热备节点 US-IEPL-02');
+          } else if (mode === 'group1_dead') {
+            simState.activeGroup = 2;
+            simState.activeNode = 'SG-CN2-GIA-01';
+            simState.recoverStreak = 0;
+            document.getElementById('sim-active-egress').textContent = 'SG-CN2-GIA-01 (35ms · 组2)';
+            document.getElementById('sim-grp1-badge').textContent = '⚠️ 组1全挂 · 后台低频监测恢复中';
+            document.getElementById('sim-grp1-badge').className = 'px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 text-[10px] font-bold';
+            document.getElementById('sim-grp2-badge').textContent = '● 当前工作组 (瀑布流接管) + 组1双组探测';
+            document.getElementById('sim-grp2-badge').className = 'px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-bold';
+            document.getElementById('sim-node-us1').innerHTML = '<span>✗ <strong>US-IEPL-01</strong></span><span class="font-mono text-rose-400">DEAD</span>';
+            document.getElementById('sim-node-us1').className = 'sim-node-pill p-2 rounded-lg bg-rose-500/15 border border-rose-500/40 flex items-center justify-between text-xs';
+            document.getElementById('sim-node-us2').innerHTML = '<span>✗ <strong>US-IEPL-02</strong></span><span class="font-mono text-rose-400">DEAD</span>';
+            document.getElementById('sim-node-us2').className = 'sim-node-pill p-2 rounded-lg bg-rose-500/15 border border-rose-500/40 flex items-center justify-between text-xs';
+            document.getElementById('sim-node-sg1').innerHTML = '<span>🎯 <strong>SG-CN2-GIA-01</strong> <span class="text-[10px] text-emerald-300">(组2瀑布流接管)</span></span><span class="font-mono text-emerald-300">35ms · S级(95分)</span>';
+            document.getElementById('sim-node-sg1').className = 'sim-node-pill p-2 rounded-lg bg-emerald-500/15 border border-emerald-400/50 flex items-center justify-between text-xs';
+            document.getElementById('sim-streak-val').textContent = '0 / 2';
+            document.getElementById('sim-decision-title').textContent = '演练④：组 1 机房整体中断，瀑布流秒级滑落至组 2（SG-CN2-GIA-01）！';
+            document.getElementById('sim-decision-desc').innerHTML = '当组 1 全部不可用时，系统按 <code>组1 -&gt; 组2 -&gt; ... -&gt; 组5</code> 顺序自动激活组 2 的 <code>SG-CN2-GIA-01</code> 接管流量，同时双组探测器自动切换为探测 <strong>(组 2 当前工作组 ∪ 组 1 主力组)</strong>，等待组 1 修复。';
+            document.getElementById('sim-code-trace').innerHTML = '<code># 瀑布流跨组容灾 (ai-link-daemon.py:L3530)\ncand_group_idx = 2  # 组1 qualified 为空，顺延命中组2\ntarget_group_idx = 2\nchosen = "SG-CN2-GIA-01" (35ms) # 跨机房无缝接管！</code>';
+            showToast('演练④：组1全挂，已瀑布流顺延切入组2');
+          } else if (mode === 'group1_recover') {
+            if (simState.activeGroup !== 2) {
+              // First put it in group 2 state so user sees recovery progression
+              simState.activeGroup = 2;
+              simState.recoverStreak = 0;
+            }
+            simState.recoverStreak += 1;
+            if (simState.recoverStreak === 1) {
+              document.getElementById('sim-node-us1').innerHTML = '<span>⏳ <strong>US-IEPL-01</strong> <span class="text-[10px] text-amber-300">(恢复观察 1/2)</span></span><span class="font-mono text-amber-300">40ms · revert_pending</span>';
+              document.getElementById('sim-node-us1').className = 'sim-node-pill p-2 rounded-lg bg-amber-500/15 border border-amber-400/50 flex items-center justify-between text-xs';
+              document.getElementById('sim-streak-val').textContent = '1 / 2 (revert_pending=True，再点一次此按钮完成第2次确认)';
+              document.getElementById('sim-decision-title').textContent = '演练⑤ (第1次恢复探测)：进入 revert_pending 观察态，暂不贸然切回！';
+              document.getElementById('sim-decision-desc').innerHTML = '检测到组 1 的 <code>US-IEPL-01</code> 重新连通（第 1 次），但为防止“组 1 刚通又断”引起反复震荡，系统将 <code>primary_recover_streak</code> 记为 <code>1/2</code>，<strong>继续留在组 2 稳定工作</strong>。请<strong>再点击一次「⑤ 模拟组1恢复健康」按钮</strong>观察第 2 次确认后的平滑回切！';
+              document.getElementById('sim-code-trace').innerHTML = '<code># 主力组迟滞防抖回切状态机 (ai-link-daemon.py:L3542)\nprimary_recover_streak = 1  # 需达到 revert_confirm_count (2)\nrevert_pending = True\ntarget_group_idx = 2  # 继续留在组2观察，防止闪断横跳！</code>';
+              showToast('第 1 次恢复探测通过 (1/2)，再点一次完成平滑回切！');
+            } else {
+              renderSimReset();
+              document.getElementById('sim-streak-val').textContent = '2 / 2 ✅ 已平滑回切组 1';
+              document.getElementById('sim-decision-title').textContent = '演练⑤ (连续2次恢复确认)：组 1 稳定达标，已平滑回切至主力组 US-IEPL-01！';
+              document.getElementById('sim-decision-desc').innerHTML = '组 1 连续 2 次探测均通过 L7 与 CDN 双目标检验（<code>primary_recover_streak == 2 &gt;= req_confirm</code>），系统确认主力线路已彻底稳定，正式将流量从组 2 平滑回切至组 1 主力节点 <code>US-IEPL-01</code>，组 2 重新进入省流休眠！';
+              document.getElementById('sim-code-trace').innerHTML = '<code># 连续 2 次确认达标，执行主力回切 (ai-link-daemon.py:L3549)\nstreak = 2 >= req_confirm (2) and cooldown_ok\ntarget_group_idx = 1\nchosen = "US-IEPL-01"  # 平滑回切主力组，primary_recover_streak 归零</code>';
+              showToast('连续 2 次恢复确认通过！已平滑回切至组 1 主力节点');
+            }
+          }
+        });
+      });
+
+      // Golden Templates Switcher
+      var tplData = {
+        ai: {
+          title: '① AI 专属永不掉线池（绑定：AI 智能服务卡片）',
+          l7: 'L7 检测：OpenAI / Gemini 指纹校验',
+          g1: '放入 3~5 个【美国 / 日本 IEPL 原生解锁节点】。平时死锁固定美国/日本原生 IP，连续对话数小时绝不因跳 IP 触发 ChatGPT 报错或 Claude 封号。',
+          g2: '放入 3~5 个【新加坡高质量原生节点】（优选不同中转入口或第二家机场）。万一美日专线维护，0 等待切入组 2 继续对话。',
+          g3: '放入 3~5 个【台湾 / 欧洲 / 美西直连备用节点】，平时 0 探测流量，仅在前两组全挂时激活兜底。'
+        },
+        media: {
+          title: '② 4K 流媒体极速池（绑定：YouTube / Netflix / 国际流媒体卡片）',
+          l7: 'L7 检测：Google Play CDN + Netflix 非自制剧校验',
+          g1: '放入 4~6 个【香港 / 新加坡大带宽低延迟专线节点】。结合 dl.google.com 双目标吞吐验证，自动滤除晚高峰“能 ping 通但拉不动视频”的假活节点。',
+          g2: '放入 4~6 个【日本 / 台湾高吞吐解锁节点】，当港澳新晚高峰拥塞或故障时毫秒级无缝接力。',
+          g3: '放入 3~5 个【美西 CN2 GIA 大带宽节点】，保障全天候 4K/8K 视频秒开不缓冲。'
+        },
+        daily: {
+          title: '③ 跨机场全屋日常主力池（绑定：全局兜底 / Google / GitHub / Telegram）',
+          l7: 'L7 检测：全自动 HTTP 204 + CDN 握手双阶体检',
+          g1: '放入主力机场的 5~8 个【香港 / 新加坡 BGP/IEPL 低延迟节点（15~30ms）】，承包日常 99% 的极速网页与开发体验。',
+          g2: '放入主力机场的 5~8 个【日本 / 台湾 / 韩国节点（35~55ms）】，防止单一地区机房波动。',
+          g3: '放入【第二家备用机场（或按量付费机场）的港日新节点】。哪怕主力机场整家跑路或被攻击，全屋网络也能在毫秒间无感切至备用机场！'
+        }
+      };
+
+      document.querySelectorAll('.tpl-tab-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var key = btn.getAttribute('data-tpl');
+          var d = tplData[key];
+          if (!d) return;
+          document.querySelectorAll('.tpl-tab-btn').forEach(function (b) {
+            b.classList.remove('tab-active');
+          });
+          btn.classList.add('tab-active');
+          document.getElementById('tpl-title').textContent = d.title;
+          document.getElementById('tpl-l7').textContent = d.l7;
+          document.getElementById('tpl-g1').textContent = d.g1;
+          document.getElementById('tpl-g2').textContent = d.g2;
+          document.getElementById('tpl-g3').textContent = d.g3;
+        });
+      });
+
+      // Topology Tabs Switcher
+      document.querySelectorAll('.topo-tab-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var key = btn.getAttribute('data-topo');
+          document.querySelectorAll('.topo-tab-btn').forEach(function (b) {
+            b.classList.remove('tab-active');
+          });
+          btn.classList.add('tab-active');
+          document.querySelectorAll('.topo-panel').forEach(function (p) {
+            p.classList.add('hidden');
+          });
+          var target = document.getElementById('topo-panel-' + key);
+          if (target) target.classList.remove('hidden');
+        });
+      });
+
+      // 7-Tab UI Tour Switcher
+      var uiTourData = {
+        topology: {
+          badge: '模块 01 · #tab-topology',
+          title: '3D 星图与深空引力黑洞可视舱',
+          desc: '将全屋实时连接、国内外分流通道与广告拦截黑洞具象化为四大天体星系，支持拖拽旋转、滚轮缩放与点击母星展开实时详情抽屉。',
+          img: './assets/ui_topology.webp',
+          bullets: [
+            '<strong>顶部常驻快捷栏</strong>：一键 <code>🔄 更新订阅</code>、<code>⚡ 全量 URL ping 体检</code> 与紧急排障 <code>🛟 直连恢复</code>。',
+            '<strong>🧠 内核中枢母星</strong>：实时查看 <code>sing-box</code> 内存占用、上下行吞吐与局域网在线设备列表。',
+            '<strong>🇨🇳 国内直连 &amp; 🌍 海外代理星系</strong>：环绕淘宝/B站/抖音与 ChatGPT/Gemini/YouTube/GitHub 卫星，实时显示各通道延迟。',
+            '<strong>🕳️ 深空引力黑洞</strong>：卡冈都亚吸积盘特效，实时吞噬广告、追踪器与 PCDN 偷跑流量，点击可展开黑洞拦截 TOP 榜。'
+          ]
+        },
+        overview: {
+          badge: '模块 02 · #tab-overview',
+          title: '全息概览、声呐波形舱与时空流量矩阵',
+          desc: '一屏掌控路由器代理核心指标、8 大国内外站点可达性快览、四大国际应用声呐脉冲测速以及按月/按日统计的流量排行榜。',
+          img: './assets/ui_overview.webp',
+          bullets: [
+            '<strong>六维核心指标顶卡</strong>：当前出口与延迟、活跃连接、实时上下行速率、内核 RSS 内存占用与在线时长。',
+            '<strong>🌐 全球核心应用全息延迟声呐</strong>：独立监测 YouTube、Gemini/AI、GitHub、Telegram，点击任意卡片可单独发射声呐脉冲即时重测。',
+            '<strong>四联实时吞吐波形舱</strong>：持续绘制下行吞吐、上行吞吐、内核内存驻留与并发连接曲线。',
+            '<strong>📊 时空流量全息矩阵</strong>：支持 31 天柱状趋势图，并按终端设备、出站节点、访问目标三维度实时排名。'
+          ]
+        },
+        shunt: {
+          badge: '模块 03 · #tab-shunt',
+          title: '智能代理分流、五种路由模式与自动节点池',
+          desc: 'AI-LINK 的核心大脑：支持五种顶层分流模式切换、1~5 组优先级自动节点池编排、业务分流卡片自由排序与实时路径追踪。',
+          img: './assets/ui_shunt.webp',
+          bullets: [
+            '<strong>五种全局模式</strong>：精细规则分流、仅被墙网站走代理 (<code>gfw_list</code>，Bing/Apple/Microsoft 等未墙外网直连)、非国内走代理、全局代理、全局直连。',
+            '<strong>🤖 1~5 组自动节点池</strong>：支持创建分组自动池、双组去重省流探测、20 次滑动窗口质量排行、<code>⏫ 立即回切</code> 与劣质节点同国一键替换。',
+            '<strong>🗂️ 分流卡片自由排序与热切换</strong>：除国内与兜底外所有卡片可自由 <code>↑/↓</code> 调优先级、追加自定义规则，切换出口约 2 秒热生效无需重启内核。',
+            '<strong>🔍 分流查询器</strong>：输入任意域名一键验证命中的规则集、DNS 服务器与最终出站节点。'
+          ]
+        },
+        homelink: {
+          badge: '模块 04 · #tab-homelink',
+          title: '回家节点（HomeLink）多隧道独立分流与实时监控',
+          desc: '无需额外部署 WireGuard 或申请证书，一键创建免证书回家节点，每个节点支持独立设置内网隔离权限并实时监控在线会话。',
+          img: './assets/ui_homelink.webp',
+          bullets: [
+            '<strong>一键免证书创建</strong>：支持 <code>VLESS-Reality（免证书零暴露）</code>、<code>Hysteria2（自动绑定 pinSHA256 指纹，手机扫码免装证书）</code> 与 <code>VLESS-TLS</code>。',
+            '<strong>单节点独立三模式路由</strong>：每张卡片可独立设为 <code>🌐 回家+科学上网分流</code>、<code>🏠 仅回家访问内网与国内</code> 或 <code>🌍 仅科学上网（强制挂载 ip_is_private -&gt; block 隔离家庭内网）</code>。',
+            '<strong>上方统一切换带二次确认</strong>：点击总控栏模式按钮时弹窗确认是否一键对所有回家节点统一切换，防止误覆盖。',
+            '<strong>📡 回家隧道实时监控舱</strong>：实时展示在线回家设备数、总吞吐速率，以及每条连接的客户端 IP、通过哪个回家节点连入、正在访问目标与出站走向。'
+          ]
+        },
+        dns: {
+          badge: '模块 05 · #tab-dns',
+          title: 'DNS 护盾、防跳 CN 重写与五大云端净网引擎',
+          desc: '内置 Google 搜索与 API 防跳 CN 域名重写，集成五大权威云端广告、PCDN 偷跑流量与恶意追踪器拦截库。',
+          img: './assets/ui_dns.webp',
+          bullets: [
+            '<strong>🔀 DNS 域名重写</strong>：预置 <code>googleapis.cn -&gt; googleapis.com</code>、<code>www.google.cn -&gt; www.google.com</code> 等重写规则，支持自定义内网 NAS 域名回流。',
+            '<strong>🛡️ 五大云端拦截规则源</strong>：集成 Anti-AD（防国内广告与 PCDN 后台偷跑上传）、AdGuard DNS、EasyList China、OISD 与 StevenBlack Hosts。',
+            '<strong>二进制 .srs 高效编译</strong>：自动剥离通配符并编译为 <code>blocklist_custom.srs</code>，在 DNS 层（<code>REFUSED</code>）与路由层（<code>block</code>）双重阻断。',
+            '<strong>🕳️ 实测黑洞吞噬与黑白名单</strong>：支持一键实测 8 大高频广告源拦截效果，并提供自定义黑名单与高优先级豁免白名单。'
+          ]
+        },
+        nodes: {
+          badge: '模块 06 · #tab-nodes',
+          title: '订阅正交门禁、批量粘贴导入、全字段编辑与四态体检',
+          desc: '提供订阅独立启停正交门禁、Top-N 按需内核挂载、多协议链接批量粘贴导入、节点全字段底层编辑与流畅中文搜索。',
+          img: './assets/ui_nodes.webp',
+          bullets: [
+            '<strong>📦 订阅正交门禁与 Top-N 上限</strong>：关闭订阅开关 5 秒内自动隐藏并回退其节点（零网络请求）；支持 Top 50/100/200/300 内存保护。',
+            '<strong>➕ 批量粘贴导入与全字段编辑</strong>：支持多行粘贴 <code>vless/vmess/trojan/hy2/ss/tuic/anytls</code> 分享链接批量入库；编辑弹窗支持修改全部底层传输与 TLS/Reality 参数。',
+            '<strong>🔍 中文拼音输入法完美适配</strong>：搜索框专门优化 IME 合成事件，流畅输入“香港”、“专线”实时过滤。',
+            '<strong>⚡ 四态唯一真相源</strong>：严格区分 <code>✓可用 (ok)</code>、<code>?待验证 (pending，&gt;6h自动退化)</code>、<code>⚠️波动 (suspect)</code>、<code>✗不可达 (dead)</code>。'
+          ]
+        },
+        settings: {
+          badge: '模块 07 · #tab-settings &amp; LuCI 总控',
+          title: '连接与设置：硬件级国内旁路、IPv6 双栈与系统维护',
+          desc: '汇集底层硬件级国内旁路开关、IPv6 智能双栈架构、冲突插件自动隔离、GitHub 加速源、17/17 备份恢复与一键恢复出厂。',
+          img: './assets/ui_settings.webp',
+          bullets: [
+            '<strong>🚀 国内流量不进内核（硬件级旁路）</strong>：大陆 IP 在 <code>nftables</code> 层直接放行并自动挂载单臂旁路对称 NAT 与 <code>be_liberal=1</code> 护栏。',
+            '<strong>🌐 IPv6 智能双栈架构</strong>：默认国内真 AAAA 直连 + 海外精准抑制 AAAA 防旁路漏网；开启后支持 <code>fc00::/18</code> 全量 IPv6 TProxy 接管。',
+            '<strong>🔒 冲突插件隔离 &amp; GitHub 加速源</strong>：自动检测并停止 OpenClash/PassWall/HomeProxy/Nikki 防双写防火墙冲突；内置多条 GitHub 镜像源。',
+            '<strong>💾 17/17 备份恢复 &amp; 一键恢复出厂 &amp; LuCI 总控</strong>：支持导出/恢复含密码哈希的完整备份，提供带备份提醒+二次确认的恢复出厂设置，并与 LuCI 后台 100% 同步。'
+          ]
+        }
+      };
+
+      document.querySelectorAll('.ui-tour-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var key = btn.getAttribute('data-uitab');
+          var d = uiTourData[key];
+          if (!d) return;
+          document.querySelectorAll('.ui-tour-btn').forEach(function (b) {
+            b.classList.remove('tab-active');
+          });
+          btn.classList.add('tab-active');
+          document.getElementById('ui-tour-img').src = d.img;
+          document.getElementById('ui-tour-badge').innerHTML = d.badge;
+          document.getElementById('ui-tour-title').textContent = d.title;
+          document.getElementById('ui-tour-desc').textContent = d.desc;
+          document.getElementById('ui-tour-bullets').innerHTML = d.bullets.map(function (item) {
+            return '<li>' + item + '</li>';
+          }).join('');
+        });
+      });
+
+      // FAQ Live Search Filter
+      var faqInput = document.getElementById('faq-search-input');
+      if (faqInput) {
+        faqInput.addEventListener('input', function () {
+          var q = faqInput.value.trim().toLowerCase();
+          document.querySelectorAll('.faq-item').forEach(function (card) {
+            var text = card.textContent.toLowerCase();
+            if (!q || text.indexOf(q) !== -1) {
+              card.classList.remove('hidden');
+            } else {
+              card.classList.add('hidden');
+            }
+          });
+        });
+      }
+    })();
+  </script>
+</body>
+</html>
