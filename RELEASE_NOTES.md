@@ -46,6 +46,30 @@
 
 ## 安装
 
+### 方式一：在线一键（推荐）
+
+SSH 登录路由器，执行一行：
+
+```sh
+curl -fsSL https://ai-link-official.pages.dev/install.sh | sh
+```
+
+脚本会依次完成：检测系统环境 → 按「官方源 → ghfast.top → gh-proxy.com → GitHub」顺序自动选源下载 → MD5 校验 → 解包 → 调用安装程序。
+
+**国内网络想强制走加速镜像：**
+
+```sh
+curl -fsSL https://ai-link-official.pages.dev/install.sh | AI_LINK_MIRROR=https://ghfast.top/https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v1.0.0 sh
+```
+
+**只想先看看它做什么（不实际安装）：**
+
+```sh
+curl -fsSL https://ai-link-official.pages.dev/install.sh | sh -s -- --dry-run
+```
+
+### 方式二：手动下载安装
+
 ```sh
 tar -xzf AI-LINK-v1.0.0.tar.gz
 cd ai-link-openwrt
