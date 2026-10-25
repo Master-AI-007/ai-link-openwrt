@@ -129,7 +129,7 @@
         <div class="max-w-2xl mx-auto glass-card rounded-2xl p-3 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 border border-cyan-500/30">
           <div class="flex items-center gap-2.5 px-2 text-left overflow-x-auto">
             <span class="text-cyan-400 font-mono text-xs select-none">$</span>
-            <code id="hero-install-cmd" class="text-xs text-slate-200 whitespace-nowrap">cd /tmp &amp;&amp; tar -xzf AI-LINK-v1.0.0.tar.gz &amp;&amp; cd ai-link-openwrt &amp;&amp; ./install.sh</code>
+            <code id="hero-install-cmd" class="text-xs text-slate-200 whitespace-nowrap">curl -fsSL https://ai-link-official.pages.dev/install.sh | sh</code>
           </div>
           <div class="flex items-center gap-2 shrink-0">
             <button type="button" data-copy-target="hero-install-cmd" class="btn-copy px-3.5 py-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/40 text-cyan-200 text-xs font-semibold transition">
