@@ -463,6 +463,16 @@
       </div>
       <button id="btn-restore-archive-banner" type="button" class="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold shadow transition">♻️ 一键恢复历史配置</button>
     </div>
+    <div id="core-offline-alert-banner" class="hidden pointer-events-auto ailink-card backdrop-blur-xl rounded-xl py-2.5 px-3.5 border border-rose-500/80 bg-rose-950/95 shadow-2xl flex flex-wrap items-center justify-between gap-2 text-xs">
+      <div class="flex items-center gap-2 text-rose-100 font-bold">
+        <span class="text-base animate-pulse">🚨</span>
+        <span id="core-offline-alert-text">⚠️ 内核掉线告警：Sing-box 核心进程 (core_pid=null) 未运行！防黑洞看门狗已自动撤除 nftables 重定向并回退直连保护不断网。</span>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <button id="btn-restart-core-banner" type="button" class="px-3 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold shadow transition">🔄 一键重启内核</button>
+        <button id="btn-keep-direct-banner" type="button" class="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 text-rose-100 font-semibold transition">🛟 保持直连</button>
+      </div>
+    </div>
     <div id="degraded-alert-banner" class="hidden pointer-events-auto ailink-card backdrop-blur-xl rounded-xl py-2 px-3 border border-rose-500/60 bg-rose-950/90 shadow-xl flex flex-wrap items-center justify-between gap-2 text-xs">
       <div class="flex items-center gap-2 text-rose-200 font-bold">
         <span>🚨</span>
@@ -547,7 +557,7 @@
       <div class="max-w-[1600px] w-full mx-auto flex flex-wrap items-center justify-between gap-2">
         <div class="flex items-center gap-2 flex-wrap">
           <div class="w-7 h-7 rounded-xl overflow-hidden shadow-md flex items-center justify-center shrink-0" title="AI-LINK 智能网关分流中枢"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" class="w-7 h-7 block"><defs><linearGradient id="ailink-hdr-bg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#6d28d9"/><stop offset="52%" stop-color="#4f46e5"/><stop offset="100%" stop-color="#06b6d4"/></linearGradient><linearGradient id="ailink-hdr-fg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#e0f2fe"/></linearGradient></defs><rect width="64" height="64" rx="16" fill="url(#ailink-hdr-bg)"/><rect x="2" y="2" width="60" height="60" rx="14" fill="none" stroke="#ffffff" stroke-opacity="0.22" stroke-width="1.5"/><path d="M32 13 L49 48 H40.5 L36.8 39.5 H27.2 L23.5 48 H15 L32 13 Z M32 24.5 L29.1 33 H34.9 L32 24.5 Z" fill="url(#ailink-hdr-fg)"/><circle cx="32" cy="46.5" r="3.2" fill="#fde047"/></svg></div>
-          <span class="px-2.5 py-1 rounded-full bg-violet-500/20 border border-violet-400/30 text-violet-200 text-xs font-bold tracking-wide">AI-LINK <span class="text-[10px] text-cyan-300 font-mono ml-0.5">v1.0.2</span></span>
+          <span class="px-2.5 py-1 rounded-full bg-violet-500/20 border border-violet-400/30 text-violet-200 text-xs font-bold tracking-wide">AI-LINK <span class="text-[10px] text-cyan-300 font-mono ml-0.5">v1.0.3</span></span>
           <span id="top-core-badge" class="px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-slate-300 text-xs mono">sing-box 1.14.1</span>
           <span id="top-active-node-badge" class="px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-400/25 text-emerald-300 text-xs font-medium truncate max-w-xs sm:max-w-md">⏳ 正在同步网关实时分流状态...</span>
         </div>
@@ -657,6 +667,13 @@
         </div>
       </section>
       <section id="tab-overview" class="tab-panel hidden space-y-5">
+        <div id="ov-core-offline-card" class="hidden rounded-2xl p-4 border border-rose-500/70 bg-rose-950/85 shadow-xl flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div class="space-y-1">
+            <div class="text-sm font-extrabold text-rose-200 flex items-center gap-2"><span>🚨 Sing-box 核心进程未运行 (core_pid = null)</span><span class="px-2 py-0.5 rounded-full bg-rose-500/25 border border-rose-400/40 text-rose-200 mono text-[11px]">已自动撤除 nft 防黑洞</span></div>
+            <div class="text-rose-200/90">看门狗检测到内核进程异常退出，已自动清理 <code class="mono text-rose-100">table inet ai_link</code> 与策略路由以保障局域网直连上网，正在后台尝试自愈，您也可以点击右侧按钮立即恢复。</div>
+          </div>
+          <button id="btn-ov-restart-core" type="button" class="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold shadow-lg transition shrink-0">🔄 一键重启内核</button>
+        </div>
         <!-- 实时状态总览：一眼看现状 -->
         <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3 items-stretch">
           <div class="ailink-card rounded-2xl px-4 py-3">
@@ -976,14 +993,14 @@
                 <span id="non-shunt-resolved-label" class="text-white font-semibold mono">🤖 自动 ➔ Youtube自动</span>
               </div>
               <div class="flex flex-wrap items-center gap-2">
-                <select id="select-global-mode" class="bg-[#0b0c14] border border-white/15 rounded-xl px-2.5 py-1.5 text-xs text-violet-200 font-bold">
-                  <option value="direct">🎯 直连</option>
-                  <option value="manual">🖐️ 手动 (国家 ➔ 节点)</option>
+                <select id="select-global-mode" class="bg-[#0b0c14] border border-violet-400/40 rounded-xl px-2.5 py-1.5 text-xs text-white font-bold cursor-pointer">
                   <option value="auto">🤖 自动 (自动节点池)</option>
+                  <option value="manual">🖐️ 手动 (国家 ➔ 节点)</option>
+                  <option value="direct">🎯 直连</option>
                 </select>
-                <select id="select-global-autonode" class="bg-[#0b0c14] border border-cyan-400/40 rounded-xl px-2.5 py-1.5 text-xs text-cyan-200 font-semibold"></select>
-                <select id="select-global-country" class="hidden bg-[#0b0c14] border border-white/15 rounded-xl px-2.5 py-1.5 text-xs text-cyan-300 font-semibold"></select>
-                <select id="select-global-manual-node" class="hidden bg-[#0b0c14] border border-emerald-400/40 rounded-xl px-2.5 py-1.5 text-xs text-emerald-300 mono max-w-xs"></select>
+                <select id="select-global-autonode" class="bg-[#0b0c14] border border-cyan-400/40 rounded-xl px-2.5 py-1.5 text-xs text-cyan-200 font-semibold cursor-pointer"></select>
+                <select id="select-global-country" class="hidden bg-[#0b0c14] border border-white/15 rounded-xl px-2.5 py-1.5 text-xs text-white font-semibold cursor-pointer"></select>
+                <select id="select-global-manual-node" class="hidden bg-[#0b0c14] border border-emerald-400/40 rounded-xl px-2.5 py-1.5 text-xs text-emerald-300 mono max-w-xs cursor-pointer"></select>
               </div>
             </div>
           </div>
@@ -1528,7 +1545,7 @@
             <div class="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <span class="font-bold text-white">⬆️ 插件版本与在线更新</span>
-                <span id="ota-sub" class="text-[11px] text-slate-400 ml-2">当前 v1.0.2 · 点击「检查更新」获取最新版本（注：v1.0.0 需手动升级一次，v1.0.1+ 支持在线热更新）</span>
+                <span id="ota-sub" class="text-[11px] text-slate-400 ml-2">当前 v1.0.3 · 点击「检查更新」获取最新版本（注：v1.0.0 需手动升级一次，v1.0.1+ 支持在线热更新）</span>
               </div>
               <div class="flex items-center gap-2 flex-wrap">
                 <a id="ota-notes" href="#" target="_blank" rel="noopener noreferrer" class="hidden px-3 py-1.5 rounded-xl bg-cyan-500/15 border border-cyan-400/30 text-cyan-200 font-semibold">📄 更新说明</a>
@@ -1683,7 +1700,7 @@
   </div>
 <script>
     const state = {
-      version: '1.0.2',
+      version: '1.0.3',
       pwdCustomized: false,
       authRequired: false,
       proxyEnabled: true,
@@ -1771,8 +1788,10 @@
       shunt: {
         shunt_enabled: true,
         routing_mode: 'rule_shunt',
+        global_mode: 'auto',
+        global_auto_node_id: 'auto_youtube',
         global_country: 'JP',
-        global_strategy: 'smart',
+        global_strategy: 'auto',
         global_manual_node: '',
         groups: [
           { id: 'AI', name: 'AI 智能助手', subtitle: 'OpenAI / Claude / Gemini / Cursor', selector_tag: 'Shunt_AI', country: 'US', strategy: 'smart', manual_node: '' },
@@ -3475,13 +3494,60 @@
       if (nonShuntBar) {
         if (mode === 'gfw_list' || mode === 'cn_whitelist' || mode === 'global_proxy') {
           nonShuntBar.classList.remove('hidden');
-          const gMode = sh.global_mode || (sh.global_country === 'direct' ? 'direct' : (sh.global_strategy === 'manual' ? 'manual' : 'auto'));
-          const gAid = sh.global_auto_node_id || 'auto_youtube';
+          const gMode = sh.global_mode || (sh.global_country === 'direct' || sh.global_strategy === 'direct' ? 'direct' : (sh.global_strategy === 'manual' && sh.global_manual_node && !String(sh.global_manual_node).startsWith('auto:') ? 'manual' : 'auto'));
+          const autoList = state.autoNodes || [];
+          const gAid = sh.global_auto_node_id || (autoList[0] && autoList[0].id) || 'auto_youtube';
+          const gAnObj = autoList.find(a => String(a.id).toLowerCase() === String(gAid).toLowerCase()) || autoList[0] || null;
+          const gAnName = sh.global_auto_node_name || (gAnObj && gAnObj.name) || gAid;
           const gCountry = ['HK', 'TW', 'JP', 'SG', 'US', 'OTHER'].includes(sh.global_country) ? sh.global_country : 'JP';
-          const gResolved = sh.global_resolved_node || 'direct';
+          const gPool = getSelectableNodesSortedUI(gCountry, false);
+          const gManualVal = (sh.global_manual_node && !String(sh.global_manual_node).startsWith('auto:') && sh.global_manual_node !== 'direct' && gPool.some(x => x.tag === sh.global_manual_node))
+            ? sh.global_manual_node
+            : (gPool[0] ? gPool[0].tag : (sh.global_manual_node && !String(sh.global_manual_node).startsWith('auto:') && sh.global_manual_node !== 'direct' ? sh.global_manual_node : ''));
+          const gResolved = gMode === 'direct'
+            ? 'direct'
+            : ((sh.global_resolved_node && sh.global_resolved_node !== 'direct')
+                ? sh.global_resolved_node
+                : (gMode === 'auto' ? ((gAnObj && gAnObj.current_node) || 'direct') : (gManualVal || 'direct')));
           const lblEl = document.getElementById('non-shunt-resolved-label');
           if (lblEl) {
-            lblEl.textContent = gMode === 'direct' ? '🎯 直连' : (gMode === 'auto' ? `🤖 自动 (${gAid}) ➔ ${gResolved}` : `🖐️ 手动 (${gCountry}) ➔ ${gResolved}`);
+            lblEl.textContent = gMode === 'direct'
+              ? '🎯 直连 (宽带出网)'
+              : (gMode === 'auto' ? `🤖 自动 (${gAnName}) ➔ ${gResolved}` : `🖐️ 手动 (${gCountry}) ➔ ${gResolved}`);
+          }
+          const isFocusedInGlobalBar = document.activeElement && nonShuntBar.contains(document.activeElement);
+          if (forceRender || !isFocusedInGlobalBar) {
+            const selGMd = document.getElementById('select-global-mode');
+            const selGAn = document.getElementById('select-global-autonode');
+            const selGCtry = document.getElementById('select-global-country');
+            const selGMan = document.getElementById('select-global-manual-node');
+            if (selGMd) selGMd.value = gMode;
+            if (selGAn) {
+              selGAn.innerHTML = autoList.length
+                ? autoList.map(an => `<option value="${escapeHtml(an.id)}" ${String(an.id).toLowerCase() === String(gAid).toLowerCase() ? 'selected' : ''} class="bg-slate-900">🤖 ${escapeHtml(an.name)}</option>`).join('')
+                : `<option value="${escapeHtml(gAid)}" selected class="bg-slate-900">🤖 ${escapeHtml(gAnName)}</option>`;
+              selGAn.classList.toggle('hidden', gMode !== 'auto');
+            }
+            if (selGCtry) {
+              selGCtry.innerHTML = FIVE_COUNTRIES_UI.map(c =>
+                `<option value="${c.code}" ${c.code === gCountry ? 'selected' : ''} class="bg-slate-900">${c.short} (${getSelectableNodesSortedUI(c.code, false).length})</option>`
+              ).join('');
+              selGCtry.classList.toggle('hidden', gMode !== 'manual');
+            }
+            if (selGMan) {
+              let gManualList = gPool.slice();
+              if (gManualVal && !gManualList.some(n => n.tag === gManualVal)) {
+                const exN = (state.nodes || []).find(n => n.tag === gManualVal) || { tag: gManualVal, state: 'pending', delay_ms: -1 };
+                gManualList.unshift(exN);
+              }
+              selGMan.innerHTML = gManualList.length
+                ? gManualList.map(n => {
+                    const fs = getNodeFourStateUI(n);
+                    return `<option value="${escapeHtml(n.tag)}" ${n.tag === gManualVal ? 'selected' : ''} class="bg-slate-900">${escapeHtml(n.tag)} (${escapeHtml(fs.badge)})</option>`;
+                  }).join('')
+                : `<option value="" class="bg-slate-900">该分组暂无可用节点</option>`;
+              selGMan.classList.toggle('hidden', gMode !== 'manual');
+            }
           }
         } else {
           nonShuntBar.classList.add('hidden');
@@ -3621,7 +3687,7 @@
         const res = await callRouterApi('shunt/update', 'POST', payload);
         if (mySeq !== _shuntSaveSeq) return;
         if (res && res.ok) {
-          state.shunt = res;
+          Object.assign(state.shunt, res);
           if (Array.isArray(res.auto_nodes)) state.autoNodes = res.auto_nodes;
           _shuntLockUntil = Date.now() + 5000;
           saveSnapshotToCache();
@@ -5424,7 +5490,16 @@
       } else if (nodeBadge) {
         nodeBadge.textContent = (!state._initialSyncDone && !state._snapshotFromCache) ? selNode : `当前优选: ${selNode}`;
       }
-      document.getElementById('top-core-badge').textContent = state.coreEngine;
+      const topCoreBadgeEl = document.getElementById('top-core-badge');
+      if (topCoreBadgeEl) {
+        if (state.coreDeadAlert) {
+          topCoreBadgeEl.textContent = `🚨 ${state.coreEngine} (未运行)`;
+          topCoreBadgeEl.className = 'px-2.5 py-1 rounded-full bg-rose-500/25 border border-rose-400/50 text-rose-200 text-xs font-bold mono animate-pulse';
+        } else {
+          topCoreBadgeEl.textContent = state.coreEngine;
+          topCoreBadgeEl.className = 'px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-slate-300 text-xs mono';
+        }
+      }
       document.getElementById('sidebar-core-ver').textContent = state.coreEngine;
       renderOverviewDashboard();
       renderShuntMatrix(forceAll);
@@ -5586,6 +5661,17 @@
             if (statusData.homelink.route_mode) state.homelinkRouteMode = statusData.homelink.route_mode;
             if (statusData.homelink.effective_route_mode) state.homelinkEffectiveMode = statusData.homelink.effective_route_mode;
             if (statusData.homelink.telemetry) state.homelinkTelemetry = statusData.homelink.telemetry;
+          }
+          state.corePid = statusData.core_pid || null;
+          const isProxyDesired = !statusData.bypass_active && (!statusData.ops_settings || statusData.ops_settings.enabled !== false);
+          state.coreDeadAlert = !!(statusData.core_dead_alert || (!statusData.core_pid && isProxyDesired && statusData.core_running === false));
+          const coreOffBanner = document.getElementById('core-offline-alert-banner');
+          if (coreOffBanner) {
+            coreOffBanner.classList.toggle('hidden', !state.coreDeadAlert);
+          }
+          const ovCoreOffCard = document.getElementById('ov-core-offline-card');
+          if (ovCoreOffCard) {
+            ovCoreOffCard.classList.toggle('hidden', !state.coreDeadAlert);
           }
           const degBanner = document.getElementById('degraded-alert-banner');
           const degText = document.getElementById('degraded-alert-text');
@@ -6012,9 +6098,14 @@
         if (!confirmDanger(confirmMsg)) return;
         _shuntLockUntil = Date.now() + 6000;
         state.shunt.routing_mode = newMode;
+        if ((newMode === 'gfw_list' || newMode === 'cn_whitelist' || newMode === 'global_proxy') && state.shunt.global_mode === 'direct') {
+          state.shunt.global_mode = 'auto';
+          state.shunt.global_strategy = 'auto';
+          state.shunt.global_auto_node_id = state.shunt.global_auto_node_id || 'auto_youtube';
+        }
         renderShuntMatrix(true);
         const res = await callRouterApi('shunt/update', 'POST', { routing_mode: newMode });
-        if (res && res.ok) state.shunt = res;
+        if (res && res.ok) Object.assign(state.shunt, res);
         renderShuntMatrix(true);
         showToast(`✅ 路由模式已保存为「${targetLabel}」，正在后台重启 sing-box 内核使新路由规则生效…`, 'info');
       }
@@ -6030,18 +6121,110 @@
       }
       const selGMd = document.getElementById('select-global-mode');
       const selGAn = document.getElementById('select-global-autonode');
+      const selGCtry = document.getElementById('select-global-country');
+      const selGMan = document.getElementById('select-global-manual-node');
+      async function saveGlobalThreeMode() {
+        const mySeq = ++_shuntSaveSeq;
+        _shuntLockUntil = Date.now() + 12000;
+        const sh = state.shunt || {};
+        const gMode = sh.global_mode || 'auto';
+        let payload = { global_mode: gMode };
+        if (gMode === 'direct') {
+          Object.assign(sh, {
+            global_mode: 'direct',
+            global_strategy: 'direct',
+            global_manual_node: 'direct',
+            global_resolved_node: 'direct'
+          });
+          Object.assign(payload, {
+            global_strategy: 'direct',
+            global_manual_node: 'direct'
+          });
+        } else if (gMode === 'auto') {
+          const aid = sh.global_auto_node_id || (state.autoNodes && state.autoNodes[0] && state.autoNodes[0].id) || 'auto_youtube';
+          const anObj = (state.autoNodes || []).find(a => String(a.id).toLowerCase() === String(aid).toLowerCase());
+          const resolvedAuto = (anObj && anObj.current_node && anObj.current_node !== 'direct') ? anObj.current_node : (sh.global_resolved_node || 'direct');
+          Object.assign(sh, {
+            global_mode: 'auto',
+            global_strategy: 'auto',
+            global_auto_node_id: aid,
+            global_auto_node_name: (anObj && anObj.name) || sh.global_auto_node_name || aid,
+            global_manual_node: 'auto:' + aid,
+            global_resolved_node: resolvedAuto
+          });
+          Object.assign(payload, {
+            global_strategy: 'auto',
+            global_auto_node_id: aid,
+            global_manual_node: 'auto:' + aid
+          });
+        } else {
+          const cCode = ['HK', 'TW', 'JP', 'SG', 'US', 'OTHER'].includes(sh.global_country) ? sh.global_country : 'JP';
+          const cPool = getSelectableNodesSortedUI(cCode, false);
+          const mTag = (sh.global_manual_node && !String(sh.global_manual_node).startsWith('auto:') && sh.global_manual_node !== 'direct' && (cPool.some(x => x.tag === sh.global_manual_node) || (state.nodes || []).some(x => x.tag === sh.global_manual_node)))
+            ? sh.global_manual_node
+            : (cPool[0] ? cPool[0].tag : '');
+          Object.assign(sh, {
+            global_mode: 'manual',
+            global_strategy: 'manual',
+            global_country: cCode,
+            global_manual_node: mTag,
+            global_resolved_node: mTag || 'direct'
+          });
+          Object.assign(payload, {
+            global_strategy: 'manual',
+            global_country: cCode,
+            global_manual_node: mTag
+          });
+        }
+        renderShuntMatrix(true);
+        renderAll();
+        const res = await callRouterApi('shunt/update', 'POST', payload);
+        if (mySeq !== _shuntSaveSeq) return;
+        if (res && res.ok) {
+          Object.assign(state.shunt, res);
+          if (Array.isArray(res.auto_nodes)) state.autoNodes = res.auto_nodes;
+          _shuntLockUntil = Date.now() + 5000;
+          saveSnapshotToCache();
+          renderShuntMatrix(true);
+          renderAll();
+          showToast(`✅ 已更新当前模式统一出口为「${res.global_resolved_node || sh.global_resolved_node || 'direct'}」（内核已热切生效）`, 'success');
+        } else {
+          showToast('⚠️ 保存当前模式统一出口失败，请重试', 'warn');
+        }
+      }
       if (selGMd) selGMd.addEventListener('change', async () => {
         state.shunt.global_mode = selGMd.value;
-        const res = await callRouterApi('shunt/update', 'POST', { global_mode: selGMd.value, global_strategy: selGMd.value });
-        if (res && res.ok) state.shunt = res;
-        renderShuntMatrix(true);
+        if (selGMd.value === 'manual') {
+          const cCode = ['HK', 'TW', 'JP', 'SG', 'US', 'OTHER'].includes(state.shunt.global_country) ? state.shunt.global_country : 'JP';
+          state.shunt.global_country = cCode;
+          const cPool = getSelectableNodesSortedUI(cCode, false);
+          if (!state.shunt.global_manual_node || String(state.shunt.global_manual_node).startsWith('auto:') || state.shunt.global_manual_node === 'direct' || !cPool.some(x => x.tag === state.shunt.global_manual_node)) {
+            state.shunt.global_manual_node = cPool[0] ? cPool[0].tag : '';
+          }
+        } else if (selGMd.value === 'auto') {
+          if (!state.shunt.global_auto_node_id) {
+            state.shunt.global_auto_node_id = (state.autoNodes && state.autoNodes[0] && state.autoNodes[0].id) || 'auto_youtube';
+          }
+        }
+        await saveGlobalThreeMode();
       });
       if (selGAn) selGAn.addEventListener('change', async () => {
         state.shunt.global_mode = 'auto';
         state.shunt.global_auto_node_id = selGAn.value;
-        const res = await callRouterApi('shunt/update', 'POST', { global_mode: 'auto', global_strategy: 'auto', global_auto_node_id: selGAn.value });
-        if (res && res.ok) state.shunt = res;
-        renderShuntMatrix(true);
+        await saveGlobalThreeMode();
+      });
+      if (selGCtry) selGCtry.addEventListener('change', async () => {
+        state.shunt.global_mode = 'manual';
+        state.shunt.global_country = selGCtry.value;
+        const cPool = getSelectableNodesSortedUI(selGCtry.value, false);
+        state.shunt.global_manual_node = cPool[0] ? cPool[0].tag : '';
+        await saveGlobalThreeMode();
+      });
+      if (selGMan) selGMan.addEventListener('change', async () => {
+        if (!selGMan.value) return;
+        state.shunt.global_mode = 'manual';
+        state.shunt.global_manual_node = selGMan.value;
+        await saveGlobalThreeMode();
       });
       const traceBtn = document.getElementById('btn-run-trace-query');
       const traceInp = document.getElementById('input-trace-target');
@@ -6334,7 +6517,7 @@
           const notes = document.getElementById('ota-notes');
           if (!r || !r.ok) {
             showToast('❌ ' + ((r && r.message) || '版本检查失败'), 'error');
-            if (sub) sub.textContent = '当前 v' + (state.version || '1.0.2') + ' · 版本检查失败（网络不通或清单不可达）';
+            if (sub) sub.textContent = '当前 v' + (state.version || '1.0.3') + ' · 版本检查失败（网络不通或清单不可达）';
             return;
           }
           if (notes && r.notes_url) { notes.href = r.notes_url; notes.classList.remove('hidden'); }
@@ -6518,7 +6701,7 @@
               newGrp.position = posVal || 'top';
             }
             const res = await callRouterApi('shunt/custom_rule', 'POST', newGrp);
-            if (res && res.ok) state.shunt = res;
+            if (res && res.ok) Object.assign(state.shunt, res);
             saveSnapshotToCache();
             renderShuntMatrix(true);
             if (res && res.conflict_warning) {
@@ -6558,7 +6741,7 @@
             if (!confirmDanger(`确定恢复「${(grp && grp.name) || gid}」的出厂默认匹配域名与 IP 规则？`)) return;
             await withBusy(rst, '恢复中...', async () => {
               const res = await callRouterApi('shunt/reset_group_rules', 'POST', { group_id: gid });
-              if (res && res.ok) state.shunt = res;
+              if (res && res.ok) Object.assign(state.shunt, res);
               saveSnapshotToCache();
               renderShuntMatrix(true);
               showToast(`🔄 已恢复「${(grp && grp.name) || gid}」的默认分流规则！`, 'success');
@@ -6581,7 +6764,7 @@
           if (!confirmDanger(`确定删除自定义分流规则「${(grp && grp.name) || gid}」？`)) return;
           await withBusy(del, '删除中...', async () => {
             const res = await callRouterApi('shunt/delete_rule', 'POST', { group_id: gid });
-            if (res && res.ok) state.shunt = res;
+            if (res && res.ok) Object.assign(state.shunt, res);
             await syncBackendStatus();
             renderShuntMatrix(true);
             showToast('已删除该自定义分流规则', 'info');
@@ -6795,6 +6978,24 @@
       if (warnProbeV6Btn) warnProbeV6Btn.addEventListener('click', () => runActiveIpv6Check(warnProbeV6Btn));
       const setProbeV6Btn = document.getElementById('btn-settings-probe-ipv6');
       if (setProbeV6Btn) setProbeV6Btn.addEventListener('click', () => runActiveIpv6Check(setProbeV6Btn));
+      const handleQuickRestartCore = async (btnEl) => {
+        await withBusy(btnEl, '重启内核中...', async () => {
+          showToast('🔄 正在重新拉起 Sing-box 内核并恢复透明代理...', 'info');
+          const r = await callRouterApi('ops/control', 'POST', { action: 'restart_core' });
+          await syncBackendStatus(false, true);
+          if (r && r.ok && r.core_ready) {
+            showToast(`✅ Sing-box 内核已恢复运行 (PID: ${r.core_pid || 'running'})`, 'success');
+          } else {
+            showToast('⚠️ 内核启动指令已下发，请稍候观察状态', 'warn');
+          }
+        });
+      };
+      const btnRestartCoreBanner = document.getElementById('btn-restart-core-banner');
+      if (btnRestartCoreBanner) btnRestartCoreBanner.addEventListener('click', () => handleQuickRestartCore(btnRestartCoreBanner));
+      const btnOvRestartCore = document.getElementById('btn-ov-restart-core');
+      if (btnOvRestartCore) btnOvRestartCore.addEventListener('click', () => handleQuickRestartCore(btnOvRestartCore));
+      const btnKeepDirectBanner = document.getElementById('btn-keep-direct-banner');
+      if (btnKeepDirectBanner) btnKeepDirectBanner.addEventListener('click', () => setProxyEnabled(false, btnKeepDirectBanner));
       const reprobeBmBtn = document.getElementById('btn-reprobe-build-mode');
       if (reprobeBmBtn) {
         reprobeBmBtn.addEventListener('click', async () => {

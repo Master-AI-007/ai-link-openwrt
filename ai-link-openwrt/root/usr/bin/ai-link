@@ -1,6 +1,6 @@
 #!/bin/sh
-# AI-LINK Command Line Utility for OpenWrt SSH Management (v1.0.2)
-# Usage: ai-link [status|password|port|update|probe|probe-now|check|max-nodes|import-cache|sync-sub|import-nodes|add-test-node|mute-conflicts|recover|restore|restart|uninstall]
+# AI-LINK Command Line Utility for OpenWrt SSH Management (v1.0.3)
+# Usage: ai-link [status|svc_state|password|port|update|probe|probe-now|check|max-nodes|import-cache|sync-sub|import-nodes|add-test-node|mute-conflicts|recover|recover_direct|restore|restart|restart_core|uninstall]
 
 export PYTHONDONTWRITEBYTECODE="1"
 PANEL_PORT=$(uci -q get ai-link.global.panel_port || echo "9099")
@@ -47,6 +47,9 @@ PY
 }
 
 case "$1" in
+	svc_state|status_check)
+		/etc/init.d/ai-link "$1"
+		;;
 	password)
 		if [ -n "$2" ]; then
 			if [ "${#2}" -lt 4 ]; then
@@ -152,12 +155,12 @@ PY
 			fi
 		done
 		;;
-	recover)
+	recover|recover_direct)
 		/etc/init.d/ai-link recover_direct
-		echo "已执行紧急直连恢复：nftables 透明代理规则与 dnsmasq 转发已清空，局域网恢复直接上网。"
+		echo "已执行紧急直连恢复：nftables 透明代理规则与 dnsmasq 转发已清空，局域网与旁路由自身已恢复直接上网。"
 		;;
-	restore)
-		if [ -n "$2" ]; then
+	restore|restore_proxy)
+		if [ "$1" = "restore" ] && [ -n "$2" ]; then
 			RESTORE_TARGET="$2"
 			if [ "$RESTORE_TARGET" = "--latest" ] || [ "$RESTORE_TARGET" = "latest" ]; then
 				RESTORE_TARGET="/root/ai-link-final-backup/etc-ai-link.tgz"
@@ -185,8 +188,12 @@ PY
 		/etc/init.d/ai-link restart
 		wait_core_ready
 		;;
+	restart_core)
+		/etc/init.d/ai-link restart_core
+		wait_core_ready
+		;;
 	-h|--help|help)
-		echo "用法: ai-link [status|password|port|update|probe|probe-now|check|max-nodes|import-cache|sync-sub|import-nodes|add-test-node|mute-conflicts|recover|restore|restart|uninstall]"
+		echo "用法: ai-link [status|svc_state|password|port|update|probe|probe-now|check|max-nodes|import-cache|sync-sub|import-nodes|add-test-node|mute-conflicts|recover|recover_direct|restore|restart|restart_core|uninstall]"
 		echo "在线升级: ai-link update (仅检查)  |  ai-link update --apply (检查并升级)"
 		echo "卸载帮助: ai-link uninstall [--help|-y|--keep-config]"
 		exit 0
@@ -337,7 +344,7 @@ PY
 		;;
 	status|*)
 		echo "=========================================================="
-		echo "  AI-LINK 智能透明代理与网络中枢 v1.0.2 (正式版)"
+		echo "  AI-LINK 智能透明代理与网络中枢 v1.0.3 (正式版)"
 		echo "=========================================================="
 		echo "  独立控制面板 : http://${LAN_IP}:${PANEL_PORT}"
 		echo "  面板管理密码 : ${PANEL_SECRET}"
@@ -347,7 +354,7 @@ PY
 		echo "  节点预筛上限 : Top ${MAX_NODES} (ai-link max-nodes [N|all])"
 		echo "  宿主机缓存夹 : ${CACHE_DIR}"
 		echo "  在线升级     : ai-link update [--apply] (检查 / 检查并升级到最新版)"
-		echo "  快捷命令用法 : ai-link [status|probe|probe-now|check|max-nodes|import-cache|sync-sub|import-nodes|add-test-node|recover|restore|restart|uninstall]"
+		echo "  快捷命令用法 : ai-link [status|svc_state|probe|probe-now|check|max-nodes|import-cache|sync-sub|import-nodes|add-test-node|recover|recover_direct|restore|restart|restart_core|uninstall]"
 		echo "=========================================================="
 		;;
 esac

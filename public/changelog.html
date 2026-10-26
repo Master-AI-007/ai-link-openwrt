@@ -32,7 +32,7 @@
         清单，判断是否有新版本，并展示下面这些更新要点。
       </p>
       <div class="mt-5 flex flex-wrap gap-2 text-xs">
-        <span class="px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-semibold">当前最新：v1.0.2</span>
+        <span class="px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-semibold">当前最新：v1.0.3</span>
         <span class="px-3 py-1 rounded-full bg-slate-800/80 text-slate-300 border border-slate-700 font-semibold">发布通道：stable</span>
         <a href="https://github.com/Master-AI-007/ai-link-openwrt/releases" target="_blank" rel="noopener"
            class="px-3 py-1 rounded-full bg-slate-800/80 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold">GitHub Releases ↗</a>
@@ -42,11 +42,56 @@
 
   <main class="max-w-4xl mx-auto px-5 pb-24 space-y-8">
 
+    <!-- ================= v1.0.3 ================= -->
+    <article id="v1.0.3" class="card rounded-2xl p-6 md:p-7">
+      <div class="flex flex-wrap items-center gap-3 mb-1">
+        <h2 class="text-2xl font-extrabold text-white">v1.0.3</h2>
+        <span class="tag bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">最新</span>
+        <span class="tag bg-rose-500/15 text-rose-300 border border-rose-500/30">安全更新</span>
+        <span class="tag bg-sky-500/15 text-sky-300 border border-sky-500/30">稳定性</span>
+        <span class="ml-auto text-xs text-slate-500 font-mono">2026-10-26</span>
+      </div>
+      <p class="text-sm text-slate-400 mb-6">主题：<strong class="text-slate-200"><b>双机实测根因深度修复（10.10.10.7 &amp; 192.168.100.37）· 彻底终结 Sing-box 内核掉线与全网黑洞</b></strong></p>
+      <h3 class="text-sm font-bold text-cyan-300 mb-3">🛡️ 核心引擎防掉线与自愈闭环（P0-1 ~ P0-3）</h3>
+      <ul class="list-disc pl-5 space-y-2 text-[13px] text-slate-300 leading-relaxed mb-5">
+        <li><b>解除 procd 1 小时 6 次重启放弃配额（P0-1）</b></li>
+      <p class="text-[13px] text-slate-400 leading-relaxed mb-2"><code class="text-cyan-300">/etc/init.d/ai-link</code> 中 <code class="text-cyan-300">ai-link-daemon</code> 与 <code class="text-cyan-300">ai-link-core</code> 的重启策略由 <code class="text-cyan-300">respawn 3600 5 5</code> 调整为 <code class="text-cyan-300">respawn 0 5 0</code>（无限重试、5 秒退避），彻底根除因日常分流调整触发主动重启与异常退出共用配额导致的 <code class="text-cyan-300">Instance ai-link::ai-link-core s in a crash loop 6 crashes</code> 永久放弃拉起问题；同时新增 <code class="text-cyan-300">/etc/init.d/ai-link restart_core</code> 独立恢复命令，在不中断 9099 面板守护进程的前提下重置并拉起内核。</p>
+        <li><b>看门狗新增 Sing-box 进程存活守护（P0-2）</b></li>
+      <p class="text-[13px] text-slate-400 leading-relaxed mb-2"><code class="text-cyan-300">_telemetry_and_watchdog_loop</code> 新增 <code class="text-cyan-300">ensure_core_alive_and_recover()</code>（每 15 秒巡检 <code class="text-cyan-300">_get_live_singbox_pids()</code>，自动过滤僵尸进程 <code class="text-cyan-300">State: Z</code> 与 <code class="text-cyan-300">version</code>/<code class="text-cyan-300">check</code>/<code class="text-cyan-300">rule-set</code> 短期辅助进程）。检测到内核进程意外缺失且未处于重构重载窗口时，立即记录日志 <code class="text-cyan-300">Watchdog: core process missing; restarting service.</code> 并自动调用 <code class="text-cyan-300">_respawn_core_only()</code> / <code class="text-cyan-300">restart_core</code> 恢复内核。</p>
+        <li><b>内核离线立即撤除 nftables 与策略路由防黑洞（P0-3）</b></li>
+      <p class="text-[13px] text-slate-400 leading-relaxed mb-2"><code class="text-cyan-300">ensure_nft_and_routing_intact()</code> 新增 <code class="text-cyan-300">_teardown_blackhole_nft_and_routing()</code>：一旦检测到 <code class="text-cyan-300">sing-box</code> 进程不在或 <code class="text-cyan-300">:7893</code> 端口未监听，立即主动删除 <code class="text-cyan-300">table inet ai_link</code>、清理 <code class="text-cyan-300">ip rule fwmark 0x162 table 162</code> 并回退 <code class="text-cyan-300">dnsmasq</code> 上游，使局域网与旁路由自身平滑退回直连上网（彻底消除 <code class="text-cyan-300">curl 000</code> 全网黑洞）；待内核恢复监听后自动重挂透明代理。同时 <code class="text-cyan-300">_sync_ipv6_policy_routing()</code> 增加前置内核与端口存活断言。</p>
+</ul>
+      <h3 class="text-sm font-bold text-cyan-300 mb-3">⚡ 幂等配置重载、指纹非易失持久化与启动防抢杀（P1-1 ~ P1-3）</h3>
+      <ul class="list-disc pl-5 space-y-2 text-[13px] text-slate-300 leading-relaxed mb-5">
+        <li><b>全端点规则指纹比对，幂等操作零重启（P1-1）</b></li>
+      <p class="text-[13px] text-slate-400 leading-relaxed mb-2">增强 <code class="text-cyan-300">_compute_core_rules_fingerprint()</code>（覆盖 <code class="text-cyan-300">route</code>、<code class="text-cyan-300">dns</code>、<code class="text-cyan-300">inbounds</code>、选择器成员拓扑与代理出站定义，排除可通过 Clash API 热切换的 <code class="text-cyan-300">default</code> 字段）。在 <code class="text-cyan-300">schedule_async_core_reload()</code>、<code class="text-cyan-300">reload_core_only()</code> 以及 <code class="text-cyan-300">/api/shunt/reorder</code>、<code class="text-cyan-300">/api/shunt/custom_rule</code>、<code class="text-cyan-300">/api/dns/rewrite</code>、<code class="text-cyan-300">/api/dns/filter/toggle</code> 等端点前置比较操作前后指纹：若拓扑规则未变化（如原样提交分流顺序），自动降级为 <code class="text-cyan-300">hot_selector</code> 热更新，绝不杀内核进程（<code class="text-cyan-300">requires_core_respawn=False</code>）。</p>
+        <li><b>规则指纹持久化至非 tmpfs <code class="text-cyan-300">/etc/ai-link/.applied_core_rule_hash</code>（P1-2）</b></li>
+      <p class="text-[13px] text-slate-400 leading-relaxed mb-2"><code class="text-cyan-300">_record_applied_core_rule_hash()</code> 与 <code class="text-cyan-300">_get_applied_core_rule_hash()</code> 双写 <code class="text-cyan-300">/etc/ai-link/.applied_core_rule_hash</code> 与 <code class="text-cyan-300">/var/run/ai-link/applied_core_rule_hash.txt</code>；设备重启或 tmpfs 清空后自动从持久化文件恢复指纹，避免开机首次巡检误判「规则脏」而多杀一次内核。</p>
+        <li><b>消除启动期 <code class="text-cyan-300">context canceled</code> 抢杀与 <code class="text-cyan-300">.srs</code> 原子编译（Path ④）</b></li>
+      <p class="text-[13px] text-slate-400 leading-relaxed mb-2"><code class="text-cyan-300">reload_core_only()</code> 新增 <code class="text-cyan-300">_get_min_singbox_proc_age()</code> 启动保护窗口（进程刚拉起 <code class="text-cyan-300"><6.5s</code> 时先等待 Clash API 就绪而不发送 <code class="text-cyan-300">SIGTERM</code>）；<code class="text-cyan-300">blocklist_custom.srs</code> 改为编译至临时文件后 <code class="text-cyan-300">os.replace()</code> 原子替换；<code class="text-cyan-300">--daemon</code> 启动时若 <code class="text-cyan-300">sing-box.json</code> 已在 25 秒内由 <code class="text-cyan-300">init.d</code> 生成则跳过重复写盘。</p>
+        <li><b><code class="text-cyan-300">install.sh</code> 与 OTA 升级脚本增加真实健康断言（P1-3）</b></li>
+      <p class="text-[13px] text-slate-400 leading-relaxed mb-2">安装与升级收尾阶段强制校验 <code class="text-cyan-300">pidof sing-box</code> 及 <code class="text-cyan-300">:7890</code> / <code class="text-cyan-300">:7893</code> 端口监听状态（未就绪时自动触发一次 <code class="text-cyan-300">restart_core</code> 自愈），输出 <code class="text-cyan-300">UPGRADE OK: core=... ports ok</code> 或 <code class="text-cyan-300">UPGRADE FAIL: ...</code>。</p>
+</ul>
+      <h3 class="text-sm font-bold text-cyan-300 mb-3">🌐 10.10.10.7 实测问题专项修复与面板可见性（DIAG-1 ~ DIAG-3 / P2 / P3）</h3>
+      <ul class="list-disc pl-5 space-y-2 text-[13px] text-slate-300 leading-relaxed mb-5">
+        <li><b>静默捕获客户端提前断开 <code class="text-cyan-300">BrokenPipeError</code>（DIAG-1）</b></li>
+      <p class="text-[13px] text-slate-400 leading-relaxed mb-2"><code class="text-cyan-300">AILinkRequestHandler</code> 的 <code class="text-cyan-300">handle_one_request</code>、<code class="text-cyan-300">finish</code>、<code class="text-cyan-300">_send_json</code>、<code class="text-cyan-300">_try_send_wire_memo</code>、<code class="text-cyan-300">do_OPTIONS</code> 统一捕获 <code class="text-cyan-300">(BrokenPipeError, ConnectionResetError, socket.timeout)</code>，消除浏览器刷新或中断请求时的堆栈刷屏。</p>
+        <li><b>停机/重启/内核离线期间保留旁路由自身 DNS 解析（DIAG-2）</b></li>
+      <p class="text-[13px] text-slate-400 leading-relaxed mb-2"><code class="text-cyan-300">init.d/ai-link</code> 与 <code class="text-cyan-300">ai-link-daemon.py</code> 新增 <code class="text-cyan-300">fallback_resolv_conf_direct()</code> / <code class="text-cyan-300">restore_resolv_conf_local()</code>：在服务停止、重启等待或内核离线窗口自动将 <code class="text-cyan-300">/etc/resolv.conf</code> 与 <code class="text-cyan-300">/tmp/resolv.conf.d/resolv.conf.auto</code> 回退至主路由网关 + 公共 DNS（<code class="text-cyan-300">223.5.5.5</code> / <code class="text-cyan-300">119.29.29.29</code>），彻底解决停机期间旁路由自身 <code class="text-cyan-300">ttyd CPD No internet</code> 无法解析域名的问题；待 <code class="text-cyan-300">:7893</code> / <code class="text-cyan-300">:7874</code> 就绪后再切回 <code class="text-cyan-300">127.0.0.1</code>。</p>
+        <li><b>修复新装设备 <code class="text-cyan-300">wait_for_ports_And_apply_nft</code> 挂载延迟（DIAG-3）</b></li>
+      <p class="text-[13px] text-slate-400 leading-relaxed mb-2"><code class="text-cyan-300">init.d/ai-link</code> 后台端口等待子进程增加 <code class="text-cyan-300">trap '' HUP</code> 与 <code class="text-cyan-300"></dev/null >/dev/null 2>&1 &</code> 标准流解耦（防止 SSH 会话退出时 <code class="text-cyan-300">SIGHUP</code> 中断后台挂载），并在等待第 8s / 20s 检测到内核未起时自动触发重拉；<code class="text-cyan-300">install.sh</code> 依赖检查补齐 <code class="text-cyan-300">sing-box</code> 软件包检测。</p>
+        <li><b>面板与 LuCI 暴露真实内核离线红色告警横幅（P2）</b></li>
+      <p class="text-[13px] text-slate-400 leading-relaxed mb-2">修复 <code class="text-cyan-300">build_routing_health()</code> 在内核离线时仍因历史测速缓存返回 <code class="text-cyan-300">✅ 代理中</code> 的盲区；WebUI 新增顶部悬浮 <code class="text-cyan-300">#core-offline-alert-banner</code> 与概览页 <code class="text-cyan-300">#ov-core-offline-card</code> 醒目红色告警条及「🔄 一键重启内核」按钮，并将 <code class="text-cyan-300">tuple(_get_live_singbox_pids())</code> 纳入 <code class="text-cyan-300">/api/status</code> 缓存键实现毫秒级状态感知。</p>
+        <li><b>统一版本字段 <code class="text-cyan-300">status.build_ver</code> 为 <code class="text-cyan-300">1.0.3</code>（P3）</b></li>
+      <p class="text-[13px] text-slate-400 leading-relaxed mb-2"><code class="text-cyan-300">/api/status</code> 的 <code class="text-cyan-300">build_ver</code> 由历史残留值 <code class="text-cyan-300">2.0.0-r8-v24-nolo</code> 统一为 <code class="text-cyan-300">APP_VERSION</code> (<code class="text-cyan-300">"1.0.3"</code>)，全仓 7 处版本标识 100% 对齐为 <code class="text-cyan-300">1.0.3</code>。</p>
+</ul>
+    </article>
+
     <!-- ================= v1.0.2 ================= -->
     <article id="v1.0.2" class="card rounded-2xl p-6 md:p-7">
       <div class="flex flex-wrap items-center gap-3 mb-1">
         <h2 class="text-2xl font-extrabold text-white">v1.0.2</h2>
-        <span class="tag bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">最新</span>
+        <span class="tag bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">历史</span>
         <span class="tag bg-rose-500/15 text-rose-300 border border-rose-500/30">安全更新</span>
         <span class="tag bg-sky-500/15 text-sky-300 border border-sky-500/30">功能增强</span>
         <span class="ml-auto text-xs text-slate-500 font-mono">2026-10-26</span>

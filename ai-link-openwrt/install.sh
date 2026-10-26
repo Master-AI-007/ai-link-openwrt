@@ -1,6 +1,6 @@
 #!/bin/sh
 # ==============================================================================
-# AI-LINK v1.0.2 (luci-app-ai-link v2.0.0-r8) Universal Cross-Platform Installer
+# AI-LINK v1.0.3 (luci-app-ai-link v2.0.0-r8) Universal Cross-Platform Installer
 # Supports:
 #   - Architectures : x86_64 (amd64), aarch64 (arm64), armv7l (armhf), mipsel, riscv64
 #   - Package Mgrs  : OPKG (OpenWrt <=23.05) & APK (OpenWrt 24.10+ / ImmortalWrt 25.x+)
@@ -12,7 +12,7 @@
 set -e
 export PYTHONDONTWRITEBYTECODE="1"
 
-VERSION="1.0.2"
+VERSION="1.0.3"
 UPGRADE_MODE=0
 for arg in "$@"; do
 	case "$arg" in
@@ -108,6 +108,9 @@ check_and_install_deps() {
 	command -v nft >/dev/null 2>&1 || MISSING_PKGS="$MISSING_PKGS nftables"
 	command -v ip >/dev/null 2>&1 || MISSING_PKGS="$MISSING_PKGS ip-full"
 	command -v openssl >/dev/null 2>&1 || MISSING_PKGS="$MISSING_PKGS openssl-util"
+	if ! command -v sing-box >/dev/null 2>&1 && ! ls "$SCRIPT_DIR"/cache/sing-box* /tmp/ai-link-cache/sing-box* >/dev/null 2>&1; then
+		MISSING_PKGS="$MISSING_PKGS sing-box"
+	fi
 
 	if [ ! -d /sys/module/nft_tproxy ] && ! grep -q "nft_tproxy" /proc/modules 2>/dev/null; then
 		MISSING_PKGS="$MISSING_PKGS kmod-nft-tproxy kmod-nft-socket"
@@ -120,19 +123,19 @@ check_and_install_deps() {
 	fi
 
 	if [ -z "$MISSING_PKGS" ]; then
-		echo "  -> ✓ 所有核心依赖 (python3 / nftables / tproxy / tun / cryptography) 均已就绪！"
+		echo "  -> ✓ 所有核心依赖 (python3 / sing-box / nftables / tproxy / tun / cryptography) 均已就绪！"
 		return 0
 	fi
 
 	echo "  -> 发现待补齐组件:${MISSING_PKGS}，正在通过 ${PKG_MGR} 自动安装..."
 	if [ "$PKG_MGR" = "opkg" ]; then
 		opkg update >/dev/null 2>&1 || true
-		for pkg in kmod-nft-tproxy kmod-nft-socket kmod-tun nftables ip-full ca-bundle python3-light python3-urllib python3-openssl python3-cryptography openssl-util curl; do
+		for pkg in kmod-nft-tproxy kmod-nft-socket kmod-tun nftables ip-full ca-bundle python3-light python3-urllib python3-openssl python3-cryptography openssl-util curl sing-box; do
 			opkg install "$pkg" >/dev/null 2>&1 || true
 		done
 	elif [ "$PKG_MGR" = "apk" ]; then
 		apk update >/dev/null 2>&1 || true
-		apk add --allow-untrusted kmod-nft-tproxy kmod-nft-socket kmod-tun nftables ip-full ca-bundle python3 python3-cryptography openssl-util curl >/dev/null 2>&1 || true
+		apk add --allow-untrusted kmod-nft-tproxy kmod-nft-socket kmod-tun nftables ip-full ca-bundle python3 python3-cryptography openssl-util curl sing-box >/dev/null 2>&1 || true
 	fi
 	echo "  -> ✓ 依赖项检查与补齐流程已完成"
 }
@@ -210,7 +213,7 @@ cp -rf "$SCRIPT_DIR/htdocs/luci-static/resources/view/ai-link/"* /www/luci-stati
 
 chmod +x /etc/init.d/ai-link /usr/bin/ai-link /usr/share/ai-link/ai-link-daemon.py /usr/share/ai-link/nftables/apply_nft.sh /usr/share/ai-link/nftables/normalize_nft_sets.py 2>/dev/null || true
 mkdir -p /etc/ai-link
-cp -f "$SCRIPT_DIR/root/etc/ai-link/version" /etc/ai-link/version 2>/dev/null || echo "${VERSION}" > /etc/ai-link/version
+cp -f "$SCRIPT_DIR/root/etc/ai-link/version" /etc/ai-link/version 2>/dev/null || echo "${VERSION} (20261026)" > /etc/ai-link/version
 
 MEM_KB=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null || echo 4194304)
 MEM_MIB=$(( ${MEM_KB:-4194304} / 1024 ))
@@ -303,7 +306,7 @@ echo "[5/6] 正在初始化安全证书、智能双栈 DNS 分流规则与内核
 /usr/bin/env python3 -B /usr/share/ai-link/ai-link-daemon.py --generate-configs
 
 # ------------------------------------------------------------------------------
-# [6/6] 启动服务并执行安装后全链路自检
+# [6/6] 启动服务并执行安装后全链路自检（含 P1-3 内核进程与端口真实健康断言）
 # ------------------------------------------------------------------------------
 echo "[6/6] 正在清理旧版进程缓存、刷新 LuCI 视图并启动服务..."
 rm -rf /tmp/luci-indexcache* /tmp/luci-modulecache/* /var/run/ai-link/probe.lock /usr/share/ai-link/__pycache__ 2>/dev/null || true
@@ -313,11 +316,58 @@ done
 sleep 1
 /etc/init.d/ai-link enable 2>/dev/null || true
 /etc/init.d/ai-link restart 2>/dev/null || true
-/usr/share/ai-link/nftables/apply_nft.sh || true
+
+# P1-3 & DIAG-3 FIX: Wait for sing-box process + ports 7890 & 7893 before mounting nftables & asserting health
+_port_ready() {
+	local p="$1"
+	if command -v netstat >/dev/null 2>&1; then
+		netstat -lnt 2>/dev/null | grep -q ":$p " && return 0
+	fi
+	if command -v ss >/dev/null 2>&1; then
+		ss -lntu 2>/dev/null | grep -q ":$p " && return 0
+	fi
+	/etc/init.d/ai-link status_ports_quiet >/dev/null 2>&1 && return 0
+	return 1
+}
+
+if command -v sing-box >/dev/null 2>&1; then
+	_sb_w=0
+	while [ $_sb_w -lt 16 ]; do
+		if pidof sing-box >/dev/null 2>&1 && _port_ready 7890 && _port_ready 7893; then
+			break
+		fi
+		if [ $_sb_w -eq 6 ] && ! pidof sing-box >/dev/null 2>&1; then
+			/etc/init.d/ai-link restart_core >/dev/null 2>&1 || true
+		fi
+		sleep 1
+		_sb_w=$((_sb_w + 1))
+	done
+	if pidof sing-box >/dev/null 2>&1 && _port_ready 7890 && _port_ready 7893; then
+		/usr/share/ai-link/nftables/apply_nft.sh || true
+		/usr/bin/env python3 -B /usr/share/ai-link/ai-link-daemon.py --apply-dns-upstream >/dev/null 2>&1 || true
+		logger -t ai-link "UPGRADE OK: core=$(pidof sing-box) ports ok"
+		echo "  -> ✓ 内核进程 (PID: $(pidof sing-box)) 与端口 (:7890 / :7893) 真实健康断言通过！"
+	else
+		if ! pidof sing-box >/dev/null 2>&1; then
+			logger -t ai-link "UPGRADE FAIL: core not running"
+		else
+			for p in 7890 7893; do
+				_port_ready "$p" || logger -t ai-link "UPGRADE FAIL: port $p"
+			done
+		fi
+		if [ -x /sbin/procd ] && [ "${AILINK_ALLOW_NO_CORE:-0}" != "1" ]; then
+			echo "  -> ❌ 告警: sing-box 内核或端口 (:7890/:7893) 未就绪，已跳过 nftables 挂载以保护局域网不断网！" >&2
+			exit 1
+		fi
+	fi
+else
+	/usr/share/ai-link/nftables/apply_nft.sh || true
+fi
+
 if command -v nft >/dev/null 2>&1; then
 	if nft list table inet ai_link >/dev/null 2>&1; then
 		echo "  -> ✓ nftables 透明代理表 (table inet ai_link) 已成功挂载并校验通过！"
-	else
+	elif command -v sing-box >/dev/null 2>&1; then
 		echo "  -> ❌ 告警: table inet ai_link 未挂载，请检查 nftables 模块！" >&2
 		exit 1
 	fi

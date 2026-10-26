@@ -21,7 +21,7 @@ return view.extend({
 		var uciSecret = pwdIsCustom ? '' : (uciSecretRaw || 'ai-link-2026');
 		var luciToken = String(uci.get('ai-link', 'global', 'luci_bridge_token') || '');
 		// 版本号由 daemon 启动时同步写入 UCI（app_version），这里只做兜底
-		var currentVer = String(uci.get('ai-link', 'global', 'app_version') || '1.0.2');
+		var currentVer = String(uci.get('ai-link', 'global', 'app_version') || '1.0.3');
 		var pwdFieldHtml = pwdIsCustom
 			? '<span style="font-size:12px; color:#94a3b8; display:inline-flex; align-items:center; gap:6px;">面板密码: <code id="luci-panel-pwd-mask" style="background:#0f172a; padding:2px 7px; border-radius:5px; color:#e2e8f0; border:1px solid rgba(148,163,184,0.2);">已自定义 · 不回显</code> <span style="font-size:11px; color:#64748b;">（忘记可执行 ai-link password 重置）</span></span>'
 			: '<span style="font-size:12px; color:#94a3b8; display:inline-flex; align-items:center; gap:6px;">面板密码: <code id="luci-panel-pwd-mask" style="background:#0f172a; padding:2px 7px; border-radius:5px; color:#e2e8f0; border:1px solid rgba(148,163,184,0.2);">••••••••</code> <button type="button" id="luci-btn-toggle-pwd" style="padding:2px 8px; border-radius:5px; border:1px solid rgba(148,163,184,0.3); background:rgba(30,41,59,0.8); color:#cbd5e1; font-size:11px; cursor:pointer;">👁️ 查看</button></span>';
@@ -41,7 +41,7 @@ return view.extend({
 		}
 
 		m = new form.Map('ai-link', _('AI-LINK 智能分流网关'),
-			_('专为全屋智能分流、抗 DNS 污染、回家内网穿透与多区域故障自愈设计的轻量透明代理网关（v1.0.2 正式版 · 纯血 Sing-box 内核）。'));
+			_('专为全屋智能分流、抗 DNS 污染、回家内网穿透与多区域故障自愈设计的轻量透明代理网关（v1.0.3 正式版 · 纯血 Sing-box 内核）。'));
 
 		s = m.section(form.NamedSection, 'global', globalSecType, _('实时运行中枢与快捷控制'));
 		s.anonymous = true;
@@ -482,8 +482,8 @@ return view.extend({
 							' 当前不可访问。点「▶ 启动服务」即可恢复（无需 SSH）。';
 						hint.style.color = '#fca5a5';
 					} else if (!coreUp && enabled) {
-						hint.innerHTML = '⚠️ 守护进程在运行，但 sing-box 内核未启动，流量接管可能异常。建议点「🔄 重启服务」。';
-						hint.style.color = '#fde68a';
+						hint.innerHTML = '🚨 <b style="color:#fca5a5;">Sing-box 内核未运行</b>：防黑洞看门狗已自动撤除 nftables 重定向并回退直连以保障不断网，正在尝试后台自愈，或请点上方「🔄 重启服务」 / 下方「🔄 重载 Sing-box 内核」立即恢复。';
+						hint.style.color = '#fca5a5';
 					} else {
 						hint.innerHTML = '这里的「停止服务」会真正结束守护进程与内核（面板 :' + escapeHtml(st.port || '9099') +
 							' 同时下线）；下方「启用 AI-LINK 透明代理服务」只控制是否接管流量，不控制进程启停。';

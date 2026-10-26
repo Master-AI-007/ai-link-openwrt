@@ -10,6 +10,45 @@
 
 ---
 
+## v1.0.3 · 2026-10-26
+
+> 主题：**双机实测根因深度修复（10.10.10.7 & 192.168.100.37）· 彻底终结 Sing-box 内核掉线与全网黑洞**
+
+### 🛡️ 核心引擎防掉线与自愈闭环（P0-1 ~ P0-3）
+
+- **解除 procd 1 小时 6 次重启放弃配额（P0-1）**
+  `/etc/init.d/ai-link` 中 `ai-link-daemon` 与 `ai-link-core` 的重启策略由 `respawn 3600 5 5` 调整为 `respawn 0 5 0`（无限重试、5 秒退避），彻底根除因日常分流调整触发主动重启与异常退出共用配额导致的 `Instance ai-link::ai-link-core s in a crash loop 6 crashes` 永久放弃拉起问题；同时新增 `/etc/init.d/ai-link restart_core` 独立恢复命令，在不中断 9099 面板守护进程的前提下重置并拉起内核。
+- **看门狗新增 Sing-box 进程存活守护（P0-2）**
+  `_telemetry_and_watchdog_loop` 新增 `ensure_core_alive_and_recover()`（每 15 秒巡检 `_get_live_singbox_pids()`，自动过滤僵尸进程 `State: Z` 与 `version`/`check`/`rule-set` 短期辅助进程）。检测到内核进程意外缺失且未处于重构重载窗口时，立即记录日志 `Watchdog: core process missing; restarting service.` 并自动调用 `_respawn_core_only()` / `restart_core` 恢复内核。
+- **内核离线立即撤除 nftables 与策略路由防黑洞（P0-3）**
+  `ensure_nft_and_routing_intact()` 新增 `_teardown_blackhole_nft_and_routing()`：一旦检测到 `sing-box` 进程不在或 `:7893` 端口未监听，立即主动删除 `table inet ai_link`、清理 `ip rule fwmark 0x162 table 162` 并回退 `dnsmasq` 上游，使局域网与旁路由自身平滑退回直连上网（彻底消除 `curl 000` 全网黑洞）；待内核恢复监听后自动重挂透明代理。同时 `_sync_ipv6_policy_routing()` 增加前置内核与端口存活断言。
+
+### ⚡ 幂等配置重载、指纹非易失持久化与启动防抢杀（P1-1 ~ P1-3）
+
+- **全端点规则指纹比对，幂等操作零重启（P1-1）**
+  增强 `_compute_core_rules_fingerprint()`（覆盖 `route`、`dns`、`inbounds`、选择器成员拓扑与代理出站定义，排除可通过 Clash API 热切换的 `default` 字段）。在 `schedule_async_core_reload()`、`reload_core_only()` 以及 `/api/shunt/reorder`、`/api/shunt/custom_rule`、`/api/dns/rewrite`、`/api/dns/filter/toggle` 等端点前置比较操作前后指纹：若拓扑规则未变化（如原样提交分流顺序），自动降级为 `hot_selector` 热更新，绝不杀内核进程（`requires_core_respawn=False`）。
+- **规则指纹持久化至非 tmpfs `/etc/ai-link/.applied_core_rule_hash`（P1-2）**
+  `_record_applied_core_rule_hash()` 与 `_get_applied_core_rule_hash()` 双写 `/etc/ai-link/.applied_core_rule_hash` 与 `/var/run/ai-link/applied_core_rule_hash.txt`；设备重启或 tmpfs 清空后自动从持久化文件恢复指纹，避免开机首次巡检误判「规则脏」而多杀一次内核。
+- **消除启动期 `context canceled` 抢杀与 `.srs` 原子编译（Path ④）**
+  `reload_core_only()` 新增 `_get_min_singbox_proc_age()` 启动保护窗口（进程刚拉起 `<6.5s` 时先等待 Clash API 就绪而不发送 `SIGTERM`）；`blocklist_custom.srs` 改为编译至临时文件后 `os.replace()` 原子替换；`--daemon` 启动时若 `sing-box.json` 已在 25 秒内由 `init.d` 生成则跳过重复写盘。
+- **`install.sh` 与 OTA 升级脚本增加真实健康断言（P1-3）**
+  安装与升级收尾阶段强制校验 `pidof sing-box` 及 `:7890` / `:7893` 端口监听状态（未就绪时自动触发一次 `restart_core` 自愈），输出 `UPGRADE OK: core=... ports ok` 或 `UPGRADE FAIL: ...`。
+
+### 🌐 10.10.10.7 实测问题专项修复与面板可见性（DIAG-1 ~ DIAG-3 / P2 / P3）
+
+- **静默捕获客户端提前断开 `BrokenPipeError`（DIAG-1）**
+  `AILinkRequestHandler` 的 `handle_one_request`、`finish`、`_send_json`、`_try_send_wire_memo`、`do_OPTIONS` 统一捕获 `(BrokenPipeError, ConnectionResetError, socket.timeout)`，消除浏览器刷新或中断请求时的堆栈刷屏。
+- **停机/重启/内核离线期间保留旁路由自身 DNS 解析（DIAG-2）**
+  `init.d/ai-link` 与 `ai-link-daemon.py` 新增 `fallback_resolv_conf_direct()` / `restore_resolv_conf_local()`：在服务停止、重启等待或内核离线窗口自动将 `/etc/resolv.conf` 与 `/tmp/resolv.conf.d/resolv.conf.auto` 回退至主路由网关 + 公共 DNS（`223.5.5.5` / `119.29.29.29`），彻底解决停机期间旁路由自身 `ttyd CPD No internet` 无法解析域名的问题；待 `:7893` / `:7874` 就绪后再切回 `127.0.0.1`。
+- **修复新装设备 `wait_for_ports_And_apply_nft` 挂载延迟（DIAG-3）**
+  `init.d/ai-link` 后台端口等待子进程增加 `trap '' HUP` 与 `</dev/null >/dev/null 2>&1 &` 标准流解耦（防止 SSH 会话退出时 `SIGHUP` 中断后台挂载），并在等待第 8s / 20s 检测到内核未起时自动触发重拉；`install.sh` 依赖检查补齐 `sing-box` 软件包检测。
+- **面板与 LuCI 暴露真实内核离线红色告警横幅（P2）**
+  修复 `build_routing_health()` 在内核离线时仍因历史测速缓存返回 `✅ 代理中` 的盲区；WebUI 新增顶部悬浮 `#core-offline-alert-banner` 与概览页 `#ov-core-offline-card` 醒目红色告警条及「🔄 一键重启内核」按钮，并将 `tuple(_get_live_singbox_pids())` 纳入 `/api/status` 缓存键实现毫秒级状态感知。
+- **统一版本字段 `status.build_ver` 为 `1.0.3`（P3）**
+  `/api/status` 的 `build_ver` 由历史残留值 `2.0.0-r8-v24-nolo` 统一为 `APP_VERSION` (`"1.0.3"`)，全仓 7 处版本标识 100% 对齐为 `1.0.3`。
+
+---
+
 ## v1.0.2 · 2026-10-26
 
 > 主题：**全量安全加固 + 启动与看门狗可靠性 + `.tgz` 归档上传恢复 + 跨架构兼容与自动化回归**

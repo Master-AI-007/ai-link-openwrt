@@ -1,17 +1,37 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "1.0.2",
+  "latest": "1.0.3",
   "release_date": "2026-10-26",
-  "notes_url": "https://ai-link-official.pages.dev/changelog.html#v1.0.2",
+  "notes_url": "https://ai-link-official.pages.dev/changelog.html#v1.0.3",
   "highlights": [
-    "安全加固：移除首页令牌 Cookie 下发，/api/status、/api/nodes/share_uri 与 /api/ops/logs 全面鉴权脱敏",
-    "凭据重构：UCI 彻底移除 panel_secret，改用布尔 panel_pwd_customized=0/1，并永久下线弱默认密码 admin",
-    "启动与防黑洞：修复无 ss 环境 25s 假等待与 BusyBox pgrep 失效；看门狗与 restore_proxy 挂载前强制校验 :7893 端口监听",
-    "备份恢复增强：面板与 LuCI 新增 .tgz / .json 浏览器直接上传恢复、.tgz 一键导出与 CLI ai-link restore <file> 命令",
-    "OTA 与稳定性：回滚后立即 restore_proxy 消除 10s 空窗；升级进度落盘闪存防断电丢失；auto_nodes.json 剥离探测噪声保持 MD5 恒定"
+    "非分流模式（仅被墙网站 / 非国内 / 全局代理）的「统一出口」下拉框补齐，可实时选自动池或手动国家+节点",
+    "内核防掉线：procd 重启配额从 1 小时 6 次改为无限重试，新增 ai-link restart_core 独立恢复入口",
+    "看门狗新增 sing-box 进程存活巡检，内核意外退出自动拉起",
+    "内核离线时自动拆除残留 nftables / 策略路由 / dnsmasq 上游，杜绝全网黑洞",
+    "分流规则指纹：配置没变就不再重启内核，日常调分流不再抖断连接",
+    "停机或内核异常时 DNS 自动回退公共上游，路由器不再「失联」",
+    "面板新增内核离线横幅与一键重启；浏览器轮询断开不再刷 BrokenPipe 栈"
   ],
   "changelog": [
+    {
+      "version": "1.0.3",
+      "date": "2026-10-26",
+      "type": "fix",
+      "title": "内核防掉线自愈 + 非分流模式选点修复",
+      "items": [
+        "NON-SHUNT-1：非分流模式的统一出口下拉框可正常渲染与选择，自动池/手动国家节点均可热切",
+        "P0-1：respawn 改为无限重试，新增 restart_core 恢复入口",
+        "P0-2：看门狗新增内核进程存活巡检",
+        "P0-3：内核离线自动拆除残留 nftables/策略路由/DNS 上游，防黑洞",
+        "P1-1：规则指纹未变时只热更新，不重启内核",
+        "P1-2：规则哈希双写持久化，重启不再误判",
+        "P1-3：升级增加真实进程/端口健康断言，并 trap HUP 防 SSH 退出中断",
+        "DIAG-1：BrokenPipe/ConnectionReset 静默处理，不再刷日志",
+        "DIAG-2：停机/内核异常时 DNS 自动回退公共上游",
+        "P2：面板内核离线横幅 + 一键重启；build_ver 归位 1.0.3"
+      ]
+    },
     {
       "version": "1.0.2",
       "date": "2026-10-26",
@@ -46,13 +66,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v1.0.2/AI-LINK-v1.0.2.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v1.0.3/AI-LINK-v1.0.3.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v1.0.2.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v1.0.3.tar.gz"
       ],
-      "size": 1242745,
-      "md5": "d64f77afa6547f69c9d97ee02942a3e3",
-      "sha256": "a8a796355b82f29436ede2fc4ce706cec4fcca7844207753bb05849225231230"
+      "size": 1257728,
+      "md5": "1172ab3e49aad4b65ee1064fc66ad2e5",
+      "sha256": "53acef0fcb1c4f14077322cb5c4a73d5690d7a13c0a09a22e93ab7e09d387d13"
     }
   }
 }

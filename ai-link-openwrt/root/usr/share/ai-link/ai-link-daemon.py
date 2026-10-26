@@ -1165,13 +1165,14 @@ def clash_get_proxies() -> dict:
     return data if status == 200 else {}
 
 def wait_clash_ready(timeout: float = 45.0) -> bool:
-    """Block until the clash API exposes the selector groups again. Any action that restarts the core (Top-N reload, node impor"""
+    """Block until the clash API exposes the selector groups again. Clears circuit breaker before polling."""
     deadline = time.time() + timeout
     while time.time() < deadline:
+        _CLASH_API_DOWN_UNTIL["ts"] = 0.0
         proxies = clash_get_proxies().get("proxies") or {}
         if "AI_Best_Auto" in proxies:
             return True
-        time.sleep(0.5)
+        time.sleep(0.35)
     return False
 
 def _expected_outbound_tags(conf_dir: Path = CONF_DIR) -> set:
@@ -1185,26 +1186,39 @@ def _expected_outbound_tags(conf_dir: Path = CONF_DIR) -> set:
 _LAST_APPLIED_CORE_RULE_HASH = ""
 
 def _compute_core_rules_fingerprint(conf_dir: Path = CONF_DIR) -> str:
-    """Computes SHA-256 fingerprint of route + dns + inbounds in sing-box.json (D-02 Fix:
-    Clash API PUT /configs does not re-apply route.rules or dns.rules; any change to this
-    fingerprint requires a core process respawn)."""
+    """Computes SHA-256 fingerprint of route + dns + inbounds + outbound topology in sing-box.json.
+    P1-1 Fix (v1.0.3): Excludes selector `default` (which is hot-switched via Clash API PUT /proxies/<selector>
+    without process restart), while including selector member lists and proxy outbound definitions.
+    If this fingerprint is unchanged, force_respawn is skipped so idempotent operations never kill sing-box!"""
     try:
-        p = conf_dir / "sing-box.json"
+        p = Path(conf_dir) / "sing-box.json"
         if not p.is_file():
             return ""
         cfg = json.loads(p.read_text(encoding="utf-8"))
-        blk_sha_file = conf_dir / "rules/blocklist_custom.sha256"
+        blk_sha_file = Path(conf_dir) / "rules/blocklist_custom.sha256"
         blk_sha_val = blk_sha_file.read_text(encoding="utf-8").strip() if blk_sha_file.is_file() else ""
-        selector_tags = sorted([
-            str(o.get("tag") or "")
-            for o in (cfg.get("outbounds") or [])
-            if isinstance(o, dict) and o.get("type") in ("selector", "urltest")
-        ])
+        selectors_topo = []
+        proxy_outbounds = []
+        for o in (cfg.get("outbounds") or []):
+            if not isinstance(o, dict):
+                continue
+            otype = o.get("type")
+            if otype in ("selector", "urltest"):
+                selectors_topo.append({
+                    "tag": str(o.get("tag") or ""),
+                    "type": otype,
+                    "outbounds": list(o.get("outbounds") or []),
+                })
+            elif otype not in ("direct", "block"):
+                proxy_outbounds.append(o)
+        selectors_topo.sort(key=lambda x: x["tag"])
+        proxy_outbounds.sort(key=lambda x: str(x.get("tag") or ""))
         core_slice = {
             "route": cfg.get("route") or {},
             "dns": cfg.get("dns") or {},
             "inbounds": cfg.get("inbounds") or [],
-            "selectors": selector_tags,
+            "selectors": selectors_topo,
+            "proxy_outbounds": proxy_outbounds,
             "blocklist_sha256": blk_sha_val,
         }
         raw = json.dumps(core_slice, sort_keys=True, ensure_ascii=False)
@@ -1213,6 +1227,8 @@ def _compute_core_rules_fingerprint(conf_dir: Path = CONF_DIR) -> str:
         return ""
 
 def _record_applied_core_rule_hash(conf_dir: Path = CONF_DIR, rule_hash: str = ""):
+    """P1-2 Fix (v1.0.3): Persist applied core rule fingerprint to BOTH /etc/ai-link/.applied_core_rule_hash
+    (non-tmpfs, survives reboot/upgrade) and /var/run/ai-link/applied_core_rule_hash.txt."""
     global _LAST_APPLIED_CORE_RULE_HASH
     h = rule_hash or _compute_core_rules_fingerprint(conf_dir)
     if h:
@@ -1222,17 +1238,31 @@ def _record_applied_core_rule_hash(conf_dir: Path = CONF_DIR, rule_hash: str = "
             (RUN_DIR / "applied_core_rule_hash.txt").write_text(h, encoding="utf-8")
         except Exception:
             pass
+        try:
+            cdir = Path(conf_dir)
+            if cdir.is_dir():
+                (cdir / ".applied_core_rule_hash").write_text(h, encoding="utf-8")
+        except Exception:
+            pass
 
-def _get_applied_core_rule_hash() -> str:
+def _get_applied_core_rule_hash(conf_dir: Path = CONF_DIR) -> str:
     global _LAST_APPLIED_CORE_RULE_HASH
     if _LAST_APPLIED_CORE_RULE_HASH:
         return _LAST_APPLIED_CORE_RULE_HASH
-    try:
-        f = RUN_DIR / "applied_core_rule_hash.txt"
-        if f.is_file():
-            _LAST_APPLIED_CORE_RULE_HASH = f.read_text(encoding="utf-8").strip()
-    except Exception:
-        pass
+    for cand in (RUN_DIR / "applied_core_rule_hash.txt", Path(conf_dir) / ".applied_core_rule_hash"):
+        try:
+            if cand.is_file():
+                val = cand.read_text(encoding="utf-8").strip()
+                if val:
+                    _LAST_APPLIED_CORE_RULE_HASH = val
+                    try:
+                        RUN_DIR.mkdir(parents=True, exist_ok=True)
+                        (RUN_DIR / "applied_core_rule_hash.txt").write_text(val, encoding="utf-8")
+                    except Exception:
+                        pass
+                    return _LAST_APPLIED_CORE_RULE_HASH
+        except Exception:
+            pass
     return _LAST_APPLIED_CORE_RULE_HASH
 
 LAST_RELOAD_MODE = "hot_config"
@@ -1241,14 +1271,37 @@ _RELOAD_MIN_INTERVAL = 1.8
 _LAST_RESPAWN_FINISH_TS = 0.0
 
 def _get_live_singbox_pids() -> list:
+    """Returns non-zombie sing-box daemon PIDs (excluding short-lived `version`/`check`/`rule-set` auxiliary CLI processes)."""
     pids = []
     for pdir in Path("/proc").glob("[0-9]*"):
         try:
-            if (pdir / "comm").read_text(encoding="utf-8").strip() == "sing-box":
-                pids.append(int(pdir.name))
+            if (pdir / "comm").read_text(encoding="utf-8").strip() != "sing-box":
+                continue
+            st_File = pdir / "status"
+            if st_File.is_file():
+                st_txt = st_File.read_text(encoding="utf-8", errors="ignore")
+                if "State:\tZ" in st_txt or "State: Z" in st_txt:
+                    continue
+            cmd_File = pdir / "cmdline"
+            if cmd_File.is_file():
+                cmd_parts = cmd_File.read_bytes().replace(b"\x00", b" ").decode("utf-8", "ignore").strip().split()
+                if len(cmd_parts) >= 2 and cmd_parts[1] in ("version", "check", "rule-set"):
+                    continue
+            pids.append(int(pdir.name))
         except Exception:
             continue
     return sorted(pids)
+
+def _get_min_singbox_proc_age() -> float:
+    """Returns minimum age in seconds of currently running sing-box processes (prevents killing sing-box mid-startup)."""
+    now = time.time()
+    ages = []
+    for pid in _get_live_singbox_pids():
+        try:
+            ages.append(max(0.0, now - Path(f"/proc/{pid}").stat().st_mtime))
+        except Exception:
+            pass
+    return min(ages) if ages else 9999.0
 
 def _spawn_singbox_fallback_direct(conf_dir: Path = CONF_DIR) -> bool:
     return False
@@ -1370,25 +1423,40 @@ def _verify_all_shunt_selectors_mounted(conf_dir: Path = CONF_DIR) -> tuple:
     missing = sorted(list(want_selectors - got_proxies))
     return (len(missing) == 0, missing)
 
-def schedule_async_core_reload(force_respawn: bool = False, apply_nft: bool = False, hot_only: bool = False) -> dict:
-    """P1-5 & Section 16 Fix: Schedules a non-blocking coalesced sing-box reload in the background (<5ms).
-    Automatically checks `_compute_core_rules_fingerprint(CONF_DIR)` against `_get_applied_core_rule_hash()`
-    AND checks `_verify_all_shunt_selectors_mounted(CONF_DIR)`; if rules changed or any selector is missing
-    in Clash /proxies, NEVER short-circuits on `hot_only=True` and forces a process respawn!"""
+def schedule_async_core_reload(force_respawn: bool = False, apply_nft: bool = False, hot_only: bool = False, explicit_restart: bool = False) -> dict:
+    """P1-1 & P1-2 Fix (v1.0.3): Schedules a non-blocking coalesced sing-box reload in the background (<5ms).
+    Compares `_compute_core_rules_fingerprint(CONF_DIR)` against `_get_applied_core_rule_hash(CONF_DIR)`:
+    - If fingerprint changed or any selector is missing or core is dead -> forces respawn (`hot_only=False`).
+    - If fingerprint is UNCHANGED and all selectors are mounted and core is alive (and `not explicit_restart`) ->
+      automatically downgrades `force_respawn=True` to `hot_only=True` (hot selector update only, ZERO core kills!)."""
+    global LAST_RELOAD_MODE
     _ensure_async_reload_worker()
     want_hash = _compute_core_rules_fingerprint(CONF_DIR)
-    applied_hash = _get_applied_core_rule_hash()
+    applied_hash = _get_applied_core_rule_hash(CONF_DIR)
     selectors_ok, _ = _verify_all_shunt_selectors_mounted(CONF_DIR)
-    rules_dirty = bool((want_hash and want_hash != applied_hash) or not selectors_ok)
-    if rules_dirty:
+    core_alive = bool(_get_live_singbox_pids())
+    has_initd = Path("/etc/init.d/ai-link").exists()
+    rules_dirty = bool((want_hash and want_hash != applied_hash) or not selectors_ok or (has_initd and resolve_singbox_binary() and not core_alive))
+    if rules_dirty or explicit_restart:
         hot_only = False
         force_respawn = True
+    elif core_alive and want_hash and want_hash == applied_hash and selectors_ok:
+        # P1-1 Idempotency Guard: Config topology & rules are 100% identical to running sing-box -> never kill sing-box!
+        force_respawn = False
+        hot_only = True
+    if apply_nft and hot_only and has_initd and Path("/usr/share/ai-link/nftables/apply_nft.sh").exists():
+        if _is_local_port_listening(int(_uci_get_str("global.tproxy_port", "7893") or 7893)):
+            try:
+                subprocess.run(["/usr/share/ai-link/nftables/apply_nft.sh"], check=False, timeout=5)
+            except Exception:
+                pass
     with _CORE_RELOAD_COND:
         _CORE_RELOAD_STATE["config_seq"] += 1
         seq = _CORE_RELOAD_STATE["config_seq"]
-        if hot_only or not Path("/etc/init.d/ai-link").exists():
-            if not Path("/etc/init.d/ai-link").exists() and want_hash:
+        if hot_only or not has_initd:
+            if want_hash:
                 _record_applied_core_rule_hash(CONF_DIR, want_hash)
+            LAST_RELOAD_MODE = "hot_selector"
             _CORE_RELOAD_STATE["reload_seq"] = seq
             _CORE_RELOAD_STATE["reloading"] = False
             _CORE_RELOAD_STATE["last_reload_ts"] = int(time.time())
@@ -1402,25 +1470,39 @@ def schedule_async_core_reload(force_respawn: bool = False, apply_nft: bool = Fa
         _CORE_RELOAD_COND.notify_all()
         return dict(_CORE_RELOAD_STATE)
 
-def reload_core_only(timeout: float = 45.0, force_respawn: bool = False) -> bool:
-    """Reload the core under _RELOAD_LOCK, verifying outbound tags, inbound ports, AND route/dns rules fingerprint (D-02 & P1-2 Fix)."""
+def reload_core_only(timeout: float = 45.0, force_respawn: bool = False, explicit_restart: bool = False) -> bool:
+    """Reload the core under _RELOAD_LOCK, verifying outbound tags, inbound ports, AND route/dns rules fingerprint.
+    P1-1 & Path ④ Fix (v1.0.3):
+    1) Never kills sing-box if `not explicit_restart` and `want_rule_hash == applied_rule_hash` and core is healthy.
+    2) If sing-box was just spawned (<6.5s old) and is still starting up, waits for it to finish starting instead of
+       sending SIGTERM mid-startup (`FATAL[0001] start service: context canceled`)."""
     global LAST_RELOAD_MODE
     with _RELOAD_LOCK:
+        # Path ④ Guard: If sing-box was just started <6.5s ago, let it finish binding ports before evaluating
+        proc_age = _get_min_singbox_proc_age()
+        if 0.0 <= proc_age < 6.5 and not explicit_restart and not _is_local_port_listening(9090):
+            wait_clash_ready(timeout=max(2.0, 7.0 - proc_age))
         want = _expected_outbound_tags(CONF_DIR)
         want_rule_hash = _compute_core_rules_fingerprint(CONF_DIR)
-        applied_rule_hash = _get_applied_core_rule_hash()
+        applied_rule_hash = _get_applied_core_rule_hash(CONF_DIR)
         selectors_ok, _ = _verify_all_shunt_selectors_mounted(CONF_DIR)
-        rules_changed = bool((want_rule_hash and (not applied_rule_hash or want_rule_hash != applied_rule_hash)) or not selectors_ok)
-        if force_respawn or rules_changed:
+        core_alive = bool(_get_live_singbox_pids())
+        rules_changed = bool((want_rule_hash and (not applied_rule_hash or want_rule_hash != applied_rule_hash)) or not selectors_ok or not core_alive)
+        if not explicit_restart and not rules_changed and core_alive and _all_configured_tcp_inbounds_listening(CONF_DIR):
+            LAST_RELOAD_MODE = "hot_selector"
+            PROBE_ENGINE.apply_shunt_selections(CONF_DIR)
+            return True
+        if explicit_restart or force_respawn or rules_changed:
             LAST_RELOAD_MODE = "core_respawn"
             ok_r = _respawn_core_only(timeout=timeout)
             if ok_r and want_rule_hash:
                 _record_applied_core_rule_hash(CONF_DIR, want_rule_hash)
-            if Path("/usr/share/ai-link/nftables/apply_nft.sh").exists():
-                try:
-                    subprocess.run(["/usr/share/ai-link/nftables/apply_nft.sh"], check=False, timeout=5)
-                except Exception:
-                    pass
+            if ok_r and Path("/usr/share/ai-link/nftables/apply_nft.sh").exists():
+                if _is_local_port_listening(int(_uci_get_str("global.tproxy_port", "7893") or 7893)):
+                    try:
+                        subprocess.run(["/usr/share/ai-link/nftables/apply_nft.sh"], check=False, timeout=5)
+                    except Exception:
+                        pass
             _invalidate_sys_cache()
             _trigger_async_health_reprobe()
             return ok_r
@@ -1446,41 +1528,54 @@ def reload_core_only(timeout: float = 45.0, force_respawn: bool = False) -> bool
         return _respawn_core_only(timeout=timeout)
 
 def _respawn_core_only(timeout: float = 45.0) -> bool:
-    """Restart ONLY the sing-box core (procd respawns it) with min-interval throttling and SIGKILL escalation."""
+    """Restart or recover the sing-box core with min-interval throttling, SIGKILL escalation,
+    and procd crash-loop recovery fallback (`/etc/init.d/ai-link restart_core`)."""
     global _LAST_RESPAWN_FINISH_TS
     elapsed = time.time() - _LAST_RESPAWN_FINISH_TS
     if 0 < elapsed < _RELOAD_MIN_INTERVAL:
         time.sleep(_RELOAD_MIN_INTERVAL - elapsed)
     live_pids = _get_live_singbox_pids()
-    pid = None
-    pid_file = RUN_DIR / "ai-link-core.pid"
-    if pid_file.is_file():
-        try:
-            pid = int(pid_file.read_text().strip())
-        except Exception:
-            pid = None
-    if not pid and live_pids:
-        pid = live_pids[0]
-    if not pid:
-        return False
-    for p in (live_pids or [pid]):
-        try:
-            os.kill(p, signal.SIGTERM)
-        except Exception:
-            pass
-    deadline = time.time() + timeout
-    kill_escalate_at = time.time() + 2.2
-    while time.time() < deadline:
-        still_old = [p for p in (live_pids or [pid]) if Path("/proc/%d" % p).exists()]
-        if not still_old:
+    if live_pids:
+        for p in live_pids:
+            try:
+                os.kill(p, signal.SIGTERM)
+            except Exception:
+                pass
+        deadline_kill = time.time() + min(6.0, timeout)
+        kill_escalate_at = time.time() + 2.2
+        while time.time() < deadline_kill:
+            still_old = [p for p in live_pids if Path("/proc/%d" % p).exists()]
+            if not still_old:
+                break
+            if time.time() >= kill_escalate_at:
+                for p in still_old:
+                    try:
+                        os.kill(p, signal.SIGKILL)
+                    except Exception:
+                        pass
+            time.sleep(0.2)
+    # Wait up to 6.5s for procd to auto-respawn sing-box; if procd had given up (crash loop) or core was dead,
+    # explicitly invoke `/etc/init.d/ai-link restart_core` / direct spawn to guarantee recovery!
+    procd_wait = time.time() + 6.5
+    while time.time() < procd_wait:
+        if _get_live_singbox_pids():
             break
-        if time.time() >= kill_escalate_at:
-            for p in still_old:
+        time.sleep(0.35)
+    if not _get_live_singbox_pids():
+        if Path("/etc/init.d/ai-link").exists():
+            try:
+                subprocess.run(["/etc/init.d/ai-link", "restart_core"], capture_output=True, timeout=15)
+            except Exception:
+                pass
+        if not _get_live_singbox_pids():
+            sb_bin = resolve_singbox_binary()
+            if sb_bin and (CONF_DIR / "sing-box.json").is_file():
                 try:
-                    os.kill(p, signal.SIGKILL)
+                    subprocess.Popen([sb_bin, "run", "-c", str(CONF_DIR / "sing-box.json"), "-D", str(CONF_DIR)],
+                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
                 except Exception:
                     pass
-        time.sleep(0.2)
+    deadline = time.time() + max(8.0, timeout - 6.5)
     if not wait_clash_ready(max(5.0, deadline - time.time())):
         _LAST_RESPAWN_FINISH_TS = time.time()
         return False
@@ -1496,6 +1591,11 @@ def _respawn_core_only(timeout: float = 45.0) -> bool:
                     (RUN_DIR / "ai-link-core.pid").write_text(str(new_pids[0]), encoding="utf-8")
                 except Exception:
                     pass
+            try:
+                apply_dns_adblock_system(CONF_DIR, force_live_mount=True)
+                restore_resolv_conf_to_local()
+            except Exception:
+                pass
             _invalidate_fast_api_cache()
             return True
         time.sleep(0.35)
@@ -3726,6 +3826,10 @@ def evaluate_all_auto_nodes(conf_dir: Path = CONF_DIR, target_id: str = "", forc
     for cs in (cfg.get("custom_services") or []):
         if isinstance(cs, dict) and (cs.get("id") or cs.get("name")) and cs.get("url"):
             all_svcs[cs.get("id") or cs.get("name")] = cs
+    sh_cfg_now = load_shunt_config(conf_dir)
+    rmode_now = sh_cfg_now.get("routing_mode", "rule_shunt")
+    g_mode_now = sh_cfg_now.get("global_mode") or ("direct" if sh_cfg_now.get("global_country") == "direct" or sh_cfg_now.get("global_strategy") == "direct" else ("manual" if sh_cfg_now.get("global_strategy") == "manual" else "auto"))
+    g_aid_now = str(sh_cfg_now.get("global_auto_node_id") or "auto_youtube").strip().lower()
     for an in cfg.get("auto_nodes", []):
         if target_id and an.get("id") != target_id and an.get("tag") != target_id:
             continue
@@ -3735,7 +3839,15 @@ def evaluate_all_auto_nodes(conf_dir: Path = CONF_DIR, target_id: str = "", forc
             advance_revert_streak=advance_revert_streak, force_revert=force_revert
         )
         if persist and an.get("tag") and an.get("current_node"):
-            PROBE_ENGINE.hot_switch_core_selector(an["tag"], an["current_node"], reason=f"自动节点池 [{an.get('name')}] 优选")
+            an_id_low = str(an.get("id") or "").strip().lower()
+            an_tag_low = str(an.get("tag") or "").strip().lower()
+            if rmode_now in ("global_proxy", "gfw_list", "cn_whitelist"):
+                if an["tag"] != "AI_Best_Auto":
+                    PROBE_ENGINE.hot_switch_core_selector(an["tag"], an["current_node"], reason=f"自动节点池 [{an.get('name')}] 优选")
+                if g_mode_now == "auto" and g_aid_now in (an_id_low, an_tag_low):
+                    PROBE_ENGINE.hot_switch_core_selector("AI_Best_Auto", an["current_node"], reason=f"非分流模式自动节点池 [{an.get('name')}] 优选")
+            else:
+                PROBE_ENGINE.hot_switch_core_selector(an["tag"], an["current_node"], reason=f"自动节点池 [{an.get('name')}] 优选")
     if persist:
         save_auto_nodes_config(cfg, conf_dir)
     return cfg.get("auto_nodes", [])
@@ -4205,23 +4317,30 @@ class AIProbeEngine:
         rmode_now = sh_cfg.get("routing_mode", "rule_shunt")
         if rmode_now in ("global_proxy", "gfw_list", "cn_whitelist"):
             # In non-shunt modes, route rules use AI_Best_Auto as the unified proxy selector;
-            # honor global_manual_node / global_mode if configured, else AI pool
-            g_mode = sh_cfg.get("global_mode") or ("manual" if sh_cfg.get("global_strategy") == "manual" else "auto")
-            g_aid = sh_cfg.get("global_auto_node_id", "auto_ai")
-            g_target = resolve_node_for_country_strategy(
-                sh_cfg.get("global_country", "ALL"),
-                "direct" if g_mode == "direct" else ("manual" if g_mode == "manual" else "auto"),
-                sh_cfg.get("global_manual_node", "") if g_mode == "manual" else f"auto:{g_aid}",
-                candidate_tags, delays
-            )
-            ai_target = g_target if g_target and g_target != "direct" else ((ai_an and ai_an.get("current_node")) or best_any)
+            # honor global_manual_node / global_mode / global_auto_node_id
+            g_mode = sh_cfg.get("global_mode") or ("direct" if sh_cfg.get("global_country") == "direct" or sh_cfg.get("global_strategy") == "direct" else ("manual" if sh_cfg.get("global_strategy") == "manual" else "auto"))
+            g_aid = sh_cfg.get("global_auto_node_id") or "auto_youtube"
+            g_country = sh_cfg.get("global_country") or "JP"
+            if g_country in ("direct", "block", "ALL"):
+                g_country = "JP"
+            if g_mode == "direct":
+                ai_target = "direct"
+            else:
+                g_target = resolve_node_for_country_strategy_with_failover(
+                    g_country if g_mode == "manual" else "ALL",
+                    "manual" if g_mode == "manual" else "auto",
+                    sh_cfg.get("global_manual_node", "") if g_mode == "manual" else f"auto:{g_aid}",
+                    candidate_tags, delays, conf_dir=conf_dir,
+                    saved_nodes=raw_nodes, subs_list=subs_list, store=store, auto_cfg=auto_cfg
+                )["selected"]
+                ai_target = g_target if g_target and g_target != "direct" else ((yt_an and yt_an.get("current_node")) or (ai_an and ai_an.get("current_node")) or best_any)
         else:
             # D-06 Fix: In rule_shunt mode, AI_Best_Auto / Stream_Auto belong strictly to their own Auto-Node cards!
             ai_target = (ai_an and ai_an.get("current_node")) or group_resolved_map.get("AI") or best_any
+            if ai_target == "direct" and best_any != "direct" and (ai_an and ai_an.get("current_node") not in ("", "direct")):
+                ai_target = ai_an["current_node"]
         yt_target = (yt_an and yt_an.get("current_node")) or group_resolved_map.get("YouTube") or best_any
-        if ai_target == "direct" and best_any != "direct" and (ai_an and ai_an.get("current_node") not in ("", "direct")):
-            ai_target = ai_an["current_node"]
-        self.hot_switch_core_selector("AI_Best_Auto", ai_target, reason="AI自动池出口同步")
+        self.hot_switch_core_selector("AI_Best_Auto", ai_target, reason="AI自动池/非分流统一出口同步")
         self.hot_switch_core_selector("Stream_Auto", yt_target, reason="流媒体自动池出口同步")
         # D-05 Fix: Sync every user-created Auto-Node card's dedicated selector tag in the kernel
         for an_item in auto_list:
@@ -6760,11 +6879,108 @@ def apply_dns_rewrite_system(cfg: dict = None, conf_dir: Path = CONF_DIR) -> dic
         status["reason"] = "%s: %s" % (type(exc).__name__, exc)
     return status
 
-def apply_dns_adblock_system(conf_dir: Path = CONF_DIR) -> dict:
-    """v24-hotfix8 (P0-1 & P1-3 Fix):
-    1. Configures dnsmasq upstream (`no-resolv` + `server=127.0.0.1#7874`) to forward all LAN and router-local
-       DNS queries to sing-box's dedicated `dns-in` (:7874), so Smart Dual-Stack AAAA suppression (`NOERROR`),
-       FakeIP (`198.18.0.0/15`), and domestic `223.5.5.5` direct resolution take effect end-to-end!
+def _detect_default_gateway_ip() -> str:
+    try:
+        r = subprocess.run(["ip", "-4", "route", "show", "default"], capture_output=True, text=True, timeout=1.5)
+        for tok_line in (r.stdout or "").splitlines():
+            parts = tok_line.split()
+            if "via" in parts:
+                idx = parts.index("via")
+                if idx + 1 < len(parts):
+                    return parts[idx + 1].strip()
+    except Exception:
+        pass
+    return ""
+
+def fallback_resolv_conf_to_direct():
+    """DIAG-2 Fix (v1.0.3): When AI-LINK is stopped, restarting, or sing-box (:7874) is down,
+    point /etc/resolv.conf and /tmp/resolv.conf.d/resolv.conf.auto to gateway + public DNS (223.5.5.5 / 119.29.29.29)
+    so the router itself never loses DNS resolution (prevents ttyd CPD 'No internet')."""
+    try:
+        gw = _detect_default_gateway_ip()
+        auto_dir = Path("/tmp/resolv.conf.d")
+        auto_dir.mkdir(parents=True, exist_ok=True)
+        auto_f = auto_dir / "resolv.conf.auto"
+        if not auto_f.is_file() or "nameserver " not in auto_f.read_text(encoding="utf-8", errors="ignore"):
+            ns_lines = ["# Auto-fallback by AI-LINK for side-router direct DNS"]
+            if gw:
+                ns_lines.append(f"nameserver {gw}")
+            ns_lines.extend(["nameserver 223.5.5.5", "nameserver 119.29.29.29"])
+            auto_f.write_text("\n".join(ns_lines) + "\n", encoding="utf-8")
+        direct_lines = ["search lan"]
+        if gw:
+            direct_lines.append(f"nameserver {gw}")
+        direct_lines.extend(["nameserver 223.5.5.5", "nameserver 119.29.29.29", "nameserver 127.0.0.1"])
+        direct_f = Path("/tmp/resolv.conf.ai-link-direct")
+        direct_f.write_text("\n".join(direct_lines) + "\n", encoding="utf-8")
+        resolv_p = Path("/etc/resolv.conf")
+        if resolv_p.is_symlink() or not resolv_p.exists():
+            try:
+                resolv_p.unlink(missing_ok=True)
+                resolv_p.symlink_to(direct_f)
+            except Exception:
+                resolv_p.write_text(direct_f.read_text(encoding="utf-8"), encoding="utf-8")
+        else:
+            resolv_p.write_text(direct_f.read_text(encoding="utf-8"), encoding="utf-8")
+    except Exception:
+        pass
+
+def restore_resolv_conf_to_local():
+    """DIAG-2 Fix (v1.0.3): Point /etc/resolv.conf back to 127.0.0.1 (with gateway + 223.5.5.5 secondary fallback)
+    once sing-box (:7874 / :7893) is confirmed alive."""
+    try:
+        gw = _detect_default_gateway_ip()
+        active_lines = ["search lan", "nameserver 127.0.0.1"]
+        if gw:
+            active_lines.append(f"nameserver {gw}")
+        active_lines.append("nameserver 223.5.5.5")
+        active_f = Path("/tmp/resolv.conf.ai-link-active")
+        active_f.write_text("\n".join(active_lines) + "\n", encoding="utf-8")
+        resolv_p = Path("/etc/resolv.conf")
+        if resolv_p.is_symlink() or not resolv_p.exists():
+            try:
+                resolv_p.unlink(missing_ok=True)
+                resolv_p.symlink_to(active_f)
+            except Exception:
+                resolv_p.write_text(active_f.read_text(encoding="utf-8"), encoding="utf-8")
+        else:
+            resolv_p.write_text(active_f.read_text(encoding="utf-8"), encoding="utf-8")
+    except Exception:
+        pass
+
+def rollback_dnsmasq_and_resolv(conf_dir: Path = CONF_DIR) -> bool:
+    """Removes ai-link-adblock.conf (`no-resolv` + `server=127.0.0.1#7874`), restores direct /etc/resolv.conf fallback,
+    and restarts dnsmasq if upstream was mounted."""
+    is_live = (Path(conf_dir).resolve() == CONF_DIR.resolve())
+    dnsmasq_dir = _detect_dnsmasq_confdir(create=False) if is_live else Path(conf_dir)
+    conf_path = dnsmasq_dir / "ai-link-adblock.conf"
+    removed_any = False
+    cands = [conf_path]
+    if is_live:
+        cands.extend([Path("/tmp/dnsmasq.d/ai-link-adblock.conf"), Path("/var/etc/dnsmasq.d/ai-link-adblock.conf")])
+        for g_p in glob.glob("/tmp/dnsmasq.cfg*/ai-link-adblock.conf"):
+            cands.append(Path(g_p))
+    for _cp in cands:
+        try:
+            if _cp.is_file():
+                _cp.unlink()
+                removed_any = True
+        except Exception:
+            pass
+    if is_live:
+        fallback_resolv_conf_to_direct()
+        if removed_any and Path("/etc/init.d/dnsmasq").exists():
+            try:
+                subprocess.run(["/etc/init.d/dnsmasq", "restart"], capture_output=True, timeout=15)
+            except Exception:
+                pass
+    return removed_any
+
+def apply_dns_adblock_system(conf_dir: Path = CONF_DIR, force_live_mount: bool = False) -> dict:
+    """v1.0.3 (P0-3 & DIAG-2 Fix):
+    1. Configures dnsmasq upstream (`no-resolv` + `server=127.0.0.1#7874`) ONLY when proxy is active AND
+       (in live mode) sing-box is actually running (or `force_live_mount=True`), preventing router DNS blackhole
+       during service stop/restart or before sing-box starts!
     2. Writes high-frequency blocked domains (`address=/domain/0.0.0.0` + `address=/domain/::`) when AdBlock is enabled.
     3. Remains 100% hermetic when `conf_dir != CONF_DIR` (never mutates live dnsmasq during `--self-test`)."""
     flt_cfg = load_dns_filter_config(conf_dir)
@@ -6774,22 +6990,13 @@ def apply_dns_adblock_system(conf_dir: Path = CONF_DIR) -> dict:
     status = {"ok": False, "path": str(conf_path), "rules": 0, "upstream_7874": False}
     try:
         ops = get_ops_settings(conf_dir)
-        proxy_active = bool(ops.get("enabled", True) and (not is_live or (not is_bypass_active() and not FAIL_OPEN_STATE.get("active"))))
+        core_ready_for_dns = True
+        if is_live and Path("/etc/init.d/ai-link").exists() and not force_live_mount:
+            core_ready_for_dns = bool(_get_live_singbox_pids())
+        proxy_active = bool(ops.get("enabled", True) and (not is_live or (not is_bypass_active() and not FAIL_OPEN_STATE.get("active") and core_ready_for_dns)))
         flt_on = bool(flt_cfg.get("enabled", True))
         if not proxy_active:
-            removed_any = False
-            for _cp in (conf_path, Path("/tmp/dnsmasq.d/ai-link-adblock.conf") if is_live else conf_path):
-                try:
-                    if _cp.is_file():
-                        _cp.unlink()
-                        removed_any = True
-                except Exception:
-                    pass
-            if is_live and removed_any and Path("/etc/init.d/dnsmasq").exists():
-                try:
-                    subprocess.run(["/etc/init.d/dnsmasq", "restart"], capture_output=True, timeout=15)
-                except Exception:
-                    pass
+            rollback_dnsmasq_and_resolv(conf_dir)
             status["ok"] = True
             status["upstream_7874"] = False
             return status
@@ -7751,7 +7958,7 @@ class ConfigGenerator:
         # Load real user/agent imported nodes from /etc/ai-link/nodes.json (with Top-N pre-filter)
         saved_nodes = load_saved_nodes(conf_dir)
         max_limit = get_max_outbounds_limit(conf_dir)
-        filtered_nodes = select_top_n_outbounds(saved_nodes, max_limit=max_limit, run_dir=RUN_DIR)
+        filtered_nodes = select_top_n_outbounds(saved_nodes, max_limit=max_limit, run_dir=RUN_DIR, conf_dir=conf_dir)
         valid_custom_outbounds = []
         custom_tags = []
         for ob in filtered_nodes:
@@ -7828,6 +8035,23 @@ class ConfigGenerator:
             if s_tag not in auto_def_map:
                 auto_tag_order.append(s_tag)
             auto_def_map[s_tag] = s_def if s_def in selector_list else default_sel
+        if routing_mode in ("global_proxy", "gfw_list", "cn_whitelist"):
+            g_mode_sb = shunt_cfg.get("global_mode") or ("direct" if shunt_cfg.get("global_country") == "direct" or shunt_cfg.get("global_strategy") == "direct" else ("manual" if shunt_cfg.get("global_strategy") == "manual" else "auto"))
+            g_aid_sb = shunt_cfg.get("global_auto_node_id") or "auto_youtube"
+            g_country_sb = shunt_cfg.get("global_country") or "JP"
+            if g_country_sb in ("direct", "block", "ALL"):
+                g_country_sb = "JP"
+            if g_mode_sb == "direct":
+                auto_def_map["AI_Best_Auto"] = "direct"
+            else:
+                g_target_sb = resolve_node_for_country_strategy_with_failover(
+                    g_country_sb if g_mode_sb == "manual" else "ALL",
+                    "manual" if g_mode_sb == "manual" else "auto",
+                    shunt_cfg.get("global_manual_node", "") if g_mode_sb == "manual" else f"auto:{g_aid_sb}",
+                    selector_list, persisted_delays, conf_dir=conf_dir
+                )["selected"]
+                if g_target_sb in selector_list:
+                    auto_def_map["AI_Best_Auto"] = g_target_sb
         for s_tag in auto_tag_order:
             auto_card_selectors.append({
                 "type": "selector",
@@ -7916,7 +8140,12 @@ class ConfigGenerator:
                         _atomic_write_text(blk_json_p, blk_payload)
                         sb_bin_c = resolve_singbox_binary()
                         if sb_bin_c:
-                            subprocess.run([sb_bin_c, "rule-set", "compile", str(blk_json_p), "-o", str(blk_srs_p)], capture_output=True, timeout=10)
+                            blk_srs_tmp = rules_dir / f".blocklist_custom.srs.tmp.{os.getpid()}"
+                            r_comp = subprocess.run([sb_bin_c, "rule-set", "compile", str(blk_json_p), "-o", str(blk_srs_tmp)], capture_output=True, timeout=10)
+                            if r_comp.returncode == 0 and blk_srs_tmp.is_file() and blk_srs_tmp.stat().st_size > 0:
+                                os.replace(blk_srs_tmp, blk_srs_p)
+                            else:
+                                blk_srs_tmp.unlink(missing_ok=True)
                         _atomic_write_text(blk_sha_p, dom_hash)
                     if blk_srs_p.is_file() and blk_srs_p.stat().st_size > 0:
                         if not any(r.get("tag") == "blocklist_custom" for r in local_rule_sets):
@@ -8653,13 +8882,18 @@ def get_core_runtime_info(conf_dir: Path = CONF_DIR) -> dict:
     pid_file = RUN_DIR / "ai-link-core.pid"
     if pid_file.is_file():
         try:
-            pid_val = pid_file.read_text().strip()
-            if pid_val and Path(f"/proc/{pid_val}").exists():
-                pid = int(pid_val)
+            pid_val = int(pid_file.read_text().strip())
+            if pid_val in live_pids:
+                pid = pid_val
         except Exception:
             pass
     if not pid and live_pids:
         pid = live_pids[0]
+    elif not live_pids and pid_file.is_file():
+        try:
+            pid_file.unlink(missing_ok=True)
+        except Exception:
+            pass
     mode_file = conf_dir / "build_mode.txt"
     active_mode = mode_file.read_text().strip() if mode_file.is_file() else sb_info["build_mode"]
     rules_dir = conf_dir / "rules"
@@ -9180,8 +9414,12 @@ def generate_nft_rules_file(conf_dir: Path = CONF_DIR, run_dir: Path = RUN_DIR,
 
 def _sync_ipv6_policy_routing(enable_v6: bool = False) -> bool:
     """Dynamically synchronizes both IPv4 & IPv6 policy routing (`table 162` & `pref 8999`) and `fc00::/18` route
-    whenever nftables or `ipv6_proxy` is updated at runtime, eliminating TProxy v4/v6 blackholing on side-routers."""
+    whenever nftables or `ipv6_proxy` is updated at runtime, eliminating TProxy v4/v6 blackholing on side-routers.
+    P0-3 Fix (v1.0.3): Never mounts `ip rule fwmark 0x162 table 162` if sing-box is dead or :7893 is not listening!"""
     if not Path("/etc/init.d/ai-link").exists():
+        return False
+    tproxy_port = int(_uci_get_str("global.tproxy_port", "7893") or 7893)
+    if not _get_live_singbox_pids() or not _is_local_port_listening(tproxy_port):
         return False
     try:
         subprocess.run(["sysctl", "-w", "net.ipv4.ip_forward=1"], capture_output=True, timeout=2)
@@ -9557,16 +9795,34 @@ def build_shunt_api_response(conf_dir: Path = CONF_DIR) -> dict:
             )
         enriched_groups.append(g_out)
     rmode_cur = shunt_cfg.get("routing_mode", "rule_shunt")
-    g_mode = shunt_cfg.get("global_mode") or ("direct" if shunt_cfg.get("global_country") == "direct" else ("manual" if shunt_cfg.get("global_strategy") == "manual" else "auto"))
-    g_aid = shunt_cfg.get("global_auto_node_id", "auto_youtube")
+    g_mode = shunt_cfg.get("global_mode") or ("direct" if shunt_cfg.get("global_country") == "direct" or shunt_cfg.get("global_strategy") == "direct" else ("manual" if shunt_cfg.get("global_strategy") == "manual" else "auto"))
+    g_aid = shunt_cfg.get("global_auto_node_id") or "auto_youtube"
+    g_country = shunt_cfg.get("global_country") or "JP"
+    if g_country in ("direct", "block", "ALL"):
+        g_country = "JP"
+    matched_g_an = _match_auto_node_pool(auto_cfg.get('auto_nodes') or [], g_aid, allow_fallback=True)
+    if matched_g_an and g_mode == "auto":
+        g_aid = matched_g_an.get("id") or g_aid
     global_resolved = resolve_node_for_country_strategy_with_failover(
-        shunt_cfg.get("global_country", "JP"),
+        g_country if g_mode == "manual" else "ALL",
         "direct" if g_mode == "direct" else ("manual" if g_mode == "manual" else "auto"),
         shunt_cfg.get("global_manual_node", "") if g_mode == "manual" else f"auto:{g_aid}",
         candidate_tags, delays_map, conf_dir=conf_dir,
         saved_nodes=raw_nodes, subs_list=subs_list, store=store, auto_cfg=auto_cfg,
         precomputed_ctx=pre_ctx
     )["selected"]
+    if rmode_cur in ("global_proxy", "gfw_list", "cn_whitelist") and global_resolved:
+        cur_ai_sel = PROBE_ENGINE.current_selections.get("AI_Best_Auto")
+        if cur_ai_sel != global_resolved:
+            PROBE_ENGINE.current_selections["AI_Best_Auto"] = global_resolved
+            if not _CORE_RELOAD_STATE.get("reloading") and not getattr(PROBE_ENGINE, "probe_running", False):
+                threading.Thread(
+                    target=PROBE_ENGINE.hot_switch_core_selector,
+                    args=("AI_Best_Auto", global_resolved),
+                    kwargs={"reason": f"非分流模式 ({rmode_cur}) 统一出口同步"},
+                    daemon=True,
+                ).start()
+    g_an_name = matched_g_an.get("name", g_aid) if matched_g_an else (auto_map.get(g_aid, {}).get("name") or g_aid)
     _sh_resp_obj = {
         "ok": True,
         "auto_nodes": auto_cfg.get("auto_nodes", []),
@@ -9574,9 +9830,10 @@ def build_shunt_api_response(conf_dir: Path = CONF_DIR) -> dict:
         "routing_mode": rmode_cur,
         "global_mode": g_mode,
         "global_auto_node_id": g_aid,
-        "global_country": shunt_cfg.get("global_country", "JP"),
+        "global_auto_node_name": g_an_name,
+        "global_country": g_country,
         "global_strategy": "auto" if g_mode == "auto" else g_mode,
-        "global_manual_node": shunt_cfg.get("global_manual_node", ""),
+        "global_manual_node": (shunt_cfg.get("global_manual_node") or global_resolved) if g_mode == "manual" else (f"auto:{g_aid}" if g_mode == "auto" else "direct"),
         "global_resolved_node": global_resolved,
         "global_resolved_rtt_ms": 0.0 if global_resolved == "direct" else (delays_map.get(global_resolved, -1.0) or -1.0),
         "last_reload_mode": LAST_RELOAD_MODE,
@@ -10003,6 +10260,7 @@ def build_status_api_response(conf_dir: Path = CONF_DIR) -> dict:
         bool(getattr(PROBE_ENGINE, "probe_running", False)),
         bool(SUB_SYNC_STATE.get("running", False)),
         bool(FAIL_OPEN_STATE.get("active")),
+        tuple(_get_live_singbox_pids()),
         sels_tup,
         int(time.time()) // 15,
     )
@@ -10037,13 +10295,17 @@ def build_status_api_response(conf_dir: Path = CONF_DIR) -> dict:
         k: v for k, v in (PROBE_ENGINE.node_stats or {}).items()
         if k in active_sel_tags
     }
+    _is_live_box = (Path(conf_dir).resolve() == CONF_DIR.resolve() and Path("/etc/init.d/ai-link").exists())
+    _core_dead_alert = bool(_is_live_box and not rt.get("core_pid") and get_ops_settings(conf_dir).get("enabled", True) and not is_bypass_active() and not _CORE_RELOAD_STATE.get("reloading"))
     res_obj = {
         "ok": True,
         "status": "running",
         "version": APP_VERSION,
         "release_stage": "stable",
-        "build_ver": "2.0.0-r8-v24-nolo",
+        "build_ver": APP_VERSION,
         "build_revision": APP_BUILD,
+        "core_running": bool(rt.get("core_pid")),
+        "core_dead_alert": _core_dead_alert,
         "as_of_ts": int(time.time()),
         "config_seq": _CORE_RELOAD_STATE["config_seq"],
         "reload_seq": _CORE_RELOAD_STATE["reload_seq"],
@@ -10122,6 +10384,7 @@ def build_status_api_response(conf_dir: Path = CONF_DIR) -> dict:
         bool(getattr(PROBE_ENGINE, "probe_running", False)),
         bool(SUB_SYNC_STATE.get("running", False)),
         bool(FAIL_OPEN_STATE.get("active")),
+        tuple(_get_live_singbox_pids()),
         tuple(sorted((PROBE_ENGINE.current_selections or {}).items())),
         int(time.time()) // 15,
     )
@@ -13061,9 +13324,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "1.0.2"
+APP_VERSION = "1.0.3"
 APP_CHANNEL = "stable"
-APP_BUILD = "1.0.2-release-20261026"
+APP_BUILD = "1.0.3-release-20261026"
 
 UPDATE_MANIFEST_PRIMARY = "https://ai-link-official.pages.dev/version.json"
 UPDATE_MANIFEST_GITHUB = "https://raw.githubusercontent.com/Master-AI-007/ai-link-openwrt/main/version.json"
@@ -13455,24 +13718,36 @@ if ! sh "$SRC/install.sh" --upgrade >>"$UPDIR/install.log" 2>&1; then
     say install 88 "install.sh 返回非零，进入健康检查判定"
 fi
 
-# ---------- 6. 重启 ----------
-say restart 92 "正在重启服务"
-/etc/init.d/ai-link restart >/dev/null 2>&1 || true
-sleep 6
+# ---------- 6. 重启与内核确认 ----------
+say restart 92 "正在确认服务与 Sing-box 内核状态"
+if ! pgrep -f "ai-link-dae[m]on.py" >/dev/null 2>&1 || (command -v sing-box >/dev/null 2>&1 && ! pidof sing-box >/dev/null 2>&1); then
+    /etc/init.d/ai-link restart >/dev/null 2>&1 || true
+    sleep 5
+fi
 
-# ---------- 7. 健康检查 ----------
-say healthcheck 97 "正在检查服务健康状态"
+# ---------- 7. 健康检查（含 P1-3 面板 + Sing-box 内核进程 + 7890/7893 端口真实健康断言） ----------
+say healthcheck 97 "正在检查服务与内核端口健康状态"
 PORT=$(uci -q get ai-link.global.panel_port 2>/dev/null || echo 9099)
 HC=1
 for I in 1 2 3 4 5 6 7 8 9 10; do
+    if [ "$I" -eq 5 ] && command -v sing-box >/dev/null 2>&1 && ! pidof sing-box >/dev/null 2>&1; then
+        /etc/init.d/ai-link restart_core >/dev/null 2>&1 || true
+    fi
     if python3 - "$PORT" <<'PY' >/dev/null 2>&1
-import sys, json, urllib.request
+import sys, json, shutil, urllib.request
 _op = urllib.request.build_opener(urllib.request.ProxyHandler({{}}))
 with _op.open(f"http://127.0.0.1:{{sys.argv[1]}}/api/status", timeout=3) as r:
     d = json.loads(r.read().decode("utf-8", "replace"))
 assert d.get("ok") is True, d
+if shutil.which("sing-box") and not d.get("bypass_active") and (d.get("ops_settings") or {{}}).get("enabled", True):
+    assert d.get("core_pid"), "sing-box core_pid is null"
 PY
-    then HC=0; break; fi
+    then
+        if ! command -v sing-box >/dev/null 2>&1 || /etc/init.d/ai-link status_ports_quiet >/dev/null 2>&1 || pidof sing-box >/dev/null 2>&1; then
+            HC=0
+            break
+        fi
+    fi
     sleep 2
 done
 
@@ -13766,6 +14041,9 @@ def build_routing_health(conf_dir: Path = CONF_DIR) -> dict:
         return {"state": "user_direct", "label": "🎯 全局直连模式", "active_node": "direct", "nodes_alive": ok_alive, "nodes_total": selectable_total, "real_egress_ok": True, "backend_diversity": b_div, "hint": "用户主动选择全局直连"}
     if FAIL_OPEN_STATE.get("active"):
         return {"state": "fallback_direct", "label": "⚠️ 节点不可达 · 保网直连兜底中", "active_node": "direct", "nodes_alive": ok_alive, "nodes_total": selectable_total, "real_egress_ok": False, "backend_diversity": b_div, "hint": FAIL_OPEN_STATE.get("reason", "")}
+    is_live_box = (Path(conf_dir).resolve() == CONF_DIR.resolve() and Path("/etc/init.d/ai-link").exists() and bool(resolve_singbox_binary()))
+    if is_live_box and not _get_live_singbox_pids():
+        return {"state": "proxy_degraded", "core_dead": True, "label": "🚨 内核未运行 · 已自动回退直连保护", "active_node": "direct", "nodes_alive": ok_alive, "nodes_total": selectable_total, "real_egress_ok": False, "backend_diversity": b_div, "hint": "检测到 sing-box 内核进程未运行，看门狗已自动撤除 nftables 重定向以防断网并正在拉起内核，也可点击「一键重启内核」立即恢复"}
     active_node = (
         PROBE_ENGINE.current_selections.get("AI_Best_Auto")
         or PROBE_ENGINE.current_selections.get("Shunt_Final")
@@ -14409,6 +14687,7 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 _CORE_RELOAD_STATE["config_seq"],
                 _CORE_RELOAD_STATE["reload_seq"],
                 bool(is_bypass_active()),
+                tuple(_get_live_singbox_pids()),
                 bool(getattr(PROBE_ENGINE, "probe_running", False)),
                 bool(SUB_SYNC_STATE.get("running", False)),
                 tuple(sorted((PROBE_ENGINE.current_selections or {}).items())),
@@ -14416,6 +14695,18 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 int(time.time()) // 15 if req_path_only == "/api/status" else 0,
             )
         return None
+
+    def handle_one_request(self):
+        try:
+            super().handle_one_request()
+        except (BrokenPipeError, ConnectionResetError, socket.timeout):
+            self.close_connection = True
+
+    def finish(self):
+        try:
+            super().finish()
+        except (BrokenPipeError, ConnectionResetError, socket.timeout):
+            pass
 
     def _try_send_wire_memo(self) -> bool:
         wk = self._make_wire_key()
@@ -14429,16 +14720,19 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
         wants_gzip = ("gzip" in (self.headers.get("Accept-Encoding") or "").lower())
         use_gz = bool(wants_gzip and gz_bytes is not None and len(gz_bytes) < len(raw_bytes))
         body_out = gz_bytes if use_gz else raw_bytes
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        if use_gz:
-            self.send_header("Content-Encoding", "gzip")
-        self.send_header("Vary", "Accept-Encoding")
-        self.send_header("Content-Length", str(len(body_out)))
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-AI-Link-Token, Authorization")
-        self.end_headers()
-        self.wfile.write(body_out)
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            if use_gz:
+                self.send_header("Content-Encoding", "gzip")
+            self.send_header("Vary", "Accept-Encoding")
+            self.send_header("Content-Length", str(len(body_out)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, X-AI-Link-Token, Authorization")
+            self.end_headers()
+            self.wfile.write(body_out)
+        except (BrokenPipeError, ConnectionResetError, socket.timeout):
+            pass
         return True
 
     def _send_json(self, data: dict, status: int = 200):
@@ -14460,22 +14754,29 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                     _JSON_WIRE_MEMO[_pre_wk] = (raw_bytes, gz_bytes)
         use_gz = bool(wants_gzip and gz_bytes is not None and len(gz_bytes) < len(raw_bytes))
         body_out = gz_bytes if use_gz else raw_bytes
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        if use_gz:
-            self.send_header("Content-Encoding", "gzip")
-        self.send_header("Vary", "Accept-Encoding")
-        self.send_header("Content-Length", str(len(body_out)))
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-AI-Link-Token, Authorization")
-        self.end_headers()
-        self.wfile.write(body_out)
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            if use_gz:
+                self.send_header("Content-Encoding", "gzip")
+            self.send_header("Vary", "Accept-Encoding")
+            self.send_header("Content-Length", str(len(body_out)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, X-AI-Link-Token, Authorization")
+            self.end_headers()
+            self.wfile.write(body_out)
+        except (BrokenPipeError, ConnectionResetError, socket.timeout):
+            pass
+
     def do_OPTIONS(self):
-        self.send_response(204)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-AI-Link-Token, Authorization")
-        self.end_headers()
+        try:
+            self.send_response(204)
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, X-AI-Link-Token, Authorization")
+            self.end_headers()
+        except (BrokenPipeError, ConnectionResetError, socket.timeout):
+            pass
     def _is_loopback_client(self) -> bool:
         client_ip = (self.client_address[0] if self.client_address else "").replace("::ffff:", "")
         return client_ip in ("127.0.0.1", "::1", "localhost")
@@ -15120,11 +15421,36 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             if "routing_mode" in payload:
                 shunt_cfg["routing_mode"] = payload["routing_mode"]
                 shunt_cfg["shunt_enabled"] = (payload["routing_mode"] == "rule_shunt")
+                if payload["routing_mode"] in ("gfw_list", "cn_whitelist", "global_proxy") and "global_mode" not in payload and shunt_cfg.get("global_mode") == "direct":
+                    shunt_cfg["global_mode"] = "auto"
+                    shunt_cfg["global_strategy"] = "auto"
+                    shunt_cfg["global_auto_node_id"] = shunt_cfg.get("global_auto_node_id") or "auto_youtube"
             for gk in ("global_country", "global_strategy", "global_manual_node", "global_mode", "global_auto_node_id"):
                 if gk in payload:
                     shunt_cfg[gk] = payload[gk]
-            if shunt_cfg.get("global_strategy") in ("smart", "fastest") and "global_manual_node" not in payload:
-                shunt_cfg["global_manual_node"] = ""
+            if any(k in payload for k in ("global_mode", "global_auto_node_id", "global_country", "global_strategy", "global_manual_node")):
+                gm = str(shunt_cfg.get("global_mode") or ("direct" if shunt_cfg.get("global_strategy") == "direct" else ("manual" if shunt_cfg.get("global_strategy") == "manual" else "auto"))).strip().lower()
+                if gm == "direct":
+                    shunt_cfg["global_mode"] = "direct"
+                    shunt_cfg["global_strategy"] = "direct"
+                    shunt_cfg["global_manual_node"] = "direct"
+                elif gm == "manual":
+                    shunt_cfg["global_mode"] = "manual"
+                    shunt_cfg["global_strategy"] = "manual"
+                    g_ctry = str(shunt_cfg.get("global_country") or "JP").strip().upper()
+                    if g_ctry not in ("HK", "TW", "JP", "SG", "US", "OTHER"):
+                        g_ctry = "JP"
+                    shunt_cfg["global_country"] = g_ctry
+                    g_man = str(shunt_cfg.get("global_manual_node") or "").strip()
+                    if g_man.startswith("auto:") or g_man == "direct":
+                        g_man = ""
+                    shunt_cfg["global_manual_node"] = g_man
+                else:
+                    shunt_cfg["global_mode"] = "auto"
+                    shunt_cfg["global_strategy"] = "auto"
+                    g_aid = str(shunt_cfg.get("global_auto_node_id") or "auto_youtube").strip() or "auto_youtube"
+                    shunt_cfg["global_auto_node_id"] = g_aid
+                    shunt_cfg["global_manual_node"] = f"auto:{g_aid}"
             # Support updating a single group {"group_id": "AI", "country": "US", "strategy": "smart", "manual_node": "..."}
             if "group_id" in payload:
                 gid = payload["group_id"]
@@ -15233,8 +15559,9 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 write_all_configs(CONF_DIR)
                 core_ok = True
                 if Path("/etc/init.d/ai-link").exists():
-                    core_ok = reload_core_only(timeout=25.0, force_respawn=True)
-                    subprocess.run(["/usr/share/ai-link/nftables/apply_nft.sh"], check=False, timeout=5)
+                    core_ok = reload_core_only(timeout=25.0, force_respawn=True, explicit_restart=True)
+                    if core_ok and _is_local_port_listening(int(_uci_get_str("global.tproxy_port", "7893") or 7893)):
+                        subprocess.run(["/usr/share/ai-link/nftables/apply_nft.sh"], check=False, timeout=5)
                 PROBE_ENGINE.apply_shunt_selections(CONF_DIR)
                 _invalidate_sys_cache()
                 _invalidate_fast_api_cache()
@@ -15371,16 +15698,19 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 else:
                     dom_idx = next((i for i, g in enumerate(groups) if g.get("id") == "Domestic_CN"), len(groups) - 1)
                     groups.insert(max(0, dom_idx), new_grp)
+            _before_fp = _compute_core_rules_fingerprint(CONF_DIR)
             shunt_cfg["groups"] = _normalize_shunt_groups_order(groups)
             save_shunt_config(shunt_cfg, CONF_DIR)
             write_all_configs(CONF_DIR)
-            # D-02 Fix: Both creating AND editing a rule change route.rules -> must force_respawn!
-            rel_st = schedule_async_core_reload(force_respawn=True, hot_only=False)
+            _after_fp = _compute_core_rules_fingerprint(CONF_DIR)
+            _fp_changed = (_after_fp != _before_fp)
+            # D-02 & P1-1 Fix: Only respawn when route/dns/outbound fingerprint actually changed!
+            rel_st = schedule_async_core_reload(force_respawn=_fp_changed, hot_only=(not _fp_changed))
             PROBE_ENGINE.apply_shunt_selections(CONF_DIR)
             PROBE_ENGINE.save_persisted_selections(RUN_DIR, record_history=False)
             resp_shunt = build_shunt_api_response(CONF_DIR)
             resp_shunt["is_edit"] = is_edit
-            resp_shunt["requires_core_respawn"] = True
+            resp_shunt["requires_core_respawn"] = _fp_changed
             resp_shunt["config_seq"] = rel_st.get("config_seq", 1)
             resp_shunt["reload_seq"] = rel_st.get("reload_seq", 1)
             c_info = detect_entry_bypass_conflict(
@@ -15473,12 +15803,20 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                         regular.insert(min(len(regular), idx + 1), item)
                     else:
                         regular.insert(idx, item)
+            _before_fp = _compute_core_rules_fingerprint(CONF_DIR)
             shunt_cfg["groups"] = _normalize_shunt_groups_order(regular + locked_tail)
             save_shunt_config(shunt_cfg, CONF_DIR)
             write_all_configs(CONF_DIR)
-            schedule_async_core_reload(force_respawn=True, hot_only=False)
+            _after_fp = _compute_core_rules_fingerprint(CONF_DIR)
+            _fp_changed = (_after_fp != _before_fp)
+            if _fp_changed:
+                schedule_async_core_reload(force_respawn=True, hot_only=False)
+            else:
+                schedule_async_core_reload(force_respawn=False, hot_only=True)
             PROBE_ENGINE.apply_shunt_selections(CONF_DIR)
-            self._send_json(build_shunt_api_response(CONF_DIR))
+            _resp_ro = build_shunt_api_response(CONF_DIR)
+            _resp_ro["requires_core_respawn"] = _fp_changed
+            self._send_json(_resp_ro)
             return
         if clean_path == "/api/shunt/verify_target":
             gid = payload.get("group_id") or payload.get("id") or "AI"
@@ -16097,9 +16435,11 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 for r in rw_cfg.get("rules", []):
                     if r.get("id") == rid or r.get("from_domain") == payload.get("from_domain"):
                         r["enabled"] = bool(payload.get("rule_enabled", not r.get("enabled", True)))
+            _before_fp = _compute_core_rules_fingerprint(CONF_DIR)
             save_dns_rewrite_config(rw_cfg, CONF_DIR)
             write_all_configs(CONF_DIR)
-            schedule_async_core_reload(force_respawn=True, hot_only=False)
+            _after_fp = _compute_core_rules_fingerprint(CONF_DIR)
+            schedule_async_core_reload(force_respawn=(_after_fp != _before_fp), hot_only=(_after_fp == _before_fp))
             self._send_json(build_dns_telemetry_response(CONF_DIR))
             return
         if clean_path == "/api/dns/filter/toggle":
@@ -16131,9 +16471,11 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 flt_cfg["custom_blocked"] = [str(x).strip().lower() for x in payload["custom_blocked"] if str(x).strip()]
             if "custom_allowed" in payload and isinstance(payload["custom_allowed"], list):
                 flt_cfg["custom_allowed"] = [str(x).strip().lower() for x in payload["custom_allowed"] if str(x).strip()]
+            _before_fp = _compute_core_rules_fingerprint(CONF_DIR)
             save_dns_filter_config(flt_cfg, CONF_DIR)
             write_all_configs(CONF_DIR)
-            schedule_async_core_reload(force_respawn=True, hot_only=False)
+            _after_fp = _compute_core_rules_fingerprint(CONF_DIR)
+            schedule_async_core_reload(force_respawn=(_after_fp != _before_fp), hot_only=(_after_fp == _before_fp))
             self._send_json(build_dns_telemetry_response(CONF_DIR))
             return
         if clean_path == "/api/dns/filter/sync":
@@ -16362,24 +16704,60 @@ def check_and_run_auto_subscriptions(conf_dir: Path = CONF_DIR):
     if any_imported and Path("/etc/init.d/ai-link").exists():
         reload_core_only()
 
+def _teardown_blackhole_nft_and_routing() -> bool:
+    """P0-3 Fix (v1.0.3): Immediately removes nft table inet ai_link, policy routing table 162,
+    and dnsmasq :7874 upstream when sing-box core is dead or :7893 is not listening,
+    restoring direct internet instead of blackholing LAN and router traffic!"""
+    removed = False
+    try:
+        r_nft = subprocess.run(["nft", "list", "table", "inet", "ai_link"], capture_output=True, text=True, timeout=2)
+        if r_nft.returncode == 0:
+            subprocess.run(["nft", "delete", "table", "inet", "ai_link"], capture_output=True, timeout=3)
+            removed = True
+        subprocess.run(["nft", "delete", "table", "ip", "ai_link"], capture_output=True, timeout=2)
+        for _ in range(8):
+            r_del = subprocess.run(["ip", "rule", "del", "fwmark", "0x162", "table", "162"], capture_output=True, timeout=2)
+            if r_del.returncode != 0:
+                break
+            removed = True
+        for _ in range(8):
+            r_del6 = subprocess.run(["ip", "-6", "rule", "del", "fwmark", "0x162", "table", "162"], capture_output=True, timeout=2)
+            if r_del6.returncode != 0:
+                break
+        if rollback_dnsmasq_and_resolv(CONF_DIR):
+            removed = True
+        if removed:
+            subprocess.run(["logger", "-t", "ai-link", "Watchdog: core dead; nft removed, LAN restored to direct."], capture_output=True, timeout=3)
+    except Exception:
+        pass
+    return removed
+
 def ensure_nft_and_routing_intact() -> bool:
-    """Mainstream Firewall4 / WAN Hotplug Self-Healing Guard (B1-4 Fix: verifies TProxy port :7893 is listening before mounting nftables)."""
+    """Mainstream Firewall4 / WAN Hotplug & Anti-Blackhole Self-Healing Guard (P0-3 & B1-4 Fix:
+    1) If sing-box process is dead or TProxy :7893 is not listening, actively removes nft table + ip rule + dnsmasq :7874
+       so LAN and router fall back to direct internet instead of entering a blackhole!
+    2) Once sing-box and :7893 are alive, automatically re-mounts missing ip rule, nftables, and dnsmasq upstream)."""
     if is_bypass_active() or not shutil.which("nft") or not Path("/etc/init.d/ai-link").exists():
         return True
     try:
         r_en = subprocess.run(["uci", "-q", "get", "ai-link.global.enabled"], capture_output=True, text=True, timeout=2)
         if r_en.returncode == 0 and r_en.stdout.strip() == "0":
             return True
+        if not get_ops_settings(CONF_DIR).get("enabled", True):
+            return True
         tproxy_port = int(_uci_get_str("global.tproxy_port", "7893") or 7893)
+        # B1-4 & P0-3 Fix: Never mount or keep nftables if core is dead or :7893 not listening (prevent LAN blackhole)
+        if not _is_local_port_listening(tproxy_port):
+            _teardown_blackhole_nft_and_routing()
+            return False
+        if not _get_live_singbox_pids():
+            _teardown_blackhole_nft_and_routing()
+            return False
         chk_nft = subprocess.run(["nft", "list", "table", "inet", "ai_link"], capture_output=True, text=True, timeout=3)
         chk_rule = subprocess.run(["ip", "rule", "show"], capture_output=True, text=True, timeout=3)
         nft_ok = (chk_nft.returncode == 0 and "prerouting_tproxy" in (chk_nft.stdout or ""))
         rule_ok = (chk_rule.returncode == 0 and ("0x162" in (chk_rule.stdout or "") or "162" in (chk_rule.stdout or "")))
         if not nft_ok or not rule_ok:
-            # B1-4 Fix: Never mount nftables TProxy redirection if sing-box TProxy port (:7893) is not listening (prevents LAN traffic blackhole)
-            if not _is_local_port_listening(tproxy_port):
-                subprocess.run(["logger", "-t", "ai-link", f"Self-Healing Watchdog: TProxy port :{tproxy_port} not listening; skipping nftables mount to prevent LAN blackhole."], capture_output=True, timeout=2)
-                return False
             subprocess.run(["logger", "-t", "ai-link", f"Self-Healing Watchdog: TProxy port :{tproxy_port} verified listening; re-applying missing nftables/policy routing..."], capture_output=True, timeout=2)
             if not rule_ok:
                 subprocess.run(["ip", "rule", "del", "fwmark", "0x162", "table", "162"], capture_output=True, timeout=2)
@@ -16388,10 +16766,42 @@ def ensure_nft_and_routing_intact() -> bool:
                 subprocess.run(["ip", "route", "add", "local", "default", "dev", "lo", "table", "162"], capture_output=True, timeout=2)
             if not nft_ok and Path("/usr/share/ai-link/nftables/apply_nft.sh").is_file():
                 subprocess.run(["/bin/sh", "/usr/share/ai-link/nftables/apply_nft.sh"], capture_output=True, timeout=8)
+            apply_dns_adblock_system(CONF_DIR, force_live_mount=True)
+            restore_resolv_conf_to_local()
             return False
     except Exception:
         pass
     return True
+
+_LAST_WATCHDOG_CORE_RESTART_TS = 0.0
+
+def ensure_core_alive_and_recover(conf_dir: Path = CONF_DIR) -> bool:
+    """P0-2 Fix (v1.0.3): Watchdog process liveness guard.
+    If sing-box process is missing while proxy is enabled (e.g. after crash or OOM),
+    immediately tears down nft blackhole and restarts sing-box via `restart_core` / `_respawn_core_only`."""
+    global _LAST_WATCHDOG_CORE_RESTART_TS
+    if is_bypass_active() or not Path("/etc/init.d/ai-link").exists() or not resolve_singbox_binary():
+        return True
+    if not get_ops_settings(conf_dir).get("enabled", True):
+        return True
+    if _get_live_singbox_pids():
+        return True
+    # Immediately remove nft/ip-rule/dnsmasq redirection so LAN never sits in a blackhole
+    _teardown_blackhole_nft_and_routing()
+    now = time.time()
+    if _CORE_RELOAD_STATE.get("reloading") and (now - _CORE_RELOAD_STATE.get("last_reload_ts", 0)) < 25:
+        return False
+    if (now - _LAST_WATCHDOG_CORE_RESTART_TS) < 18.0:
+        return False
+    _LAST_WATCHDOG_CORE_RESTART_TS = now
+    try:
+        subprocess.run(["logger", "-t", "ai-link", "Watchdog: core process missing; restarting service."], capture_output=True, timeout=3)
+    except Exception:
+        pass
+    ok_rec = _respawn_core_only(timeout=25.0)
+    if ok_rec:
+        ensure_nft_and_routing_intact()
+    return ok_rec
 
 def start_background_probe_scheduler(interval_sec: int = 21600):
     def _full_and_service_loop():
@@ -16474,6 +16884,7 @@ def start_background_probe_scheduler(interval_sec: int = 21600):
                         PROBE_ENGINE.apply_shunt_selections(CONF_DIR)
                 if tick % 5 == 0:
                     reap_zombie_singbox_aux(max_age_sec=15)
+                    ensure_core_alive_and_recover(CONF_DIR)
                     # P0-3 Conntrack & FD Watermark Self-Healing Guard
                     try:
                         for _sb_p in _get_live_singbox_pids():
@@ -16491,7 +16902,7 @@ def start_background_probe_scheduler(interval_sec: int = 21600):
                         pass
                 if tick % 8 == 0:
                     run_fail_open_check_once(CONF_DIR, force_trigger=False)
-                if tick % 20 == 10:
+                if tick % 5 == 2:
                     ensure_nft_and_routing_intact()
                 if tick % 7 == 2:
                     sels = dict(PROBE_ENGINE.current_selections or {})
@@ -16631,6 +17042,11 @@ def main():
             panel_port=int(_flag_val("--panel-port", 9099) or 9099),
             dns_port=int(_flag_val("--dns-port", 7874) or 7874),
         )
+        return 0
+    if "--apply-dns-upstream" in sys.argv:
+        res_dns = apply_dns_adblock_system(CONF_DIR, force_live_mount=True)
+        restore_resolv_conf_to_local()
+        print("APPLY_DNS_UPSTREAM_RESULT", json.dumps(res_dns, ensure_ascii=False))
         return 0
     if "--sync-uci" in sys.argv:
         synced = sync_uci_to_ops_settings(CONF_DIR)
@@ -17124,7 +17540,9 @@ def main():
         idx = sys.argv.index("--port")
         if idx + 1 < len(sys.argv):
             port = int(sys.argv[idx + 1])
-    write_all_configs(CONF_DIR)
+    _sb_cfg_f = CONF_DIR / "sing-box.json"
+    if not _sb_cfg_f.is_file() or (time.time() - _sb_cfg_f.stat().st_mtime) > 25.0:
+        write_all_configs(CONF_DIR)
     get_active_blocked_domains_set(CONF_DIR)
     _record_applied_core_rule_hash(CONF_DIR)
     try:
