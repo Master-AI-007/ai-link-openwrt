@@ -1528,7 +1528,7 @@
             <div class="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <span class="font-bold text-white">⬆️ 插件版本与在线更新</span>
-                <span id="ota-sub" class="text-[11px] text-slate-400 ml-2">当前 v1.0.1 · 点击「检查更新」获取最新版本</span>
+                <span id="ota-sub" class="text-[11px] text-slate-400 ml-2">当前 v1.0.2 · 点击「检查更新」获取最新版本（注：v1.0.0 需手动升级一次，v1.0.1+ 支持在线热更新）</span>
               </div>
               <div class="flex items-center gap-2 flex-wrap">
                 <a id="ota-notes" href="#" target="_blank" rel="noopener noreferrer" class="hidden px-3 py-1.5 rounded-xl bg-cyan-500/15 border border-cyan-400/30 text-cyan-200 font-semibold">📄 更新说明</a>
@@ -1603,8 +1603,9 @@
               </div>
               <div class="flex flex-wrap items-center gap-2">
                 <button id="btn-run-ops-diag" type="button" class="px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 border border-emerald-400/30 text-xs font-bold">🩺 一键健康自检</button>
-                <button id="btn-export-backup" type="button" class="px-3 py-1.5 rounded-xl bg-violet-500/20 hover:bg-violet-500/30 text-violet-200 border border-violet-400/30 text-xs font-semibold">💾 导出备份</button>
-                <button id="btn-restore-backup" type="button" class="px-3 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-200 border border-cyan-400/30 text-xs font-semibold">📤 导入恢复</button>
+                <button id="btn-export-backup" type="button" class="px-3 py-1.5 rounded-xl bg-violet-500/20 hover:bg-violet-500/30 text-violet-200 border border-violet-400/30 text-xs font-semibold">💾 导出 JSON</button>
+                <button id="btn-export-tgz" type="button" class="px-3 py-1.5 rounded-xl bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-200 border border-indigo-400/30 text-xs font-semibold">📦 导出 .tgz 归档</button>
+                <button id="btn-restore-backup" type="button" class="px-3 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-200 border border-cyan-400/30 text-xs font-semibold">📤 导入恢复 (.tgz/.json)</button>
                 <button id="btn-change-panel-pw" type="button" class="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-400/30 text-xs font-semibold">🔑 修改密码</button>
                 <button id="btn-factory-reset" type="button" class="px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/35 text-rose-200 border border-rose-400/35 text-xs font-bold">♻️ 一键恢复出厂</button>
               </div>
@@ -1665,6 +1666,7 @@
                 <input id="input-trusted-cidr" type="text" value="127.0.0.1/32, ::1/128, 192.168.0.0/16, 10.0.0.0/8" placeholder="免密信任 CIDR，如 127.0.0.1/32, 192.168.100.0/24" class="flex-1 bg-[#0b0c14] border border-white/15 rounded-xl px-3 py-1.5 text-xs text-violet-200 mono" />
                 <button id="btn-save-trusted-cidr" type="button" class="px-3 py-1.5 rounded-xl bg-violet-600/80 hover:bg-violet-500 text-white text-xs font-semibold shrink-0">保存鉴权</button>
               </div>
+              <p id="lan-auth-security-notice" class="text-[11px] px-2.5 py-1.5 rounded-lg bg-amber-500/15 border border-amber-400/30 text-amber-200 leading-relaxed">⚠️ 安全风险提示：当前默认允许局域网免密访问 API（require_lan_auth=false）。若局域网有不可信设备或映射了公网端口，请开启右上角「强制内网登录」并修改初始密码！</p>
             </div>
             <div class="ailink-subcard rounded-2xl p-3.5 flex items-center justify-between text-xs">
               <div>
@@ -1681,7 +1683,9 @@
   </div>
 <script>
     const state = {
-      version: '1.0.1',
+      version: '1.0.2',
+      pwdCustomized: false,
+      authRequired: false,
       proxyEnabled: true,
       failOpenActive: false,
       opsSettings: {
@@ -1898,18 +1902,26 @@
       });
     });
     function promptPanelLoginModal() {
+      const pwdHint = state.pwdCustomized
+        ? '您已设置自定义面板密码，请输入密码完成验证（忘记密码可在 SSH 执行 <code class="mono text-cyan-300">ai-link password 新密码</code> 重置）。'
+        : '修改网关配置或从受保护网段访问需要验证面板密码（出厂初始密码：<code class="mono text-cyan-300">ai-link-2026</code>，弱密码 admin 已禁用）。';
       openModal(
         '🔑 面板安全访问鉴权',
-        ` <div class="space-y-3 text-xs"> <p class="text-slate-300">修改网关配置或从局域网访问管理接口需要验证面板密码（初始密码：<code class="mono text-cyan-300">ai-link-2026</code>）。</p> <input id="mdl-login-pw" type="password" value="ai-link-2026" placeholder="请输入面板密码" class="w-full bg-[#0b0c14] border border-white/15 rounded-xl px-3 py-2 text-white mono" /> </div> `,
+        ` <div class="space-y-3 text-xs"> <p class="text-slate-300">${pwdHint}</p> <input id="mdl-login-pw" type="password" value="" placeholder="请输入面板密码" class="w-full bg-[#0b0c14] border border-white/15 rounded-xl px-3 py-2 text-white mono" /> </div> `,
         async () => {
           const pw = (document.getElementById('mdl-login-pw').value || '').trim();
           const res = await callRouterApi('login', 'POST', { password: pw });
           if (res && res.ok && res.token) {
             try { localStorage.setItem('ailink_token', res.token); } catch (e) {}
             document.cookie = `ailink_token=${res.token}; path=/; SameSite=Lax`;
+            state.authRequired = false;
             showToast('🔓 面板鉴权成功，令牌已激活！', 'success');
-            await syncBackendStatus();
-          } else { showToast('密码错误，请重试', 'error'); }
+            await syncBackendStatus(true, true);
+            return true;
+          } else {
+            showToast('密码错误，请重试', 'error');
+            return false;
+          }
         },
         '🔓 立即验证并登录'
       );
@@ -4311,6 +4323,20 @@
       if (cidrInput && document.activeElement !== cidrInput && typeof ops.trusted_cidr === 'string') { cidrInput.value = ops.trusted_cidr; }
       const lanAuthBtn = document.getElementById('toggle-require-lan-auth');
       if (lanAuthBtn) { setSwitchState(lanAuthBtn, !!ops.require_lan_auth); }
+      const secNotice = document.getElementById('lan-auth-security-notice');
+      if (secNotice) {
+        const pwdCust = !!(ops.pwd_customized !== undefined ? ops.pwd_customized : state.pwdCustomized);
+        if (ops.require_lan_auth && pwdCust) {
+          secNotice.className = 'text-[11px] px-2.5 py-1.5 rounded-lg bg-emerald-500/15 border border-emerald-400/30 text-emerald-200 leading-relaxed';
+          secNotice.textContent = '🛡️ 安全加固已启用：已开启局域网强制密码鉴权，且面板密码已自定义（出厂弱密码 admin 已禁用）。';
+        } else if (ops.require_lan_auth && !pwdCust) {
+          secNotice.className = 'text-[11px] px-2.5 py-1.5 rounded-lg bg-amber-500/15 border border-amber-400/30 text-amber-200 leading-relaxed';
+          secNotice.textContent = '⚠️ 已开启内网强制登录，但当前仍在使用出厂初始密码 (ai-link-2026)，建议点击左侧「🔑 修改密码」更换为强密码。';
+        } else {
+          secNotice.className = 'text-[11px] px-2.5 py-1.5 rounded-lg bg-amber-500/15 border border-amber-400/30 text-amber-200 leading-relaxed';
+          secNotice.textContent = '⚠️ 安全风险提示：当前默认允许局域网免密访问 API（require_lan_auth=false）。若局域网有不可信设备或映射了公网端口，请开启右上角「强制内网登录」' + (pwdCust ? '！' : '并修改初始密码 (ai-link-2026)！');
+        }
+      }
       const stPill = document.getElementById('settings-proxy-status-pill');
       const ctrlBtn = document.getElementById('btn-ctrl-toggle-proxy');
       const topRecBtn = document.getElementById('btn-top-recover');
@@ -5543,6 +5569,14 @@
           state._snapshotFromCache = false;
           state._asOfTs = statusData.as_of_ts || Math.floor(Date.now() / 1000);
           state.coreEngine = statusData.core;
+          if (typeof statusData.pwd_customized === 'boolean') state.pwdCustomized = statusData.pwd_customized;
+          if (typeof statusData.auth_required === 'boolean') {
+            state.authRequired = statusData.auth_required;
+            if (statusData.auth_required && !state._autoPromptedLogin) {
+              state._autoPromptedLogin = true;
+              setTimeout(() => promptPanelLoginModal(), 150);
+            }
+          }
           if (typeof statusData.ipv6_proxy === 'boolean') state.ipv6Proxy = statusData.ipv6_proxy;
           if (statusData.ipv6_governance) state.ipv6Governance = statusData.ipv6_governance;
           if (Array.isArray(statusData.probe_schedules)) state.probeSchedules = statusData.probe_schedules;
@@ -6300,7 +6334,7 @@
           const notes = document.getElementById('ota-notes');
           if (!r || !r.ok) {
             showToast('❌ ' + ((r && r.message) || '版本检查失败'), 'error');
-            if (sub) sub.textContent = '当前 v1.0.1 · 版本检查失败（网络不通或清单不可达）';
+            if (sub) sub.textContent = '当前 v' + (state.version || '1.0.2') + ' · 版本检查失败（网络不通或清单不可达）';
             return;
           }
           if (notes && r.notes_url) { notes.href = r.notes_url; notes.classList.remove('hidden'); }
@@ -7208,22 +7242,110 @@
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        showToast('已导出全量配置备份文件', 'success');
+        showToast('已导出全量 JSON 配置备份文件', 'success');
       });
+      const btnExportTgz = document.getElementById('btn-export-tgz');
+      if (btnExportTgz) {
+        btnExportTgz.addEventListener('click', async () => {
+          showToast('📦 正在打包 /etc/ai-link 完整配置归档 (.tgz)...', 'info');
+          const res = await callRouterApi('ops/backup_archive', 'GET');
+          if (!res || !res.ok || !res.archive_base64) {
+            showToast(`导出 .tgz 归档失败: ${(res && res.message) || '请检查面板鉴权'}`, 'error');
+            return;
+          }
+          const binStr = atob(res.archive_base64);
+          const bytes = new Uint8Array(binStr.length);
+          for (let i = 0; i < binStr.length; i++) bytes[i] = binStr.charCodeAt(i);
+          const blob = new Blob([bytes], { type: 'application/gzip' });
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = res.filename || `ai-link-backup-${new Date().toISOString().slice(0, 10)}.tgz`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          showToast(`✅ 已导出完整归档 (${res.filename})`, 'success');
+        });
+      }
       document.getElementById('btn-restore-backup').addEventListener('click', () => {
         openModal(
-          '📤 导入恢复配置备份',
-          `<textarea id="mdl-restore-txt" rows="5" placeholder="粘贴导出的 JSON 备份内容..." class="w-full bg-[#0b0c14] border border-white/15 rounded-xl p-2.5 text-xs text-cyan-200 mono"></textarea>`,
+          '📤 导入恢复配置备份 (支持 .tgz 归档上传 / .json 备份)',
+          `<div class="space-y-3 text-xs">
+            <div class="p-3 rounded-2xl bg-cyan-500/10 border border-cyan-400/25 space-y-2">
+              <div class="font-bold text-cyan-300">📁 方式一：上传本地备份文件（支持 .tgz / .tar.gz 完整归档或 .json 备份）</div>
+              <input id="mdl-restore-file" type="file" accept=".tgz,.tar.gz,.json,application/gzip,application/x-gzip,application/json" class="w-full bg-[#0b0c14] border border-white/15 rounded-xl px-3 py-2 text-xs text-slate-200 file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:bg-cyan-600 file:text-white file:font-semibold hover:file:bg-cyan-500 cursor-pointer" />
+              <div class="text-[11px] text-slate-400">支持直接上传卸载/升级/恢复出厂生成的 <code class="mono text-cyan-200">*.tgz</code> 归档包，或面板导出的 <code class="mono text-cyan-200">*.json</code> 备份文件。</div>
+            </div>
+            <div class="p-3 rounded-2xl bg-black/40 border border-white/10 space-y-2">
+              <div class="font-bold text-violet-300">📋 方式二：直接粘贴 JSON 备份文本</div>
+              <textarea id="mdl-restore-txt" rows="4" placeholder="在此粘贴导出的 JSON 备份内容（若上方已选择文件则优先使用上传的文件）..." class="w-full bg-[#0b0c14] border border-white/15 rounded-xl p-2.5 text-xs text-cyan-200 mono"></textarea>
+            </div>
+          </div>`,
           async () => {
-            try {
-              const parsed = JSON.parse(document.getElementById('mdl-restore-txt').value || '{}');
-              await callRouterApi('ops/restore', 'POST', parsed);
-              await syncBackendStatus();
-              showToast('配置备份已成功恢复！', 'success');
-            } catch (e) {
-              showToast('备份文件格式有误', 'error');
+            const fileInput = document.getElementById('mdl-restore-file');
+            const txtInput = document.getElementById('mdl-restore-txt');
+            const selectedFile = fileInput && fileInput.files && fileInput.files[0];
+            if (selectedFile) {
+              const isJson = /\.json$/i.test(selectedFile.name);
+              if (isJson) {
+                try {
+                  const textContent = await selectedFile.text();
+                  const parsed = JSON.parse(textContent || '{}');
+                  const r = await callRouterApi('ops/restore', 'POST', parsed);
+                  if (!r || r.ok === false) {
+                    showToast(`恢复失败: ${(r && r.message) || 'JSON 格式不合法'}`, 'error');
+                    return false;
+                  }
+                  await syncBackendStatus(true, true);
+                  showToast(`✅ 已从文件 ${selectedFile.name} 完整恢复配置！`, 'success');
+                  return true;
+                } catch (e) {
+                  showToast('JSON 备份文件解析失败', 'error');
+                  return false;
+                }
+              } else {
+                try {
+                  const b64 = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(String(reader.result || ''));
+                    reader.onerror = () => reject(new Error('文件读取失败'));
+                    reader.readAsDataURL(selectedFile);
+                  });
+                  showToast(`📦 正在上传并解压恢复归档 ${selectedFile.name}...`, 'info');
+                  const r = await callRouterApi('ops/restore_archive', 'POST', { archive_base64: b64, filename: selectedFile.name });
+                  if (!r || !r.ok) {
+                    showToast(`归档恢复失败: ${(r && r.message) || '请检查归档文件'}`, 'error');
+                    return false;
+                  }
+                  await syncBackendStatus(true, true);
+                  showToast(r.message || `✅ 已从归档 ${selectedFile.name} 完整恢复配置！`, 'success');
+                  return true;
+                } catch (e) {
+                  showToast(`归档上传失败: ${e.message || e}`, 'error');
+                  return false;
+                }
+              }
             }
-          }
+            const rawTxt = (txtInput && txtInput.value || '').trim();
+            if (!rawTxt) {
+              showToast('请选择要上传的 .tgz / .json 备份文件，或粘贴 JSON 备份内容', 'warn');
+              return false;
+            }
+            try {
+              const parsed = JSON.parse(rawTxt);
+              const r = await callRouterApi('ops/restore', 'POST', parsed);
+              if (!r || r.ok === false) {
+                showToast(`恢复失败: ${(r && r.message) || '格式有误'}`, 'error');
+                return false;
+              }
+              await syncBackendStatus(true, true);
+              showToast('✅ 配置备份已成功恢复！', 'success');
+              return true;
+            } catch (e) {
+              showToast('备份文件 JSON 格式有误', 'error');
+              return false;
+            }
+          },
+          '📤 立即导入并恢复'
         );
       });
       const btnFactoryReset = document.getElementById('btn-factory-reset');
@@ -7233,7 +7355,7 @@
             '♻️ 一键恢复出厂设置 (备份保护 + 二次确认)',
             `<div class="space-y-3.5 text-xs">
               <div class="p-3 rounded-2xl bg-rose-500/15 border border-rose-400/35 text-rose-200 leading-relaxed space-y-1.5">
-                <div>⚠️ <strong>高危操作提示</strong>：恢复出厂设置将清空当前所有<strong>机场订阅、手动节点、回家节点、自定义分流规则、DNS 重写/黑名单以及历史流量统计</strong>，并将所有系统与防火墙开关恢复为 v1.0.1 初始默认状态（默认密码恢复为 <code class="mono text-white">ai-link-2026</code>）。</div>
+                <div>⚠️ <strong>高危操作提示</strong>：恢复出厂设置将清空当前所有<strong>机场订阅、手动节点、回家节点、自定义分流规则、DNS 重写/黑名单以及历史流量统计</strong>，并将所有系统与防火墙开关恢复为 v1.0.2 初始默认状态（默认密码恢复为 <code class="mono text-white">ai-link-2026</code>）。</div>
                 <div class="text-amber-200 font-semibold">🚨 断流提示：恢复出厂后因节点被清空，路由器将立刻失去海外科学上网能力（国内网络保持正常直连），需重新导入订阅或点击「📦 从备份归档恢复」方可恢复科学上网！</div>
               </div>
               <div class="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-400/25 space-y-2">
@@ -7331,7 +7453,7 @@
                 document.cookie = `ai_link_token=${encodeURIComponent(res.token)}; path=/; max-age=2592000; SameSite=Lax`;
               } catch (e) {}
             }
-            showToast('面板密码修改成功（新会话令牌已同步）！', 'success');
+            state.pwdCustomized = true; renderOpsAndUpdatesSection(); showToast('面板密码修改成功（新会话令牌已同步）！', 'success');
           }
         );
       });

@@ -1,20 +1,27 @@
 #!/bin/sh
-# AI-LINK Command Line Utility for OpenWrt SSH Management (v1.0.1)
+# AI-LINK Command Line Utility for OpenWrt SSH Management (v1.0.2)
 # Usage: ai-link [status|password|port|update|probe|probe-now|check|max-nodes|import-cache|sync-sub|import-nodes|add-test-node|mute-conflicts|recover|restore|restart|uninstall]
 
 export PYTHONDONTWRITEBYTECODE="1"
 PANEL_PORT=$(uci -q get ai-link.global.panel_port || echo "9099")
-PANEL_SECRET_RAW=$(uci -q get ai-link.global.panel_secret || echo "ai-link-2026")
-# PWD-1: panel_secret 只在「从未改过密码」时是明文初始密码；
-# 用户改过密码后是 __custom__ 哨兵，老版本遗留的 sha256:<hash> 同样不可回显。
-case "$PANEL_SECRET_RAW" in
-	""|__custom__|sha256:*|SHA256:*)
-		PANEL_SECRET="已自定义（不可回显 · 执行 ai-link password <新密码> 重置）"
-		;;
-	*)
-		PANEL_SECRET="$PANEL_SECRET_RAW"
-		;;
-esac
+PANEL_PWD_CUSTOM=$(uci -q get ai-link.global.panel_pwd_customized || echo "")
+PANEL_SECRET_RAW=$(uci -q get ai-link.global.panel_secret || echo "")
+# PWD-1 & B1-2: UCI 改为布尔 panel_pwd_customized=0/1，不再承载任何凭据形态数据。
+if [ "$PANEL_PWD_CUSTOM" = "1" ]; then
+	PANEL_SECRET="已自定义（不可回显 · 执行 ai-link password <新密码> 重置）"
+else
+	case "$PANEL_SECRET_RAW" in
+		__custom__|sha256:*|SHA256:*)
+			PANEL_SECRET="已自定义（不可回显 · 执行 ai-link password <新密码> 重置）"
+			;;
+		"")
+			PANEL_SECRET="ai-link-2026 (出厂初始密码 · 建议修改)"
+			;;
+		*)
+			PANEL_SECRET="$PANEL_SECRET_RAW"
+			;;
+	esac
+fi
 LAN_IP=$(uci -q get network.lan.ipaddr || echo "192.168.1.1")
 CACHE_DIR=$(uci -q get ai-link.global.host_cache_dir || echo "/tmp/ai-link-cache")
 MAX_NODES=$(cat /etc/ai-link/max_outbounds.txt 2>/dev/null || uci -q get ai-link.global.max_outbounds || echo "120")
@@ -42,16 +49,24 @@ PY
 case "$1" in
 	password)
 		if [ -n "$2" ]; then
-			# 先落明文：若下面的 python 更新失败，仍可凭明文登录（降级不锁死）
-			uci set ai-link.global.panel_secret="$2"
-			uci commit ai-link
-			python3 -B - "$2" <<'PY' 2>/dev/null || true
+			if [ "${#2}" -lt 4 ]; then
+				echo "❌ 错误: 新密码长度不能少于 4 位字符。" >&2
+				exit 1
+			fi
+			python3 -B - "$2" <<'PY'
 import sys, importlib.util
 spec = importlib.util.spec_from_file_location("d", "/usr/share/ai-link/ai-link-daemon.py")
 d = importlib.util.module_from_spec(spec); spec.loader.exec_module(d)
 d._update_panel_password(sys.argv[1])
 PY
-			# PWD-1: 不回显密码本身（避免终端留痕 / 截屏泄露）
+			if [ "$2" = "ai-link-2026" ]; then
+				uci set ai-link.global.panel_pwd_customized='0' 2>/dev/null || true
+			else
+				uci set ai-link.global.panel_pwd_customized='1' 2>/dev/null || true
+			fi
+			uci -q delete ai-link.global.panel_secret 2>/dev/null || true
+			uci commit ai-link 2>/dev/null || true
+			# PWD-1 & B1-2: 不回显密码本身，UCI 仅存布尔 panel_pwd_customized=1
 			echo "AI-LINK 面板访问密码已更新（${#2} 位字符）。请用新密码登录面板。"
 		else
 			echo "面板地址: http://${LAN_IP}:${PANEL_PORT}"
@@ -142,8 +157,29 @@ PY
 		echo "已执行紧急直连恢复：nftables 透明代理规则与 dnsmasq 转发已清空，局域网恢复直接上网。"
 		;;
 	restore)
-		/etc/init.d/ai-link restore_proxy
-		echo "已恢复 AI-LINK 透明代理服务。"
+		if [ -n "$2" ]; then
+			RESTORE_TARGET="$2"
+			if [ "$RESTORE_TARGET" = "--latest" ] || [ "$RESTORE_TARGET" = "latest" ]; then
+				RESTORE_TARGET="/root/ai-link-final-backup/etc-ai-link.tgz"
+			fi
+			if [ ! -f "$RESTORE_TARGET" ]; then
+				echo "❌ 未找到备份文件: $RESTORE_TARGET" >&2
+				echo "用法: ai-link restore <备份文件.tgz|.json>  或  ai-link restore --latest" >&2
+				exit 1
+			fi
+			echo "📦 正在从备份文件 [$RESTORE_TARGET] 恢复全量配置与系统开关..."
+			if /usr/bin/env python3 -B /usr/share/ai-link/ai-link-daemon.py --restore "$RESTORE_TARGET"; then
+				[ -x /etc/init.d/ai-link ] && /etc/init.d/ai-link restore_proxy >/dev/null 2>&1 || true
+				echo "✅ 配置归档恢复完成并已重载服务！"
+				exit 0
+			else
+				echo "❌ 从备份文件恢复失败，请检查文件格式是否为有效的 .tgz 归档或 .json 备份。" >&2
+				exit 1
+			fi
+		else
+			/etc/init.d/ai-link restore_proxy
+			echo "已恢复 AI-LINK 透明代理服务。（提示: 如需恢复配置归档，请执行 ai-link restore <备份文件.tgz|.json> 或 ai-link restore --latest）"
+		fi
 		;;
 	restart)
 		/etc/init.d/ai-link restart
@@ -186,7 +222,7 @@ PY
 		[ -x /etc/init.d/ai-link ] && /etc/init.d/ai-link stop >/dev/null 2>&1 || true
 		[ -x /etc/init.d/ai-link ] && /etc/init.d/ai-link disable >/dev/null 2>&1 || true
 		ubus call service delete '{"name":"ai-link"}' >/dev/null 2>&1 || true
-		for pid in $(pgrep -f "ai-link-daemon.py" 2>/dev/null) $(pidof sing-box 2>/dev/null); do
+		for pid in $(pgrep -f "ai-link-dae[m]on.py" 2>/dev/null) $(pidof sing-box 2>/dev/null); do
 			kill -9 "$pid" 2>/dev/null || true
 		done
 		nft delete table inet ai_link 2>/dev/null || true
@@ -301,7 +337,7 @@ PY
 		;;
 	status|*)
 		echo "=========================================================="
-		echo "  AI-LINK 智能透明代理与网络中枢 v1.0.1 (正式版)"
+		echo "  AI-LINK 智能透明代理与网络中枢 v1.0.2 (正式版)"
 		echo "=========================================================="
 		echo "  独立控制面板 : http://${LAN_IP}:${PANEL_PORT}"
 		echo "  面板管理密码 : ${PANEL_SECRET}"

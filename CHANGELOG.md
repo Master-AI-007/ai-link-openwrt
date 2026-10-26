@@ -12,66 +12,51 @@
 
 ## v1.0.2 · 2026-10-26
 
-> 主题：**安全加固 + 启动可靠性修复**
+> 主题：**全量安全加固 + 启动与看门狗可靠性 + `.tgz` 归档上传恢复 + 跨架构兼容与自动化回归**
 
-### 🔐 安全修复
+### 🔐 安全加固（SEC-1~SEC-5 & B1-1~B1-4）
 
-- **面板令牌不再随首页下发（严重）**
-  旧实现在 `end_headers` 里给任何请求 `/` 或 `/index.html` 的客户端塞
-  `Set-Cookie: ailink_token=<第一个有效令牌>`。也就是说**未登录、不带任何凭据**，
-  只要打开一次面板地址就能拿到可用令牌，进而调用全部 API。
-  「强制内网登录」打开也拦不住（令牌校验在 CIDR 校验之前），
-  面板若被端口转发到公网即等同远程接管。
-  现在令牌只由 `POST /api/login` 校验密码成功后签发，面板自己保存（localStorage + Cookie）。
-- **`/api/status` 对未授权客户端脱敏**
-  该接口会把回家节点的 `password` / `uuid` / `private_key` / `uri` 和订阅地址（含 `?token=`）
-  一并返回。现在按与访问控制相同的口径判断：只有「令牌 / 回环 / trusted_cidr」放行时才给完整数据，
-  否则脱敏；同时把鉴权状态纳入 wire-memo 缓存键，避免「已鉴权客户端缓存的完整应答被后续未鉴权请求命中」。
-- **回家节点脱敏覆盖 `uri` 字段**
-  `build_homelink_api_response` 的 `mask_all_secrets` 以前只遮字段，但 `uri` 里内嵌明文 `password`/`uuid`，
-  等于没遮；现在 `uri` 里的凭据段一并处理。
-- **敏感接口仍强制令牌（回归验证）**
-  `GET /api/ops/backup`、`POST /api/system/update/apply` 等在未授权时返回 401。
+- **面板令牌不再随首页下发（SEC-1）**
+  移除 `end_headers` 中对 `/` 请求下发 `Set-Cookie: ailink_token=<有效令牌>` 的缺陷；令牌仅在 `POST /api/login` 校验密码通过后签发，由前端保存在 `localStorage` 与 `Cookie`。
+- **`/api/status`、`/api/nodes/share_uri`、`/api/ops/logs` 鉴权与凭据脱敏闭环（SEC-2~SEC-5）**
+  - `/api/status` 按访问控制同一口径判定：未鉴权客户端脱敏回家节点的 `password` / `uuid` / `private_key` / `uri`（含 `uri` 内嵌明文凭据）及订阅 `?token=` 参数，并将鉴权状态与 `panel_auth.json` 纳入 wire-memo 缓存键；
+  - `GET /api/nodes/share_uri` 与 `GET /api/ops/logs` 强制校验 `_auth_ok()`，未授权请求一律返回 HTTP 401。
+- **UCI 凭据零留存，彻底改为布尔 `panel_pwd_customized=0/1`（B1-2）**
+  `/etc/config/ai-link` 移除 `panel_secret` 字段，改用布尔 `option panel_pwd_customized '0'`；`install.sh` 升级时自动迁移并清除历史 `panel_secret`；CLI `ai-link password` 不再向 UCI 写入任何明文或哈希串。
+- **永久下线弱默认密码 `admin`（B1-3）**
+  出厂状态仅接受 `ai-link-2026` 作为初始密码，彻底禁用弱口令 `admin`；面板登录弹窗移除预填明文 value。
+- **内网免密风险提示与自动登录引导（B1-1）**
+  `/api/status` 新增 `auth_required` 与 `pwd_customized` 状态位，未鉴权打开面板自动弹出登录窗；WebUI 设置页新增 `#lan-auth-security-notice` 动态安全风险警示条；LuCI 新增 `require_lan_auth` 开关并与 `ops_settings.json` 双向同步。
 
-### 🚀 启动可靠性修复
+### 🚀 启动可靠性与防黑洞看门狗（BOOT-1 / CORE-1 / RB-1 / B1-4 / B3-12）
 
-- **修复 `ss` 探针不存在导致的「假等待 + 跳过挂载」**
-  `init.d/ai-link` 的端口就绪探针只用了 `ss -lntu`，而 ImmortalWrt 25.x / OpenWrt 24.10+ 默认不带 `ss`
-  （实测返回 `ash: ss: not found`，rc=127）。于是**每次启动都会等满 25 秒**，打印
-  `TProxy port :7893 not listening after 25s! Skipping nftables mount`，然后跳过 nftables 挂载，
-  完全依赖 daemon 的 Self-Healing Watchdog 事后补挂。
-  现在改为 `netstat` 为主、`ss` 与 `/proc/net/tcp{,6}` 兜底，等待预算从 25 秒放宽到 60 秒
-  （`AI_LINK_PORT_WAIT` 可覆盖）。日志回到正常的
-  `TProxy port :7893 ready; nftables table inet ai_link mounted.`
-- **修复 BusyBox `pgrep -x` 探针失效**
-  BusyBox 1.37 的 `pgrep -x sing-box` 匹配不到 `/usr/bin/sing-box`（`/proc/<pid>/comm` 明明是 `sing-box`
-  也返回 1）。影响三处：`svc_state` 恒报 `core=0`、`reload_service` 的兜底恒成立（每次 reload 退化成整机重启）、
-  `restore_proxy` 误判核心未运行。统一改为 `pidof sing-box`（含 `pgrep -f` 兜底）的 `singbox_alive()`。
+- **多栈端口就绪探针（BOOT-1 & B3-12）**
+  `init.d/ai-link` 的 `port_is_listening()` 采用 `netstat` → `ss` → `/proc/net/tcp{,6}` 三级探针，同时比对大小写十六进制端口（消除精简版 BusyBox `awk toupper()` 依赖），等待预算放宽至 60 秒（`AI_LINK_PORT_WAIT` 可覆盖）。
+- **修复 BusyBox `pgrep` 探针与全仓进程匹配（CORE-1 & B3-12）**
+  `init.d/ai-link` 统一使用 `singbox_alive()`（`pidof sing-box` + `pgrep -f` 兜底）并动态解析 `command -v sing-box`；全仓 `install.sh` / `uninstall.sh` / `usr/bin/ai-link` 统一使用 `pgrep -f "ai-link-dae[m]on.py"` 防止 shell 自匹配误杀。
+- **看门狗与 `restore_proxy` 挂载 nftables 前强制校验端口（B1-4）**
+  `ensure_nft_and_routing_intact()`、`restore_proxy()` 及 `update_ops_settings()` 在挂载 `table inet ai_link` 前强制校验 TProxy `:7893` 端口监听状态，核心未就绪时跳过挂载以杜绝局域网断网黑洞。
+- **在线升级回滚立即恢复透明代理（RB-1）**
+  OTA 回滚段在重启服务后主动调用 `/etc/init.d/ai-link restore_proxy`，消除约 10 秒的透明代理空窗。
 
-### ♻️ 在线升级回滚
+### 📦 备份恢复与在线更新增强（B2-6 ~ B2-11）
 
-- **回滚收尾立即重挂透明代理**
-  旧流程回滚后只重启服务，要等 daemon 的 `auto_heal_interval`（默认 10 秒）才把
-  `table inet ai_link` 补回来，这段时间设备处于「面板正常但流量不走代理」的假恢复状态。
-  现在回滚段在重启后主动执行 `/etc/init.d/ai-link restore_proxy`。
+- **面板与 LuCI 支持 `.tgz` / `.json` 浏览器直接上传恢复与 `.tgz` 归档下载（B2-6）**
+  新增 `GET /api/ops/backup_archive`（一键导出 `.tgz` 全量归档）并升级 `POST /api/ops/restore_archive` 支持浏览器直接上传 `.tgz` / `.tar.gz` 或 `.json` 备份恢复，内置 `tarfile` 路径穿越（`..`）、非普通文件与 100MB 解压上限安全校验，且仅在校验与恢复成功后更新持久化备份。
+- **新增 `ai-link restore <file|--latest>` CLI 命令行恢复入口（B2-7）**
+  支持通过命令行直接传入 `.tgz` 归档或 `.json` 备份文件完成全量恢复与服务重载（`ai-link-daemon.py --restore <file>`）。
+- **OTA 升级进度闪存持久化（B2-8）**
+  升级脚本将实时进度双写至 `/root/ai-link-final-backup/last_update_progress.log`，设备断电重启导致 `/var/run` tmpfs 丢失后仍可自动还原升级中断状态。
+- **`auto_nodes.json` 剥离实时探测噪声（B2-9）**
+  落盘时通过 `_strip_auto_node_runtime_fields()` 剔除 `quality_ranking`、`last_check_ts`、`members` 等高频探测字段（读取时动态注入内存），跨探测周期文件 MD5 保持 100% 恒定。
+- **自定义更新源域名与冷启动提示（B2-10 & B2-11）**
+  `ops_settings` 白名单新增 `update_manifest_url` 支持绑定自有域名作为第一优先级 OTA 清单源，并与 UCI 删除/修改双向同步；界面与文档保留 v1.0.0 首次手动升级说明。
 
-### 🛠 发布工具链（仅维护侧，不影响设备）
+### 🛠 工程与验证工具链（TOOL-1~3 / HYG-1 / TEST-1 / B3-13~14 / B4-16~20）
 
-- 版本同步的 LuCI 兜底正则只认 `| | '1.0.1');`（竖线间带空格），实际源码是 `|| '1.0.1');`，
-  导致 `publish` 卡在第一步；已放宽为 `\|\s*\|\s*`。
-- `version` 文件以前每发一版会多写一行（`r'^.*$'` + `re.M` 命中结尾空行），现在只改写首行。
-- 面板版本徽章的替换丢了 `v` 前缀，导致门禁「四处版本号一致」失败；现已保留 `v`。
-
-### ⬆️ 升级方式
-
-- 设备侧：`ai-link update --apply`，或 `curl -fsSL https://ai-link-official.pages.dev/upgrade.sh | sh`
-- 升级失败自动回滚到升级前版本，配置与节点数据不受影响。
-
-### 📌 已知限制
-
-- 面板默认信任局域网（`require_lan_auth=false`，`trusted_cidr` 覆盖全部私网），
-  这是历史行为，未在本版改动。如果面板端口可能暴露到公网，**请务必开启「强制内网登录」**，
-  或把 `trusted_cidr` 收窄到管理网段。
+- **Clash API 负缓存断路器（B4-20）**：`clash_api_request()` 新增 `_CLASH_API_DOWN_UNTIL` 断路器与 Linux `/proc/net/tcp` 零套接字权威判定，无 Clash API 环境下 `--self-test --strict` 耗时 < 1.5s。
+- **发布与核对工具链增强（TOOL-1~3 & B4-16~17）**：修复 `release.py` 7 处版本同步正则与门禁校验，支持自动检测工作区仓库与同版本预置发布；`verify_online.py` 支持进程环境变量覆盖。
+- **全链路 E2E 与无头浏览器 UI 自动化回归（B3-13 & B3-14）**：新增 `test_v102_full_regression.py`（42 项断言），覆盖真实 HTTP 服务端密码登录/改密/鉴权、`.tgz` 上传恢复及 Headless Chromium 浏览器 UI 渲染与交互验证。
 
 ## v1.0.1 · 2026-10-26
 

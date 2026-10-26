@@ -14,12 +14,11 @@ return view.extend({
 		var m, s, o;
 		var host = window.location.hostname || '10.10.10.77';
 		var port = uci.get('ai-link', 'global', 'panel_port') || '9099';
-		// PWD-1: panel_secret 只在「从未改过密码」时才是可回显的明文初始密码。
-		// 用户改过密码后 daemon 会写入 __custom__ 哨兵；老版本曾写入 sha256:<hash24>，
-		// 那串哈希绝不能被当作密码展示（它既不是真密码，也不应泄露）。
+		// PWD-1 & B1-2: UCI 现使用布尔 panel_pwd_customized=0/1，不再存储任何密码或哈希串。
+		var pwdCustFlag = String(uci.get('ai-link', 'global', 'panel_pwd_customized') || '');
 		var uciSecretRaw = String(uci.get('ai-link', 'global', 'panel_secret') || '');
-		var pwdIsCustom = (!uciSecretRaw) || uciSecretRaw === '__custom__' || /^sha256:/i.test(uciSecretRaw);
-		var uciSecret = pwdIsCustom ? '' : uciSecretRaw;
+		var pwdIsCustom = (pwdCustFlag === '1') || (uciSecretRaw !== '' && (uciSecretRaw === '__custom__' || /^sha256:/i.test(uciSecretRaw) || uciSecretRaw !== 'ai-link-2026'));
+		var uciSecret = pwdIsCustom ? '' : (uciSecretRaw || 'ai-link-2026');
 		var luciToken = String(uci.get('ai-link', 'global', 'luci_bridge_token') || '');
 		// 版本号由 daemon 启动时同步写入 UCI（app_version），这里只做兜底
 		var currentVer = String(uci.get('ai-link', 'global', 'app_version') || '1.0.2');
@@ -42,7 +41,7 @@ return view.extend({
 		}
 
 		m = new form.Map('ai-link', _('AI-LINK 智能分流网关'),
-			_('专为全屋智能分流、抗 DNS 污染、回家内网穿透与多区域故障自愈设计的轻量透明代理网关（v1.0.1 正式版 · 纯血 Sing-box 内核）。'));
+			_('专为全屋智能分流、抗 DNS 污染、回家内网穿透与多区域故障自愈设计的轻量透明代理网关（v1.0.2 正式版 · 纯血 Sing-box 内核）。'));
 
 		s = m.section(form.NamedSection, 'global', globalSecType, _('实时运行中枢与快捷控制'));
 		s.anonymous = true;
@@ -128,6 +127,8 @@ return view.extend({
 					'<button type="button" id="luci-btn-restart-core" style="padding:7px 13px; border-radius:8px; border:1px solid rgba(148,163,184,0.35); background:rgba(30,41,59,0.85); color:#e2e8f0; font-size:12.5px; font-weight:600; cursor:pointer;">🔄 重载 Sing-box 内核</button>' +
 					'<button type="button" id="luci-btn-flush-dns" style="padding:7px 13px; border-radius:8px; border:1px solid rgba(148,163,184,0.35); background:rgba(30,41,59,0.85); color:#e2e8f0; font-size:12.5px; font-weight:600; cursor:pointer;">🧹 刷新 DNS 缓存</button>' +
 					'<button type="button" id="luci-btn-restore-archive" style="display:none; padding:7px 13px; border-radius:8px; border:1px solid rgba(250,204,21,0.5); background:rgba(250,204,21,0.15); color:#fef08a; font-size:12.5px; font-weight:700; cursor:pointer;">📦 从备份恢复配置</button>' +
+					'<button type="button" id="luci-btn-upload-restore" style="padding:7px 13px; border-radius:8px; border:1px solid rgba(34,211,238,0.45); background:rgba(6,182,212,0.15); color:#a5f3fc; font-size:12.5px; font-weight:700; cursor:pointer;">📤 上传备份恢复 (.tgz/.json)</button>' +
+					'<input type="file" id="luci-input-upload-restore" accept=".tgz,.tar.gz,.json,application/gzip,application/json" style="display:none;" />' +
 					'<button type="button" id="luci-btn-uninstall" style="margin-left:auto; padding:7px 13px; border-radius:8px; border:1px solid rgba(239,68,68,0.45); background:rgba(239,68,68,0.15); color:#fca5a5; font-size:12.5px; font-weight:700; cursor:pointer;">🗑️ 安全卸载并恢复网络</button>' +
 				'</div>' +
 				'<div id="luci-ailink-msg" style="margin-top:10px; font-size:12px; color:#93c5fd; display:none; padding:7px 11px; border-radius:7px; background:rgba(15,23,42,0.8); border:1px solid rgba(56,189,248,0.3);"></div>' +
@@ -136,7 +137,7 @@ return view.extend({
 				'<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">' +
 					'<div>' +
 						'<strong style="font-size:14px; color:#e2e8f0;">⬆️ 插件版本与在线更新</strong>' +
-						'<div id="luci-ota-sub" style="font-size:12px; color:#94a3b8; margin-top:2px;">当前 v' + escapeHtml(currentVer) + ' · 点击「检查更新」获取最新版本</div>' +
+						'<div id="luci-ota-sub" style="font-size:12px; color:#94a3b8; margin-top:2px;">当前 v' + escapeHtml(currentVer) + ' · 点击「检查更新」获取最新版本（注：早期 v1.0.0 需手动执行一次命令行升级，v1.0.1+ 支持全程在线热更新）</div>' +
 					'</div>' +
 					'<div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">' +
 						'<button type="button" id="luci-btn-ota-check" style="padding:6px 12px; border-radius:7px; border:1px solid rgba(148,163,184,0.35); background:rgba(30,41,59,0.85); color:#e2e8f0; font-size:12px; cursor:pointer;">🔍 检查更新</button>' +
@@ -200,6 +201,11 @@ return view.extend({
 		o = s.option(form.Flag, 'auto_mute_conflicts', _('自动检查并隔离冲突代理插件'),
 			_('启动时自动检测并停止 OpenClash / PassWall / HomeProxy / Nikki 等冲突服务，防止多插件争抢 53 端口与 fwmark 导致断网。'));
 		o.default = '1';
+		o.rmempty = false;
+
+		o = s.option(form.Flag, 'require_lan_auth', _('强制局域网访问密码鉴权 (安全加固)'),
+			_('【安全建议：若局域网有访客设备或端口映射至公网请务必勾选】开启后仅路由器本机 127.0.0.1 免密，局域网设备打开 :9099 面板或调用 API 必须先验证面板密码（出厂弱密码 admin 已永久下线）。'));
+		o.default = '0';
 		o.rmempty = false;
 
 		o = s.option(form.Value, 'gh_mirror', _('GitHub 规则与核心更新加速源'),
@@ -305,6 +311,7 @@ return view.extend({
 					syncUciCheckboxDom('entry_bypass', currentState.entry_bypass);
 					if (ops.block_quic !== undefined) syncUciCheckboxDom('block_quic', !!ops.block_quic);
 					if (ops.game_udp_direct !== undefined) syncUciCheckboxDom('game_udp_direct', !!ops.game_udp_direct);
+					if (ops.require_lan_auth !== undefined) syncUciCheckboxDom('require_lan_auth', !!ops.require_lan_auth);
 
 					var badge = mapEl.querySelector('#luci-ailink-badge');
 					if (badge) {
@@ -811,6 +818,44 @@ return view.extend({
 					refreshStatus();
 				});
 			});
+
+			bindBtn('#luci-btn-upload-restore', function() {
+				var inp = mapEl.querySelector('#luci-input-upload-restore');
+				if (inp) { inp.value = ''; inp.click(); }
+			});
+			var upInp = mapEl.querySelector('#luci-input-upload-restore');
+			if (upInp) {
+				upInp.addEventListener('change', function() {
+					var file = upInp.files && upInp.files[0];
+					if (!file) return;
+					var isJson = /\.json$/i.test(file.name);
+					var reader = new FileReader();
+					showMsg('📤 正在上传并恢复备份文件: ' + file.name + ' ...', false);
+					if (isJson) {
+						reader.onload = function() {
+							try {
+								var parsed = JSON.parse(String(reader.result || '{}'));
+								callApi('/ops/restore', 'POST', parsed).then(function(r) {
+									showMsg((r && r.message) ? r.message : ('✅ 已从 JSON 备份恢复: ' + file.name), !(r && r.ok !== false));
+									refreshStatus();
+								});
+							} catch (e) {
+								showMsg('❌ JSON 备份文件格式解析失败: ' + e.message, true);
+							}
+						};
+						reader.readAsText(file);
+					} else {
+						reader.onload = function() {
+							var b64 = String(reader.result || '');
+							callApi('/ops/restore_archive', 'POST', { archive_base64: b64, filename: file.name }).then(function(r) {
+								showMsg((r && r.message) ? r.message : ('✅ 已从归档恢复: ' + file.name), !(r && r.ok));
+								refreshStatus();
+							});
+						};
+						reader.readAsDataURL(file);
+					}
+				});
+			}
 
 			bindBtn('#luci-btn-uninstall', function() {
 				if (!window.confirm('⚠️ 确认要安全卸载 AI-LINK 吗？\n\n卸载过程会自动停止代理、清空 nftables 规则、恢复 dnsmasq 默认解析，并将您的节点配置安全归档至 /root/ai-link-final-backup/etc-ai-link.tgz。')) return;

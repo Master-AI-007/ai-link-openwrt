@@ -5,13 +5,26 @@
   "release_date": "2026-10-26",
   "notes_url": "https://ai-link-official.pages.dev/changelog.html#v1.0.2",
   "highlights": [
-    "安全修复：面板令牌不再随首页下发给任何人（此前未登录即可拿到有效令牌，密码形同虚设）",
-    "安全修复：/api/status 对未授权客户端脱敏回家密码/UUID 与订阅令牌，缓存键纳入鉴权状态",
-    "安全修复：回家节点脱敏时同时处理 uri 字段（uri 内嵌明文凭据）",
-    "修复：BusyBox 的 pgrep -x 探针失效导致服务状态恒显示 core=0、reload 退化为整机重启",
-    "修复：在线升级回滚后立即重挂透明代理，消除约 10 秒的代理空窗"
+    "安全加固：移除首页令牌 Cookie 下发，/api/status、/api/nodes/share_uri 与 /api/ops/logs 全面鉴权脱敏",
+    "凭据重构：UCI 彻底移除 panel_secret，改用布尔 panel_pwd_customized=0/1，并永久下线弱默认密码 admin",
+    "启动与防黑洞：修复无 ss 环境 25s 假等待与 BusyBox pgrep 失效；看门狗与 restore_proxy 挂载前强制校验 :7893 端口监听",
+    "备份恢复增强：面板与 LuCI 新增 .tgz / .json 浏览器直接上传恢复、.tgz 一键导出与 CLI ai-link restore <file> 命令",
+    "OTA 与稳定性：回滚后立即 restore_proxy 消除 10s 空窗；升级进度落盘闪存防断电丢失；auto_nodes.json 剥离探测噪声保持 MD5 恒定"
   ],
   "changelog": [
+    {
+      "version": "1.0.2",
+      "date": "2026-10-26",
+      "type": "security",
+      "title": "全量安全加固 + 启动与看门狗防黑洞 + .tgz 上传恢复 + 跨架构兼容",
+      "items": [
+        "安全加固：移除首页令牌 Cookie 下发，/api/status、/api/nodes/share_uri 与 /api/ops/logs 全面鉴权脱敏",
+        "凭据重构：UCI 彻底移除 panel_secret，改用布尔 panel_pwd_customized=0/1，并永久下线弱默认密码 admin",
+        "启动与防黑洞：修复无 ss 环境 25s 假等待与 BusyBox pgrep 失效；看门狗与 restore_proxy 挂载前强制校验 :7893 端口监听",
+        "备份恢复增强：面板与 LuCI 新增 .tgz / .json 浏览器直接上传恢复、.tgz 一键导出与 CLI ai-link restore <file> 命令",
+        "OTA 与稳定性：回滚后立即 restore_proxy 消除 10s 空窗；升级进度落盘闪存防断电丢失；auto_nodes.json 剥离探测噪声保持 MD5 恒定"
+      ]
+    },
     {
       "version": "1.0.1",
       "date": "2026-10-26",
@@ -37,9 +50,9 @@
       "mirrors": [
         "https://ai-link-official.pages.dev/pkg/AI-LINK-v1.0.2.tar.gz"
       ],
-      "size": 1202859,
-      "md5": "0e244cdbcd9d72f824bd1504b9426627",
-      "sha256": "94aa54bcabe2e1e8bfddef52e474c1d541c4f889e0b676507264d69f30e35e60"
+      "size": 1242745,
+      "md5": "d64f77afa6547f69c9d97ee02942a3e3",
+      "sha256": "a8a796355b82f29436ede2fc4ce706cec4fcca7844207753bb05849225231230"
     }
   }
 }

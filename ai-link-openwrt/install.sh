@@ -1,6 +1,6 @@
 #!/bin/sh
 # ==============================================================================
-# AI-LINK v1.0.1 (luci-app-ai-link v2.0.0-r8) Universal Cross-Platform Installer
+# AI-LINK v1.0.2 (luci-app-ai-link v2.0.0-r8) Universal Cross-Platform Installer
 # Supports:
 #   - Architectures : x86_64 (amd64), aarch64 (arm64), armv7l (armhf), mipsel, riscv64
 #   - Package Mgrs  : OPKG (OpenWrt <=23.05) & APK (OpenWrt 24.10+ / ImmortalWrt 25.x+)
@@ -237,7 +237,15 @@ if [ -n "$LEGACY_WPORT" ] && [ "$LEGACY_WPORT" != "9099" ]; then
 fi
 uci_set_default "enabled" "1"
 uci_set_default "panel_port" "9099"
-uci_set_default "panel_secret" "ai-link-2026"
+# B1-2: Migrate legacy panel_secret to boolean panel_pwd_customized=0/1 and delete panel_secret from UCI
+LEGACY_PSEC=$(uci -q get ai-link.global.panel_secret 2>/dev/null || true)
+if [ -n "$LEGACY_PSEC" ] && [ "$LEGACY_PSEC" != "ai-link-2026" ]; then
+	uci -q set "ai-link.global.panel_pwd_customized=1" 2>/dev/null || true
+else
+	uci_set_default "panel_pwd_customized" "0"
+fi
+uci -q delete ai-link.global.panel_secret 2>/dev/null || true
+uci_set_default "require_lan_auth" "0"
 uci_set_default "tproxy_port" "7893"
 uci_set_default "mixed_port" "7890"
 uci_set_default "dns_port" "7874"
@@ -251,7 +259,7 @@ uci_set_default "dns_rewrite_enabled" "1"
 uci_set_default "dns_filter_enabled" "1"
 uci_set_default "max_outbounds" "$REC_MAX_OB"
 # OTA 在线更新：版本号 + LuCI 桥接令牌（与面板密码解耦，供 LuCI 页面调用面板 API）
-uci_set_default "app_version" "${VERSION}"
+uci -q set "ai-link.global.app_version=${VERSION}" 2>/dev/null || true
 if [ -z "$(uci -q get ai-link.global.luci_bridge_token 2>/dev/null)" ]; then
 	uci -q set "ai-link.global.luci_bridge_token=$(head -c 16 /dev/urandom 2>/dev/null | md5sum 2>/dev/null | cut -d' ' -f1)" 2>/dev/null || true
 fi
@@ -299,7 +307,7 @@ echo "[5/6] 正在初始化安全证书、智能双栈 DNS 分流规则与内核
 # ------------------------------------------------------------------------------
 echo "[6/6] 正在清理旧版进程缓存、刷新 LuCI 视图并启动服务..."
 rm -rf /tmp/luci-indexcache* /tmp/luci-modulecache/* /var/run/ai-link/probe.lock /usr/share/ai-link/__pycache__ 2>/dev/null || true
-for old_pid in $(pgrep -f "ai-link-daemon.py" 2>/dev/null); do
+for old_pid in $(pgrep -f "ai-link-dae[m]on.py" 2>/dev/null); do
 	kill -TERM "$old_pid" 2>/dev/null || true
 done
 sleep 1
@@ -345,7 +353,7 @@ fi
 
 LAN_IP=$(uci -q get network.lan.ipaddr 2>/dev/null || ip -4 addr show br-lan 2>/dev/null | awk '/inet / {split($2,a,"/"); print a[1]; exit}' || echo "10.10.10.77")
 PORT=$(uci -q get ai-link.global.panel_port 2>/dev/null || echo "9099")
-SECRET=$(uci -q get ai-link.global.panel_secret 2>/dev/null || echo "ai-link-2026")
+PWD_CUST=$(uci -q get ai-link.global.panel_pwd_customized 2>/dev/null || echo "0")
 
 echo "=================================================================="
 echo "  🎉 AI-LINK (v${VERSION}) 安装完成！"

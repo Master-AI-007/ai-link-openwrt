@@ -1130,23 +1130,34 @@ def merge_nodes(sub_id: str, incoming_nodes: list, sub_url: str = "", replace_su
             kept_by_id[nid] = ob
         return save_nodes_list(kept, conf_dir)
 
+_CLASH_API_DOWN_UNTIL = {"ts": 0.0}
+
 def clash_api_request(path: str, method: str = "GET", payload: dict = None, timeout: float = 3.5) -> tuple:
+    now_c = time.time()
+    if now_c < _CLASH_API_DOWN_UNTIL.get("ts", 0.0):
+        return (0, {"error": "clash_api_down_cached"})
+    if not _is_local_port_listening(9090):
+        _CLASH_API_DOWN_UNTIL["ts"] = now_c + 2.5
+        return (0, {"error": "clash_api_not_listening"})
     url = f"{CONTROLLER_API}{path}"
     data = json.dumps(payload).encode("utf-8") if payload is not None else None
     headers = {"Content-Type": "application/json"} if data is not None else {}
     req = urllib.request.Request(url, data=data, method=method, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
+            _CLASH_API_DOWN_UNTIL["ts"] = 0.0
             raw = resp.read().decode("utf-8", errors="ignore")
             obj = json.loads(raw) if raw.strip() else {}
             return (resp.status, obj)
     except urllib.error.HTTPError as he:
+        _CLASH_API_DOWN_UNTIL["ts"] = 0.0
         try:
             err_body = json.loads(he.read().decode("utf-8", errors="ignore"))
         except Exception:
             err_body = {"error": str(he)}
         return (he.code, err_body)
     except Exception as e:
+        _CLASH_API_DOWN_UNTIL["ts"] = time.time() + 2.5
         return (0, {"error": str(e)})
 
 def clash_get_proxies() -> dict:
@@ -3029,21 +3040,53 @@ def load_auto_nodes_config(conf_dir: Path = CONF_DIR) -> dict:
         _FAST_FILE_CACHE[cache_key] = (comp_sig, copy.deepcopy(res_data))
     return res_data
 
+def _strip_auto_node_runtime_fields(an: dict) -> dict:
+    """B2-9 Fix: Strips volatile per-tick probe telemetry (members sparklines, quality_ranking, last_check_ts, current_delay_ms)
+    before writing /etc/ai-link/auto_nodes.json so the persisted configuration file is deterministic and free of real-time probe noise."""
+    clean = dict(an or {})
+    for vk in ("quality_ranking", "pool_reachable_count", "pool_candidate_tags", "last_check_ts", "current_delay_ms", "verified_nodes", "revert_pending", "all_groups_dead_alert", "alert_message", "primary_recover_streak", "last_revert_ts", "last_smart_switch_ts", "last_switch_ts"):
+        clean.pop(vk, None)
+    clean_groups = []
+    for g in (clean.get("groups") or []):
+        if not isinstance(g, dict):
+            continue
+        cg = {
+            "index": int(g.get("index") or (len(clean_groups) + 1)),
+            "name": str(g.get("name") or f"第{len(clean_groups) + 1}组"),
+            "node_ids": list(g.get("node_ids") or []),
+            "node_tags": list(g.get("node_tags") or []),
+        }
+        clean_groups.append(cg)
+    clean["groups"] = clean_groups
+    return clean
+
 def save_auto_nodes_config(cfg: dict, conf_dir: Path = CONF_DIR) -> dict:
     with _SUB_LOCK:
         saved_nodes = [n for n in load_saved_nodes(conf_dir) if not is_builtin_test_node(n.get("tag", ""))]
         subs_list = load_subscriptions(conf_dir)
         store = load_node_probe_store(conf_dir)
+        normalized_list = [
+            _normalize_auto_node_item(x, conf_dir, saved_nodes=saved_nodes, subs_list=subs_list, store=store)
+            for x in (cfg.get("auto_nodes") or []) if isinstance(x, dict)
+        ]
+        disk_out = {
+            "ok": True,
+            "custom_services": cfg.get("custom_services") or [],
+            "auto_nodes": [_strip_auto_node_runtime_fields(x) for x in normalized_list]
+        }
         out = {
             "ok": True,
             "probe_intervals": AUTO_PROBE_INTERVALS,
             "preset_services": PRESET_SERVICE_CHECKS,
             "custom_services": cfg.get("custom_services") or [],
-            "auto_nodes": [_normalize_auto_node_item(x, conf_dir, saved_nodes=saved_nodes, subs_list=subs_list, store=store) for x in (cfg.get("auto_nodes") or []) if isinstance(x, dict)]
+            "auto_nodes": normalized_list
         }
         try:
             conf_dir.mkdir(parents=True, exist_ok=True)
-            _atomic_write_text(conf_dir / "auto_nodes.json", json.dumps(out, indent=2, ensure_ascii=False))
+            new_txt = json.dumps(disk_out, indent=2, ensure_ascii=False)
+            target_f = conf_dir / "auto_nodes.json"
+            if not target_f.is_file() or target_f.read_text(encoding="utf-8", errors="ignore") != new_txt:
+                _atomic_write_text(target_f, new_txt)
         except OSError:
             pass
         return out
@@ -8263,16 +8306,20 @@ def ensure_hy2_certs(certs_dir: Path) -> bool:
         crt.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
         return True
     except Exception:
-        subprocess.run(["openssl", "req", "-x509", "-newkey", "ec",
-                        "-pkeyopt", "ec_paramgen_curve:P-256",
-                        "-keyout", str(key), "-out", str(crt),
-                        "-days", "3650", "-nodes",
-                        "-subj", "/CN=ai-link.ailink.lan",
-                        "-addext", "basicConstraints=critical,CA:TRUE",
-                        "-addext", "keyUsage=critical,keyCertSign,digitalSignature,crlSign",
-                        "-addext", "extendedKeyUsage=serverAuth",
-                        "-addext", "subjectAltName=DNS:ai-link.ailink.lan,DNS:localhost,IP:127.0.0.1"],
-                       capture_output=True)
+        if shutil.which("openssl"):
+            try:
+                subprocess.run(["openssl", "req", "-x509", "-newkey", "ec",
+                                "-pkeyopt", "ec_paramgen_curve:P-256",
+                                "-keyout", str(key), "-out", str(crt),
+                                "-days", "3650", "-nodes",
+                                "-subj", "/CN=ai-link.ailink.lan",
+                                "-addext", "basicConstraints=critical,CA:TRUE",
+                                "-addext", "keyUsage=critical,keyCertSign,digitalSignature,crlSign",
+                                "-addext", "extendedKeyUsage=serverAuth",
+                                "-addext", "subjectAltName=DNS:ai-link.ailink.lan,DNS:localhost,IP:127.0.0.1"],
+                               capture_output=True, timeout=10)
+            except Exception:
+                pass
         if not (crt.is_file() and key.is_file()) and shutil.which("sing-box"):
             # Fallback to sing-box built-in `generate tls-keypair` when neither python3-cryptography nor openssl is installed (nolo-common.sh)
             try:
@@ -9947,6 +9994,7 @@ def build_status_api_response(conf_dir: Path = CONF_DIR) -> dict:
                 "dns_rewrite.json",
                 "dns_filters.json",
                 "ops_settings.json",
+                "panel_auth.json",
             ),
         ),
         _CORE_RELOAD_STATE["config_seq"],
@@ -10065,6 +10113,7 @@ def build_status_api_response(conf_dir: Path = CONF_DIR) -> dict:
                 "dns_rewrite.json",
                 "dns_filters.json",
                 "ops_settings.json",
+                "panel_auth.json",
             ),
         ),
         _CORE_RELOAD_STATE["config_seq"],
@@ -10124,29 +10173,61 @@ def _detect_router_lan_ip() -> str:
     return "10.10.10.77"
 
 PANEL_PWD_DEFAULT = "ai-link-2026"
-# PWD-1: ai-link.global.panel_secret 只承载「初始明文密码」这一种语义。
-# 一旦用户改过密码（或从备份恢复），该字段写入 __custom__ 哨兵；
-# 老版本遗留的 sha256:<hash24> 也归入「已自定义」。哨兵/哈希都不是凭据：
-#   - 不可作为登录密码（_verify_panel_password）
-#   - 不可作为 API 令牌（_is_request_authenticated）
-#   - 不在 LuCI / CLI 回显（overview.js / usr/bin/ai-link）
+# PWD-1 & B1-2 (v1.0.2): UCI 彻底改为布尔标记 ai-link.global.panel_pwd_customized=0/1，
+# 不再在 /etc/config/ai-link 中持久化任何明文密码、哨兵或哈希串。
+# 保留 PANEL_PWD_SENTINEL 与 get_uci_panel_secret() 仅作老配置平滑迁移与测试切片兼容。
 PANEL_PWD_SENTINEL = "__custom__"
 
 
 def _uci_secret_is_placeholder(val: str) -> bool:
-    """判断 UCI panel_secret 是否处于「不可回显 / 不可当凭据」状态。"""
+    """判断 UCI 值是否处于「不可回显 / 不可当凭据」状态。"""
     s = (val or "").strip()
     if not s:
         return True
-    if s == PANEL_PWD_SENTINEL:
+    if s in (PANEL_PWD_SENTINEL, "1", "true"):
         return True
     if s.lower().startswith("sha256:"):
         return True
     return False
 
 
+def _sync_uci_pwd_customized(customized: bool):
+    """B1-2: 将布尔标记 panel_pwd_customized=0/1 写入 UCI，并彻底清理历史遗留的 panel_secret 字段。"""
+    try:
+        flag = "1" if customized else "0"
+        subprocess.run(["uci", "set", f"ai-link.global.panel_pwd_customized={flag}"], check=False, timeout=2)
+        subprocess.run(["uci", "-q", "delete", "ai-link.global.panel_secret"], check=False, timeout=2)
+        subprocess.run(["uci", "commit", "ai-link"], check=False, timeout=2)
+    except Exception:
+        pass
+
+
+def is_panel_pwd_customized(conf_dir: Path = CONF_DIR) -> bool:
+    """判断面板密码是否已被用户自定义（非初始默认密码 ai-link-2026）。"""
+    try:
+        auth_file = Path(conf_dir) / "panel_auth.json"
+        if auth_file.is_file():
+            data = json.loads(auth_file.read_text(encoding="utf-8"))
+            if isinstance(data, dict) and data.get("hash") and data.get("salt"):
+                salt = data["salt"]
+                def_hash = hashlib.sha256(f"{salt}:{PANEL_PWD_DEFAULT}".encode("utf-8")).hexdigest()
+                return data["hash"] != def_hash
+    except Exception:
+        pass
+    try:
+        if Path(conf_dir).resolve() == Path(CONF_DIR).resolve() and Path("/etc/config/ai-link").is_file():
+            raw = (get_uci_panel_secret() or "").strip()
+            if raw and raw != PANEL_PWD_DEFAULT:
+                return True
+    except Exception:
+        pass
+    return False
+
+
 def get_uci_panel_secret_display() -> str:
-    """返回可安全展示给用户的面板密码文本（永不返回哈希）。"""
+    """返回可安全展示给用户的面板密码文本（仅未改密时返回默认初始密码，改密后返回空串）。"""
+    if is_panel_pwd_customized(CONF_DIR):
+        return ""
     raw = (get_uci_panel_secret() or "").strip()
     if _uci_secret_is_placeholder(raw):
         return ""
@@ -10188,6 +10269,10 @@ def get_luci_bridge_token(create: bool = True) -> str:
 
 def get_uci_panel_secret() -> str:
     try:
+        r_cust = subprocess.run(["uci", "-q", "get", "ai-link.global.panel_pwd_customized"], capture_output=True, text=True, timeout=1)
+        v_cust = (r_cust.stdout or "").strip().lower()
+        if v_cust in ("1", "true", "yes"):
+            return PANEL_PWD_SENTINEL
         r = subprocess.run(["uci", "-q", "get", "ai-link.global.panel_secret"], capture_output=True, text=True, timeout=1)
         val = (r.stdout or "").strip()
         if val:
@@ -10527,18 +10612,19 @@ def build_homelink_api_response(conf_dir: Path = CONF_DIR, mask_private_key: boo
     return _hl_res
 
 def _is_local_port_listening(port: int) -> bool:
-    """P0-3 Fix: Checks /proc/net/tcp & tcp6 in-memory first (0 sockets opened!).
-    Never opens a raw TCP connection to TProxy port 7893, which would have original dst=127.0.0.1:7893 and trigger a TProxy self-loop."""
+    """P0-3 & B4-20 Fix: Checks /proc/net/tcp & tcp6 in-memory first (0 sockets opened!).
+    On Linux where /proc/net/tcp is readable, its result is authoritative so closed ports return False in <0.05ms.
+    Never opens a raw TCP connection to TProxy port 7893, which would trigger a TProxy self-loop."""
     try:
         p_int = int(port)
     except Exception:
         return False
     if p_int in _read_proc_listening_ports("tcp"):
         return True
-    if p_int == 7893:
+    if p_int == 7893 or Path("/proc/net/tcp").is_file():
         return False
     try:
-        with socket.create_connection(("127.0.0.1", p_int), timeout=0.20):
+        with socket.create_connection(("127.0.0.1", p_int), timeout=0.08):
             return True
     except Exception:
         return False
@@ -10995,18 +11081,16 @@ def export_ops_backup(conf_dir: Path = CONF_DIR) -> dict:
             if (conf_dir / fn).is_file()
         ],
     }
-    # FR-3: Export panel authentication (hash + salt + UCI panel_secret, never raw session tokens)
+    # FR-3 & B1-2: Export panel authentication (hash + salt + panel_pwd_customized boolean, never raw session tokens or UCI secrets)
     try:
         auth_p = conf_dir / "panel_auth.json"
         if auth_p.is_file():
             pa = json.loads(auth_p.read_text(encoding="utf-8"))
             if isinstance(pa, dict) and pa.get("hash") and pa.get("salt"):
                 out["panel_auth"] = {"hash": pa["hash"], "salt": pa["salt"]}
-        if is_live:
-            out["panel_secret_uci"] = get_uci_panel_secret()
-        elif isinstance(out.get("panel_auth"), dict):
-            # PWD-1: 归档里不再写哈希，只写哨兵（哈希已在 panel_auth 字段内）
-            out["panel_secret_uci"] = PANEL_PWD_SENTINEL
+        cust_flag = is_panel_pwd_customized(conf_dir)
+        out["panel_pwd_customized"] = cust_flag
+        out["panel_secret_uci"] = PANEL_PWD_SENTINEL if cust_flag else PANEL_PWD_DEFAULT
     except Exception:
         pass
     return out
@@ -11094,9 +11178,10 @@ def factory_reset_all_configs(conf_dir: Path = CONF_DIR, create_backup_archive: 
             for k, v in (
                 ("enabled", "1"), ("entry_bypass", "1"), ("block_quic", "1"),
                 ("game_udp_direct", "1"), ("auto_mute_conflicts", "1"), ("ipv6_proxy", "0"),
-                ("gh_mirror", "https://gh-proxy.com/"), ("panel_secret", "ai-link-2026")
+                ("gh_mirror", "https://gh-proxy.com/"), ("panel_pwd_customized", "0"), ("require_lan_auth", "0"), ("app_version", APP_VERSION)
             ):
                 subprocess.run(["uci", "set", f"ai-link.global.{k}={v}"], check=False, timeout=2)
+            subprocess.run(["uci", "-q", "delete", "ai-link.global.panel_secret"], check=False, timeout=2)
             subprocess.run(["uci", "set", "ai-link.homelink.routing_mode=shunt"], check=False, timeout=2)
             subprocess.run(["uci", "commit", "ai-link"], check=False, timeout=2)
         except Exception:
@@ -11129,8 +11214,12 @@ def factory_reset_all_configs(conf_dir: Path = CONF_DIR, create_backup_archive: 
     }
 
 def restore_from_backup_archive(conf_dir: Path = CONF_DIR, arc_path: Path = None) -> dict:
-    """Restores both data (nodes/subs/shunt/homelink/dns) AND system settings (ops_settings + UCI) from backup archive."""
+    """Restores both data (nodes/subs/shunt/homelink/dns) AND system settings (ops_settings + UCI) from backup archive (.tgz/.tar.gz).
+    B2-6 & B2-7 Fix: Validates archive safety via tarfile, blocks path traversal, and supports archives structured as
+    `etc/ai-link/...`, `<conf_dir.name>/...`, or flat config files in both live and test environments."""
+    import tarfile as _tarfile
     conf_dir = Path(conf_dir)
+    conf_dir.mkdir(parents=True, exist_ok=True)
     is_live = (conf_dir.resolve() == CONF_DIR.resolve())
     if arc_path is None:
         arc_path = Path("/root/ai-link-final-backup/etc-ai-link.tgz")
@@ -11138,8 +11227,58 @@ def restore_from_backup_archive(conf_dir: Path = CONF_DIR, arc_path: Path = None
         arc_path = Path(arc_path)
     if not arc_path.is_file():
         return {"ok": False, "error": "archive_not_found", "message": f"未找到备份归档 {arc_path}"}
-    extract_root = "/" if is_live else str(conf_dir.parent)
-    subprocess.run(["tar", "-xzf", str(arc_path), "-C", extract_root], check=True, timeout=10)
+    try:
+        with _tarfile.open(str(arc_path), "r:*") as tf:
+            members = tf.getmembers()
+            if not members:
+                return {"ok": False, "error": "empty_archive", "message": "备份归档为空"}
+            total_uncompressed = 0
+            for m in members:
+                norm_name = m.name.replace("\\", "/")
+                raw_parts = [pt for pt in norm_name.split("/") if pt and pt != "."]
+                if ".." in raw_parts or norm_name.startswith("/") or ":" in norm_name or m.issym() or m.islnk() or not (m.isfile() or m.isdir()):
+                    return {"ok": False, "error": "unsafe_archive_path", "message": f"归档包含不安全路径或非普通文件: {m.name}"}
+                total_uncompressed += max(0, int(m.size or 0))
+                if total_uncompressed > 100 * 1024 * 1024:
+                    return {"ok": False, "error": "archive_too_large", "message": "归档解压后总体积超过 100MB 安全上限"}
+            tmp_ext = Path(f"/tmp/ai-link-arc-extract-{os.getpid()}-{int(time.time()*1000)}")
+            tmp_ext.mkdir(parents=True, exist_ok=True)
+            try:
+                tf.extractall(str(tmp_ext))
+                # Locate extracted config directory (supports etc/ai-link, <conf_dir.name>, ai-link, or root)
+                cand_dirs = [
+                    tmp_ext / "etc" / "ai-link",
+                    tmp_ext / conf_dir.name,
+                    tmp_ext / "ai-link",
+                    tmp_ext,
+                ]
+                src_cfg_dir = next((d for d in cand_dirs if d.is_dir() and any((d / fn).is_file() for fn in ("nodes.json", "shunt.json", "ops_settings.json", "subscriptions.json", "homelink.json"))), None)
+                if src_cfg_dir is None:
+                    src_cfg_dir = next((d for d in cand_dirs if d.is_dir() and list(d.glob("*.json"))), None)
+                if src_cfg_dir is None:
+                    return {"ok": False, "error": "invalid_archive_structure", "message": "归档中未找到有效的 AI-LINK 配置文件 (nodes.json / shunt.json / ops_settings.json)"}
+                for item in src_cfg_dir.iterdir():
+                    if item.name == "version":
+                        continue
+                    dst_item = conf_dir / item.name
+                    if item.is_dir():
+                        if dst_item.exists():
+                            shutil.rmtree(dst_item, ignore_errors=True)
+                        shutil.copytree(item, dst_item)
+                    elif item.is_file():
+                        shutil.copy2(item, dst_item)
+                ext_uci = tmp_ext / "etc" / "config" / "ai-link"
+                if ext_uci.is_file():
+                    shutil.copy2(ext_uci, conf_dir / "uci_ai_link.bak")
+                    if is_live:
+                        try:
+                            shutil.copy2(ext_uci, "/etc/config/ai-link")
+                        except Exception:
+                            pass
+            finally:
+                shutil.rmtree(tmp_ext, ignore_errors=True)
+    except Exception as e:
+        return {"ok": False, "error": "archive_extract_failed", "message": f"解压备份归档失败: {e}"}
     # 1. If uci_ai_link.bak was bundled inside /etc/ai-link, restore it to /etc/config/ai-link
     uci_bak = conf_dir / "uci_ai_link.bak"
     if is_live and uci_bak.is_file():
@@ -11169,12 +11308,8 @@ def restore_from_backup_archive(conf_dir: Path = CONF_DIR, arc_path: Path = None
                 mob_v = (conf_dir / "max_outbounds.txt").read_text(encoding="utf-8").strip()
                 if mob_v.isdigit():
                     subprocess.run(["uci", "set", f"ai-link.global.max_outbounds={mob_v}"], check=False, timeout=2)
-            if (conf_dir / "panel_auth.json").is_file():
-                pa = json.loads((conf_dir / "panel_auth.json").read_text(encoding="utf-8"))
-                if isinstance(pa, dict) and pa.get("hash"):
-                    # PWD-1: 恢复后 UCI 写哨兵，避免把哈希当密码回显
-                    subprocess.run(["uci", "set", f"ai-link.global.panel_secret={PANEL_PWD_SENTINEL}"], check=False, timeout=2)
-            subprocess.run(["uci", "commit", "ai-link"], check=False, timeout=2)
+            subprocess.run(["uci", "set", f"ai-link.global.app_version={APP_VERSION}"], check=False, timeout=2)
+            _sync_uci_pwd_customized(is_panel_pwd_customized(conf_dir))
         except Exception:
             pass
     if ops_file.is_file():
@@ -11276,27 +11411,10 @@ def restore_ops_backup(backup_data: dict, conf_dir: Path = CONF_DIR) -> dict:
         cur_a.setdefault("tokens", [])
         auth_path.write_text(json.dumps(cur_a, indent=2, ensure_ascii=False), encoding="utf-8")
         if is_live:
-            try:
-                # PWD-1: 备份里的 panel_secret_uci 若是老版本哈希值，一律归一为哨兵
-                uci_sec = backup_data.get("panel_secret_uci") or PANEL_PWD_SENTINEL
-                if _uci_secret_is_placeholder(str(uci_sec)) and str(uci_sec).strip() != PANEL_PWD_SENTINEL:
-                    uci_sec = PANEL_PWD_SENTINEL
-                subprocess.run(["uci", "set", f"ai-link.global.panel_secret={uci_sec}"], check=False, timeout=2)
-                subprocess.run(["uci", "commit", "ai-link"], check=False, timeout=2)
-            except Exception:
-                pass
-    elif "panel_secret_uci" in backup_data and is_live:
-        try:
-            # PWD-1: 老备份携带的 sha256:xxxx 不再原样写回，统一归一为哨兵
-            _bs = str(backup_data["panel_secret_uci"] or "").strip()
-            if _uci_secret_is_placeholder(_bs) and _bs != PANEL_PWD_SENTINEL:
-                _bs = PANEL_PWD_SENTINEL
-            if not _bs:
-                _bs = PANEL_PWD_SENTINEL
-            subprocess.run(["uci", "set", f"ai-link.global.panel_secret={_bs}"], check=False, timeout=2)
-            subprocess.run(["uci", "commit", "ai-link"], check=False, timeout=2)
-        except Exception:
-            pass
+            _sync_uci_pwd_customized(is_panel_pwd_customized(conf_dir))
+    elif ("panel_pwd_customized" in backup_data or "panel_secret_uci" in backup_data) and is_live:
+        _cust_b = bool(backup_data.get("panel_pwd_customized")) if "panel_pwd_customized" in backup_data else _uci_secret_is_placeholder(str(backup_data.get("panel_secret_uci") or ""))
+        _sync_uci_pwd_customized(_cust_b)
     if "panel_port" in backup_data and str(backup_data["panel_port"]).isdigit() and is_live:
         try:
             subprocess.run(["uci", "set", f"ai-link.global.panel_port={int(backup_data['panel_port'])}"], check=False, timeout=2)
@@ -11994,16 +12112,18 @@ def _load_panel_auth(conf_dir: Path = CONF_DIR) -> dict:
     return data
 
 def _verify_panel_password(candidate_pw: str, conf_dir: Path = CONF_DIR) -> tuple:
+    if not candidate_pw:
+        return False, ""
     auth = _load_panel_auth(conf_dir)
     salt = auth.get("salt", "ailink_salt_2026")
     expected_hash = auth.get("hash", "")
     cand_hash = hashlib.sha256(f"{salt}:{candidate_pw}".encode("utf-8")).hexdigest()
     default_hash = hashlib.sha256(f"{salt}:{PANEL_PWD_DEFAULT}".encode("utf-8")).hexdigest()
-    # PWD-1: UCI 里只有「明文初始密码」才允许直通比对；哨兵 __custom__ 与
-    # 老版本遗留的 sha256:<hash> 一律拒绝，避免把哈希本身当成可用密码。
+    # PWD-1 & B1-3 (v1.0.2): 下线弱默认密码 'admin'，出厂态仅认 PANEL_PWD_DEFAULT ('ai-link-2026')；
+    # 哨兵 __custom__ 与 sha256:<hash> 一律拒绝，避免把哈希或哨兵本身当成可用密码。
     uci_pw = (get_uci_panel_secret() or "").strip()
-    uci_plain_ok = bool(uci_pw) and not _uci_secret_is_placeholder(uci_pw)
-    if cand_hash == expected_hash or (uci_plain_ok and candidate_pw == uci_pw) or (expected_hash == default_hash and candidate_pw in ("admin", PANEL_PWD_DEFAULT)):
+    uci_plain_ok = bool(uci_pw) and not _uci_secret_is_placeholder(uci_pw) and (expected_hash == default_hash)
+    if cand_hash == expected_hash or (uci_plain_ok and candidate_pw == uci_pw) or (expected_hash == default_hash and candidate_pw == PANEL_PWD_DEFAULT):
         tok = hashlib.sha256(f"token:{salt}:{cand_hash}".encode("utf-8")).hexdigest()
         tokens = set(auth.get("tokens") or [])
         tokens.add(tok)
@@ -12026,16 +12146,9 @@ def _update_panel_password(new_pw: str, conf_dir: Path = CONF_DIR, sync_uci: boo
         (conf_dir / "panel_token").write_text(tok + "\n", encoding="utf-8")
     except Exception:
         pass
-    # PWD-2: 只有「真实配置目录」才允许回写 UCI。--self-test 用临时目录跑
-    # 改密回归，旧实现无条件 uci set，导致每次安装自检 / ai-link probe 都把
-    # 生产环境的 panel_secret 覆盖成测试串的哈希（LuCI 面板密码显示成 sha256:xxxx 的元凶）。
+    # PWD-2 & B1-2: 只有「真实配置目录」才回写 UCI，且只写布尔 panel_pwd_customized=0/1 并移除 panel_secret。
     if sync_uci and conf_dir == CONF_DIR:
-        try:
-            # PWD-1: 只写哨兵，绝不把哈希落到 UCI（哈希在 panel_auth.json 里已有）
-            subprocess.run(["uci", "set", f"ai-link.global.panel_secret={PANEL_PWD_SENTINEL}"], check=False, timeout=2)
-            subprocess.run(["uci", "commit", "ai-link"], check=False, timeout=2)
-        except Exception:
-            pass
+        _sync_uci_pwd_customized(new_pw != PANEL_PWD_DEFAULT)
     return tok
 
 def is_bypass_active() -> bool:
@@ -12086,7 +12199,9 @@ def sync_uci_to_ops_settings(conf_dir: Path = CONF_DIR) -> dict:
     saved["game_udp_direct"] = _uci_get_bool("global.game_udp_direct", saved.get("game_udp_direct", True))
     saved["auto_mute_conflicts"] = _uci_get_bool("global.auto_mute_conflicts", saved.get("auto_mute_conflicts", True))
     saved["ipv6_proxy"] = _uci_get_bool("global.ipv6_proxy", saved.get("ipv6_proxy", False))
+    saved["require_lan_auth"] = _uci_get_bool("global.require_lan_auth", saved.get("require_lan_auth", False))
     saved["gh_mirror"] = _uci_get_str("global.gh_mirror", saved.get("gh_mirror", "https://gh-proxy.com/"))
+    saved["update_manifest_url"] = _uci_get_str("global.update_manifest_url", "")
     uci_mob = _uci_get_str("global.max_outbounds", "")
     if uci_mob.isdigit() and int(uci_mob) >= 10:
         try:
@@ -12170,15 +12285,18 @@ def get_ops_settings(conf_dir: Path = CONF_DIR) -> dict:
             ms = str(m or "").strip().lower().replace("-", ":")
             if re.match(r"^([0-9a-f]{2}:){5}[0-9a-f]{2}$", ms) and ms not in lan_direct_macs:
                 lan_direct_macs.append(ms)
-    require_lan_auth = bool(saved.get("require_lan_auth", False))
+    require_lan_auth = bool(saved.get("require_lan_auth", _uci_get_bool("global.require_lan_auth", False) if is_live else False))
     trusted_cidr = str(saved.get("trusted_cidr") or ("127.0.0.1/32, ::1/128" if require_lan_auth else "127.0.0.1/32, ::1/128, 192.168.0.0/16, 10.0.0.0/8, 172.16.0.0/12, 100.64.0.0/10")).strip()
     panel_bind = str(saved.get("panel_bind") or "0.0.0.0").strip()
+    update_manifest_url = str(saved.get("update_manifest_url") or (_uci_get_str("global.update_manifest_url", "") if is_live else "")).strip()
     _ops_res = {
         "ok": True,
         "enabled": bool(enabled and not is_bypass_active()),
         "require_lan_auth": require_lan_auth,
+        "pwd_customized": is_panel_pwd_customized(conf_dir),
         "trusted_cidr": trusted_cidr,
         "panel_bind": panel_bind,
+        "update_manifest_url": update_manifest_url,
         "entry_bypass": bool(entry_bypass),
         "block_quic": bool(block_quic),
         "game_udp_direct": bool(game_udp_direct),
@@ -12217,6 +12335,8 @@ def update_ops_settings(payload: dict, conf_dir: Path = CONF_DIR) -> dict:
         cur["panel_bind"] = str(payload["panel_bind"] or "0.0.0.0").strip()
     if "gh_mirror" in payload:
         cur["gh_mirror"] = str(payload["gh_mirror"] or "").strip()
+    if "update_manifest_url" in payload:
+        cur["update_manifest_url"] = str(payload["update_manifest_url"] or "").strip()
     if "node_auto_test" in payload:
         cur["node_auto_test"] = bool(payload["node_auto_test"])
     if "node_test_mode" in payload:
@@ -12254,11 +12374,11 @@ def update_ops_settings(payload: dict, conf_dir: Path = CONF_DIR) -> dict:
                 if re.match(r"^([0-9a-f]{2}:){5}[0-9a-f]{2}$", ms) and ms not in norm_macs:
                     norm_macs.append(ms)
         cur["lan_direct_macs"] = norm_macs
-    _only_node_test = any(k in payload for k in ("node_auto_test", "node_test_mode", "node_test_budget", "probe_scene_preset", "require_lan_auth", "trusted_cidr", "panel_bind")) and not any(
+    _only_node_test = any(k in payload for k in ("node_auto_test", "node_test_mode", "node_test_budget", "probe_scene_preset", "require_lan_auth", "trusted_cidr", "panel_bind", "update_manifest_url")) and not any(
         k in payload for k in ("enabled", "entry_bypass", "block_quic", "game_udp_direct",
                                "auto_mute_conflicts", "ipv6_proxy", "gh_mirror", "lan_direct_macs"))
     conf_dir.mkdir(parents=True, exist_ok=True)
-    save_obj = {k: cur.get(k) for k in ("enabled", "entry_bypass", "block_quic", "game_udp_direct", "auto_mute_conflicts", "ipv6_proxy", "gh_mirror", "lan_direct_macs", "probe_scene_preset", "node_auto_test", "node_test_mode", "node_test_budget", "egress_probe_interval_s", "require_lan_auth", "trusted_cidr", "panel_bind")}
+    save_obj = {k: cur.get(k) for k in ("enabled", "entry_bypass", "block_quic", "game_udp_direct", "auto_mute_conflicts", "ipv6_proxy", "gh_mirror", "lan_direct_macs", "probe_scene_preset", "node_auto_test", "node_test_mode", "node_test_budget", "egress_probe_interval_s", "require_lan_auth", "trusted_cidr", "panel_bind", "update_manifest_url")}
     (conf_dir / "ops_settings.json").write_text(json.dumps(save_obj, indent=2, ensure_ascii=False), encoding="utf-8")
     _OPS_SETTINGS_MEMO.clear()
     is_live = (Path(conf_dir).resolve() == CONF_DIR.resolve())
@@ -12271,14 +12391,20 @@ def update_ops_settings(payload: dict, conf_dir: Path = CONF_DIR) -> dict:
             except Exception:
                 pass
         try:
-            for k in ("enabled", "entry_bypass", "block_quic", "game_udp_direct", "auto_mute_conflicts", "ipv6_proxy"):
-                subprocess.run(["uci", "set", f"ai-link.global.{k}={'1' if cur[k] else '0'}"], check=False, timeout=2)
+            for k in ("enabled", "entry_bypass", "block_quic", "game_udp_direct", "auto_mute_conflicts", "ipv6_proxy", "require_lan_auth"):
+                subprocess.run(["uci", "set", f"ai-link.global.{k}={'1' if cur.get(k) else '0'}"], check=False, timeout=2)
             subprocess.run(["uci", "set", f"ai-link.global.gh_mirror={cur['gh_mirror']}"], check=False, timeout=2)
+            if cur.get("update_manifest_url"):
+                subprocess.run(["uci", "set", f"ai-link.global.update_manifest_url={cur['update_manifest_url']}"], check=False, timeout=2)
+            else:
+                subprocess.run(["uci", "-q", "delete", "ai-link.global.update_manifest_url"], check=False, timeout=2)
             subprocess.run(["uci", "commit", "ai-link"], check=False, timeout=2)
             if (conf_dir / "ops_settings.json").is_file():
                 os.utime(conf_dir / "ops_settings.json", None)
         except Exception:
             pass
+    _STATUS_API_MEMO.clear()
+    _JSON_WIRE_MEMO.clear()
     if _only_node_test:
         if "probe_scene_preset" in payload:
             try:
@@ -12309,13 +12435,14 @@ def update_ops_settings(payload: dict, conf_dir: Path = CONF_DIR) -> dict:
             FAIL_OPEN_STATE["consecutive_failures"] = 0
     write_all_configs(conf_dir)
     if is_live and Path("/usr/share/ai-link/nftables/apply_nft.sh").exists() and cur["enabled"] and not is_bypass_active():
-        subprocess.run([
-            "/usr/share/ai-link/nftables/apply_nft.sh",
-            "--entry-bypass", "1" if cur["entry_bypass"] else "0",
-            "--block-quic", "1" if cur["block_quic"] else "0",
-            "--game-udp-direct", "1" if cur["game_udp_direct"] else "0",
-            "--ipv6-proxy", "1" if cur["ipv6_proxy"] else "0"
-        ], check=False, timeout=5)
+        if _is_local_port_listening(int(_uci_get_str("global.tproxy_port", "7893") or 7893)):
+            subprocess.run([
+                "/usr/share/ai-link/nftables/apply_nft.sh",
+                "--entry-bypass", "1" if cur["entry_bypass"] else "0",
+                "--block-quic", "1" if cur["block_quic"] else "0",
+                "--game-udp-direct", "1" if cur["game_udp_direct"] else "0",
+                "--ipv6-proxy", "1" if cur["ipv6_proxy"] else "0"
+            ], check=False, timeout=5)
     elif is_live and not cur["enabled"]:
         try:
             subprocess.run(["nft", "delete", "table", "inet", "ai_link"], capture_output=True, timeout=3)
@@ -12946,6 +13073,8 @@ UPDATE_PLAN_JSON = UPDATE_DIR / "plan.json"
 UPDATE_SCRIPT = UPDATE_DIR / "run_update.sh"
 UPDATE_STATE_JSON = UPDATE_DIR / "state.json"
 BACKUP_ROOT = Path("/root/ai-link-final-backup")
+PERSIST_UPDATE_LOG = BACKUP_ROOT / "last_update_progress.log"
+PERSIST_UPDATE_STATE = BACKUP_ROOT / "last_update_state.json"
 
 # 阶段 -> (百分比, 中文说明)，供前端进度条使用
 UPDATE_STAGES = {
@@ -13010,9 +13139,12 @@ def _update_http_get(url: str, timeout: float = 10.0, max_bytes: int = 2 * 1024 
 
 
 def _update_manifest_candidates(conf_dir: Path = CONF_DIR) -> list:
-    """按优先级返回候选清单地址（去重）。"""
+    """按优先级返回候选清单地址（去重，支持自定义域名/清单地址 B2-11）。"""
     urls = []
     try:
+        ops_u = (get_ops_settings(conf_dir).get("update_manifest_url") or "").strip()
+        if ops_u:
+            urls.append(ops_u)
         custom = _uci_get_str("global.update_manifest_url", "")
         if custom:
             urls.append(custom.strip())
@@ -13135,20 +13267,28 @@ def _read_version_file() -> str:
 
 
 def read_update_progress(limit: int = 40) -> dict:
-    """读取 progress.log，返回当前阶段与最近若干行日志。"""
-    st = {"running": False, "stage": "", "stage_text": "", "percent": 0, "message": "", "log": [], "finished": False, "result": "", "target": ""}
+    """读取 progress.log（优先 tmpfs，若断电重启导致 tmpfs 丢失则回退读取 /root/ai-link-final-backup 持久化日志 B2-8）。"""
+    st = {"running": False, "stage": "", "stage_text": "", "percent": 0, "message": "", "log": [], "finished": False, "result": "", "target": "", "from_persistent": False}
+    use_persist = False
     try:
-        if UPDATE_STATE_JSON.is_file():
-            meta = json.loads(UPDATE_STATE_JSON.read_text(encoding="utf-8"))
+        if (not UPDATE_PROGRESS_LOG.is_file()) and (str(UPDATE_PROGRESS_LOG) == "/var/run/ai-link/update/progress.log") and PERSIST_UPDATE_LOG.is_file():
+            use_persist = True
+    except Exception:
+        use_persist = False
+    state_file = PERSIST_UPDATE_STATE if (use_persist and PERSIST_UPDATE_STATE.is_file()) else UPDATE_STATE_JSON
+    log_file = PERSIST_UPDATE_LOG if use_persist else UPDATE_PROGRESS_LOG
+    try:
+        if state_file.is_file():
+            meta = json.loads(state_file.read_text(encoding="utf-8"))
             if isinstance(meta, dict):
                 st["target"] = str(meta.get("target") or "")
                 st["started_at"] = int(meta.get("started_at") or 0)
     except Exception:
         pass
     try:
-        if not UPDATE_PROGRESS_LOG.is_file():
+        if not log_file.is_file():
             return st
-        lines = UPDATE_PROGRESS_LOG.read_text(encoding="utf-8", errors="replace").splitlines()
+        lines = log_file.read_text(encoding="utf-8", errors="replace").splitlines()
     except Exception:
         return st
     parsed = []
@@ -13162,14 +13302,23 @@ def read_update_progress(limit: int = 40) -> dict:
     if not parsed:
         return st
     last = parsed[-1]
+    st["from_persistent"] = bool(use_persist)
     st["stage"] = last["stage"]
     st["percent"] = last["percent"]
     st["message"] = last["message"]
     st["stage_text"] = UPDATE_STAGES.get(last["stage"], (0, last["stage"]))[1]
     st["log"] = [f"{p['stage']}: {p['message']}" for p in parsed[-limit:]]
-    st["running"] = last["stage"] not in ("done", "failed")
-    st["finished"] = not st["running"]
-    st["result"] = "ok" if last["stage"] == "done" else ("failed" if last["stage"] == "failed" else "")
+    if use_persist and last["stage"] not in ("done", "failed"):
+        st["stage"] = "failed"
+        st["stage_text"] = UPDATE_STAGES["failed"][1]
+        st["running"] = False
+        st["finished"] = True
+        st["result"] = "failed"
+        st["message"] = f"升级在阶段 [{last['stage']}] 因设备断电或重启中断（已从持久化闪存恢复日志）"
+    else:
+        st["running"] = last["stage"] not in ("done", "failed")
+        st["finished"] = not st["running"]
+        st["result"] = "ok" if last["stage"] == "done" else ("failed" if last["stage"] == "failed" else "")
     return st
 
 
@@ -13184,6 +13333,7 @@ def _update_script_body(plan: dict) -> str:
 # 由 daemon 写入并 setsid 拉起；install.sh 重启服务后本脚本仍继续执行。
 UPDIR={q(str(UPDATE_DIR))}
 LOG={q(str(UPDATE_PROGRESS_LOG))}
+PERSIST_LOG="/root/ai-link-final-backup/last_update_progress.log"
 PLAN={q(str(UPDATE_PLAN_JSON))}
 TARGET={q(plan['target'])}
 CUR={q(plan['current'])}
@@ -13191,7 +13341,13 @@ MD5={q(plan['md5'])}
 SHA256={q(plan['sha256'])}
 SIZE={q(str(plan['size']))}
 TS=$(date +%s)
-say() {{ echo "$(date +%s)|$1|$2|$3" >> "$LOG"; }}
+mkdir -p /root/ai-link-final-backup 2>/dev/null || true
+: > "$PERSIST_LOG" 2>/dev/null || true
+say() {{
+    local _ln="$(date +%s)|$1|$2|$3"
+    echo "$_ln" >> "$LOG"
+    echo "$_ln" >> "$PERSIST_LOG" 2>/dev/null || true
+}}
 
 say prepare 5 "开始升级到 v$TARGET（当前 v$CUR）"
 
@@ -13398,10 +13554,21 @@ def start_plugin_update(conf_dir: Path = CONF_DIR, force: bool = False) -> dict:
     }
     try:
         UPDATE_PLAN_JSON.write_text(json.dumps(plan, ensure_ascii=False, indent=2), encoding="utf-8")
-        UPDATE_STATE_JSON.write_text(json.dumps({
+        _st_payload = json.dumps({
             "target": plan["target"], "started_at": int(time.time()), "from": APP_VERSION,
-        }, ensure_ascii=False, indent=2), encoding="utf-8")
-        UPDATE_PROGRESS_LOG.write_text("", encoding="utf-8")
+        }, ensure_ascii=False, indent=2)
+        UPDATE_STATE_JSON.write_text(_st_payload, encoding="utf-8")
+        try:
+            BACKUP_ROOT.mkdir(parents=True, exist_ok=True)
+            PERSIST_UPDATE_STATE.write_text(_st_payload, encoding="utf-8")
+        except Exception:
+            pass
+        _init_ln = f"{int(time.time())}|prepare|2|正在启动升级到 v{plan['target']}（当前 v{APP_VERSION}）\n"
+        UPDATE_PROGRESS_LOG.write_text(_init_ln, encoding="utf-8")
+        try:
+            PERSIST_UPDATE_LOG.write_text(_init_ln, encoding="utf-8")
+        except Exception:
+            pass
         UPDATE_SCRIPT.write_text(_update_script_body(plan), encoding="utf-8")
         UPDATE_SCRIPT.chmod(0o755)
     except Exception as e:
@@ -13430,12 +13597,14 @@ def start_plugin_update(conf_dir: Path = CONF_DIR, force: bool = False) -> dict:
 
 
 def acknowledge_update_result() -> dict:
-    """前端确认升级结果后清空进度日志，避免下次打开还显示上次的结果。"""
+    """前端确认升级结果后清空进度日志（含 tmpfs 与闪存持久化日志 B2-8），避免下次打开还显示上次的结果。"""
     try:
-        if UPDATE_PROGRESS_LOG.is_file():
-            UPDATE_PROGRESS_LOG.unlink()
-        if UPDATE_STATE_JSON.is_file():
-            UPDATE_STATE_JSON.unlink()
+        for _pf in (UPDATE_PROGRESS_LOG, UPDATE_STATE_JSON, PERSIST_UPDATE_LOG, PERSIST_UPDATE_STATE):
+            try:
+                if _pf.is_file():
+                    _pf.unlink()
+            except Exception:
+                pass
         return {"ok": True}
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -14243,7 +14412,7 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 bool(getattr(PROBE_ENGINE, "probe_running", False)),
                 bool(SUB_SYNC_STATE.get("running", False)),
                 tuple(sorted((PROBE_ENGINE.current_selections or {}).items())),
-                _conf_file_mtimes_sig_q(CONF_DIR, ("nodes.json", "node_probe.json", "auto_nodes.json", "subscriptions.json", "dns_filters.json", "dns_rewrite.json", "ops_settings.json")),
+                _conf_file_mtimes_sig_q(CONF_DIR, ("nodes.json", "node_probe.json", "auto_nodes.json", "subscriptions.json", "homelink.json", "dns_filters.json", "dns_rewrite.json", "ops_settings.json", "panel_auth.json")),
                 int(time.time()) // 15 if req_path_only == "/api/status" else 0,
             )
         return None
@@ -14427,11 +14596,10 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             if self._try_send_wire_memo():
                 return
             status_payload = build_status_api_response(CONF_DIR)
-            # 与访问控制同口径：只有「令牌 / 回环 / trusted_cidr」都放行时才给完整数据。
-            # 默认配置下局域网属于 trusted_cidr（与历史行为一致，避免面板里
-            # 回家 URI、订阅地址突然变成 ***）；一旦打开「强制内网登录」，
-            # 或客户端不在信任网段，就必须脱敏。
-            if not self._auth_ok():
+            is_authed = bool(self._auth_ok())
+            status_payload["pwd_customized"] = is_panel_pwd_customized(CONF_DIR)
+            status_payload["auth_required"] = (not is_authed)
+            if not is_authed:
                 status_payload = _mask_status_secrets(status_payload)
             self._send_json(status_payload)
             return
@@ -14554,6 +14722,9 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             self._send_json(get_ops_diagnostics(CONF_DIR))
             return
         if req_path == "/api/ops/logs":
+            if not self._auth_ok():
+                self._send_json({"ok": False, "error": "unauthorized", "message": "需要面板访问令牌"}, status=401)
+                return
             self._send_json(get_ops_logs(CONF_DIR))
             return
         if req_path == "/api/ops/backup":
@@ -14561,6 +14732,43 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 self._send_json({"ok": False, "error": "unauthorized", "message": "需要面板访问令牌"}, status=401)
                 return
             self._send_json(export_ops_backup(CONF_DIR))
+            return
+        if req_path == "/api/ops/backup_archive":
+            if not self._auth_ok():
+                self._send_json({"ok": False, "error": "unauthorized", "message": "需要面板访问令牌"}, status=401)
+                return
+            try:
+                try:
+                    cur_ops = get_ops_settings(CONF_DIR)
+                    save_keys = ("enabled", "entry_bypass", "block_quic", "game_udp_direct", "auto_mute_conflicts", "ipv6_proxy", "gh_mirror", "lan_direct_macs", "probe_scene_preset", "node_auto_test", "node_test_mode", "node_test_budget", "egress_probe_interval_s", "require_lan_auth", "trusted_cidr", "panel_bind", "update_manifest_url")
+                    (CONF_DIR / "ops_settings.json").write_text(json.dumps({k: cur_ops.get(k) for k in save_keys}, indent=2, ensure_ascii=False), encoding="utf-8")
+                    if CONF_DIR.resolve() == Path("/etc/ai-link").resolve() and Path("/etc/config/ai-link").is_file():
+                        shutil.copy2("/etc/config/ai-link", CONF_DIR / "uci_ai_link.bak")
+                except Exception:
+                    pass
+                tmp_arc = Path(f"/tmp/ai-link-export-{os.getpid()}-{int(time.time())}.tgz")
+                tar_items = [str(CONF_DIR.name)]
+                subprocess.run(["tar", "-czf", str(tmp_arc), "-C", str(CONF_DIR.parent)] + tar_items, check=True, timeout=10)
+                raw_tgz = tmp_arc.read_bytes()
+                tmp_arc.unlink(missing_ok=True)
+                fname = f"ai-link-backup-{time.strftime('%Y%m%d')}.tgz"
+                if qs.get("raw") == "1":
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/gzip")
+                    self.send_header("Content-Disposition", f'attachment; filename="{fname}"')
+                    self.send_header("Content-Length", str(len(raw_tgz)))
+                    self.end_headers()
+                    self.wfile.write(raw_tgz)
+                    return
+                self._send_json({
+                    "ok": True,
+                    "filename": fname,
+                    "size": len(raw_tgz),
+                    "md5": hashlib.md5(raw_tgz).hexdigest(),
+                    "archive_base64": base64.b64encode(raw_tgz).decode("ascii"),
+                })
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e), "message": f"生成 .tgz 备份归档失败: {e}"}, status=500)
             return
         if req_path in ("/favicon.ico", "/favicon.svg", "/apple-touch-icon.png"):
             svg_bytes = (
@@ -14623,6 +14831,9 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             self._send_json({"ok": True, **build_ipv6_governance_summary(CONF_DIR)})
             return
         if req_path == "/api/nodes/share_uri":
+            if not self._auth_ok():
+                self._send_json({"ok": False, "error": "unauthorized", "message": "需要面板访问令牌"}, status=401)
+                return
             t_q = (qs.get("tag") or qs.get("node_id") or "").strip()
             found_n = next((n for n in load_saved_nodes(CONF_DIR) if n.get("tag") == t_q or n.get("node_id") == t_q), None)
             if not found_n:
@@ -14635,15 +14846,21 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             return
         return super().do_GET()
     def do_POST(self):
-        length = int(self.headers.get("Content-Length", "0"))
-        body_raw = self.rfile.read(length).decode("utf-8") if length > 0 else "{}"
+        clean_path = self.path.split("?")[0]
+        if clean_path != "/api/login" and clean_path.startswith("/api/") and not self._auth_ok():
+            self._send_json({"ok": False, "error": "unauthorized", "message": "未授权访问，请先登录面板获取令牌"}, status=401)
+            return
+        length = int(self.headers.get("Content-Length", "0") or 0)
+        if length > 35 * 1024 * 1024:
+            self._send_json({"ok": False, "error": "payload_too_large", "message": "请求体超过 35MB 上限"}, status=413)
+            return
+        body_raw = self.rfile.read(length).decode("utf-8", errors="replace") if length > 0 else "{}"
         try:
             payload = json.loads(body_raw) if body_raw.strip() else {}
             if not isinstance(payload, dict):
                 payload = {}
         except Exception:
             payload = {}
-        clean_path = self.path.split("?")[0]
         if clean_path == "/api/login":
             pw = str(payload.get("password") or "").strip()
             ok_pw, tok = _verify_panel_password(pw, CONF_DIR)
@@ -14715,15 +14932,47 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             self._send_json({"ok": True, "action": "connections_flushed", "status_code": st_c, "active_connections": 0})
             return
         if clean_path == "/api/ops/restore_archive":
-            arc_p = Path("/root/ai-link-final-backup/etc-ai-link.tgz")
-            if not arc_p.is_file():
-                self._send_json({"ok": False, "error": "archive_not_found", "message": "未找到备份归档 /root/ai-link-final-backup/etc-ai-link.tgz"}, status=404)
-                return
+            b64_data = str(payload.get("archive_base64") or "").strip()
+            custom_path = str(payload.get("archive_path") or "").strip()
+            tmp_upload = None
             try:
+                if b64_data:
+                    if "," in b64_data and b64_data.split(",", 1)[0].startswith("data:"):
+                        b64_data = b64_data.split(",", 1)[1].strip()
+                    raw_bytes = base64.b64decode(b64_data)
+                    if len(raw_bytes) < 32 or len(raw_bytes) > 30 * 1024 * 1024:
+                        self._send_json({"ok": False, "error": "invalid_archive_size", "message": "上传的归档文件大小异常（限制 30MB 以内）"}, status=400)
+                        return
+                    tmp_upload = Path(f"/tmp/ai-link-upload-{os.getpid()}-{int(time.time()*1000)}.tgz")
+                    tmp_upload.write_bytes(raw_bytes)
+                    arc_p = tmp_upload
+                elif custom_path:
+                    cand_p = Path(custom_path).resolve()
+                    allowed_roots = (BACKUP_ROOT.resolve(), Path("/tmp").resolve())
+                    if not any(str(cand_p).startswith(str(ar) + "/") for ar in allowed_roots):
+                        self._send_json({"ok": False, "error": "forbidden_archive_path", "message": "仅允许从 /root/ai-link-final-backup 或 /tmp 恢复归档"}, status=403)
+                        return
+                    arc_p = cand_p
+                else:
+                    arc_p = Path("/root/ai-link-final-backup/etc-ai-link.tgz")
+                if not arc_p.is_file():
+                    self._send_json({"ok": False, "error": "archive_not_found", "message": f"未找到备份归档 {arc_p}"}, status=404)
+                    return
                 res_arc = restore_from_backup_archive(CONF_DIR, arc_p)
-                self._send_json(res_arc, status=(200 if res_arc.get("ok") else 500))
+                if res_arc.get("ok") and b64_data and CONF_DIR.resolve() == Path("/etc/ai-link").resolve():
+                    try:
+                        BACKUP_ROOT.mkdir(parents=True, exist_ok=True)
+                        os.chmod(str(BACKUP_ROOT), 0o700)
+                        (BACKUP_ROOT / "etc-ai-link.tgz").write_bytes(raw_bytes)
+                        os.chmod(str(BACKUP_ROOT / "etc-ai-link.tgz"), 0o600)
+                    except Exception:
+                        pass
+                self._send_json(res_arc, status=(200 if res_arc.get("ok") else 400))
             except Exception as e:
                 self._send_json({"ok": False, "error": str(e), "message": f"恢复归档失败: {e}"}, status=500)
+            finally:
+                if tmp_upload is not None:
+                    tmp_upload.unlink(missing_ok=True)
             return
         if clean_path == "/api/import_cache":
             res = import_host_cache(CACHE_DIR, CONF_DIR)
@@ -15914,6 +16163,8 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 self._send_json({"ok": False, "error": "password_too_short", "message": "新密码长度不能少于 4 位"}, status=400)
                 return
             new_tok = _update_panel_password(new_pw, CONF_DIR)
+            _STATUS_API_MEMO.clear()
+            _JSON_WIRE_MEMO.clear()
             self._send_json({"ok": True, "updated": True, "token": new_tok})
             return
         if clean_path == "/api/ops/fail_open_test":
@@ -16112,19 +16363,24 @@ def check_and_run_auto_subscriptions(conf_dir: Path = CONF_DIR):
         reload_core_only()
 
 def ensure_nft_and_routing_intact() -> bool:
-    """Mainstream Firewall4 / WAN Hotplug Self-Healing Guard (inspired by HomeProxy / PassWall2): Periodically checks if `table"""
+    """Mainstream Firewall4 / WAN Hotplug Self-Healing Guard (B1-4 Fix: verifies TProxy port :7893 is listening before mounting nftables)."""
     if is_bypass_active() or not shutil.which("nft") or not Path("/etc/init.d/ai-link").exists():
         return True
     try:
         r_en = subprocess.run(["uci", "-q", "get", "ai-link.global.enabled"], capture_output=True, text=True, timeout=2)
         if r_en.returncode == 0 and r_en.stdout.strip() == "0":
             return True
+        tproxy_port = int(_uci_get_str("global.tproxy_port", "7893") or 7893)
         chk_nft = subprocess.run(["nft", "list", "table", "inet", "ai_link"], capture_output=True, text=True, timeout=3)
         chk_rule = subprocess.run(["ip", "rule", "show"], capture_output=True, text=True, timeout=3)
         nft_ok = (chk_nft.returncode == 0 and "prerouting_tproxy" in (chk_nft.stdout or ""))
         rule_ok = (chk_rule.returncode == 0 and ("0x162" in (chk_rule.stdout or "") or "162" in (chk_rule.stdout or "")))
         if not nft_ok or not rule_ok:
-            subprocess.run(["logger", "-t", "ai-link", "Self-Healing Watchdog: detected missing nftables table or policy routing rule after fw4/WAN event; re-applying..."], capture_output=True, timeout=2)
+            # B1-4 Fix: Never mount nftables TProxy redirection if sing-box TProxy port (:7893) is not listening (prevents LAN traffic blackhole)
+            if not _is_local_port_listening(tproxy_port):
+                subprocess.run(["logger", "-t", "ai-link", f"Self-Healing Watchdog: TProxy port :{tproxy_port} not listening; skipping nftables mount to prevent LAN blackhole."], capture_output=True, timeout=2)
+                return False
+            subprocess.run(["logger", "-t", "ai-link", f"Self-Healing Watchdog: TProxy port :{tproxy_port} verified listening; re-applying missing nftables/policy routing..."], capture_output=True, timeout=2)
             if not rule_ok:
                 subprocess.run(["ip", "rule", "del", "fwmark", "0x162", "table", "162"], capture_output=True, timeout=2)
                 subprocess.run(["ip", "route", "flush", "table", "162"], capture_output=True, timeout=2)
@@ -16260,6 +16516,28 @@ def start_background_probe_scheduler(interval_sec: int = 21600):
     return t
 
 def main():
+    if "--restore" in sys.argv:
+        idx = sys.argv.index("--restore")
+        target_f = sys.argv[idx + 1] if (idx + 1 < len(sys.argv) and not sys.argv[idx + 1].startswith("--")) else "/root/ai-link-final-backup/etc-ai-link.tgz"
+        rp = Path(target_f)
+        if not rp.is_file():
+            print(json.dumps({"ok": False, "error": "file_not_found", "message": f"未找到备份文件: {rp}"}, ensure_ascii=False))
+            return 1
+        raw_head = rp.read_bytes()[:4]
+        if rp.name.endswith((".tgz", ".tar.gz", ".tar")) or raw_head[:2] == b"\x1f\x8b":
+            res = restore_from_backup_archive(CONF_DIR, rp)
+        else:
+            try:
+                data = json.loads(rp.read_text(encoding="utf-8"))
+                res = restore_ops_backup(data, CONF_DIR)
+                if res.get("ok") is not False:
+                    write_all_configs(CONF_DIR)
+                    PROBE_ENGINE.apply_shunt_selections(CONF_DIR)
+                    res = {"ok": True, "restored": True, "format": "json", "saved_nodes_total": len([n for n in load_saved_nodes(CONF_DIR) if not is_builtin_test_node(n.get("tag", ""))]), "message": f"✅ 已从 JSON 备份 {rp.name} 完整恢复配置"}
+            except Exception as e:
+                res = {"ok": False, "error": "invalid_backup_file", "message": f"解析备份文件失败: {e}"}
+        print(json.dumps(res, ensure_ascii=False))
+        return 0 if res.get("ok") else 1
     if "--check-config" in sys.argv:
         sb_caps = probe_singbox_binary_capabilities(CONF_DIR)
         cfg_file = CONF_DIR / "sing-box.json"
@@ -16362,6 +16640,11 @@ def main():
     if "--generate-configs" in sys.argv:
         if Path("/etc/config/ai-link").is_file():
             sync_uci_to_ops_settings(CONF_DIR)
+            try:
+                subprocess.run(["uci", "set", f"ai-link.global.app_version={APP_VERSION}"], check=False, timeout=2)
+                _sync_uci_pwd_customized(is_panel_pwd_customized(CONF_DIR))
+            except Exception:
+                pass
         force_full = "--force-full-config" in sys.argv
         force_lock = "--force-lock-config" in sys.argv
         write_all_configs(CONF_DIR, force_full=force_full, force_lock=force_lock)
@@ -16794,6 +17077,7 @@ def main():
         if not UPDATE_PROGRESS_LOG.is_file():
             _ota_prog = read_update_progress()
             assert _ota_prog["running"] is False, f"OTA: 空进度不应标记为运行中，got {_ota_prog}"
+        shutil.rmtree(tmp_test_dir, ignore_errors=True)
         shutil.rmtree(tmp_shunt_dir, ignore_errors=True)
         print("SELF_TEST_PASSED", json.dumps({
             "ok": True,
@@ -16861,14 +17145,19 @@ def main():
         get_luci_bridge_token(create=True)
     except Exception:
         pass
-    # 把当前版本号同步到 UCI，供 LuCI / CLI / 面板统一读取，避免多处硬编码
+    # 把当前版本号与密码自定义标记同步到 UCI，供 LuCI / CLI / 面板统一读取，避免多处硬编码
     try:
-        if _uci_get_str("global.app_version", "") != APP_VERSION:
+        if Path("/etc/config/ai-link").is_file():
             subprocess.run(["uci", "set", f"ai-link.global.app_version={APP_VERSION}"], check=False, timeout=2)
-            subprocess.run(["uci", "commit", "ai-link"], check=False, timeout=2)
+            _sync_uci_pwd_customized(is_panel_pwd_customized(CONF_DIR))
     except Exception:
         pass
-    server = ThreadingHTTPServer(("0.0.0.0", port), AILinkRequestHandler)
+    bind_addr = (get_ops_settings(CONF_DIR).get("panel_bind") or "0.0.0.0").strip() or "0.0.0.0"
+    try:
+        server = ThreadingHTTPServer((bind_addr, port), AILinkRequestHandler)
+    except Exception:
+        bind_addr = "0.0.0.0"
+        server = ThreadingHTTPServer((bind_addr, port), AILinkRequestHandler)
     try:
         _h3_threading.Thread(target=_h3_health_loop, daemon=True).start()
     except Exception:

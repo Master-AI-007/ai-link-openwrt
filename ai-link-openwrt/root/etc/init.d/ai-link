@@ -146,9 +146,11 @@ port_is_listening() {
 		ss -lntu 2>/dev/null | grep -q ":$p " && return 0
 	fi
 	# 最后兜底：直接读 /proc/net/tcp{,6}（local_address 的端口是 16 进制，状态 0A = LISTEN）
-	local hex
+	# B3-12: 同时传入大写与小写 16 进制，避免精简版 BusyBox awk 无 toupper()
+	local hex lhex
 	hex=$(printf '%04X' "$p" 2>/dev/null) || return 1
-	awk -v h="$hex" 'NR>1 { split($2, a, ":"); if (toupper(a[2]) == h && $4 == "0A") { f = 1 } } END { exit(f ? 0 : 1) }' \
+	lhex=$(printf '%04x' "$p" 2>/dev/null) || lhex="$hex"
+	awk -v h="$hex" -v lh="$lhex" 'NR>1 { split($2, a, ":"); if ((a[2] == h || a[2] == lh) && $4 == "0A") { f = 1 } } END { exit(f ? 0 : 1) }' \
 		/proc/net/tcp /proc/net/tcp6 2>/dev/null && return 0
 	return 1
 }
@@ -260,8 +262,10 @@ start_service() {
 	setup_tun_and_routing
 
 	if command -v sing-box >/dev/null 2>&1; then
+		local sb_bin
+		sb_bin=$(command -v sing-box 2>/dev/null || echo /usr/bin/sing-box)
 		procd_open_instance "ai-link-core"
-		procd_set_param command /usr/bin/sing-box run -c "$CONF_DIR/sing-box.json" -D "$CONF_DIR"
+		procd_set_param command "$sb_bin" run -c "$CONF_DIR/sing-box.json" -D "$CONF_DIR"
 		procd_set_param respawn 3600 5 5
 		procd_set_param limits nofile="65535 65535"
 		procd_set_param stdout 1
@@ -401,18 +405,28 @@ restore_proxy() {
 		echo "AI-LINK: Proxy service started and nftables rules + dnsmasq upstream restored."
 		return 0
 	fi
+	config_load 'ai-link'
+	local panel_port tproxy_port mixed_port
+	local entry_bypass block_quic game_udp_direct ipv6_proxy
+	config_get panel_port 'global' 'panel_port' '9099'
+	config_get tproxy_port 'global' 'tproxy_port' '7893'
+	config_get mixed_port 'global' 'mixed_port' '7890'
+	config_get_bool entry_bypass 'global' 'entry_bypass' '1'
+	config_get_bool block_quic 'global' 'block_quic' '1'
+	config_get_bool game_udp_direct 'global' 'game_udp_direct' '1'
+	config_get_bool ipv6_proxy 'global' 'ipv6_proxy' '0'
+	local _rw=0
+	while [ $_rw -lt 15 ]; do
+		port_is_listening "${tproxy_port:-7893}" && break
+		sleep 1
+		_rw=$((_rw + 1))
+	done
+	if ! port_is_listening "${tproxy_port:-7893}"; then
+		logger -t ai-link "WARN: restore_proxy: TProxy port :${tproxy_port:-7893} not listening; skipping nftables mount to prevent blackhole."
+		return 1
+	fi
 	setup_tun_and_routing
 	if [ -f "$FW_SCRIPT" ]; then
-		config_load 'ai-link'
-		local panel_port tproxy_port mixed_port
-		local entry_bypass block_quic game_udp_direct ipv6_proxy
-		config_get panel_port 'global' 'panel_port' '9099'
-		config_get tproxy_port 'global' 'tproxy_port' '7893'
-		config_get mixed_port 'global' 'mixed_port' '7890'
-		config_get_bool entry_bypass 'global' 'entry_bypass' '1'
-		config_get_bool block_quic 'global' 'block_quic' '1'
-		config_get_bool game_udp_direct 'global' 'game_udp_direct' '1'
-		config_get_bool ipv6_proxy 'global' 'ipv6_proxy' '0'
 		sh "$FW_SCRIPT" \
 			--entry-bypass "$entry_bypass" \
 			--block-quic "$block_quic" \
@@ -430,8 +444,8 @@ restore_proxy() {
 
 status_check() {
 	echo "=== AI-LINK Service Status ==="
-	echo "Core: $(pgrep -a sing-box || echo 'stopped')"
-	echo "Daemon: $(pgrep -af ai-link-daemon.py || echo 'stopped')"
+	echo "Core: $(pidof sing-box 2>/dev/null || pgrep -f '[s]ing-box run' 2>/dev/null || echo 'stopped')"
+	echo "Daemon: $(pgrep -f 'ai-link-dae[m]on.py' 2>/dev/null || echo 'stopped')"
 	echo "Bypass Flag: $([ -f "$RUN_DIR/bypass" ] && echo 'ACTIVE (Direct Mode)' || echo 'off')"
 	echo "=== Policy Routing (table $TABLE_ID) ==="
 	ip rule show | grep "$TABLE_ID" || echo "No IPv4 rule"

@@ -25,7 +25,7 @@ if [ ! -f "$NFT_FILE" ]; then
 fi
 
 if command -v python3 >/dev/null 2>&1 && [ -f /usr/share/ai-link/nftables/normalize_nft_sets.py ]; then
-	python3 /usr/share/ai-link/nftables/normalize_nft_sets.py "$NFT_FILE" >/dev/null 2>&1 || true
+	python3 -B /usr/share/ai-link/nftables/normalize_nft_sets.py "$NFT_FILE" >/dev/null 2>&1 || true
 fi
 
 if command -v nft >/dev/null 2>&1; then

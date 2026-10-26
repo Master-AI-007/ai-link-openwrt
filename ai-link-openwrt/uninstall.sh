@@ -1,5 +1,5 @@
 #!/bin/sh
-# AI-LINK Complete Uninstaller (v1.0.1)
+# AI-LINK Complete Uninstaller (v1.0.2)
 # Supports both apk (OpenWrt 24.10+ / ImmortalWrt 25.x) and opkg (iStoreOS / OpenWrt 23.05)
 
 KEEP_CONFIG=0
@@ -60,7 +60,7 @@ echo "[AI-LINK] 正在执行彻底卸载与清理..."
 if [ -d /etc/ai-link ]; then
 	mkdir -p /root/ai-link-final-backup 2>/dev/null || true
 	chmod 700 /root/ai-link-final-backup 2>/dev/null || true
-	tar -czf /root/ai-link-final-backup/etc-ai-link.tgz -C / etc/ai-link 2>/dev/null || true
+	tar -czf /root/ai-link-final-backup/etc-ai-link.tgz -C / etc/ai-link $([ -f /etc/config/ai-link ] && echo etc/config/ai-link) 2>/dev/null || true
 	chmod 600 /root/ai-link-final-backup/etc-ai-link.tgz 2>/dev/null || true
 	echo "  -> 📦 已将 /etc/ai-link 配置与密钥安全归档至: /root/ai-link-final-backup/etc-ai-link.tgz (权限 600)"
 fi
@@ -74,7 +74,7 @@ ubus call service delete '{"name":"ai-link"}' >/dev/null 2>&1 || true
 
 # 3. Terminate all processes
 for sig in TERM KILL; do
-	for pid in $(pgrep -f "ai-link-daemon.py" 2>/dev/null) $(pgrep -f "/etc/ai-link/sing-box.json" 2>/dev/null) $(pidof sing-box 2>/dev/null); do
+	for pid in $(pgrep -f "ai-link-dae[m]on.py" 2>/dev/null) $(pgrep -f "/etc/ai-link/sing-box.json" 2>/dev/null) $(pidof sing-box 2>/dev/null); do
 		kill -"$sig" "$pid" 2>/dev/null || true
 	done
 	sleep 1
@@ -122,14 +122,14 @@ ubus call service delete '{"name":"ai-link"}' >/dev/null 2>&1 || true
 /etc/init.d/uhttpd reload >/dev/null 2>&1 || true
 
 # 7. Final verification gate (never return 0 if daemon or nft table still exists)
-if pgrep -f "ai-link-daemon.py" >/dev/null 2>&1 || nft list table inet ai_link >/dev/null 2>&1; then
-	for pid in $(pgrep -f "ai-link-daemon.py" 2>/dev/null) $(pidof sing-box 2>/dev/null); do
+if pgrep -f "ai-link-dae[m]on.py" >/dev/null 2>&1 || nft list table inet ai_link >/dev/null 2>&1; then
+	for pid in $(pgrep -f "ai-link-dae[m]on.py" 2>/dev/null) $(pidof sing-box 2>/dev/null); do
 		kill -9 "$pid" 2>/dev/null || true
 	done
 	nft delete table inet ai_link 2>/dev/null || true
 fi
 
-if pgrep -f "ai-link-daemon.py" >/dev/null 2>&1 || nft list table inet ai_link >/dev/null 2>&1; then
+if pgrep -f "ai-link-dae[m]on.py" >/dev/null 2>&1 || nft list table inet ai_link >/dev/null 2>&1; then
 	echo "[AI-LINK] ❌ 卸载后校验未通过：仍有残留进程或 nft 表" >&2
 	exit 1
 fi
