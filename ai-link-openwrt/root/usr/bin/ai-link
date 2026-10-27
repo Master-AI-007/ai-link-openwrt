@@ -1,5 +1,5 @@
 #!/bin/sh
-# AI-LINK Command Line Utility for OpenWrt SSH Management (v1.0.3)
+# AI-LINK Command Line Utility for OpenWrt SSH Management (v2.0.0)
 # Usage: ai-link [status|svc_state|password|port|update|probe|probe-now|check|max-nodes|import-cache|sync-sub|import-nodes|add-test-node|mute-conflicts|recover|recover_direct|restore|restart|restart_core|uninstall]
 
 export PYTHONDONTWRITEBYTECODE="1"
@@ -344,7 +344,7 @@ PY
 		;;
 	status|*)
 		echo "=========================================================="
-		echo "  AI-LINK 智能透明代理与网络中枢 v1.0.3 (正式版)"
+		echo "  AI-LINK 智能透明代理与网络中枢 v2.0.0 (正式版)"
 		echo "=========================================================="
 		echo "  独立控制面板 : http://${LAN_IP}:${PANEL_PORT}"
 		echo "  面板管理密码 : ${PANEL_SECRET}"

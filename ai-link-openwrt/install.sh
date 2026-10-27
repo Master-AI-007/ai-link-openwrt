@@ -1,6 +1,6 @@
 #!/bin/sh
 # ==============================================================================
-# AI-LINK v1.0.3 (luci-app-ai-link v2.0.0-r8) Universal Cross-Platform Installer
+# AI-LINK v2.0.0 (luci-app-ai-link v2.0.0-r8) Universal Cross-Platform Installer
 # Supports:
 #   - Architectures : x86_64 (amd64), aarch64 (arm64), armv7l (armhf), mipsel, riscv64
 #   - Package Mgrs  : OPKG (OpenWrt <=23.05) & APK (OpenWrt 24.10+ / ImmortalWrt 25.x+)
@@ -12,7 +12,7 @@
 set -e
 export PYTHONDONTWRITEBYTECODE="1"
 
-VERSION="1.0.3"
+VERSION="2.0.0"
 UPGRADE_MODE=0
 for arg in "$@"; do
 	case "$arg" in
@@ -191,10 +191,15 @@ if [ -f /etc/config/ai-link ]; then
 	cp -f /etc/config/ai-link /tmp/.ai-link-uci.preserve 2>/dev/null && HAD_UCI_CFG=1 || true
 fi
 
+# Pre-clean legacy webui/assets & webui/vendor symlinks before opkg/cp so copying directory assets/ never errors
+rm -f /usr/share/ai-link/webui/assets /usr/share/ai-link/webui/vendor 2>/dev/null || true
+rm -rf /usr/share/ai-link/__pycache__ /usr/share/ai-link/webui/assets /usr/share/ai-link/webui/vendor 2>/dev/null || true
+
 if [ "$PKG_MGR" = "opkg" ] && [ -n "$IPK_FILE" ] && [ -f "$IPK_FILE" ]; then
 	AILINK_INSTALLING=1 opkg install --force-reinstall "$IPK_FILE" >/dev/null 2>&1 || true
 fi
 
+rm -f /usr/share/ai-link/webui/assets /usr/share/ai-link/webui/vendor 2>/dev/null || true
 cp -rf "$SCRIPT_DIR/root/"* /
 if [ "$HAD_UCI_CFG" -eq 1 ] && [ -f /tmp/.ai-link-uci.preserve ]; then
 	cp -f /tmp/.ai-link-uci.preserve /etc/config/ai-link 2>/dev/null || true
@@ -204,10 +209,14 @@ if [ -f "$SCRIPT_DIR/uninstall.sh" ]; then
 	cp -f "$SCRIPT_DIR/uninstall.sh" /usr/share/ai-link/uninstall.sh 2>/dev/null || true
 	chmod +x /usr/share/ai-link/uninstall.sh 2>/dev/null || true
 fi
-rm -rf /usr/share/ai-link/__pycache__ /usr/share/ai-link/webui/assets /usr/share/ai-link/webui/vendor 2>/dev/null || true
+rm -rf /usr/share/ai-link/__pycache__ 2>/dev/null || true
 ln -snf /usr/share/ai-link/webui/static/tailwind.css /usr/share/ai-link/webui/static/tailwind.offline.css 2>/dev/null || true
-ln -snf /usr/share/ai-link/webui/static /usr/share/ai-link/webui/assets 2>/dev/null || true
-ln -snf /usr/share/ai-link/webui/static /usr/share/ai-link/webui/vendor 2>/dev/null || true
+if [ ! -d /usr/share/ai-link/webui/assets ]; then
+	ln -snf /usr/share/ai-link/webui/static /usr/share/ai-link/webui/assets 2>/dev/null || true
+fi
+if [ ! -d /usr/share/ai-link/webui/vendor ]; then
+	ln -snf /usr/share/ai-link/webui/static /usr/share/ai-link/webui/vendor 2>/dev/null || true
+fi
 mkdir -p /www/luci-static/resources/view/ai-link
 cp -rf "$SCRIPT_DIR/htdocs/luci-static/resources/view/ai-link/"* /www/luci-static/resources/view/ai-link/ 2>/dev/null || true
 

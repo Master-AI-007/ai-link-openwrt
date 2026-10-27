@@ -1,3 +1,26 @@
+## [v2.0.0] - 2026-10-27（NEXUS 全域 3D 正式版 · 全量检查更新包）
+
+### 🎨 四项实机定制化视觉与交互升级
+
+1. **国内直连母星 (`cn`) 切换为淡粉色 (`#f9a8d4` / `0xf9a8d4`)，与内核中枢青色鲜明区分**
+   - 解决实测反馈中「内核中枢母星 (`core`, `#28b8d4` / `#6ee7f5`) 与国内直连母星 (`cn`, 旧色 `#1fc699`) 在 WebGL 光晕与色调映射下颜色过于接近」的问题。
+   - 将 `国内直连` 母星球体材质、自发光 (`0xf472b6`)、环绕轨道环 (`0xfbcfe8`)、下属国内目标卫星、主干连线 (`core_cn`)、2D 投影标签与右侧检查器指标全面升级为**淡粉色 (`#f9a8d4`)**，在深空背景下与青色内核、紫色海外代理、琥珀黑洞形成四色高对比度视觉体系。
+2. **「⚡ 流量激增」按钮 (`#surge-toggle`) 升级为真实连接的 3D 表达**
+   - 打开「⚡ 流量激增」按钮不再是简单的动画倍速，而是实时拉取 `/api/clash/connections` 与 `/api/overview/galaxy` 的真实并发连接数据，在 3D 星图中构建**跨星系端到端真实连接 3D 轨迹弧 (`CatmullRomCurve3`)**：从 `内核中枢 (core)` 周围的具体局域网/回家终端卫星出发 $ightarrow$ 经由 `内核中枢` 母星分流 $ightarrow$ 飞向 `国内直连 (淡粉)`、`海外代理 (紫/青)` 或 `黑洞拦截 (琥珀)` 母星 $ightarrow$ 精准落入对应的真实访问目标卫星（如 `WeChat`、`Bilibili`、`ChatGPT`、`YouTube` 等）。
+   - 3D 视口顶部同步呈现全息 HUD 实时横幅：`⚡ 真实连接 3D 表达已激活 · 实时映射 N 条跨星系轨迹 (M 并发连接) · 挡位: 高[X] / 中[Y] / 低[Z]`。
+3. **连线上的流动光球支持「高 / 中 / 低」三个速度挡位，按真实连接数与吞吐速率动态驱动**
+   - 新增三挡流速引擎 `NexusScene.computeSpeedGear(rateBps, conns)`：
+     - **高挡 (`high` · 高速)**：当链路真实速率 `>= 200 KB/s` 或并发连接 `>= 12` 时触发，光球流速 `0.56`、体积缩放 `1.36x`、全密度脉冲；
+     - **中挡 (`med` · 中速)**：当链路真实速率在 `15 KB/s ~ 200 KB/s` 或并发连接 `3 ~ 11` 时触发，光球流速 `0.26`、体积缩放 `1.04x`；
+     - **低挡 (`low` · 低速)**：当链路真实速率 `< 15 KB/s` 且并发连接 `< 3` 时触发，光球流速 `0.095`、体积缩放 `0.78x`。
+   - 同时作用于四大星系主干连线 (`core_global`、`core_cn`、`core_blackhole`、`cn_global`)、各星系卫星径向连线 (`tetherPackets`) 以及流量激增模式下的 3D 真实连接轨迹弧，并在 3D 连线中段实时渲染 `流速:高/中/低 · N连` 胶囊标签。
+4. **概览页 (`#page-overview`) 底部三个标签卡片可点击查看具体信息 + 修复终端头像重复显示 `10` 问题**
+   - 将概览页底部三张核心洞察卡片（`01 / DEVICES · 局域网终端设备`、`02 / OUTBOUNDS · 入核出站节点`、`03 / DESTINATIONS · 热门访问目标`）及卡片内的终端头像圆圈、目标域名芯片全部升级为可点击交互组件（带 `查看明细 ↗` 徽章与悬浮高亮）。
+   - 修复 `01 / DEVICES` 卡片终端头像在 `10.10.10.x` 网段下截取前两位导致全部显示 `10` 的问题，改为智能提取 IPv4 末段（如 `.224`、`.77`、`.10`）或主机名缩写。
+   - 点击任意一张卡片即弹出 NEXUS 宽幅详情模态框，内置 4 宫格汇总指标、分类筛选芯片、实时搜索框、高中低流速挡位徽章以及一键操作（`🔍 查看连接`、`⚡ 真测速`、`🚀 设为出口`、`🔍 4阶透视`）。
+
+---
+
 # AI-LINK 更新日志
 
 本文件记录 AI-LINK 智能分流网关的全部版本变更。
@@ -13,6 +36,24 @@
 ## v1.0.3 · 2026-10-26
 
 > 主题：**双机实测根因深度修复（10.10.10.7 & 192.168.100.37）· 彻底终结 Sing-box 内核掉线与全网黑洞**
+
+### 🌌 NEXUS v3 全域深空视觉深度重构与四项定制改造 + `VERIFY-frontend-deep.md` 100% 清零
+
+- **四项核心 UI/UX 深度重构（100% 还原实机交互诉求）**
+  1. **概览页「全球核心应用延迟声呐」面板纯雷达放大化**：移除旧版底部冗余芯片列表 (`#service-list`)，将圆形声呐雷达盘放大至 `288px × 288px` 居中展示；盘内全部 8 个核心业务信标（`ChatGPT`、`Gemini`、`YouTube`、`GitHub`、`Netflix`、`TikTok`、`Telegram`、`Bilibili`）均升级为可点击探测按钮 (`<button class="sonar-blip">`)，点击直接调用 `/api/clash/delay` 与 `/api/probe/service_l7` 实测对应策略组真实延迟，并采用 8 轨纵向交错坐标与右半球 `.blip-left` 向内锚定，实现零裁切、零重叠。
+  2. **订阅与节点页新增「📦 全部订阅源汇总」卡片与点击过滤联动**：在 `#subscription-list` 最左侧固定渲染「📦 全部订阅源汇总」卡片 (`data-sub-select="ALL"`)，支持点击任意订阅卡片高亮选中并联动过滤下方节点测速列表 (`#probe-nodes-tbody`)、状态统计芯片與 7 大地区筛选芯片计数。
+  3. **顶部状态栏 (`.topbar .global-route`) 模式感知与防误导展示**：顶栏清晰展示五大运行模式徽章（`精细规则分流` / `GFW 模式` / `非国内模式` / `全局模式` / `直连模式`）；在「精细规则分流 (`rule_shunt`)」与「全局直连 (`direct_all`)」模式下**不再显示具有误导性的单一出口节点名**（改为展示策略组智能矩阵或全直连描述），仅在单一出口模式（`gfw_list` / `cn_whitelist` / `global_proxy`）下展示当前统一出口节点或自动节点池及实时延迟。
+  4. **3D 全域星图 (`#page-galaxy` & `nexus3d.js`) 四星系动态卫星与深空详情面板重构**：恢复并升级四大星系围绕运转的动态卫星实体（带脉冲连接线、悬浮速率标签与严格数量上限控制：`MAX_GALAXY_SATELLITES = 8`、`MAX_BLACKHOLE_SATELLITES = 6`，彻底告别密集杂乱）：
+     - `🧠 内核中枢 (core)`：实时展示局域网与回家通道活跃终端设备（整合 `host_map` 在线设备与活跃连接，硬件旁路下亦不漏显）；
+     - `🇨🇳 国内直连 (cn)`：实时展示大陆直连访问目标站点与速率；
+     - `🌍 海外代理 (global)`：实时展示海外代理访问目标服务、所属策略组与实时速率；
+     - `🕳️ 黑洞拦截 (blackhole)`：实时展示 Top 拦截广告/追踪域名卫星，并内置吸积盘粒子向事件视界中心螺旋坍缩吞噬动效；
+     - 右侧检查器 (`#inspector-galaxy-detail`) 按 NEXUS 视觉体系重构四星系专属面板（4 宫格 KPI 卡片 + 内核连接池/内存水位条或威胁分类占比条 + 实时速率排行列表）。
+- **`VERIFY-frontend-deep.md` 深度审计报告全量缺陷 100% 清零**
+  - **遥测真值字段 100% 对齐**：全面修正 `overview_telemetry.active_connections`、`in_rate_bps`/`in_rate_str`、`out_rate_bps`/`out_rate_str`、`core_mem_mib`、`month_total_str`、`insight_data.devices`/`targets`、`dns_telemetry.stats_24h.blocked_queries`、`total_loaded_rules`、`dns_layer_blocks`、`route_reject_blocks`、动态健康度 `healthScore` 与 8 项 `pulse_services`，彻底清除 `rx_rate_bps`、`core_rss_mib`、`month_rx_bytes`、`blocked_queries_24h` 等死字段引用。
+  - **13+ 项后端核心能力 100% 接入新 UI**：完整接入手动新增单节点与批量导入预览 (`/api/nodes/add` & `/api/nodes/parse_preview`)、节点明文凭据查看弹窗 (`/api/nodes/credentials`)、单节点真实测速 (`/api/nodes/test_real_delay`)、服务 L7 真连接探测 (`/api/probe/service_l7`)、系统诊断报告弹窗 (`/api/ops/diag`)、全量健康自检 (`/api/ops/health_check`)、断网逃生自测 (`/api/ops/fail_open_test`)、规则集立即同步 (`/api/rules/sync`)、IPv6 双栈模式切换 (`/api/ipv6/status` & `/api/ops/ipv6`)、DNS 7 项高级设置保存 (`/api/dns/settings`)、OTA 升级实时进度轮询与中断恢复 (`/api/system/update/status` & `/api/system/update/ack`) 以及安全卸载向导 (`/api/ops/uninstall`)。
+  - **统一 API 错误提示与失败回滚**：`callRouterApi` 对 `ok === false` 或网络异常统一弹出错误 Toast 并返回标准化失败对象；路由模式切换与开关切换在后端返回失败时自动回滚 UI 状态；移除假成功兜底 `default: toast('操作指令已执行')`，改为显式未知指令告警。
+  - **移动端自适应与可访问性收口**：`<980px` 下自动隐藏顶栏冗余搜索框并支持点击背景遮罩关闭抽屉；补齐全部表单控件 `aria-label` 与模态框 `ESC` 关闭支持。
 
 ### 🛡️ 核心引擎防掉线与自愈闭环（P0-1 ~ P0-3）
 

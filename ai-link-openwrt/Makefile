@@ -55,6 +55,9 @@ define Package/luci-app-ai-link/install
 	$(INSTALL_DIR) $(1)/usr/share/ai-link/webui/assets
 	$(INSTALL_DIR) $(1)/usr/share/ai-link/webui/vendor
 	$(INSTALL_DATA) ./root/usr/share/ai-link/webui/index.html $(1)/usr/share/ai-link/webui/index.html
+	$(INSTALL_DATA) ./root/usr/share/ai-link/webui/nexus.css $(1)/usr/share/ai-link/webui/nexus.css
+	$(INSTALL_DATA) ./root/usr/share/ai-link/webui/nexus3d.js $(1)/usr/share/ai-link/webui/nexus3d.js
+	$(INSTALL_DATA) ./root/usr/share/ai-link/webui/nexus.js $(1)/usr/share/ai-link/webui/nexus.js
 	$(INSTALL_DATA) ./root/usr/share/ai-link/webui/static/tailwind.css $(1)/usr/share/ai-link/webui/static/tailwind.css
 	$(INSTALL_DATA) ./root/usr/share/ai-link/webui/static/qrcode.min.js $(1)/usr/share/ai-link/webui/static/qrcode.min.js
 	$(INSTALL_DATA) ./root/usr/share/ai-link/webui/static/three.min.js $(1)/usr/share/ai-link/webui/static/three.min.js

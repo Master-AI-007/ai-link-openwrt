@@ -1,293 +1,205 @@
 <!DOCTYPE html>
-<html lang="zh-CN" class="dark scroll-smooth">
+<html lang="zh-CN">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AI-LINK 更新日志 — 版本历史与变更说明</title>
-  <meta name="description" content="AI-LINK 智能分流网关的完整版本历史与每次更新的详细变更说明。" />
-  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
-    :root { color-scheme: dark; }
-    body {
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
-      background-color: #050814;
-      color: #e2e8f0;
-    }
-    code, pre, .font-mono { font-family: 'JetBrains Mono', Consolas, monospace; }
-    .glow { background: radial-gradient(circle at 50% 0%, rgba(56,189,248,0.12), transparent 60%); }
-    .card { background: linear-gradient(180deg, rgba(15,23,42,0.9), rgba(8,13,26,0.9)); border: 1px solid rgba(51,65,85,0.8); }
-    .tag { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>更新日志 · AI-LINK</title>
+<meta name="description" content="AI-LINK 全部版本更新记录：v2.0.0 NEXUS、v1.0.3、v1.0.2、v1.0.1、v1.0.0。" />
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+<link rel="stylesheet" href="/assets/site.css" />
 </head>
-<body class="antialiased">
+<body>
 
-  <div class="glow">
-    <header class="max-w-4xl mx-auto px-5 pt-10 pb-6">
-      <a href="./index.html" class="text-xs text-cyan-400 hover:text-cyan-300 font-semibold">← 返回官网首页</a>
-      <h1 class="mt-4 text-3xl md:text-4xl font-extrabold tracking-tight text-white">AI-LINK 更新日志</h1>
-      <p class="mt-3 text-sm text-slate-400 leading-relaxed">
-        每个版本的详细变更说明。插件内置的在线更新会自动读取
-        <code class="text-cyan-300 bg-slate-900/80 px-1.5 py-0.5 rounded">version.json</code>
-        清单，判断是否有新版本，并展示下面这些更新要点。
-      </p>
-      <div class="mt-5 flex flex-wrap gap-2 text-xs">
-        <span class="px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-semibold">当前最新：v1.0.3</span>
-        <span class="px-3 py-1 rounded-full bg-slate-800/80 text-slate-300 border border-slate-700 font-semibold">发布通道：stable</span>
-        <a href="https://github.com/Master-AI-007/ai-link-openwrt/releases" target="_blank" rel="noopener"
-           class="px-3 py-1 rounded-full bg-slate-800/80 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold">GitHub Releases ↗</a>
-      </div>
-    </header>
+<nav class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="/">
+      <svg viewBox="0 0 40 40" aria-hidden="true">
+        <path d="M20 4 34 12v16L20 36 6 28V12Z" fill="none" stroke="#6ee7f5" stroke-width="1.6"/>
+        <circle cx="20" cy="20" r="5.4" fill="none" stroke="#a994ff" stroke-width="1.6"/>
+        <circle cx="20" cy="20" r="1.8" fill="#6ee7f5"/>
+      </svg>
+      <span style="display:block"><b>AI-LINK</b><span>NEXUS · v2.0.0</span></span>
+    </a>
+    <div class="nav-links">
+      <a href="/#features">核心能力</a>
+      <a href="/#screens">界面一览</a>
+      <a href="/#install">安装升级</a>
+      <a href="/changelog">更新日志</a>
+    </div>
+    <div class="nav-actions">
+      <a class="btn small" href="https://github.com/Master-AI-007/ai-link-openwrt" target="_blank" rel="noopener">GitHub</a>
+      <a class="btn small primary" href="/#install">立即安装</a>
+    </div>
   </div>
+</nav>
 
-  <main class="max-w-4xl mx-auto px-5 pb-24 space-y-8">
+<main class="wrap log-wrap">
+  <div class="log-head">
+    <h1>更新日志</h1>
+    <span class="pill"><i></i> 当前最新 v2.0.0</span>
+  </div>
+<article class="log-item latest">
+  <div class="log-top">
+    <h2>v2.0.0</h2>
+    <span class="tag c">最新</span>
+    <time>2026-10-27</time>
+  </div>
+  <p style="margin:2px 0 6px;color:var(--dim)">NEXUS 全域 3D 正式版 · 全量检查更新包</p>
+<h3>🎨 四项实机定制化视觉与交互升级</h3>
+<ul><li><b>国内直连母星 (<code>cn</code>) 切换为淡粉色 (<code>#f9a8d4</code> / <code>0xf9a8d4</code>)，与内核中枢青色鲜明区分</b></li><li>解决实测反馈中「内核中枢母星 (<code>core</code>, <code>#28b8d4</code> / <code>#6ee7f5</code>) 与国内直连母星 (<code>cn</code>, 旧色 <code>#1fc699</code>) 在 WebGL 光晕与色调映射下颜色过于接近」的问题。</li><li>将 <code>国内直连</code> 母星球体材质、自发光 (<code>0xf472b6</code>)、环绕轨道环 (<code>0xfbcfe8</code>)、下属国内目标卫星、主干连线 (<code>core_cn</code>)、2D 投影标签与右侧检查器指标全面升级为<b>淡粉色 (<code>#f9a8d4</code>)</b>，在深空背景下与青色内核、紫色海外代理、琥珀黑洞形成四色高对比度视觉体系。</li><li><b>「⚡ 流量激增」按钮 (<code>#surge-toggle</code>) 升级为真实连接的 3D 表达</b></li><li>打开「⚡ 流量激增」按钮不再是简单的动画倍速，而是实时拉取 <code>/api/clash/connections</code> 与 <code>/api/overview/galaxy</code> 的真实并发连接数据，在 3D 星图中构建<b>跨星系端到端真实连接 3D 轨迹弧 (<code>CatmullRomCurve3</code>)</b>：从 <code>内核中枢 (core)</code> 周围的具体局域网/回家终端卫星出发 </li></ul>
+<p>→ 经由 <code>内核中枢</code> 母星分流 </p>
+<p>→ 飞向 <code>国内直连 (淡粉)</code>、<code>海外代理 (紫/青)</code> 或 <code>黑洞拦截 (琥珀)</code> 母星 </p>
+<p>→ 精准落入对应的真实访问目标卫星（如 <code>WeChat</code>、<code>Bilibili</code>、<code>ChatGPT</code>、<code>YouTube</code> 等）。</p>
+<ul><li>3D 视口顶部同步呈现全息 HUD 实时横幅：<code>⚡ 真实连接 3D 表达已激活 · 实时映射 N 条跨星系轨迹 (M 并发连接) · 挡位: 高[X] / 中[Y] / 低[Z]</code>。</li><li><b>连线上的流动光球支持「高 / 中 / 低」三个速度挡位，按真实连接数与吞吐速率动态驱动</b></li><li>新增三挡流速引擎 <code>NexusScene.computeSpeedGear(rateBps, conns)</code>：</li><li><b>高挡 (<code>high</code> · 高速)</b>：当链路真实速率 <code>&gt;= 200 KB/s</code> 或并发连接 <code>&gt;= 12</code> 时触发，光球流速 <code>0.56</code>、体积缩放 <code>1.36x</code>、全密度脉冲；</li><li><b>中挡 (<code>med</code> · 中速)</b>：当链路真实速率在 <code>15 KB/s ~ 200 KB/s</code> 或并发连接 <code>3 ~ 11</code> 时触发，光球流速 <code>0.26</code>、体积缩放 <code>1.04x</code>；</li><li><b>低挡 (<code>low</code> · 低速)</b>：当链路真实速率 <code>&lt; 15 KB/s</code> 且并发连接 <code>&lt; 3</code> 时触发，光球流速 <code>0.095</code>、体积缩放 <code>0.78x</code>。</li><li>同时作用于四大星系主干连线 (<code>core_global</code>、<code>core_cn</code>、<code>core_blackhole</code>、<code>cn_global</code>)、各星系卫星径向连线 (<code>tetherPackets</code>) 以及流量激增模式下的 3D 真实连接轨迹弧，并在 3D 连线中段实时渲染 <code>流速:高/中/低 · N连</code> 胶囊标签。</li><li><b>概览页 (<code>#page-overview</code>) 底部三个标签卡片可点击查看具体信息 + 修复终端头像重复显示 <code>10</code> 问题</b></li><li>将概览页底部三张核心洞察卡片（<code>01 / DEVICES · 局域网终端设备</code>、<code>02 / OUTBOUNDS · 入核出站节点</code>、<code>03 / DESTINATIONS · 热门访问目标</code>）及卡片内的终端头像圆圈、目标域名芯片全部升级为可点击交互组件（带 <code>查看明细 ↗</code> 徽章与悬浮高亮）。</li><li>修复 <code>01 / DEVICES</code> 卡片终端头像在 <code>10.10.10.x</code> 网段下截取前两位导致全部显示 <code>10</code> 的问题，改为智能提取 IPv4 末段（如 <code>.224</code>、<code>.77</code>、<code>.10</code>）或主机名缩写。</li><li>点击任意一张卡片即弹出 NEXUS 宽幅详情模态框，内置 4 宫格汇总指标、分类筛选芯片、实时搜索框、高中低流速挡位徽章以及一键操作（<code>🔍 查看连接</code>、<code>⚡ 真测速</code>、<code>🚀 设为出口</code>、<code>🔍 4阶透视</code>）。</li></ul>
+</article>
+<article class="log-item">
+  <div class="log-top">
+    <h2>v1.0.3</h2>
+    <span class="tag">历史</span>
+    <time>2026-10-26</time>
+  </div>
+  <p style="margin:2px 0 6px;color:var(--dim)"></p>
+<p>主题：<b>双机实测根因深度修复（10.10.10.7 &amp; 192.168.100.37）· 彻底终结 Sing-box 内核掉线与全网黑洞</b></p>
+<h3>🌌 NEXUS v3 全域深空视觉深度重构与四项定制改造 + <code>VERIFY-frontend-deep.md</code> 100% 清零</h3>
+<ul><li><b>四项核心 UI/UX 深度重构（100% 还原实机交互诉求）</b></li><li><b>概览页「全球核心应用延迟声呐」面板纯雷达放大化</b>：移除旧版底部冗余芯片列表 (<code>#service-list</code>)，将圆形声呐雷达盘放大至 <code>288px × 288px</code> 居中展示；盘内全部 8 个核心业务信标（<code>ChatGPT</code>、<code>Gemini</code>、<code>YouTube</code>、<code>GitHub</code>、<code>Netflix</code>、<code>TikTok</code>、<code>Telegram</code>、<code>Bilibili</code>）均升级为可点击探测按钮 (<code>&lt;button class=&quot;sonar-blip&quot;&gt;</code>)，点击直接调用 <code>/api/clash/delay</code> 与 <code>/api/probe/service_l7</code> 实测对应策略组真实延迟，并采用 8 轨纵向交错坐标与右半球 <code>.blip-left</code> 向内锚定，实现零裁切、零重叠。</li><li><b>订阅与节点页新增「📦 全部订阅源汇总」卡片与点击过滤联动</b>：在 <code>#subscription-list</code> 最左侧固定渲染「📦 全部订阅源汇总」卡片 (<code>data-sub-select=&quot;ALL&quot;</code>)，支持点击任意订阅卡片高亮选中并联动过滤下方节点测速列表 (<code>#probe-nodes-tbody</code>)、状态统计芯片與 7 大地区筛选芯片计数。</li><li><b>顶部状态栏 (<code>.topbar .global-route</code>) 模式感知与防误导展示</b>：顶栏清晰展示五大运行模式徽章（<code>精细规则分流</code> / <code>GFW 模式</code> / <code>非国内模式</code> / <code>全局模式</code> / <code>直连模式</code>）；在「精细规则分流 (<code>rule_shunt</code>)」与「全局直连 (<code>direct_all</code>)」模式下<b>不再显示具有误导性的单一出口节点名</b>（改为展示策略组智能矩阵或全直连描述），仅在单一出口模式（<code>gfw_list</code> / <code>cn_whitelist</code> / <code>global_proxy</code>）下展示当前统一出口节点或自动节点池及实时延迟。</li><li><b>3D 全域星图 (<code>#page-galaxy</code> &amp; <code>nexus3d.js</code>) 四星系动态卫星与深空详情面板重构</b>：恢复并升级四大星系围绕运转的动态卫星实体（带脉冲连接线、悬浮速率标签与严格数量上限控制：<code>MAX_GALAXY_SATELLITES = 8</code>、<code>MAX_BLACKHOLE_SATELLITES = 6</code>，彻底告别密集杂乱）：</li><li><code>🧠 内核中枢 (core)</code>：实时展示局域网与回家通道活跃终端设备（整合 <code>host_map</code> 在线设备与活跃连接，硬件旁路下亦不漏显）；</li><li><code>🇨🇳 国内直连 (cn)</code>：实时展示大陆直连访问目标站点与速率；</li><li><code>🌍 海外代理 (global)</code>：实时展示海外代理访问目标服务、所属策略组与实时速率；</li><li><code>🕳️ 黑洞拦截 (blackhole)</code>：实时展示 Top 拦截广告/追踪域名卫星，并内置吸积盘粒子向事件视界中心螺旋坍缩吞噬动效；</li><li>右侧检查器 (<code>#inspector-galaxy-detail</code>) 按 NEXUS 视觉体系重构四星系专属面板（4 宫格 KPI 卡片 + 内核连接池/内存水位条或威胁分类占比条 + 实时速率排行列表）。</li><li><b><code>VERIFY-frontend-deep.md</code> 深度审计报告全量缺陷 100% 清零</b></li><li><b>遥测真值字段 100% 对齐</b>：全面修正 <code>overview_telemetry.active_connections</code>、<code>in_rate_bps</code>/<code>in_rate_str</code>、<code>out_rate_bps</code>/<code>out_rate_str</code>、<code>core_mem_mib</code>、<code>month_total_str</code>、<code>insight_data.devices</code>/<code>targets</code>、<code>dns_telemetry.stats_24h.blocked_queries</code>、<code>total_loaded_rules</code>、<code>dns_layer_blocks</code>、<code>route_reject_blocks</code>、动态健康度 <code>healthScore</code> 与 8 项 <code>pulse_services</code>，彻底清除 <code>rx_rate_bps</code>、<code>core_rss_mib</code>、<code>month_rx_bytes</code>、<code>blocked_queries_24h</code> 等死字段引用。</li><li><b>13+ 项后端核心能力 100% 接入新 UI</b>：完整接入手动新增单节点与批量导入预览 (<code>/api/nodes/add</code> &amp; <code>/api/nodes/parse_preview</code>)、节点明文凭据查看弹窗 (<code>/api/nodes/credentials</code>)、单节点真实测速 (<code>/api/nodes/test_real_delay</code>)、服务 L7 真连接探测 (<code>/api/probe/service_l7</code>)、系统诊断报告弹窗 (<code>/api/ops/diag</code>)、全量健康自检 (<code>/api/ops/health_check</code>)、断网逃生自测 (<code>/api/ops/fail_open_test</code>)、规则集立即同步 (<code>/api/rules/sync</code>)、IPv6 双栈模式切换 (<code>/api/ipv6/status</code> &amp; <code>/api/ops/ipv6</code>)、DNS 7 项高级设置保存 (<code>/api/dns/settings</code>)、OTA 升级实时进度轮询与中断恢复 (<code>/api/system/update/status</code> &amp; <code>/api/system/update/ack</code>) 以及安全卸载向导 (<code>/api/ops/uninstall</code>)。</li><li><b>统一 API 错误提示与失败回滚</b>：<code>callRouterApi</code> 对 <code>ok === false</code> 或网络异常统一弹出错误 Toast 并返回标准化失败对象；路由模式切换与开关切换在后端返回失败时自动回滚 UI 状态；移除假成功兜底 <code>default: toast(&#x27;操作指令已执行&#x27;)</code>，改为显式未知指令告警。</li><li><b>移动端自适应与可访问性收口</b>：<code>&lt;980px</code> 下自动隐藏顶栏冗余搜索框并支持点击背景遮罩关闭抽屉；补齐全部表单控件 <code>aria-label</code> 与模态框 <code>ESC</code> 关闭支持。</li></ul>
+<h3>🛡️ 核心引擎防掉线与自愈闭环（P0-1 \~ P0-3）</h3>
+<ul><li><b>解除 procd 1 小时 6 次重启放弃配额（P0-1）</b></li></ul>
+<p><code>/etc/init.d/ai-link</code> 中 <code>ai-link-daemon</code> 与 <code>ai-link-core</code> 的重启策略由 <code>respawn 3600 5 5</code> 调整为 <code>respawn 0 5 0</code>（无限重试、5 秒退避），彻底根除因日常分流调整触发主动重启与异常退出共用配额导致的 <code>Instance ai-link::ai-link-core s in a crash loop 6 crashes</code> 永久放弃拉起问题；同时新增 <code>/etc/init.d/ai-link restart_core</code> 独立恢复命令，在不中断 9099 面板守护进程的前提下重置并拉起内核。</p>
+<ul><li><b>看门狗新增 Sing-box 进程存活守护（P0-2）</b></li></ul>
+<p><code>_telemetry_and_watchdog_loop</code> 新增 <code>ensure_core_alive_and_recover()</code>（每 15 秒巡检 <code>_get_live_singbox_pids()</code>，自动过滤僵尸进程 <code>State: Z</code> 与 <code>version</code>/<code>check</code>/<code>rule-set</code> 短期辅助进程）。检测到内核进程意外缺失且未处于重构重载窗口时，立即记录日志 <code>Watchdog: core process missing; restarting service.</code> 并自动调用 <code>_respawn_core_only()</code> / <code>restart_core</code> 恢复内核。</p>
+<ul><li><b>内核离线立即撤除 nftables 与策略路由防黑洞（P0-3）</b></li></ul>
+<p><code>ensure_nft_and_routing_intact()</code> 新增 <code>_teardown_blackhole_nft_and_routing()</code>：一旦检测到 <code>sing-box</code> 进程不在或 <code>:7893</code> 端口未监听，立即主动删除 <code>table inet ai_link</code>、清理 <code>ip rule fwmark 0x162 table 162</code> 并回退 <code>dnsmasq</code> 上游，使局域网与旁路由自身平滑退回直连上网（彻底消除 <code>curl 000</code> 全网黑洞）；待内核恢复监听后自动重挂透明代理。同时 <code>_sync_ipv6_policy_routing()</code> 增加前置内核与端口存活断言。</p>
+<h3>⚡ 幂等配置重载、指纹非易失持久化与启动防抢杀（P1-1 \~ P1-3）</h3>
+<ul><li><b>全端点规则指纹比对，幂等操作零重启（P1-1）</b></li></ul>
+<p>增强 <code>_compute_core_rules_fingerprint()</code>（覆盖 <code>route</code>、<code>dns</code>、<code>inbounds</code>、选择器成员拓扑与代理出站定义，排除可通过 Clash API 热切换的 <code>default</code> 字段）。在 <code>schedule_async_core_reload()</code>、<code>reload_core_only()</code> 以及 <code>/api/shunt/reorder</code>、<code>/api/shunt/custom_rule</code>、<code>/api/dns/rewrite</code>、<code>/api/dns/filter/toggle</code> 等端点前置比较操作前后指纹：若拓扑规则未变化（如原样提交分流顺序），自动降级为 <code>hot_selector</code> 热更新，绝不杀内核进程（<code>requires_core_respawn=False</code>）。</p>
+<ul><li><b>规则指纹持久化至非 tmpfs <code>/etc/ai-link/.applied_core_rule_hash</code>（P1-2）</b></li></ul>
+<p><code>_record_applied_core_rule_hash()</code> 与 <code>_get_applied_core_rule_hash()</code> 双写 <code>/etc/ai-link/.applied_core_rule_hash</code> 与 <code>/var/run/ai-link/applied_core_rule_hash.txt</code>；设备重启或 tmpfs 清空后自动从持久化文件恢复指纹，避免开机首次巡检误判「规则脏」而多杀一次内核。</p>
+<ul><li><b>消除启动期 <code>context canceled</code> 抢杀与 <code>.srs</code> 原子编译（Path ④）</b></li></ul>
+<p><code>reload_core_only()</code> 新增 <code>_get_min_singbox_proc_age()</code> 启动保护窗口（进程刚拉起 <code>&lt;6.5s</code> 时先等待 Clash API 就绪而不发送 <code>SIGTERM</code>）；<code>blocklist_custom.srs</code> 改为编译至临时文件后 <code>os.replace()</code> 原子替换；<code>--daemon</code> 启动时若 <code>sing-box.json</code> 已在 25 秒内由 <code>init.d</code> 生成则跳过重复写盘。</p>
+<ul><li><b><code>install.sh</code> 与 OTA 升级脚本增加真实健康断言（P1-3）</b></li></ul>
+<p>安装与升级收尾阶段强制校验 <code>pidof sing-box</code> 及 <code>:7890</code> / <code>:7893</code> 端口监听状态（未就绪时自动触发一次 <code>restart_core</code> 自愈），输出 <code>UPGRADE OK: core=... ports ok</code> 或 <code>UPGRADE FAIL: ...</code>。</p>
+<h3>🌐 10.10.10.7 实测问题专项修复与面板可见性（DIAG-1 \~ DIAG-3 / P2 / P3）</h3>
+<ul><li><b>静默捕获客户端提前断开 <code>BrokenPipeError</code>（DIAG-1）</b></li></ul>
+<p><code>AILinkRequestHandler</code> 的 <code>handle_one_request</code>、<code>finish</code>、<code>_send_json</code>、<code>_try_send_wire_memo</code>、<code>do_OPTIONS</code> 统一捕获 <code>(BrokenPipeError, ConnectionResetError, socket.timeout)</code>，消除浏览器刷新或中断请求时的堆栈刷屏。</p>
+<ul><li><b>停机/重启/内核离线期间保留旁路由自身 DNS 解析（DIAG-2）</b></li></ul>
+<p><code>init.d/ai-link</code> 与 <code>ai-link-daemon.py</code> 新增 <code>fallback_resolv_conf_direct()</code> / <code>restore_resolv_conf_local()</code>：在服务停止、重启等待或内核离线窗口自动将 <code>/etc/resolv.conf</code> 与 <code>/tmp/resolv.conf.d/resolv.conf.auto</code> 回退至主路由网关 + 公共 DNS（<code>223.5.5.5</code> / <code>119.29.29.29</code>），彻底解决停机期间旁路由自身 <code>ttyd CPD No internet</code> 无法解析域名的问题；待 <code>:7893</code> / <code>:7874</code> 就绪后再切回 <code>127.0.0.1</code>。</p>
+<ul><li><b>修复新装设备 <code>wait_for_ports_And_apply_nft</code> 挂载延迟（DIAG-3）</b></li></ul>
+<p><code>init.d/ai-link</code> 后台端口等待子进程增加 <code>trap &#x27;&#x27; HUP</code> 与 <code>&lt;/dev/null &gt;/dev/null 2&gt;&amp;1 &amp;</code> 标准流解耦（防止 SSH 会话退出时 <code>SIGHUP</code> 中断后台挂载），并在等待第 8s / 20s 检测到内核未起时自动触发重拉；<code>install.sh</code> 依赖检查补齐 <code>sing-box</code> 软件包检测。</p>
+<ul><li><b>面板与 LuCI 暴露真实内核离线红色告警横幅（P2）</b></li></ul>
+<p>修复 <code>build_routing_health()</code> 在内核离线时仍因历史测速缓存返回 <code>✅ 代理中</code> 的盲区；WebUI 新增顶部悬浮 <code>#core-offline-alert-banner</code> 与概览页 <code>#ov-core-offline-card</code> 醒目红色告警条及「🔄 一键重启内核」按钮，并将 <code>tuple(_get_live_singbox_pids())</code> 纳入 <code>/api/status</code> 缓存键实现毫秒级状态感知。</p>
+<ul><li><b>统一版本字段 <code>status.build_ver</code> 为 <code>1.0.3</code>（P3）</b></li></ul>
+<p><code>/api/status</code> 的 <code>build_ver</code> 由历史残留值 <code>2.0.0-r8-v24-nolo</code> 统一为 <code>APP_VERSION</code> (<code>&quot;1.0.3&quot;</code>)，全仓 7 处版本标识 100% 对齐为 <code>1.0.3</code>。</p>
+</article>
+<article class="log-item">
+  <div class="log-top">
+    <h2>v1.0.2</h2>
+    <span class="tag">历史</span>
+    <time>2026-10-26</time>
+  </div>
+  <p style="margin:2px 0 6px;color:var(--dim)"></p>
+<p>主题：<b>全量安全加固 + 启动与看门狗可靠性 + <code>.tgz</code> 归档上传恢复 + 跨架构兼容与自动化回归</b></p>
+<h3>🔐 安全加固（SEC-1\~SEC-5 &amp; B1-1\~B1-4）</h3>
+<ul><li><b>面板令牌不再随首页下发（SEC-1）</b></li></ul>
+<p>移除 <code>end_headers</code> 中对 <code>/</code> 请求下发 <code>Set-Cookie: ailink_token=&lt;有效令牌&gt;</code> 的缺陷；令牌仅在 <code>POST /api/login</code> 校验密码通过后签发，由前端保存在 <code>localStorage</code> 与 <code>Cookie</code>。</p>
+<ul><li><b><code>/api/status</code>、<code>/api/nodes/share_uri</code>、<code>/api/ops/logs</code> 鉴权与凭据脱敏闭环（SEC-2\~SEC-5）</b></li><li><code>/api/status</code> 按访问控制同一口径判定：未鉴权客户端脱敏回家节点的 <code>password</code> / <code>uuid</code> / <code>private_key</code> / <code>uri</code>（含 <code>uri</code> 内嵌明文凭据）及订阅 <code>?token=</code> 参数，并将鉴权状态与 <code>panel_auth.json</code> 纳入 wire-memo 缓存键；</li><li><code>GET /api/nodes/share_uri</code> 与 <code>GET /api/ops/logs</code> 强制校验 <code>_auth_ok()</code>，未授权请求一律返回 HTTP 401。</li><li><b>UCI 凭据零留存，彻底改为布尔 <code>panel_pwd_customized=0/1</code>（B1-2）</b></li></ul>
+<p><code>/etc/config/ai-link</code> 移除 <code>panel_secret</code> 字段，改用布尔 <code>option panel_pwd_customized &#x27;0&#x27;</code>；<code>install.sh</code> 升级时自动迁移并清除历史 <code>panel_secret</code>；CLI <code>ai-link password</code> 不再向 UCI 写入任何明文或哈希串。</p>
+<ul><li><b>永久下线弱默认密码 <code>admin</code>（B1-3）</b></li></ul>
+<p>出厂状态仅接受 <code>ai-link-2026</code> 作为初始密码，彻底禁用弱口令 <code>admin</code>；面板登录弹窗移除预填明文 value。</p>
+<ul><li><b>内网免密风险提示与自动登录引导（B1-1）</b></li></ul>
+<p><code>/api/status</code> 新增 <code>auth_required</code> 与 <code>pwd_customized</code> 状态位，未鉴权打开面板自动弹出登录窗；WebUI 设置页新增 <code>#lan-auth-security-notice</code> 动态安全风险警示条；LuCI 新增 <code>require_lan_auth</code> 开关并与 <code>ops_settings.json</code> 双向同步。</p>
+<h3>🚀 启动可靠性与防黑洞看门狗（BOOT-1 / CORE-1 / RB-1 / B1-4 / B3-12）</h3>
+<ul><li><b>多栈端口就绪探针（BOOT-1 &amp; B3-12）</b></li></ul>
+<p><code>init.d/ai-link</code> 的 <code>port_is_listening()</code> 采用 <code>netstat</code> → <code>ss</code> → <code>/proc/net/tcp{,6}</code> 三级探针，同时比对大小写十六进制端口（消除精简版 BusyBox <code>awk toupper()</code> 依赖），等待预算放宽至 60 秒（<code>AI_LINK_PORT_WAIT</code> 可覆盖）。</p>
+<ul><li><b>修复 BusyBox <code>pgrep</code> 探针与全仓进程匹配（CORE-1 &amp; B3-12）</b></li></ul>
+<p><code>init.d/ai-link</code> 统一使用 <code>singbox_alive()</code>（<code>pidof sing-box</code> + <code>pgrep -f</code> 兜底）并动态解析 <code>command -v sing-box</code>；全仓 <code>install.sh</code> / <code>uninstall.sh</code> / <code>usr/bin/ai-link</code> 统一使用 <code>pgrep -f &quot;ai-link-dae[m]on.py&quot;</code> 防止 shell 自匹配误杀。</p>
+<ul><li><b>看门狗与 <code>restore_proxy</code> 挂载 nftables 前强制校验端口（B1-4）</b></li></ul>
+<p><code>ensure_nft_and_routing_intact()</code>、<code>restore_proxy()</code> 及 <code>update_ops_settings()</code> 在挂载 <code>table inet ai_link</code> 前强制校验 TProxy <code>:7893</code> 端口监听状态，核心未就绪时跳过挂载以杜绝局域网断网黑洞。</p>
+<ul><li><b>在线升级回滚立即恢复透明代理（RB-1）</b></li></ul>
+<p>OTA 回滚段在重启服务后主动调用 <code>/etc/init.d/ai-link restore_proxy</code>，消除约 10 秒的透明代理空窗。</p>
+<h3>📦 备份恢复与在线更新增强（B2-6 \~ B2-11）</h3>
+<ul><li><b>面板与 LuCI 支持 <code>.tgz</code> / <code>.json</code> 浏览器直接上传恢复与 <code>.tgz</code> 归档下载（B2-6）</b></li></ul>
+<p>新增 <code>GET /api/ops/backup_archive</code>（一键导出 <code>.tgz</code> 全量归档）并升级 <code>POST /api/ops/restore_archive</code> 支持浏览器直接上传 <code>.tgz</code> / <code>.tar.gz</code> 或 <code>.json</code> 备份恢复，内置 <code>tarfile</code> 路径穿越（<code>..</code>）、非普通文件与 100MB 解压上限安全校验，且仅在校验与恢复成功后更新持久化备份。</p>
+<ul><li><b>新增 <code>ai-link restore &lt;file|--latest&gt;</code> CLI 命令行恢复入口（B2-7）</b></li></ul>
+<p>支持通过命令行直接传入 <code>.tgz</code> 归档或 <code>.json</code> 备份文件完成全量恢复与服务重载（<code>ai-link-daemon.py --restore &lt;file&gt;</code>）。</p>
+<ul><li><b>OTA 升级进度闪存持久化（B2-8）</b></li></ul>
+<p>升级脚本将实时进度双写至 <code>/root/ai-link-final-backup/last_update_progress.log</code>，设备断电重启导致 <code>/var/run</code> tmpfs 丢失后仍可自动还原升级中断状态。</p>
+<ul><li><b><code>auto_nodes.json</code> 剥离实时探测噪声（B2-9）</b></li></ul>
+<p>落盘时通过 <code>_strip_auto_node_runtime_fields()</code> 剔除 <code>quality_ranking</code>、<code>last_check_ts</code>、<code>members</code> 等高频探测字段（读取时动态注入内存），跨探测周期文件 MD5 保持 100% 恒定。</p>
+<ul><li><b>自定义更新源域名与冷启动提示（B2-10 &amp; B2-11）</b></li></ul>
+<p><code>ops_settings</code> 白名单新增 <code>update_manifest_url</code> 支持绑定自有域名作为第一优先级 OTA 清单源，并与 UCI 删除/修改双向同步；界面与文档保留 v1.0.0 首次手动升级说明。</p>
+<h3>🛠 工程与验证工具链（TOOL-1\~3 / HYG-1 / TEST-1 / B3-13\~14 / B4-16\~20）</h3>
+<ul><li><b>Clash API 负缓存断路器（B4-20）</b>：<code>clash_api_request()</code> 新增 <code>_CLASH_API_DOWN_UNTIL</code> 断路器与 Linux <code>/proc/net/tcp</code> 零套接字权威判定，无 Clash API 环境下 <code>--self-test --strict</code> 耗时 &lt; 1.5s。</li><li><b>发布与核对工具链增强（TOOL-1\~3 &amp; B4-16\~17）</b>：修复 <code>release.py</code> 7 处版本同步正则与门禁校验，支持自动检测工作区仓库与同版本预置发布；<code>verify_online.py</code> 支持进程环境变量覆盖。</li><li><b>全链路 E2E 与无头浏览器 UI 自动化回归（B3-13 &amp; B3-14）</b>：新增 <code>test_v102_full_regression.py</code>（42 项断言），覆盖真实 HTTP 服务端密码登录/改密/鉴权、<code>.tgz</code> 上传恢复及 Headless Chromium 浏览器 UI 渲染与交互验证。</li></ul>
+</article>
+<article class="log-item">
+  <div class="log-top">
+    <h2>v1.0.1</h2>
+    <span class="tag">历史</span>
+    <time>2026-10-26</time>
+  </div>
+  <p style="margin:2px 0 6px;color:var(--dim)"></p>
+<p>主题：<b>服务总开关 + 在线更新体系 + 面板密码安全修复</b></p>
+<h3>⚙️ 服务总开关（新功能）</h3>
+<ul><li><b>LuCI 概览页顶部新增「服务总开关」卡片</b>，实时显示并控制服务生命周期：</li><li>状态徽章：<code>● 运行中</code> / <code>◐ 部分运行（内核未起）</code> / <code>⏹ 已停止</code></li><li>元信息：开机自启、透明代理接管、nftables 挂载、面板端口</li><li>四个动作按钮：<b>启动服务 / 停止服务 / 重启服务 / 开机自启开关</b></li><li><b>关键设计：这条通路不依赖 <code>:9099</code> 面板。</b></li></ul>
+<p>它走 LuCI 自己的 <code>fs.exec</code> → <code>/etc/init.d/ai-link svc_state|start|stop|restart</code>，</p>
+<p>所以<b>即使守护进程已经停了，也能在 LuCI 里一键把它拉起来</b>，不需要 SSH。</p>
+<ul><li><b>修复死锁</b>：此前若服务被 <code>stop</code> 掉，LuCI 概览页所有按钮全部失效（它们都调 <code>:9099</code> 的 API），</li></ul>
+<p>而「启用 AI-LINK 透明代理服务」这个勾选框只管流量接管、不管进程启停，导致用户无处可恢复。</p>
+<ul><li><b><code>enabled</code> 语义澄清</b>：该开关只控制「是否接管流量」；进程启停由新的总开关负责。</li></ul>
+<p>卡片下方有明确文案区分两者，避免再混淆。</p>
+<ul><li><b><code>reload_service()</code> 兜底</b>：<code>enabled=1</code> 时若 daemon 或 sing-box 任一未运行，直接整体 <code>start</code>，</li></ul>
+<p>不再依赖「reload 只重载运行中实例」的旧行为。</p>
+<ul><li><b>独立面板同步</b>：设置页新增服务状态卡片（运行中 / 开机自启 / nftables / 端口）+「🔄 重启服务」按钮，</li></ul>
+<p>5 秒自动刷新。</p>
+<ul><li><b>新增 init 动作 <code>svc_state</code></b>：输出单行 <code>daemon= core= nft= enabled= boot= bypass= port=</code>，</li></ul>
+<p>供 LuCI 与面板统一解析。</p>
+<h3>🔐 安全修复</h3>
+<ul><li><b>修复：LuCI 概览页「面板密码」显示为一串 <code>sha256:xxxx</code> 哈希</b></li><li>根因一：改密后 <code>ai-link.global.panel_secret</code> 被写入 <code>sha256:&lt;hash前24位&gt;</code>，而 LuCI 直接把它当密码显示。</li><li>根因二（更严重）：<code>--self-test</code> 用临时目录调用改密函数，但函数体无条件 <code>uci set</code>，导致<b>每次安装自检 / <code>ai-link probe</code> 都会把生产环境的 <code>panel_secret</code> 覆盖成测试串 <code>custom-secret-2026</code> 的哈希</b>。</li><li><b>修复：哈希串可直接当密码登录</b></li></ul>
+<p><code>_verify_panel_password</code> 中的 <code>candidate_pw == get_uci_panel_secret()</code> 已移除；UCI 里只有「明文初始密码」才允许直通比对。</p>
+<ul><li><b>修复：哈希串可直接当 Bearer 令牌绕过登录</b></li></ul>
+<p><code>_is_request_authenticated</code> 中的 <code>tok == get_uci_panel_secret()</code> 已移除，令牌只认 <code>panel_auth.json</code> / <code>panel_token</code> 里签发过的值。</p>
+<ul><li><b>修复：<code>panel_auth.json</code> 丢失后用户被锁死</b></li></ul>
+<p>旧逻辑会用 UCI 里的哈希当初始密码重建，导致真实密码彻底失效。现在回退到默认密码 <code>ai-link-2026</code>，用户可进面板重设。</p>
+<ul><li><b>新增：LuCI 专用桥接令牌 <code>luci_bridge_token</code></b></li></ul>
+<p>与面板密码完全解耦的 32 位随机串，仅用于 LuCI 页面调用面板 API；改面板密码不会影响它，它也不能用来登录面板。</p>
+<ul><li><b>加固：<code>ai-link password</code> 成功后不再回显明文密码</b>，只提示字符数。</li></ul>
+<h3>⬆️ 在线更新体系（新功能）</h3>
+<ul><li><b>LuCI 概览页新增「插件版本与在线更新」卡片</b>：显示当前版本、检查更新、立即更新、进度条与实时日志、更新说明入口。</li><li><b>独立控制面板新增同款卡片</b>，位于「核心规则库与订阅更新」上方。</li><li><b>新增 CLI 命令</b>：</li><li><code>ai-link update</code> —— 只检查是否有新版本</li><li><code>ai-link update --apply</code> —— 检查并直接在线升级（带实时进度输出）</li><li><b>新增 API 端点</b>：</li></ul>
+<p>| 方法 | 路径 | 说明 |</p>
+<p>| ----- | ----- | ----- |</p>
+<p>| GET | <code>/api/system/version</code> | 当前版本、构建号、清单源列表 |</p>
+<p>| GET | <code>/api/system/update/check</code> | 拉取版本清单并比较（<code>?force=1</code> 跳过 5 分钟缓存） |</p>
+<p>| GET | <code>/api/system/update/status</code> | 升级进度与最近日志 |</p>
+<p>| POST | <code>/api/system/update/apply</code> | 启动升级 |</p>
+<p>| POST | <code>/api/system/update/ack</code> | 清除已完成的升级结果 |</p>
+<ul><li><b>升级流程（八步，全程可观测）</b>：</li><li>拉取 <code>version.json</code>（Cloudflare Pages 主源 → gh_mirror 镜像 → GitHub raw 直连，自动重试）</li><li>下载升级包（清单内多个下载源依次重试）</li><li><b>校验包大小 + MD5 + SHA256</b>，任一不符立即中止，绝不执行未校验的包</li><li>解压并校验包结构（必须含 <code>install.sh</code> 与 <code>root/</code>）</li><li>备份用户配置到 <code>/root/ai-link-final-backup/pre-update-v{版本}-{时间戳}.tgz</code>（自动保留最近 3 份）；空间充足时额外备份旧代码用于回滚</li><li>执行 <code>install.sh --upgrade</code>（保留用户配置与已装附加组件）</li><li>重启服务并做健康检查（最多 10 次轮询 <code>/api/status</code>）</li><li>健康检查失败 → <b>自动回滚</b>用户配置与旧代码，并再次验证</li><li><b>升级进程与 daemon 解耦</b>：升级脚本用 <code>setsid</code> 脱离 daemon 会话，<code>install.sh</code> 重启服务不会把它杀掉；进度落盘到 <code>/var/run/ai-link/update/progress.log</code>，重启后新 daemon 接着读，用户能看到完整结果。</li><li><b>安全护栏</b>：清单缺少 MD5 时直接拒绝升级；同一时间只允许一个升级任务；升级中重复点击会被拒绝。</li></ul>
+<h3>🛠 安装脚本</h3>
+<ul><li>新增 <code>install.sh --upgrade</code> 升级模式：</li><li>不再停止/禁用其他代理服务（避免误伤用户后装的组件）</li><li><b>不再删除音乐解锁组件</b>（原安装流程会 <code>rm -rf</code> 掉，升级时会造成&quot;静默卸载&quot;）</li><li>其余流程保持幂等，用户配置与 UCI 设置全部保留</li></ul>
+<h3>📦 版本号统一</h3>
+<ul><li>全量版本号由 <code>1.0.0</code> 升至 <code>1.0.1</code>，统一来源为 daemon 内的 <code>APP_VERSION</code> 常量；启动时同步写入 <code>ai-link.global.app_version</code> 供 LuCI / CLI / 面板读取。</li><li><code>/etc/ai-link/version</code> 更新为 <code>1.0.1 (20261026)</code>。</li></ul>
+<h3>✅ 验证</h3>
+<ul><li>面板密码缺陷 A/B 对照：补丁前「哈希当密码 ✓ / 哈希当令牌 ✓ / auth 丢失后哈希可登 ✓」→ 补丁后三项全部拒绝，真实密码与真实令牌未回归。</li><li>静态门禁：<code>py_compile</code> ✓、<code>node --check</code> ✓、<code>bash -n</code>（install.sh / usr/bin/ai-link / 生成的升级脚本）✓、symtable 未定义符号 0 ✓、HTML div 配平 0 ✓。</li><li>OTA 版本比较 7 条用例全通过（含 <code>v</code> 前缀、预发布版语义）。</li></ul>
+</article>
+<article class="log-item">
+  <div class="log-top">
+    <h2>v1.0.0</h2>
+    <span class="tag">历史</span>
+    <time>2026-10-25</time>
+  </div>
+  <p style="margin:2px 0 6px;color:var(--dim)"></p>
+<p>首个正式版</p>
+<ul><li>纯血 Sing-box 单内核架构（移除 mihomo 遗留路径）</li><li>五种分流模式：<code>shunt</code> / <code>gfw_list</code> / <code>global</code> / <code>direct</code> / <code>homelink</code></li><li>智能双栈 DNS（:7874 上游 + 海外 AAAA 剥离 + 国内原生 IPv6）</li><li>国内 IP 硬件级入口直连（Entry Bypass）+ 旁路由对称 NAT 断流保护</li><li>回家节点（VLESS-Reality / Hysteria2）</li><li>净网黑洞拦截、DNS 重写与过滤库</li><li>独立全功能控制面板（:9099）+ LuCI 概览页</li><li>一键恢复出厂、备份归档与恢复、彻底卸载</li><li>跨平台安装：x86_64 / aarch64 / armv7 / mipsel / riscv64，opkg + apk 双栈</li></ul>
+</article>
+</main>
 
-    <!-- ================= v1.0.3 ================= -->
-    <article id="v1.0.3" class="card rounded-2xl p-6 md:p-7">
-      <div class="flex flex-wrap items-center gap-3 mb-1">
-        <h2 class="text-2xl font-extrabold text-white">v1.0.3</h2>
-        <span class="tag bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">最新</span>
-        <span class="tag bg-rose-500/15 text-rose-300 border border-rose-500/30">安全更新</span>
-        <span class="tag bg-sky-500/15 text-sky-300 border border-sky-500/30">稳定性</span>
-        <span class="ml-auto text-xs text-slate-500 font-mono">2026-10-26</span>
-      </div>
-      <p class="text-sm text-slate-400 mb-6">主题：<strong class="text-slate-200"><b>双机实测根因深度修复（10.10.10.7 &amp; 192.168.100.37）· 彻底终结 Sing-box 内核掉线与全网黑洞</b></strong></p>
-      <h3 class="text-sm font-bold text-cyan-300 mb-3">🛡️ 核心引擎防掉线与自愈闭环（P0-1 ~ P0-3）</h3>
-      <ul class="list-disc pl-5 space-y-2 text-[13px] text-slate-300 leading-relaxed mb-5">
-        <li><b>解除 procd 1 小时 6 次重启放弃配额（P0-1）</b></li>
-      <p class="text-[13px] text-slate-400 leading-relaxed mb-2"><code class="text-cyan-300">/etc/init.d/ai-link</code> 中 <code class="text-cyan-300">ai-link-daemon</code> 与 <code class="text-cyan-300">ai-link-core</code> 的重启策略由 <code class="text-cyan-300">respawn 3600 5 5</code> 调整为 <code class="text-cyan-300">respawn 0 5 0</code>（无限重试、5 秒退避），彻底根除因日常分流调整触发主动重启与异常退出共用配额导致的 <code class="text-cyan-300">Instance ai-link::ai-link-core s in a crash loop 6 crashes</code> 永久放弃拉起问题；同时新增 <code class="text-cyan-300">/etc/init.d/ai-link restart_core</code> 独立恢复命令，在不中断 9099 面板守护进程的前提下重置并拉起内核。</p>
-        <li><b>看门狗新增 Sing-box 进程存活守护（P0-2）</b></li>
-      <p class="text-[13px] text-slate-400 leading-relaxed mb-2"><code class="text-cyan-300">_telemetry_and_watchdog_loop</code> 新增 <code class="text-cyan-300">ensure_core_alive_and_recover()</code>（每 15 秒巡检 <code class="text-cyan-300">_get_live_singbox_pids()</code>，自动过滤僵尸进程 <code class="text-cyan-300">State: Z</code> 与 <code class="text-cyan-300">version</code>/<code class="text-cyan-300">check</code>/<code class="text-cyan-300">rule-set</code> 短期辅助进程）。检测到内核进程意外缺失且未处于重构重载窗口时，立即记录日志 <code class="text-cyan-300">Watchdog: core process missing; restarting service.</code> 并自动调用 <code class="text-cyan-300">_respawn_core_only()</code> / <code class="text-cyan-300">restart_core</code> 恢复内核。</p>
-        <li><b>内核离线立即撤除 nftables 与策略路由防黑洞（P0-3）</b></li>
-      <p class="text-[13px] text-slate-400 leading-relaxed mb-2"><code class="text-cyan-300">ensure_nft_and_routing_intact()</code> 新增 <code class="text-cyan-300">_teardown_blackhole_nft_and_routing()</code>：一旦检测到 <code class="text-cyan-300">sing-box</code> 进程不在或 <code class="text-cyan-300">:7893</code> 端口未监听，立即主动删除 <code class="text-cyan-300">table inet ai_link</code>、清理 <code class="text-cyan-300">ip rule fwmark 0x162 table 162</code> 并回退 <code class="text-cyan-300">dnsmasq</code> 上游，使局域网与旁路由自身平滑退回直连上网（彻底消除 <code class="text-cyan-300">curl 000</code> 全网黑洞）；待内核恢复监听后自动重挂透明代理。同时 <code class="text-cyan-300">_sync_ipv6_policy_routing()</code> 增加前置内核与端口存活断言。</p>
-</ul>
-      <h3 class="text-sm font-bold text-cyan-300 mb-3">⚡ 幂等配置重载、指纹非易失持久化与启动防抢杀（P1-1 ~ P1-3）</h3>
-      <ul class="list-disc pl-5 space-y-2 text-[13px] text-slate-300 leading-relaxed mb-5">
-        <li><b>全端点规则指纹比对，幂等操作零重启（P1-1）</b></li>
-      <p class="text-[13px] text-slate-400 leading-relaxed mb-2">增强 <code class="text-cyan-300">_compute_core_rules_fingerprint()</code>（覆盖 <code class="text-cyan-300">route</code>、<code class="text-cyan-300">dns</code>、<code class="text-cyan-300">inbounds</code>、选择器成员拓扑与代理出站定义，排除可通过 Clash API 热切换的 <code class="text-cyan-300">default</code> 字段）。在 <code class="text-cyan-300">schedule_async_core_reload()</code>、<code class="text-cyan-300">reload_core_only()</code> 以及 <code class="text-cyan-300">/api/shunt/reorder</code>、<code class="text-cyan-300">/api/shunt/custom_rule</code>、<code class="text-cyan-300">/api/dns/rewrite</code>、<code class="text-cyan-300">/api/dns/filter/toggle</code> 等端点前置比较操作前后指纹：若拓扑规则未变化（如原样提交分流顺序），自动降级为 <code class="text-cyan-300">hot_selector</code> 热更新，绝不杀内核进程（<code class="text-cyan-300">requires_core_respawn=False</code>）。</p>
-        <li><b>规则指纹持久化至非 tmpfs <code class="text-cyan-300">/etc/ai-link/.applied_core_rule_hash</code>（P1-2）</b></li>
-      <p class="text-[13px] text-slate-400 leading-relaxed mb-2"><code class="text-cyan-300">_record_applied_core_rule_hash()</code> 与 <code class="text-cyan-300">_get_applied_core_rule_hash()</code> 双写 <code class="text-cyan-300">/etc/ai-link/.applied_core_rule_hash</code> 与 <code class="text-cyan-300">/var/run/ai-link/applied_core_rule_hash.txt</code>；设备重启或 tmpfs 清空后自动从持久化文件恢复指纹，避免开机首次巡检误判「规则脏」而多杀一次内核。</p>
-        <li><b>消除启动期 <code class="text-cyan-300">context canceled</code> 抢杀与 <code class="text-cyan-300">.srs</code> 原子编译（Path ④）</b></li>
-      <p class="text-[13px] text-slate-400 leading-relaxed mb-2"><code class="text-cyan-300">reload_core_only()</code> 新增 <code class="text-cyan-300">_get_min_singbox_proc_age()</code> 启动保护窗口（进程刚拉起 <code class="text-cyan-300"><6.5s</code> 时先等待 Clash API 就绪而不发送 <code class="text-cyan-300">SIGTERM</code>）；<code class="text-cyan-300">blocklist_custom.srs</code> 改为编译至临时文件后 <code class="text-cyan-300">os.replace()</code> 原子替换；<code class="text-cyan-300">--daemon</code> 启动时若 <code class="text-cyan-300">sing-box.json</code> 已在 25 秒内由 <code class="text-cyan-300">init.d</code> 生成则跳过重复写盘。</p>
-        <li><b><code class="text-cyan-300">install.sh</code> 与 OTA 升级脚本增加真实健康断言（P1-3）</b></li>
-      <p class="text-[13px] text-slate-400 leading-relaxed mb-2">安装与升级收尾阶段强制校验 <code class="text-cyan-300">pidof sing-box</code> 及 <code class="text-cyan-300">:7890</code> / <code class="text-cyan-300">:7893</code> 端口监听状态（未就绪时自动触发一次 <code class="text-cyan-300">restart_core</code> 自愈），输出 <code class="text-cyan-300">UPGRADE OK: core=... ports ok</code> 或 <code class="text-cyan-300">UPGRADE FAIL: ...</code>。</p>
-</ul>
-      <h3 class="text-sm font-bold text-cyan-300 mb-3">🌐 10.10.10.7 实测问题专项修复与面板可见性（DIAG-1 ~ DIAG-3 / P2 / P3）</h3>
-      <ul class="list-disc pl-5 space-y-2 text-[13px] text-slate-300 leading-relaxed mb-5">
-        <li><b>静默捕获客户端提前断开 <code class="text-cyan-300">BrokenPipeError</code>（DIAG-1）</b></li>
-      <p class="text-[13px] text-slate-400 leading-relaxed mb-2"><code class="text-cyan-300">AILinkRequestHandler</code> 的 <code class="text-cyan-300">handle_one_request</code>、<code class="text-cyan-300">finish</code>、<code class="text-cyan-300">_send_json</code>、<code class="text-cyan-300">_try_send_wire_memo</code>、<code class="text-cyan-300">do_OPTIONS</code> 统一捕获 <code class="text-cyan-300">(BrokenPipeError, ConnectionResetError, socket.timeout)</code>，消除浏览器刷新或中断请求时的堆栈刷屏。</p>
-        <li><b>停机/重启/内核离线期间保留旁路由自身 DNS 解析（DIAG-2）</b></li>
-      <p class="text-[13px] text-slate-400 leading-relaxed mb-2"><code class="text-cyan-300">init.d/ai-link</code> 与 <code class="text-cyan-300">ai-link-daemon.py</code> 新增 <code class="text-cyan-300">fallback_resolv_conf_direct()</code> / <code class="text-cyan-300">restore_resolv_conf_local()</code>：在服务停止、重启等待或内核离线窗口自动将 <code class="text-cyan-300">/etc/resolv.conf</code> 与 <code class="text-cyan-300">/tmp/resolv.conf.d/resolv.conf.auto</code> 回退至主路由网关 + 公共 DNS（<code class="text-cyan-300">223.5.5.5</code> / <code class="text-cyan-300">119.29.29.29</code>），彻底解决停机期间旁路由自身 <code class="text-cyan-300">ttyd CPD No internet</code> 无法解析域名的问题；待 <code class="text-cyan-300">:7893</code> / <code class="text-cyan-300">:7874</code> 就绪后再切回 <code class="text-cyan-300">127.0.0.1</code>。</p>
-        <li><b>修复新装设备 <code class="text-cyan-300">wait_for_ports_And_apply_nft</code> 挂载延迟（DIAG-3）</b></li>
-      <p class="text-[13px] text-slate-400 leading-relaxed mb-2"><code class="text-cyan-300">init.d/ai-link</code> 后台端口等待子进程增加 <code class="text-cyan-300">trap '' HUP</code> 与 <code class="text-cyan-300"></dev/null >/dev/null 2>&1 &</code> 标准流解耦（防止 SSH 会话退出时 <code class="text-cyan-300">SIGHUP</code> 中断后台挂载），并在等待第 8s / 20s 检测到内核未起时自动触发重拉；<code class="text-cyan-300">install.sh</code> 依赖检查补齐 <code class="text-cyan-300">sing-box</code> 软件包检测。</p>
-        <li><b>面板与 LuCI 暴露真实内核离线红色告警横幅（P2）</b></li>
-      <p class="text-[13px] text-slate-400 leading-relaxed mb-2">修复 <code class="text-cyan-300">build_routing_health()</code> 在内核离线时仍因历史测速缓存返回 <code class="text-cyan-300">✅ 代理中</code> 的盲区；WebUI 新增顶部悬浮 <code class="text-cyan-300">#core-offline-alert-banner</code> 与概览页 <code class="text-cyan-300">#ov-core-offline-card</code> 醒目红色告警条及「🔄 一键重启内核」按钮，并将 <code class="text-cyan-300">tuple(_get_live_singbox_pids())</code> 纳入 <code class="text-cyan-300">/api/status</code> 缓存键实现毫秒级状态感知。</p>
-        <li><b>统一版本字段 <code class="text-cyan-300">status.build_ver</code> 为 <code class="text-cyan-300">1.0.3</code>（P3）</b></li>
-      <p class="text-[13px] text-slate-400 leading-relaxed mb-2"><code class="text-cyan-300">/api/status</code> 的 <code class="text-cyan-300">build_ver</code> 由历史残留值 <code class="text-cyan-300">2.0.0-r8-v24-nolo</code> 统一为 <code class="text-cyan-300">APP_VERSION</code> (<code class="text-cyan-300">"1.0.3"</code>)，全仓 7 处版本标识 100% 对齐为 <code class="text-cyan-300">1.0.3</code>。</p>
-</ul>
-    </article>
-
-    <!-- ================= v1.0.2 ================= -->
-    <article id="v1.0.2" class="card rounded-2xl p-6 md:p-7">
-      <div class="flex flex-wrap items-center gap-3 mb-1">
-        <h2 class="text-2xl font-extrabold text-white">v1.0.2</h2>
-        <span class="tag bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">历史</span>
-        <span class="tag bg-rose-500/15 text-rose-300 border border-rose-500/30">安全更新</span>
-        <span class="tag bg-sky-500/15 text-sky-300 border border-sky-500/30">功能增强</span>
-        <span class="ml-auto text-xs text-slate-500 font-mono">2026-10-26</span>
-      </div>
-      <p class="text-sm text-slate-400 mb-6">主题：<strong class="text-slate-200"><b>全量安全加固 + 启动与看门狗可靠性 + <code class="text-cyan-300">.tgz</code> 归档上传恢复 + 跨架构兼容与自动化回归</b></strong></p>
-      <h3 class="text-sm font-bold text-cyan-300 mb-3">🔐 安全加固（SEC-1~SEC-5 &amp; B1-1~B1-4）</h3>
-      <ul class="list-disc pl-5 space-y-2 text-[13px] text-slate-300 leading-relaxed mb-5">
-        <li><b>面板令牌不再随首页下发（SEC-1）</b></li>
-      <p class="text-[13px] text-slate-400 leading-relaxed mb-2">移除 <code class="text-cyan-300">end_headers</code> 中对 <code class="text-cyan-300">/</code> 请求下发 <code class="text-cyan-300">Set-Cookie: ailink_token=<有效令牌></code> 的缺陷；令牌仅在 <code class="text-cyan-300">POST /api/login</code> 校验密码通过后签发，由前端保存在 <code class="text-cyan-300">localStorage</code> 与 <code class="text-cyan-300">Cookie</code>。</p>
-        <li><b><code class="text-cyan-300">/api/status</code>、<code class="text-cyan-300">/api/nodes/share_uri</code>、<code class="text-cyan-300">/api/ops/logs</code> 鉴权与凭据脱敏闭环（SEC-2~SEC-5）</b></li>
-      <p class="text-[13px] text-slate-400 leading-relaxed mb-2">- <code class="text-cyan-300">/api/status</code> 按访问控制同一口径判定：未鉴权客户端脱敏回家节点的 <code class="text-cyan-300">password</code> / <code class="text-cyan-300">uuid</code> / <code class="text-cyan-300">private_key</code> / <code class="text-cyan-300">uri</code>（含 <code class="text-cyan-300">uri</code> 内嵌明文凭据）及订阅 <code class="text-cyan-300">?token=</code> 参数，并将鉴权状态与 <code class="text-cyan-300">panel_auth.json</code> 纳入 wire-memo 缓存键；</p>
-      <p class="text-[13px] text-slate-400 leading-relaxed mb-2">- <code class="text-cyan-300">GET /api/nodes/share_uri</code> 与 <code class="text-cyan-300">GET /api/ops/logs</code> 强制校验 <code class="text-cyan-300">_auth_ok()</code>，未授权请求一律返回 HTTP 401。</p>
-        <li><b>UCI 凭据零留存，彻底改为布尔 <code class="text-cyan-300">panel_pwd_customized=0/1</code>（B1-2）</b></li>
-      <p class="text-[13px] text-slate-400 leading-relaxed mb-2"><code class="text-cyan-300">/etc/config/ai-link</code> 移除 <code class="text-cyan-300">panel_secret</code> 字段，改用布尔 <code class="text-cyan-300">option panel_pwd_customized '0'</code>；<code class="text-cyan-300">install.sh</code> 升级时自动迁移并清除历史 <code class="text-cyan-300">panel_secret</code>；CLI <code class="text-cyan-300">ai-link password</code> 不再向 UCI 写入任何明文或哈希串。</p>
-        <li><b>永久下线弱默认密码 <code class="text-cyan-300">admin</code>（B1-3）</b></li>
-      <p class="text-[13px] text-slate-400 leading-relaxed mb-2">出厂状态仅接受 <code class="text-cyan-300">ai-link-2026</code> 作为初始密码，彻底禁用弱口令 <code class="text-cyan-300">admin</code>；面板登录弹窗移除预填明文 value。</p>
-        <li><b>内网免密风险提示与自动登录引导（B1-1）</b></li>
-      <p class="text-[13px] text-slate-400 leading-relaxed mb-2"><code class="text-cyan-300">/api/status</code> 新增 <code class="text-cyan-300">auth_required</code> 与 <code class="text-cyan-300">pwd_customized</code> 状态位，未鉴权打开面板自动弹出登录窗；WebUI 设置页新增 <code class="text-cyan-300">#lan-auth-security-notice</code> 动态安全风险警示条；LuCI 新增 <code class="text-cyan-300">require_lan_auth</code> 开关并与 <code class="text-cyan-300">ops_settings.json</code> 双向同步。</p>
-</ul>
-      <h3 class="text-sm font-bold text-cyan-300 mb-3">🚀 启动可靠性与防黑洞看门狗（BOOT-1 / CORE-1 / RB-1 / B1-4 / B3-12）</h3>
-      <ul class="list-disc pl-5 space-y-2 text-[13px] text-slate-300 leading-relaxed mb-5">
-        <li><b>多栈端口就绪探针（BOOT-1 & B3-12）</b></li>
-      <p class="text-[13px] text-slate-400 leading-relaxed mb-2"><code class="text-cyan-300">init.d/ai-link</code> 的 <code class="text-cyan-300">port_is_listening()</code> 采用 <code class="text-cyan-300">netstat</code> → <code class="text-cyan-300">ss</code> → <code class="text-cyan-300">/proc/net/tcp{,6}</code> 三级探针，同时比对大小写十六进制端口（消除精简版 BusyBox <code class="text-cyan-300">awk toupper()</code> 依赖），等待预算放宽至 60 秒（<code class="text-cyan-300">AI_LINK_PORT_WAIT</code> 可覆盖）。</p>
-        <li><b>修复 BusyBox <code class="text-cyan-300">pgrep</code> 探针与全仓进程匹配（CORE-1 & B3-12）</b></li>
-      <p class="text-[13px] text-slate-400 leading-relaxed mb-2"><code class="text-cyan-300">init.d/ai-link</code> 统一使用 <code class="text-cyan-300">singbox_alive()</code>（<code class="text-cyan-300">pidof sing-box</code> + <code class="text-cyan-300">pgrep -f</code> 兜底）并动态解析 <code class="text-cyan-300">command -v sing-box</code>；全仓 <code class="text-cyan-300">install.sh</code> / <code class="text-cyan-300">uninstall.sh</code> / <code class="text-cyan-300">usr/bin/ai-link</code> 统一使用 <code class="text-cyan-300">pgrep -f "ai-link-dae[m]on.py"</code> 防止 shell 自匹配误杀。</p>
-        <li><b>看门狗与 <code class="text-cyan-300">restore_proxy</code> 挂载 nftables 前强制校验端口（B1-4）</b></li>
-      <p class="text-[13px] text-slate-400 leading-relaxed mb-2"><code class="text-cyan-300">ensure_nft_and_routing_intact()</code>、<code class="text-cyan-300">restore_proxy()</code> 及 <code class="text-cyan-300">update_ops_settings()</code> 在挂载 <code class="text-cyan-300">table inet ai_link</code> 前强制校验 TProxy <code class="text-cyan-300">:7893</code> 端口监听状态，核心未就绪时跳过挂载以杜绝局域网断网黑洞。</p>
-        <li><b>在线升级回滚立即恢复透明代理（RB-1）</b></li>
-      <p class="text-[13px] text-slate-400 leading-relaxed mb-2">OTA 回滚段在重启服务后主动调用 <code class="text-cyan-300">/etc/init.d/ai-link restore_proxy</code>，消除约 10 秒的透明代理空窗。</p>
-</ul>
-      <h3 class="text-sm font-bold text-cyan-300 mb-3">📦 备份恢复与在线更新增强（B2-6 ~ B2-11）</h3>
-      <ul class="list-disc pl-5 space-y-2 text-[13px] text-slate-300 leading-relaxed mb-5">
-        <li><b>面板与 LuCI 支持 <code class="text-cyan-300">.tgz</code> / <code class="text-cyan-300">.json</code> 浏览器直接上传恢复与 <code class="text-cyan-300">.tgz</code> 归档下载（B2-6）</b></li>
-      <p class="text-[13px] text-slate-400 leading-relaxed mb-2">新增 <code class="text-cyan-300">GET /api/ops/backup_archive</code>（一键导出 <code class="text-cyan-300">.tgz</code> 全量归档）并升级 <code class="text-cyan-300">POST /api/ops/restore_archive</code> 支持浏览器直接上传 <code class="text-cyan-300">.tgz</code> / <code class="text-cyan-300">.tar.gz</code> 或 <code class="text-cyan-300">.json</code> 备份恢复，内置 <code class="text-cyan-300">tarfile</code> 路径穿越（<code class="text-cyan-300">..</code>）、非普通文件与 100MB 解压上限安全校验，且仅在校验与恢复成功后更新持久化备份。</p>
-        <li><b>新增 <code class="text-cyan-300">ai-link restore <file|--latest></code> CLI 命令行恢复入口（B2-7）</b></li>
-      <p class="text-[13px] text-slate-400 leading-relaxed mb-2">支持通过命令行直接传入 <code class="text-cyan-300">.tgz</code> 归档或 <code class="text-cyan-300">.json</code> 备份文件完成全量恢复与服务重载（<code class="text-cyan-300">ai-link-daemon.py --restore <file></code>）。</p>
-        <li><b>OTA 升级进度闪存持久化（B2-8）</b></li>
-      <p class="text-[13px] text-slate-400 leading-relaxed mb-2">升级脚本将实时进度双写至 <code class="text-cyan-300">/root/ai-link-final-backup/last_update_progress.log</code>，设备断电重启导致 <code class="text-cyan-300">/var/run</code> tmpfs 丢失后仍可自动还原升级中断状态。</p>
-        <li><b><code class="text-cyan-300">auto_nodes.json</code> 剥离实时探测噪声（B2-9）</b></li>
-      <p class="text-[13px] text-slate-400 leading-relaxed mb-2">落盘时通过 <code class="text-cyan-300">_strip_auto_node_runtime_fields()</code> 剔除 <code class="text-cyan-300">quality_ranking</code>、<code class="text-cyan-300">last_check_ts</code>、<code class="text-cyan-300">members</code> 等高频探测字段（读取时动态注入内存），跨探测周期文件 MD5 保持 100% 恒定。</p>
-        <li><b>自定义更新源域名与冷启动提示（B2-10 & B2-11）</b></li>
-      <p class="text-[13px] text-slate-400 leading-relaxed mb-2"><code class="text-cyan-300">ops_settings</code> 白名单新增 <code class="text-cyan-300">update_manifest_url</code> 支持绑定自有域名作为第一优先级 OTA 清单源，并与 UCI 删除/修改双向同步；界面与文档保留 v1.0.0 首次手动升级说明。</p>
-</ul>
-      <h3 class="text-sm font-bold text-cyan-300 mb-3">🛠 工程与验证工具链（TOOL-1~3 / HYG-1 / TEST-1 / B3-13~14 / B4-16~20）</h3>
-      <ul class="list-disc pl-5 space-y-2 text-[13px] text-slate-300 leading-relaxed mb-5">
-        <li><b>Clash API 负缓存断路器（B4-20）</b>：<code class="text-cyan-300">clash_api_request()</code> 新增 <code class="text-cyan-300">_CLASH_API_DOWN_UNTIL</code> 断路器与 Linux <code class="text-cyan-300">/proc/net/tcp</code> 零套接字权威判定，无 Clash API 环境下 <code class="text-cyan-300">--self-test --strict</code> 耗时 < 1.5s。</li>
-        <li><b>发布与核对工具链增强（TOOL-1~3 & B4-16~17）</b>：修复 <code class="text-cyan-300">release.py</code> 7 处版本同步正则与门禁校验，支持自动检测工作区仓库与同版本预置发布；<code class="text-cyan-300">verify_online.py</code> 支持进程环境变量覆盖。</li>
-        <li><b>全链路 E2E 与无头浏览器 UI 自动化回归（B3-13 & B3-14）</b>：新增 <code class="text-cyan-300">test_v102_full_regression.py</code>（42 项断言），覆盖真实 HTTP 服务端密码登录/改密/鉴权、<code class="text-cyan-300">.tgz</code> 上传恢复及 Headless Chromium 浏览器 UI 渲染与交互验证。</li>
-</ul>
-    </article>
-
-    <!-- ================= v1.0.1 ================= -->
-    <article id="v1.0.1" class="card rounded-2xl p-6 md:p-7">
-      <div class="flex flex-wrap items-center gap-3 mb-1">
-        <h2 class="text-2xl font-extrabold text-white">v1.0.1</h2>
-        <span class="tag bg-slate-700/60 text-slate-300 border border-slate-600">历史</span>
-        <span class="tag bg-rose-500/15 text-rose-300 border border-rose-500/30">安全更新</span>
-        <span class="tag bg-sky-500/15 text-sky-300 border border-sky-500/30">新功能</span>
-        <span class="ml-auto text-xs text-slate-500 font-mono">2026-10-26</span>
-      </div>
-      <p class="text-sm text-slate-400 mb-6">主题：<strong class="text-slate-200">在线更新体系 + 面板密码安全修复</strong></p>
-
-      <section class="mb-6">
-        <h3 class="text-sm font-bold text-cyan-300 mb-3 flex items-center gap-2">⚙️ 服务总开关（新功能）</h3>
-        <p class="text-[13px] text-slate-400 leading-relaxed mb-3">
-          v1.0.0 有个隐藏死锁：服务一旦被停掉，LuCI 概览页<b class="text-slate-200">所有按钮全部失效</b>——因为它们都去调
-          <code class="text-slate-300">:9099</code> 的 API，而面板已经没了；「启用透明代理」那个勾选框只管流量接管、不管进程启停，
-          用户勾了也没用，只能 SSH 进去手动 <code class="text-slate-300">start</code>。
-        </p>
-        <div class="rounded-xl bg-slate-950/60 border border-slate-800 p-4 mb-3">
-          <div class="text-xs font-bold text-slate-300 mb-2">LuCI 概览页顶部新增独立卡片</div>
-          <ul class="grid sm:grid-cols-2 gap-2 text-[12.5px] text-slate-400">
-            <li><span class="text-cyan-400">●</span> 状态徽章：<b class="text-slate-200">运行中 / 部分运行 / 已停止</b></li>
-            <li><span class="text-cyan-400">●</span> 元信息：开机自启 · 代理接管 · nftables · 端口</li>
-            <li><span class="text-cyan-400">●</span> 按钮：<b class="text-slate-200">启动 / 停止 / 重启 / 开机自启</b></li>
-            <li><span class="text-cyan-400">●</span> 每 5 秒自动同步真实状态</li>
-          </ul>
-        </div>
-        <p class="text-[13px] text-emerald-300/90 leading-relaxed">
-          <b>关键设计：这条通路不依赖 :9099。</b>
-          它走 LuCI 自己的 <code class="text-slate-300">fs.exec</code> →
-          <code class="text-slate-300">/etc/init.d/ai-link svc_state|start|stop|restart</code>，
-          所以<b>即使守护进程已经停了，也能在网页上一键把它拉起来</b>，完全不需要 SSH。
-        </p>
-        <p class="mt-3 text-[12.5px] text-slate-400 leading-relaxed">
-          语义澄清：<b class="text-slate-200">⚙️ 服务总开关</b> 管进程生命周期；
-          <b class="text-slate-200">☑️ 启用 AI-LINK 透明代理服务</b> 只管是否接管流量。两者独立。
-        </p>
-      </section>
-
-      <section class="mb-6">
-        <h3 class="text-sm font-bold text-rose-300 mb-3 flex items-center gap-2">🔐 安全修复</h3>
-        <ul class="space-y-2.5 text-sm text-slate-300 leading-relaxed">
-          <li class="flex gap-2.5"><span class="text-rose-400 shrink-0">●</span><div><strong class="text-white">LuCI 概览页「面板密码」显示为一串 <code class="text-rose-300">sha256:xxxx</code> 哈希</strong>
-            <div class="text-slate-400 text-[13px] mt-1">根因有两层：改密后 UCI 字段被写入哈希；而更关键的是 <code class="text-slate-300">--self-test</code> 用临时目录跑改密回归时，函数体无条件 <code class="text-slate-300">uci set</code>，导致<strong class="text-slate-200">每次安装自检或 <code>ai-link probe</code> 都会把生产环境的面板密码字段覆盖成测试串的哈希</strong>。</div></div></li>
-          <li class="flex gap-2.5"><span class="text-rose-400 shrink-0">●</span><div><strong class="text-white">哈希串可直接当密码登录</strong>
-            <div class="text-slate-400 text-[13px] mt-1">已移除「提交值等于 UCI 字段值即放行」的旁路，UCI 里只有明文初始密码才允许直通比对。</div></div></li>
-          <li class="flex gap-2.5"><span class="text-rose-400 shrink-0">●</span><div><strong class="text-white">哈希串可直接当 Bearer 令牌绕过登录</strong>
-            <div class="text-slate-400 text-[13px] mt-1">令牌现在只认 <code class="text-slate-300">panel_auth.json</code> / <code class="text-slate-300">panel_token</code> 里签发过的值，无法再用面板回显的内容绕过 <code class="text-slate-300">/api/login</code>。</div></div></li>
-          <li class="flex gap-2.5"><span class="text-rose-400 shrink-0">●</span><div><strong class="text-white">认证文件丢失后用户被彻底锁死</strong>
-            <div class="text-slate-400 text-[13px] mt-1">旧逻辑会用哈希当初始密码重建，真实密码直接失效。现在回退到默认密码，用户可进面板重设。</div></div></li>
-          <li class="flex gap-2.5"><span class="text-rose-400 shrink-0">●</span><div><strong class="text-white">新增 LuCI 专用桥接令牌 <code class="text-cyan-300">luci_bridge_token</code></strong>
-            <div class="text-slate-400 text-[13px] mt-1">与面板密码完全解耦的 32 位随机串，仅用于 LuCI 页面调用面板 API。改面板密码不影响它，它也不能用来登录面板。</div></div></li>
-          <li class="flex gap-2.5"><span class="text-rose-400 shrink-0">●</span><div><strong class="text-white"><code>ai-link password</code> 不再回显明文密码</strong></div></li>
-        </ul>
-      </section>
-
-      <section class="mb-6">
-        <h3 class="text-sm font-bold text-sky-300 mb-3 flex items-center gap-2">⬆️ 在线更新体系（新功能）</h3>
-        <ul class="space-y-2.5 text-sm text-slate-300 leading-relaxed">
-          <li class="flex gap-2.5"><span class="text-sky-400 shrink-0">●</span><div><strong class="text-white">LuCI 概览页新增「插件版本与在线更新」卡片</strong>：当前版本、检查更新、立即更新、进度条、实时日志、更新说明入口。</div></li>
-          <li class="flex gap-2.5"><span class="text-sky-400 shrink-0">●</span><div><strong class="text-white">独立控制面板新增同款卡片</strong>，位于「核心规则库与订阅更新」上方。</div></li>
-          <li class="flex gap-2.5"><span class="text-sky-400 shrink-0">●</span><div><strong class="text-white">新增 CLI</strong>：<code class="text-cyan-300">ai-link update</code> 检查版本，<code class="text-cyan-300">ai-link update --apply</code> 直接在线升级并输出实时进度。</div></li>
-          <li class="flex gap-2.5"><span class="text-sky-400 shrink-0">●</span><div><strong class="text-white">新增 API 端点</strong>
-            <div class="mt-2 overflow-x-auto">
-              <table class="w-full text-[12.5px] border border-slate-700/70 rounded-lg overflow-hidden">
-                <thead class="bg-slate-900/80 text-slate-400"><tr><th class="text-left px-3 py-2 font-semibold">方法</th><th class="text-left px-3 py-2 font-semibold">路径</th><th class="text-left px-3 py-2 font-semibold">说明</th></tr></thead>
-                <tbody class="text-slate-300">
-                  <tr class="border-t border-slate-800"><td class="px-3 py-1.5 font-mono text-emerald-300">GET</td><td class="px-3 py-1.5 font-mono text-cyan-300">/api/system/version</td><td class="px-3 py-1.5">当前版本、构建号、清单源</td></tr>
-                  <tr class="border-t border-slate-800"><td class="px-3 py-1.5 font-mono text-emerald-300">GET</td><td class="px-3 py-1.5 font-mono text-cyan-300">/api/system/update/check</td><td class="px-3 py-1.5">拉取清单并比较版本</td></tr>
-                  <tr class="border-t border-slate-800"><td class="px-3 py-1.5 font-mono text-emerald-300">GET</td><td class="px-3 py-1.5 font-mono text-cyan-300">/api/system/update/status</td><td class="px-3 py-1.5">升级进度与最近日志</td></tr>
-                  <tr class="border-t border-slate-800"><td class="px-3 py-1.5 font-mono text-amber-300">POST</td><td class="px-3 py-1.5 font-mono text-cyan-300">/api/system/update/apply</td><td class="px-3 py-1.5">启动升级</td></tr>
-                  <tr class="border-t border-slate-800"><td class="px-3 py-1.5 font-mono text-amber-300">POST</td><td class="px-3 py-1.5 font-mono text-cyan-300">/api/system/update/ack</td><td class="px-3 py-1.5">清除已完成的升级结果</td></tr>
-                </tbody>
-              </table>
-            </div></div></li>
-        </ul>
-
-        <div class="mt-5 rounded-xl bg-slate-950/60 border border-slate-800 p-4">
-          <div class="text-xs font-bold text-slate-300 mb-3">升级流程（八步，全程可观测）</div>
-          <ol class="grid sm:grid-cols-2 gap-2 text-[12.5px] text-slate-400">
-            <li><span class="text-cyan-400 font-mono">1.</span> 拉取 <code class="text-slate-300">version.json</code>（Pages 主源 → 加速镜像 → GitHub 直连，自动重试）</li>
-            <li><span class="text-cyan-400 font-mono">2.</span> 下载升级包（清单内多源依次重试）</li>
-            <li><span class="text-cyan-400 font-mono">3.</span> <strong class="text-slate-200">校验大小 + MD5 + SHA256</strong>，不符立即中止</li>
-            <li><span class="text-cyan-400 font-mono">4.</span> 解压并校验包结构</li>
-            <li><span class="text-cyan-400 font-mono">5.</span> 备份用户配置（保留最近 3 份），空间充足时备份旧代码</li>
-            <li><span class="text-cyan-400 font-mono">6.</span> 执行 <code class="text-slate-300">install.sh --upgrade</code></li>
-            <li><span class="text-cyan-400 font-mono">7.</span> 重启并做健康检查</li>
-            <li><span class="text-cyan-400 font-mono">8.</span> 失败<strong class="text-rose-300">自动回滚</strong>并再次验证</li>
-          </ol>
-        </div>
-
-        <p class="mt-4 text-[13px] text-slate-400 leading-relaxed">
-          <strong class="text-slate-200">升级进程与主服务解耦</strong>：升级脚本用 <code class="text-slate-300">setsid</code> 脱离主进程会话，安装脚本重启服务不会把它杀掉；进度实时落盘，重启后新进程接着读，所以你能看到完整的升级结果而不是“页面转圈然后失联”。
-        </p>
-      </section>
-
-      <section>
-        <h3 class="text-sm font-bold text-slate-300 mb-3 flex items-center gap-2">🛠 安装脚本与版本号</h3>
-        <ul class="space-y-2 text-sm text-slate-300 leading-relaxed">
-          <li class="flex gap-2.5"><span class="text-slate-500 shrink-0">●</span><div><code class="text-cyan-300">install.sh --upgrade</code> 升级模式：不再停止其他代理服务、<strong class="text-slate-200">不再删除音乐解锁等附加组件</strong>，其余流程保持幂等。</div></li>
-          <li class="flex gap-2.5"><span class="text-slate-500 shrink-0">●</span><div>全量版本号统一为 <code class="text-cyan-300">1.0.1</code>，以主程序内 <code class="text-slate-300">APP_VERSION</code> 常量为唯一来源。</div></li>
-        </ul>
-      </section>
-
-      <div class="mt-6 pt-5 border-t border-slate-800">
-        <div class="text-xs font-bold text-slate-400 mb-2">升级方式</div>
-        <pre class="bg-slate-950 border border-slate-800 rounded-xl p-3.5 text-[12.5px] text-emerald-200 overflow-x-auto"><code># 方式一：面板 / LuCI 点「检查更新」→「立即更新」
-# 方式二：SSH 命令行
-ai-link update            # 只检查
-ai-link update --apply    # 检查并升级</code></pre>
-        <p class="mt-3 text-[12px] text-amber-300/90 leading-relaxed">
-          ⚠️ v1.0.0 用户请手动升级一次到 v1.0.1（v1.0.0 尚未内置在线更新模块）；从 v1.0.1 起后续版本均可在线一键升级。
-        </p>
-      </div>
-    </article>
-
-    <!-- ================= v1.0.0 ================= -->
-    <article id="v1.0.0" class="card rounded-2xl p-6 md:p-7">
-      <div class="flex flex-wrap items-center gap-3 mb-1">
-        <h2 class="text-2xl font-extrabold text-white">v1.0.0</h2>
-        <span class="tag bg-slate-700/60 text-slate-300 border border-slate-600">首个正式版</span>
-        <span class="ml-auto text-xs text-slate-500 font-mono">2026-10-25</span>
-      </div>
-      <p class="text-sm text-slate-400 mb-5">主题：<strong class="text-slate-200">纯血 Sing-box 单内核架构正式封版</strong></p>
-      <ul class="grid sm:grid-cols-2 gap-2.5 text-[13px] text-slate-300 leading-relaxed">
-        <li class="flex gap-2"><span class="text-emerald-400 shrink-0">✓</span>纯血 Sing-box 单内核架构，移除 mihomo 遗留路径</li>
-        <li class="flex gap-2"><span class="text-emerald-400 shrink-0">✓</span>五种分流模式：shunt / gfw_list / global / direct / homelink</li>
-        <li class="flex gap-2"><span class="text-emerald-400 shrink-0">✓</span>智能双栈 DNS（海外 AAAA 剥离 + 国内原生 IPv6）</li>
-        <li class="flex gap-2"><span class="text-emerald-400 shrink-0">✓</span>国内 IP 硬件级入口直连 + 旁路由对称 NAT 断流保护</li>
-        <li class="flex gap-2"><span class="text-emerald-400 shrink-0">✓</span>回家节点（VLESS-Reality / Hysteria2）</li>
-        <li class="flex gap-2"><span class="text-emerald-400 shrink-0">✓</span>净网黑洞拦截、DNS 重写与过滤库</li>
-        <li class="flex gap-2"><span class="text-emerald-400 shrink-0">✓</span>独立全功能控制面板（:9099）+ LuCI 概览页</li>
-        <li class="flex gap-2"><span class="text-emerald-400 shrink-0">✓</span>一键恢复出厂、备份归档与恢复、彻底卸载</li>
-        <li class="flex gap-2"><span class="text-emerald-400 shrink-0">✓</span>跨平台：x86_64 / aarch64 / armv7 / mipsel / riscv64</li>
-        <li class="flex gap-2"><span class="text-emerald-400 shrink-0">✓</span>opkg + apk 双包管理器兼容</li>
-      </ul>
-    </article>
-
-    <footer class="text-center text-xs text-slate-600 pt-6">
-      <a href="./index.html" class="text-cyan-500 hover:text-cyan-400">官网首页</a>
-      <span class="mx-2">·</span>
-      <a href="https://github.com/Master-AI-007/ai-link-openwrt" target="_blank" rel="noopener" class="text-cyan-500 hover:text-cyan-400">GitHub 仓库</a>
-      <span class="mx-2">·</span>
-      <a href="./version.json" class="text-cyan-500 hover:text-cyan-400">version.json</a>
-    </footer>
-  </main>
+<footer>
+  <div class="wrap foot">
+    <div>AI-LINK · NEXUS 全域 3D 智能网关</div>
+    <div class="foot-links">
+      <a href="/">首页</a>
+      <a href="https://github.com/Master-AI-007/ai-link-openwrt/releases" target="_blank" rel="noopener">Releases</a>
+      <a href="/version.json">version.json</a>
+    </div>
+  </div>
+</footer>
 </body>
 </html>

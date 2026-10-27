@@ -1,19 +1,32 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "1.0.3",
-  "release_date": "2026-10-26",
-  "notes_url": "https://ai-link-official.pages.dev/changelog.html#v1.0.3",
+  "latest": "2.0.0",
+  "release_date": "2026-10-27",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.0.0",
   "highlights": [
-    "非分流模式（仅被墙网站 / 非国内 / 全局代理）的「统一出口」下拉框补齐，可实时选自动池或手动国家+节点",
-    "内核防掉线：procd 重启配额从 1 小时 6 次改为无限重试，新增 ai-link restart_core 独立恢复入口",
-    "看门狗新增 sing-box 进程存活巡检，内核意外退出自动拉起",
-    "内核离线时自动拆除残留 nftables / 策略路由 / dnsmasq 上游，杜绝全网黑洞",
-    "分流规则指纹：配置没变就不再重启内核，日常调分流不再抖断连接",
-    "停机或内核异常时 DNS 自动回退公共上游，路由器不再「失联」",
-    "面板新增内核离线横幅与一键重启；浏览器轮询断开不再刷 BrokenPipe 栈"
+    "NEXUS 全域 3D 星图：内核中枢 / 国内直连（淡粉 #f9a8d4）/ 海外代理 / 黑洞拦截四颗母星",
+    "「流量激增」升级为真实连接 3D 表达：按活跃会话生成跨星系轨迹与流动光球",
+    "三挡流速引擎：按真实速率与并发自动分挡（0.56 / 0.26 / 0.095）",
+    "概览底部三张卡片可点开实时明细（终端 / 出站节点 / 目标分流）",
+    "15 组分流矩阵、双层 DNS 净网（50,000 条规则）、Hysteria2 + VLESS-Reality 回家隧道",
+    "内核防掉线自愈：respawn 无限重试、进程看门狗、黑洞自动拆除、DNS 自动回退"
   ],
   "changelog": [
+    {
+      "version": "2.0.0",
+      "date": "2026-10-27",
+      "type": "major",
+      "title": "NEXUS 全域 3D 正式版",
+      "items": [
+        "国内直连母星改为淡粉色（#f9a8d4），与青色内核中枢高对比区分",
+        "流量激增按钮接入 /api/clash/connections 与 /api/overview/galaxy，真实连接生成 3D 轨迹",
+        "新增三挡流速引擎 computeSpeedGear，光球速度/体积随真实吞吐与并发变化",
+        "概览底部三卡（终端/出站/目标）支持点击查看明细弹窗",
+        "修复终端头像重复显示 10 的问题，改为 IP 末段",
+        "全仓 7 处版本锚点对齐 2.0.0"
+      ]
+    },
     {
       "version": "1.0.3",
       "date": "2026-10-26",
@@ -66,13 +79,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v1.0.3/AI-LINK-v1.0.3.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.0.0/AI-LINK-v2.0.0.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v1.0.3.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.0.0.tar.gz"
       ],
-      "size": 1257728,
-      "md5": "1172ab3e49aad4b65ee1064fc66ad2e5",
-      "sha256": "53acef0fcb1c4f14077322cb5c4a73d5690d7a13c0a09a22e93ab7e09d387d13"
+      "size": 1694889,
+      "md5": "7827f45b9039219c843a435a35411498",
+      "sha256": "02ced20e70c0ced9cf831368c5f46c866dc0ea023afd0f1a15bea5e05ecf9a95"
     }
   }
 }

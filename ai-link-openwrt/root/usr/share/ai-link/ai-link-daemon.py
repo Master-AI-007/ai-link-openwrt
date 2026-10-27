@@ -7758,9 +7758,6 @@ def _verify_dns_shield_status(conf_dir: Path = CONF_DIR, flt_cfg: dict = None, r
     }
 
 def build_dns_telemetry_response(conf_dir: Path = CONF_DIR) -> dict:
-    _load_persisted_adblock_stats(conf_dir)
-    if Path(conf_dir).resolve() == CONF_DIR.resolve():
-        _ingest_singbox_adblock_log(conf_dir)
     def _mt(fn):
         try:
             f = conf_dir / fn
@@ -7772,15 +7769,41 @@ def build_dns_telemetry_response(conf_dir: Path = CONF_DIR) -> dict:
         _mt("dns_rewrite.json"),
         _mt("dns_filters.json"),
         _mt("sing-box.json"),
-        int(_DNS_STATS_RT.get("total_queries", 0)),
-        int(_DNS_STATS_RT.get("blocked_queries", 0)),
-        int(time.time()) // 3,
+        int(time.time()) // 30,
     )
     if dt_key in _DNS_TELEM_MEMO:
-        return dict(_DNS_TELEM_MEMO[dt_key])
+        cached_dt = dict(_DNS_TELEM_MEMO[dt_key])
+        flt_on = bool((cached_dt.get("filter") or {}).get("enabled", True))
+        tq = int(_DNS_STATS_RT["total_queries"])
+        bq = int(_DNS_STATS_RT["blocked_queries"]) if flt_on else 0
+        dblk = int(_DNS_STATS_RT.get("dns_layer_blocks") or 0) if flt_on else 0
+        rblk = int(_DNS_STATS_RT.get("route_reject_blocks") or 0) if flt_on else 0
+        bpct = round((bq / max(1, tq)) * 100.0, 1) if tq > 0 else 0.0
+        top_b = sorted(
+            [{"domain": k, "count": v["count"], "category": v.get("category", "黑名单规则拦截")} for k, v in _DNS_STATS_RT["blocked_domains"].items() if v.get("count", 0) > 0],
+            key=lambda x: x["count"],
+            reverse=True
+        )[:6]
+        s24 = dict(cached_dt.get("stats_24h") or {})
+        s24.update({
+            "total_queries": tq,
+            "blocked_queries": bq,
+            "dns_layer_blocks": dblk,
+            "route_reject_blocks": rblk,
+            "aaaa_suppressed": int(_DNS_STATS_RT.get("aaaa_suppressed") or 0),
+            "last_block_ts": int(_DNS_STATS_RT.get("last_block_ts") or 0),
+            "last_block_domain": str(_DNS_STATS_RT.get("last_block_domain") or ""),
+            "blocked_pct": bpct,
+            "top_blocked_domains": top_b,
+        })
+        cached_dt["stats_24h"] = s24
+        return cached_dt
     if len(_DNS_TELEM_MEMO) > 16:
         _DNS_TELEM_MEMO.clear()
 
+    _load_persisted_adblock_stats(conf_dir)
+    if Path(conf_dir).resolve() == CONF_DIR.resolve():
+        _ingest_singbox_adblock_log(conf_dir)
     rw_cfg = load_dns_rewrite_config(conf_dir)
     flt_cfg = load_dns_filter_config(conf_dir)
     active_lists = [l for l in flt_cfg.get("lists", []) if l.get("enabled", True)]
@@ -10260,7 +10283,7 @@ def build_status_api_response(conf_dir: Path = CONF_DIR) -> dict:
         bool(getattr(PROBE_ENGINE, "probe_running", False)),
         bool(SUB_SYNC_STATE.get("running", False)),
         bool(FAIL_OPEN_STATE.get("active")),
-        tuple(_get_live_singbox_pids()),
+        tuple(_cached_Value("live_sb_pids", 1.5, _get_live_singbox_pids)),
         sels_tup,
         int(time.time()) // 15,
     )
@@ -10384,7 +10407,7 @@ def build_status_api_response(conf_dir: Path = CONF_DIR) -> dict:
         bool(getattr(PROBE_ENGINE, "probe_running", False)),
         bool(SUB_SYNC_STATE.get("running", False)),
         bool(FAIL_OPEN_STATE.get("active")),
-        tuple(_get_live_singbox_pids()),
+        tuple(_cached_Value("live_sb_pids", 1.5, _get_live_singbox_pids)),
         tuple(sorted((PROBE_ENGINE.current_selections or {}).items())),
         int(time.time()) // 15,
     )
@@ -11738,10 +11761,14 @@ _OVERVIEW_RT = {
     "seen_conn_ids": set(),
     "conn_bytes": {},
     "service_bars": {
-        "youtube": [0] * 28,
+        "openai": [0] * 28,
         "gemini": [0] * 28,
+        "youtube": [0] * 28,
         "github": [0] * 28,
+        "netflix": [0] * 28,
+        "tiktok": [0] * 28,
         "telegram": [0] * 28,
+        "bilibili": [0] * 28,
     }
 }
 _OVERVIEW_LOCK = threading.Lock()
@@ -12071,19 +12098,43 @@ def get_overview_live_telemetry(conf_dir: Path = CONF_DIR) -> dict:
             return 12, "direct"
         rtt = int(round(float(delays.get(node_t) or (PROBE_ENGINE.node_stats.get(node_t) or {}).get("last_rtt_ms") or 0)))
         return rtt, node_t
-    yt_ms, yt_node = _svc_rtt("Shunt_YouTube", "Stream_Auto")
+    oa_ms, oa_node = _svc_rtt("Shunt_AI", "AI_Best_Auto")
     gm_ms, gm_node = _svc_rtt("Shunt_AI", "AI_Best_Auto")
+    yt_ms, yt_node = _svc_rtt("Shunt_YouTube", "Stream_Auto")
     gh_ms, gh_node = _svc_rtt("Shunt_GitHub", "AI_Best_Auto")
-    tg_ms, tg_node = _svc_rtt("Shunt_Outside_CN", "AI_Best_Auto")
-    for sid, ms_v in (("youtube", yt_ms), ("gemini", gm_ms), ("github", gh_ms), ("telegram", tg_ms)):
+    nf_ms, nf_node = _svc_rtt("Shunt_Netflix", "Stream_Auto")
+    tk_ms, tk_node = _svc_rtt("Shunt_TikTok", "Stream_Auto")
+    tg_ms, tg_node = _svc_rtt("Shunt_Social", "AI_Best_Auto")
+    bl_ms, bl_node = _svc_rtt("Shunt_Domestic_CN", "direct")
+    if int(_H3_APP_MS.get("openai") or 0) > 0:
+        oa_ms = int(_H3_APP_MS["openai"])
+    if int(_H3_APP_MS.get("gemini") or 0) > 0:
+        gm_ms = int(_H3_APP_MS["gemini"])
+    if int(_H3_APP_MS.get("youtube") or 0) > 0:
+        yt_ms = int(_H3_APP_MS["youtube"])
+    if int(_H3_APP_MS.get("github") or 0) > 0:
+        gh_ms = int(_H3_APP_MS["github"])
+    if int(_H3_APP_MS.get("netflix") or 0) > 0:
+        nf_ms = int(_H3_APP_MS["netflix"])
+    if int(_H3_APP_MS.get("tiktok") or 0) > 0:
+        tk_ms = int(_H3_APP_MS["tiktok"])
+    if int(_H3_APP_MS.get("telegram") or 0) > 0:
+        tg_ms = int(_H3_APP_MS["telegram"])
+    if int(_H3_APP_MS.get("bilibili") or 0) > 0:
+        bl_ms = int(_H3_APP_MS["bilibili"])
+    for sid, ms_v in (("openai", oa_ms), ("gemini", gm_ms), ("youtube", yt_ms), ("github", gh_ms), ("netflix", nf_ms), ("tiktok", tk_ms), ("telegram", tg_ms), ("bilibili", bl_ms)):
         if ms_v > 0:
-            _OVERVIEW_RT["service_bars"][sid].append(min(95, max(10, int(ms_v / 4))))
+            _OVERVIEW_RT["service_bars"].setdefault(sid, [0] * 28).append(min(95, max(10, int(ms_v / 4))))
             _OVERVIEW_RT["service_bars"][sid] = _OVERVIEW_RT["service_bars"][sid][-28:]
     pulse_services = [
-        {"id": "youtube", "name": "YouTube", "selector": "Shunt_YouTube", "node": yt_node, "ms": yt_ms, "color": "#ef4444", "icon": "▶", "bars": _OVERVIEW_RT["service_bars"]["youtube"]},
-        {"id": "gemini", "name": "Gemini / AI", "selector": "Shunt_AI", "node": gm_node, "ms": gm_ms, "color": "#818cf8", "icon": "✦", "bars": _OVERVIEW_RT["service_bars"]["gemini"]},
-        {"id": "github", "name": "GitHub", "selector": "Shunt_GitHub", "node": gh_node, "ms": gh_ms, "color": "#38bdf8", "icon": "🐙", "bars": _OVERVIEW_RT["service_bars"]["github"]},
-        {"id": "telegram", "name": "Telegram", "selector": "Shunt_Outside_CN", "node": tg_node, "ms": tg_ms, "color": "#34d399", "icon": "✈", "bars": _OVERVIEW_RT["service_bars"]["telegram"]},
+        {"id": "openai", "name": "ChatGPT", "selector": "Shunt_AI", "node": oa_node, "ms": oa_ms, "state": "ok" if 0 < oa_ms < 600 else ("suspect" if oa_ms >= 600 else "pending"), "color": "#22d3ee", "icon": "✦", "bars": _OVERVIEW_RT["service_bars"]["openai"]},
+        {"id": "gemini", "name": "Gemini", "selector": "Shunt_AI", "node": gm_node, "ms": gm_ms, "state": "ok" if 0 < gm_ms < 600 else ("suspect" if gm_ms >= 600 else "pending"), "color": "#818cf8", "icon": "✦", "bars": _OVERVIEW_RT["service_bars"]["gemini"]},
+        {"id": "youtube", "name": "YouTube", "selector": "Shunt_YouTube", "node": yt_node, "ms": yt_ms, "state": "ok" if 0 < yt_ms < 600 else ("suspect" if yt_ms >= 600 else "pending"), "color": "#ef4444", "icon": "▶", "bars": _OVERVIEW_RT["service_bars"]["youtube"]},
+        {"id": "github", "name": "GitHub", "selector": "Shunt_GitHub", "node": gh_node, "ms": gh_ms, "state": "ok" if 0 < gh_ms < 600 else ("suspect" if gh_ms >= 600 else "pending"), "color": "#38bdf8", "icon": "🐙", "bars": _OVERVIEW_RT["service_bars"]["github"]},
+        {"id": "netflix", "name": "Netflix", "selector": "Shunt_Netflix", "node": nf_node, "ms": nf_ms, "state": "ok" if 0 < nf_ms < 600 else ("suspect" if nf_ms >= 600 else "pending"), "color": "#f43f5e", "icon": "🎬", "bars": _OVERVIEW_RT["service_bars"]["netflix"]},
+        {"id": "tiktok", "name": "TikTok", "selector": "Shunt_TikTok", "node": tk_node, "ms": tk_ms, "state": "ok" if 0 < tk_ms < 600 else ("suspect" if tk_ms >= 600 else "pending"), "color": "#a855f7", "icon": "🎵", "bars": _OVERVIEW_RT["service_bars"]["tiktok"]},
+        {"id": "telegram", "name": "Telegram", "selector": "Shunt_Social", "node": tg_node, "ms": tg_ms, "state": "ok" if 0 < tg_ms < 600 else ("suspect" if tg_ms >= 600 else "pending"), "color": "#34d399", "icon": "✈", "bars": _OVERVIEW_RT["service_bars"]["telegram"]},
+        {"id": "bilibili", "name": "B站直连", "selector": "Shunt_Domestic_CN", "node": bl_node, "ms": bl_ms, "state": "ok", "color": "#54e6b5", "icon": "📺", "bars": _OVERVIEW_RT["service_bars"]["bilibili"]},
     ]
     # Build device / node / target ranking tables from real ledger
     def _rank_rows(bucket_dict: dict, include_ip: bool = False, lan_ip: str = "") -> list:
@@ -12288,6 +12339,10 @@ def get_overview_live_telemetry(conf_dir: Path = CONF_DIR) -> dict:
             "conn": list(_OVERVIEW_RT["spark_conn"]),
         },
         "pulse_services": pulse_services,
+        "services": pulse_services,
+        "devices_count": len(dev_rows),
+        "destinations_count": len(tgt_rows),
+        "health_score": max(60, min(100, int(round(75 + (15 if _OVERVIEW_RT["core_mem_mib"] < 200 else 5) + (10 if (yt_ms > 0 and yt_ms < 300) else 4))))),
         "current_month": cur_ym,
         "selected_day": today_d,
         "month_total_bytes": month_tot_bytes,
@@ -13324,9 +13379,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "1.0.3"
+APP_VERSION = "2.0.0"
 APP_CHANNEL = "stable"
-APP_BUILD = "1.0.3-release-20261026"
+APP_BUILD = "2.0.0-release-20261027"
 
 UPDATE_MANIFEST_PRIMARY = "https://ai-link-official.pages.dev/version.json"
 UPDATE_MANIFEST_GITHUB = "https://raw.githubusercontent.com/Master-AI-007/ai-link-openwrt/main/version.json"
@@ -14550,6 +14605,21 @@ def build_galaxy_snapshot(conf_dir=CONF_DIR):
     for r in lan_rows:
         r["conns"] = live_conns.get(r["ip"], r.get("conns", 0))
         r["state"] = "ok"
+    seen_lan_ips = {r.get("ip") for r in lan_rows if r.get("ip")}
+    for h_ip, h_name in list(host_map.items())[:10]:
+        if len(lan_rows) >= 8:
+            break
+        if h_ip and h_ip not in seen_lan_ips and _h3_is_lan_ip(h_ip) and h_ip != lan_ip:
+            seen_lan_ips.add(h_ip)
+            lan_rows.append({
+                "ip": h_ip,
+                "name": h_name or f"{h_ip} (局域网终端)",
+                "up_rate": 0,
+                "down_rate": 0,
+                "conns": int(live_conns.get(h_ip, 0)),
+                "is_remote": False,
+                "state": "ok",
+            })
     dom_rows = _rows(hosts, "domestic")
     for r in dom_rows:
         r["state"] = "ok"
@@ -14687,7 +14757,7 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 _CORE_RELOAD_STATE["config_seq"],
                 _CORE_RELOAD_STATE["reload_seq"],
                 bool(is_bypass_active()),
-                tuple(_get_live_singbox_pids()),
+                tuple(_cached_Value("live_sb_pids", 1.5, _get_live_singbox_pids)),
                 bool(getattr(PROBE_ENGINE, "probe_running", False)),
                 bool(SUB_SYNC_STATE.get("running", False)),
                 tuple(sorted((PROBE_ENGINE.current_selections or {}).items())),
@@ -15096,7 +15166,7 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
         if req_path in ("/assets/tailwind.css", "/assets/tailwind.offline.css"):
             self.path = "/static/tailwind.css"
             return super().do_GET()
-        if req_path in ("/vendor/three.min.js", "/vendor/qrcode.min.js"):
+        if req_path in ("/vendor/three.min.js", "/vendor/qrcode.min.js", "/assets/three.min.js", "/assets/qrcode.min.js"):
             self.path = f"/static/{req_path.split('/')[-1]}"
             return super().do_GET()
         if req_path == "/api/auto_nodes":
@@ -15130,6 +15200,18 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             return
         if req_path == "/api/ipv6/status":
             self._send_json({"ok": True, **build_ipv6_governance_summary(CONF_DIR)})
+            return
+        if req_path == "/api/nodes/credentials":
+            if not self._auth_ok():
+                self._send_json({"ok": False, "error": "unauthorized", "message": "需要面板访问令牌"}, status=401)
+                return
+            t_q = (qs.get("tag") or qs.get("node_id") or "").strip()
+            existing = load_saved_nodes(CONF_DIR)
+            found = next((n for n in existing if n.get("tag") == t_q or n.get("node_id") == t_q), None)
+            if not found:
+                self._send_json({"ok": False, "error": "node_not_found"}, status=404)
+                return
+            self._send_json({"ok": True, "node": found, "uri": export_node_share_uri(found)})
             return
         if req_path == "/api/nodes/share_uri":
             if not self._auth_ok():
@@ -15506,6 +15588,25 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             resp_sh["config_seq"] = rel_st.get("config_seq", 1)
             resp_sh["reload_seq"] = rel_st.get("reload_seq", 1)
             self._send_json(resp_sh)
+            return
+        if clean_path == "/api/dns/settings":
+            ops_patch = {}
+            if "force_tunnel_dns" in payload:
+                ops_patch["force_tunnel_dns"] = bool(payload["force_tunnel_dns"])
+            if "cn_upstream" in payload and str(payload["cn_upstream"]).strip():
+                ops_patch["cn_upstream"] = str(payload["cn_upstream"]).strip()
+            if "remote_upstream" in payload and str(payload["remote_upstream"]).strip():
+                ops_patch["remote_upstream"] = str(payload["remote_upstream"]).strip()
+            if ops_patch:
+                update_ops_settings(ops_patch, CONF_DIR)
+                write_all_configs(CONF_DIR)
+                schedule_async_core_reload(force_respawn=False, hot_only=True)
+            res_dt = build_dns_telemetry_response(CONF_DIR)
+            if "cn_upstream" in ops_patch:
+                res_dt["cn_upstream"] = ops_patch["cn_upstream"]
+            if "remote_upstream" in ops_patch:
+                res_dt["remote_upstream"] = ops_patch["remote_upstream"]
+            self._send_json(res_dt)
             return
         if clean_path == "/api/dns/flush_cache":
             self._send_json(flush_all_dns_caches())
