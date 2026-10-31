@@ -9,6 +9,16 @@
   const MAX_BLACKHOLE_SATELLITES = 6;
   const MAX_LIVE_CONN_ARCS = 16;
 
+  function fmtRateShort(bps) {
+    const n = Number(bps || 0);
+    if (!isFinite(n) || n <= 0) return '0 B/s';
+    const units = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
+    let idx = 0;
+    let val = n;
+    while (val >= 1024 && idx < units.length - 1) { val /= 1024; idx++; }
+    return (idx === 0 ? String(Math.round(val)) : val.toFixed(val >= 100 ? 0 : 1)) + ' ' + units[idx];
+  }
+
   /* 3-Tier Speed Gear Engine (高 / 中 / 低) driven by real connection count & throughput rate */
   function computeSpeedGear(rateBps, conns) {
     const bps = Math.max(0, Number(rateBps || 0));
@@ -31,7 +41,7 @@
         fullLabel: '中速',
         speed: 0.26,
         scale: 1.04,
-        activeRatio: 0.72,
+        activeRatio: 0.65,
         badgeColor: '#f9a8d4'
       };
     }
@@ -41,7 +51,7 @@
       fullLabel: '低速',
       speed: (bps > 0 || c > 0) ? 0.095 : 0.055,
       scale: 0.78,
-      activeRatio: 0.5,
+      activeRatio: 0.38,
       badgeColor: '#8ea0bc'
     };
   }
@@ -102,18 +112,18 @@
         this.renderer = null;
       }
       this.scene = new THREE.Scene();
-      this.scene.fog = new THREE.FogExp2(0x050710, .015);
+      this.scene.fog = new THREE.FogExp2(0x050710, .014);
       this.camera = new THREE.PerspectiveCamera(43, 1, .1, 180);
       this.world = new THREE.Group();
       this.scene.add(this.world);
       this.liveConnGroup = new THREE.Group();
       this.liveConnGroup.visible = false;
       this.world.add(this.liveConnGroup);
-      this.scene.add(new THREE.AmbientLight(0x7080a0, .75));
-      const key = new THREE.PointLight(0x78e8ff, 1.55, 58);
+      this.scene.add(new THREE.AmbientLight(0x7080a0, .78));
+      const key = new THREE.PointLight(0x78e8ff, 1.5, 58);
       key.position.set(3, 9, 12);
       this.scene.add(key);
-      const rim = new THREE.PointLight(0xf9a8d4, 1.2, 48);
+      const rim = new THREE.PointLight(0xf9a8d4, 1.15, 48);
       rim.position.set(-10, 2, -8);
       this.scene.add(rim);
       this.glowTexture = this.createGlowTexture();
@@ -157,19 +167,20 @@
       return sprite;
     }
 
+    /* Clean spatial reference backdrop: removed meaningless decorative spiral dust & random nebula clouds */
     buildBackdrop() {
-      const starCount = 1650;
+      const starCount = 420;
       const positions = new Float32Array(starCount * 3);
       const colors = new Float32Array(starCount * 3);
       const color = new THREE.Color();
       for (let i = 0; i < starCount; i++) {
-        const r = 30 + Math.random() * 85;
-        const theta = Math.random() * Math.PI * 2;
-        const phi = Math.acos(2 * Math.random() - 1);
+        const r = 34 + (i % 7) * 9;
+        const theta = (i * 2.39996) % (Math.PI * 2);
+        const phi = Math.acos(1 - 2 * ((i + 0.5) / starCount));
         positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
         positions[i * 3 + 1] = r * Math.cos(phi);
         positions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
-        color.set(Math.random() > .82 ? 0x9f8cff : Math.random() > .65 ? 0x70ddff : 0x7b8aa8);
+        color.set(i % 5 === 0 ? 0x70ddff : 0x6c7c99);
         colors[i * 3] = color.r;
         colors[i * 3 + 1] = color.g;
         colors[i * 3 + 2] = color.b;
@@ -177,39 +188,8 @@
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
       geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-      this.stars = new THREE.Points(geometry, new THREE.PointsMaterial({ size: .11, vertexColors: true, transparent: true, opacity: .72, depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true }));
+      this.stars = new THREE.Points(geometry, new THREE.PointsMaterial({ size: .09, vertexColors: true, transparent: true, opacity: .52, depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true }));
       this.scene.add(this.stars);
-
-      const dustCount = 980;
-      const dustPos = new Float32Array(dustCount * 3);
-      const dustColors = new Float32Array(dustCount * 3);
-      for (let i = 0; i < dustCount; i++) {
-        const arm = i % 4;
-        const r = 3 + Math.pow(Math.random(), .7) * 20;
-        const angle = r * .42 + arm * Math.PI / 2 + (Math.random() - .5) * .75;
-        dustPos[i * 3] = Math.cos(angle) * r;
-        dustPos[i * 3 + 1] = (Math.random() - .5) * (1.4 + r * .05) - 2;
-        dustPos[i * 3 + 2] = Math.sin(angle) * r;
-        color.set(arm % 2 ? 0x7256c7 : 0x277b98);
-        dustColors[i * 3] = color.r;
-        dustColors[i * 3 + 1] = color.g;
-        dustColors[i * 3 + 2] = color.b;
-      }
-      const dustGeo = new THREE.BufferGeometry();
-      dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
-      dustGeo.setAttribute('color', new THREE.BufferAttribute(dustColors, 3));
-      this.dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({ size: .065, vertexColors: true, transparent: true, opacity: .32, depthWrite: false, blending: THREE.AdditiveBlending }));
-      this.world.add(this.dust);
-
-      const nebulae = [
-        [-14, 7, -18, 0x6c42c2, 24], [13, -5, -16, 0x174e77, 27],
-        [2, 13, -26, 0x3f286f, 22], [18, 6, -24, 0x16475e, 24]
-      ];
-      nebulae.forEach(n => {
-        const sprite = this.glow(n[3], n[4], .075);
-        sprite.position.set(n[0], n[1], n[2]);
-        this.scene.add(sprite);
-      });
     }
 
     buildCenters() {
@@ -217,23 +197,23 @@
         id: 'core',
         name: '内核中枢 · 局域网终端星系',
         short: '内核中枢',
-        subtitle: 'sing-box 分流与接入终端',
+        subtitle: 'sing-box · 117.4 MiB',
         kind: 'core',
         galaxy: 'core',
         position: [0, 0, 0],
         radius: 1.42,
         color: 0x28b8d4,
         emissive: 0x28b8d4,
-        accent: 0x8f78ff,
+        accent: 0x6ee7f5,
         cssColor: '#6ee7f5',
-        label: '内核 · 终端接入'
+        label: '终端 3 台 · 117.4 MiB'
       });
-      /* Domestic Direct Mother Planet changed to Soft Pink (淡粉色 #f9a8d4) for distinct visual contrast against Core Cyan */
+      /* Domestic Direct Mother Planet in Soft Pink (淡粉色 #f9a8d4) */
       this.centers.cn = this.createCenter({
         id: 'cn',
         name: '国内直连星系 · WAN 宽带',
         short: '国内直连',
-        subtitle: '走 WAN 宽带原生直通',
+        subtitle: 'WAN 宽带原生直通',
         kind: 'cn',
         galaxy: 'cn',
         position: [-7.4, -2.0, 1.2],
@@ -242,22 +222,22 @@
         emissive: 0xf472b6,
         accent: 0xfbcfe8,
         cssColor: '#f9a8d4',
-        label: '国内直连 · WAN'
+        label: '国内直连 · 5 目标'
       });
       this.centers.global = this.createCenter({
         id: 'global',
         name: '海外代理星系 · 全球分流',
         short: '海外代理',
-        subtitle: '走智能分流与节点池',
+        subtitle: '智能分流与双组自动池',
         kind: 'global',
         galaxy: 'global',
         position: [7.2, .85, -.8],
         radius: 1.04,
         color: 0x7656dd,
         emissive: 0x7656dd,
-        accent: 0x64e5f4,
+        accent: 0xa994ff,
         cssColor: '#a994ff',
-        label: '海外代理 · 分流'
+        label: '海外代理 · 6 目标'
       });
       this.centers.blackhole = this.createBlackhole();
     }
@@ -270,35 +250,37 @@
         color: data.color,
         emissive: data.emissive || data.color,
         emissiveIntensity: data.id === 'cn' ? .34 : .26,
-        roughness: .2,
-        metalness: .32,
+        roughness: .22,
+        metalness: .3,
         clearcoat: 1,
         clearcoatRoughness: .22,
         transparent: true,
         opacity: .95
       });
-      const mesh = new THREE.Mesh(new THREE.SphereGeometry(data.radius, 64, 40), material);
+      const mesh = new THREE.Mesh(new THREE.SphereGeometry(data.radius, 48, 32), material);
       mesh.userData.data = data;
       group.add(mesh);
       this.selectable.push(mesh);
-      const wire = new THREE.Mesh(new THREE.SphereGeometry(data.radius * 1.065, 24, 16), new THREE.MeshBasicMaterial({ color: data.accent, wireframe: true, transparent: true, opacity: .06, blending: THREE.AdditiveBlending }));
-      group.add(wire);
-      const glow = this.glow(data.color, data.radius * 5.8, data.id === 'cn' ? .42 : .35);
+      const glow = this.glow(data.color, data.radius * 5.2, data.id === 'cn' ? .40 : .32);
       group.add(glow);
+
+      /* Single data-driven indicator ring (removed redundant triple decorative rings & random wireframes) */
       const rings = new THREE.Group();
       group.add(rings);
-      [1.55, 2.05, 2.7].forEach((m, i) => {
-        const ring = new THREE.Mesh(new THREE.TorusGeometry(data.radius * m, .012 + i * .004, 5, 180), new THREE.MeshBasicMaterial({ color: i === 1 ? data.accent : data.color, transparent: true, opacity: .28 - i * .05, blending: THREE.AdditiveBlending, depthWrite: false }));
-        ring.rotation.x = Math.PI / 2 + (i - 1) * .17;
-        ring.rotation.y = i * .32;
-        rings.add(ring);
-      });
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(data.radius * 1.68, .014, 6, 120),
+        new THREE.MeshBasicMaterial({ color: data.color, transparent: true, opacity: .28, blending: THREE.AdditiveBlending, depthWrite: false })
+      );
+      ring.rotation.x = Math.PI / 2;
+      rings.add(ring);
+
+      /* Single clean satellite orbit track */
       const orbits = new THREE.Group();
       group.add(orbits);
-      this.addOrbitLines(orbits, 3, data.color);
+      this.addOrbitLines(orbits, 1, data.color);
       const satGroup = new THREE.Group();
       group.add(satGroup);
-      const center = { data, group, mesh, glow, rings, orbits, satGroup, wire };
+      const center = { data, group, mesh, glow, rings, orbits, satGroup };
       this.addLabel(mesh, data, true);
       return center;
     }
@@ -321,47 +303,45 @@
       const group = new THREE.Group();
       group.position.fromArray(data.position);
       this.world.add(group);
-      const mesh = new THREE.Mesh(new THREE.SphereGeometry(data.radius, 48, 32), new THREE.MeshBasicMaterial({ color: 0x010206 }));
+      const mesh = new THREE.Mesh(new THREE.SphereGeometry(data.radius, 40, 28), new THREE.MeshBasicMaterial({ color: 0x010206 }));
       mesh.userData.data = data;
       group.add(mesh);
       this.selectable.push(mesh);
-      const disk = new THREE.Mesh(new THREE.RingGeometry(1.18, 2.85, 160, 1), new THREE.MeshBasicMaterial({ color: 0xf49a52, transparent: true, opacity: .42, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false }));
+      const disk = new THREE.Mesh(new THREE.RingGeometry(1.18, 2.55, 120, 1), new THREE.MeshBasicMaterial({ color: 0xf49a52, transparent: true, opacity: .38, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false }));
       disk.rotation.x = 1.22;
       disk.rotation.y = .2;
       group.add(disk);
       const rings = new THREE.Group();
       group.add(rings);
-      [1.28, 1.68, 2.18].forEach((r, i) => {
-        const torus = new THREE.Mesh(new THREE.TorusGeometry(r, .045 - i * .008, 8, 180), new THREE.MeshBasicMaterial({ color: i === 0 ? 0xffe0a3 : i === 1 ? 0xff9a54 : 0xd8583c, transparent: true, opacity: .78 - i * .18, blending: THREE.AdditiveBlending, depthWrite: false }));
-        torus.rotation.x = 1.22;
-        torus.rotation.y = .2;
-        rings.add(torus);
-      });
-      const glow = this.glow(0xff7a3d, 7.4, .54);
+      const torus = new THREE.Mesh(new THREE.TorusGeometry(1.48, .035, 8, 120), new THREE.MeshBasicMaterial({ color: 0xffb366, transparent: true, opacity: .68, blending: THREE.AdditiveBlending, depthWrite: false }));
+      torus.rotation.x = 1.22;
+      torus.rotation.y = .2;
+      rings.add(torus);
+      const glow = this.glow(0xff7a3d, 6.6, .48);
       group.add(glow);
 
-      /* Inward-spiraling devouring particles */
-      const particleCount = 420;
+      /* Data-driven inward-spiraling intercepted request particles (scaled by real blocked count) */
+      const particleCount = 180;
       const pos = new Float32Array(particleCount * 3);
       this.bhParticleMeta = [];
       for (let i = 0; i < particleCount; i++) {
-        const a = Math.random() * Math.PI * 2;
-        const r = 1.15 + Math.random() * 2.5;
-        const y = (Math.random() - .5) * .18;
+        const a = (i / particleCount) * Math.PI * 2;
+        const r = 1.15 + (i % 10) * 0.22;
+        const y = ((i % 5) - 2) * .03;
         pos[i * 3] = Math.cos(a) * r;
         pos[i * 3 + 1] = y;
         pos[i * 3 + 2] = Math.sin(a) * r;
-        this.bhParticleMeta.push({ a, r, y, speed: .6 + Math.random() * .9 });
+        this.bhParticleMeta.push({ a, r, y, speed: .65 + (i % 4) * .18 });
       }
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-      const particles = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffa45c, size: .058, transparent: true, opacity: .76, blending: THREE.AdditiveBlending, depthWrite: false }));
+      const particles = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffa45c, size: .055, transparent: true, opacity: .72, blending: THREE.AdditiveBlending, depthWrite: false }));
       particles.rotation.x = 1.22;
       group.add(particles);
 
       const orbits = new THREE.Group();
       group.add(orbits);
-      this.addOrbitLines(orbits, 2, 0xf2a558);
+      this.addOrbitLines(orbits, 1, 0xf2a558);
       const satGroup = new THREE.Group();
       group.add(satGroup);
       const center = { data, group, mesh, glow, rings, orbits, satGroup, disk, particles };
@@ -371,24 +351,22 @@
 
     addOrbitLines(targetGroup, count, color) {
       for (let j = 0; j < count; j++) {
-        const r = 2.0 + j * .62;
+        const r = 2.25 + j * .55;
         const points = [];
-        for (let i = 0; i <= 140; i++) {
-          const a = i / 140 * Math.PI * 2;
+        for (let i = 0; i <= 120; i++) {
+          const a = i / 120 * Math.PI * 2;
           points.push(new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r));
         }
-        const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), new THREE.LineBasicMaterial({ color, transparent: true, opacity: .12, blending: THREE.AdditiveBlending, depthWrite: false }));
-        line.rotation.x = (j - 1) * .11;
-        line.rotation.z = j * .07;
+        const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), new THREE.LineBasicMaterial({ color, transparent: true, opacity: .14, blending: THREE.AdditiveBlending, depthWrite: false }));
         targetGroup.add(line);
       }
     }
 
     buildInitialSatellites() {
       this.rebuildCenterSatellites('core', [
-        { id: 'dev-nas', name: 'NAS-Server', short: 'NAS-Server', ip: '10.10.10.10', subtitle: '局域网终端 · 10.10.10.10', meta: '在线终端', down_rate: 184320, up_rate: 24576, conns: 8, kind: 'device', region: 'core', status: 'ok', topRank: 0 },
-        { id: 'dev-pc', name: 'Workstation-PC', short: 'Workstation-PC', ip: '10.10.10.224', subtitle: '局域网终端 · 10.10.10.224', meta: '活跃终端', down_rate: 425984, up_rate: 51200, conns: 15, kind: 'device', region: 'core', status: 'ok', topRank: 1 },
-        { id: 'dev-phone', name: 'iPhone-15-Pro', short: 'iPhone-15-Pro', ip: '10.10.10.88', subtitle: '无线局域网 · Wi-Fi 6', meta: '移动终端', down_rate: 8192, up_rate: 2048, conns: 2, kind: 'device', region: 'core', status: 'ok', topRank: 2 }
+        { id: 'dev-nas', name: 'NAS-Server', short: 'NAS-Server', ip: '10.10.10.10', subtitle: '局域网终端 · 10.10.10.10', meta: '↓180 KB/s', down_rate: 184320, up_rate: 24576, conns: 8, kind: 'device', region: 'core', status: 'ok', topRank: 0 },
+        { id: 'dev-pc', name: 'Workstation-PC', short: 'Workstation-PC', ip: '10.10.10.224', subtitle: '局域网终端 · 10.10.10.224', meta: '↓416 KB/s', down_rate: 425984, up_rate: 51200, conns: 15, kind: 'device', region: 'core', status: 'ok', topRank: 1 },
+        { id: 'dev-phone', name: 'iPhone-15-Pro', short: 'iPhone-15-Pro', ip: '10.10.10.88', subtitle: '无线局域网 · 10.10.10.88', meta: '↓8 KB/s', down_rate: 8192, up_rate: 2048, conns: 2, kind: 'device', region: 'core', status: 'ok', topRank: 2 }
       ]);
       this.rebuildCenterSatellites('cn', [
         { id: 'cn-wechat', name: 'WeChat 微信', short: 'WeChat', domain: 'weixin.qq.com', subtitle: '国内直连 · WAN 原生出口', meta: '18 ms', rtt: 18, down_rate: 22528, up_rate: 4096, conns: 3, kind: 'service', region: 'cn', status: 'ok', topRank: 0 },
@@ -406,10 +384,10 @@
         { id: 'gl-netflix', name: 'Netflix 流媒体', short: 'Netflix', domain: 'netflix.com', subtitle: '海外代理 · Shunt_Netflix', meta: '112 ms', rtt: 112, down_rate: 245760, up_rate: 8192, conns: 5, kind: 'service', region: 'global', status: 'ok', topRank: 5 }
       ]);
       this.rebuildCenterSatellites('blackhole', [
-        { id: 'bh-0', name: 'otheve.beacon.qq.com', short: 'beacon.qq.com', domain: 'otheve.beacon.qq.com', subtitle: '隐私遥测与追踪探针 · DNS REFUSED', meta: '已拦截', conns: 16, rateBps: 0, kind: 'blocked', region: 'blackhole', status: 'blocked', topRank: 0 },
-        { id: 'bh-1', name: 'btrace.qq.com', short: 'btrace.qq.com', domain: 'btrace.qq.com', subtitle: '隐私遥测与追踪探针 · DNS REFUSED', meta: '已拦截', conns: 6, rateBps: 0, kind: 'blocked', region: 'blackhole', status: 'blocked', topRank: 1 },
-        { id: 'bh-2', name: 'cpro.baidu.com', short: 'cpro.baidu.com', domain: 'cpro.baidu.com', subtitle: '商业广告联盟与弹窗 · 路由 REJECT', meta: '已拦截', conns: 2, rateBps: 0, kind: 'blocked', region: 'blackhole', status: 'blocked', topRank: 2 },
-        { id: 'bh-3', name: 'googleads.g.doubleclick.net', short: 'doubleclick.net', domain: 'googleads.g.doubleclick.net', subtitle: '商业广告联盟 · 路由 REJECT', meta: '已拦截', conns: 1, rateBps: 0, kind: 'blocked', region: 'blackhole', status: 'blocked', topRank: 3 }
+        { id: 'bh-0', name: 'otheve.beacon.qq.com', short: 'beacon.qq.com', domain: 'otheve.beacon.qq.com', subtitle: '隐私遥测探针 · DNS REFUSED', meta: '392.2k次', conns: 16, rateBps: 0, kind: 'blocked', region: 'blackhole', status: 'blocked', topRank: 0 },
+        { id: 'bh-1', name: 'btrace.qq.com', short: 'btrace.qq.com', domain: 'btrace.qq.com', subtitle: '隐私遥测探针 · DNS REFUSED', meta: '44.2k次', conns: 6, rateBps: 0, kind: 'blocked', region: 'blackhole', status: 'blocked', topRank: 1 },
+        { id: 'bh-2', name: 'cpro.baidu.com', short: 'cpro.baidu.com', domain: 'cpro.baidu.com', subtitle: '商业广告联盟 · 路由 REJECT', meta: '4.5k次', conns: 2, rateBps: 0, kind: 'blocked', region: 'blackhole', status: 'blocked', topRank: 2 },
+        { id: 'bh-3', name: 'googleads.g.doubleclick.net', short: 'doubleclick.net', domain: 'googleads.g.doubleclick.net', subtitle: '商业广告联盟 · 路由 REJECT', meta: '908次', conns: 1, rateBps: 0, kind: 'blocked', region: 'blackhole', status: 'blocked', topRank: 3 }
       ]);
     }
 
@@ -420,7 +398,6 @@
       const cap = centerId === 'blackhole' ? MAX_BLACKHOLE_SATELLITES : MAX_GALAXY_SATELLITES;
       const list = (items || []).slice(0, cap);
 
-      /* Remove old satellites of this center from selectable and labelObjects */
       const oldMeshes = new Set(this.satellitesByCenter[centerId].map(s => s.mesh));
       this.selectable = this.selectable.filter(m => !oldMeshes.has(m));
       this.labelObjects = this.labelObjects.filter(l => !oldMeshes.has(l.object));
@@ -447,13 +424,9 @@
         const mat = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: .95 });
         const mesh = new THREE.Mesh(geo, mat);
 
-        const orbitR = isBh
-          ? (1.75 + (idx % 3) * .48)
-          : isCore
-            ? (2.15 + (idx % 3) * .56)
-            : (2.05 + (idx % 3) * .58);
-        const angle = (idx / count) * Math.PI * 2 + (idx * .37);
-        const yOff = ((idx % 3) - 1) * .42;
+        const orbitR = isBh ? 2.15 : (isCore ? 2.35 : 2.25);
+        const angle = (idx / count) * Math.PI * 2;
+        const yOff = ((idx % 3) - 1) * .28;
         mesh.position.set(Math.cos(angle) * orbitR, yOff, Math.sin(angle) * orbitR);
 
         const itemRateBps = Number(item.rateBps != null ? item.rateBps : ((Number(item.down_rate || 0) + Number(item.up_rate || 0))));
@@ -465,7 +438,7 @@
           name: item.name || ('目标 ' + (idx + 1)),
           short: item.short || String(item.name || '').slice(0, 15),
           subtitle: item.subtitle || '',
-          meta: item.meta || (item.rtt != null && item.rtt > 0 ? (item.rtt + ' ms') : '活跃'),
+          meta: item.meta || (item.rtt != null && item.rtt > 0 ? (item.rtt + ' ms') : fmtRateShort(itemRateBps)),
           kind: item.kind || (isCore ? 'device' : isBh ? 'blocked' : 'service'),
           galaxy: centerId,
           region: centerId,
@@ -489,19 +462,17 @@
         mesh.add(this.glow(col, isBh ? .85 : 1.0, .48));
         center.satGroup.add(mesh);
 
-        /* Subtle tether line from satellite to galaxy core */
         const curve = new THREE.QuadraticBezierCurve3(
           new THREE.Vector3(0, 0, 0),
-          new THREE.Vector3(mesh.position.x * .5, mesh.position.y + (isBh ? -.25 : .28), mesh.position.z * .5),
+          new THREE.Vector3(mesh.position.x * .5, mesh.position.y + (isBh ? -.2 : .22), mesh.position.z * .5),
           mesh.position.clone()
         );
         const tether = new THREE.Line(
-          new THREE.BufferGeometry().setFromPoints(curve.getPoints(24)),
+          new THREE.BufferGeometry().setFromPoints(curve.getPoints(20)),
           new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: isBh ? .24 : .20, blending: THREE.AdditiveBlending, depthWrite: false })
         );
         center.satGroup.add(tether);
 
-        /* Traveling sphere(s) on each satellite tether line with 3-tier speed gear (高 / 中 / 低) */
         const tetherPackets = [];
         const sphereCount = gearInfo.gear === 'high' ? 2 : 1;
         for (let pIdx = 0; pIdx < sphereCount; pIdx++) {
@@ -536,26 +507,26 @@
           conns: itemConns,
           speedGear: gearInfo.gear,
           speedGearLabel: gearInfo.label,
-          speed: (idx % 2 === 0 ? 1 : -1) * (.11 + (idx % 3) * .03)
+          speed: (idx % 2 === 0 ? 1 : -1) * (.09 + (idx % 3) * .02)
         });
       });
     }
 
+    /* Only build the 3 real routing trunks from Core to Global, CN, and Blackhole (removed meaningless cn_global beam) */
     buildBeams() {
-      this.createBeam('core_global', this.centers.core, this.centers.global, 0x7adff2, 8, 3.6, { rateBps: 420 * 1024, conns: 16 });
-      this.createBeam('core_cn', this.centers.core, this.centers.cn, 0xf9a8d4, 7, 2.7, { rateBps: 140 * 1024, conns: 8 });
-      this.createBeam('core_blackhole', this.centers.core, this.centers.blackhole, 0xf2a558, 6, 3.1, { rateBps: 4096, conns: 2 });
-      this.createBeam('cn_global', this.centers.cn, this.centers.global, 0xc084fc, 5, 5.4, { rateBps: 18 * 1024, conns: 3 });
+      this.createBeam('core_global', '海外代理分流', this.centers.core, this.centers.global, 0x7adff2, 8, 3.4, { rateBps: 420 * 1024, conns: 16 });
+      this.createBeam('core_cn', '国内宽带直连', this.centers.core, this.centers.cn, 0xf9a8d4, 7, 2.5, { rateBps: 140 * 1024, conns: 8 });
+      this.createBeam('core_blackhole', '双层护盾阻断', this.centers.core, this.centers.blackhole, 0xf2a558, 5, 2.9, { rateBps: 0, conns: 4, hits: 483549 });
     }
 
-    createBeam(key, from, to, color, packetCount, lift, initStats) {
+    createBeam(key, title, from, to, color, packetCount, lift, initStats) {
       const a = from.group.position.clone();
       const b = to.group.position.clone();
       const mid = a.clone().lerp(b, .5);
       mid.y += lift;
-      mid.z -= 1.4;
+      mid.z -= 1.2;
       const curve = new THREE.QuadraticBezierCurve3(a, mid, b);
-      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(curve.getPoints(90)), new THREE.LineBasicMaterial({ color, transparent: true, opacity: .30, blending: THREE.AdditiveBlending, depthWrite: false }));
+      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(curve.getPoints(80)), new THREE.LineBasicMaterial({ color, transparent: true, opacity: .30, blending: THREE.AdditiveBlending, depthWrite: false }));
       this.world.add(line);
       this.beams.push(line);
 
@@ -584,6 +555,7 @@
 
       this.beamsByKey[key] = {
         key,
+        title,
         fromId: from.data.id,
         toId: to.data.id,
         color,
@@ -593,6 +565,7 @@
         packets: beamPackets,
         rateBps: initStats ? initStats.rateBps : 32768,
         conns: initStats ? initStats.conns : 4,
+        hits: initStats && initStats.hits != null ? initStats.hits : 0,
         gear: gearInfo.gear,
         gearLabel: gearInfo.label,
         gearFullLabel: gearInfo.fullLabel,
@@ -600,12 +573,13 @@
       };
     }
 
-    updateBeamSpeedGear(key, rateBps, conns) {
+    updateBeamSpeedGear(key, rateBps, conns, hits) {
       const beam = this.beamsByKey[key];
       if (!beam) return;
       const gearInfo = computeSpeedGear(rateBps, conns);
       beam.rateBps = Math.max(0, Number(rateBps || 0));
       beam.conns = Math.max(0, Number(conns || 0));
+      if (hits != null) beam.hits = Number(hits || 0);
       beam.gear = gearInfo.gear;
       beam.gearLabel = gearInfo.label;
       beam.gearFullLabel = gearInfo.fullLabel;
@@ -639,7 +613,6 @@
         ? payload.liveConnections
         : [];
 
-      /* If rawFlows is empty, synthesize authentic live flows from current satellites */
       const flows = rawFlows.length ? rawFlows.slice(0, MAX_LIVE_CONN_ARCS) : [];
       if (!flows.length) {
         globalSats.slice(0, 5).forEach((dstSat, i) => {
@@ -699,14 +672,12 @@
         const targetCenter = this.centers[gal] || this.centers.global;
         const targetSatPool = this.satellitesByCenter[gal] || [];
 
-        /* Match source device satellite around core */
         let srcSat = srcSats.find(s => {
           const d = s.mesh.userData.data || {};
           return (flow.srcId && d.id === flow.srcId) || (flow.srcIp && (d.ip === flow.srcIp || String(d.subtitle || '').includes(flow.srcIp)));
         });
         if (!srcSat && srcSats.length) srcSat = srcSats[idx % srcSats.length];
 
-        /* Match destination satellite around target galaxy */
         let dstSat = targetSatPool.find(s => {
           const d = s.mesh.userData.data || {};
           return (flow.dstId && d.id === flow.dstId) ||
@@ -800,6 +771,7 @@
           speed: gearInfo.speed,
           line: arcLine,
           curve,
+          midPoint: midBridge,
           packets: arcPackets
         });
       });
@@ -818,6 +790,7 @@
       Object.entries(this.beamsByKey).forEach(([k, b]) => {
         trunks[k] = {
           key: k,
+          title: b.title,
           gear: b.gear,
           gearLabel: b.gearLabel,
           gearFullLabel: b.gearFullLabel,
@@ -1024,7 +997,6 @@
         this.rebuildCenterSatellites('blackhole', payload.blackholeSatellites);
       }
 
-      /* Compute real rateBps and conns per trunk beam & apply 3-tier speed gears (高 / 中 / 低) */
       const cnSats = payload.cnSatellites || [];
       const glSats = payload.globalSatellites || [];
       const bhSats = payload.blackholeSatellites || [];
@@ -1037,11 +1009,11 @@
 
       const bhRate = payload.linkStats && payload.linkStats.blackhole ? payload.linkStats.blackhole.rateBps : 0;
       const bhConns = payload.linkStats && payload.linkStats.blackhole ? payload.linkStats.blackhole.conns : Math.min(20, bhSats.length);
+      const bhHits = payload.linkStats && payload.linkStats.blackhole ? payload.linkStats.blackhole.hits : 0;
 
-      this.updateBeamSpeedGear('core_cn', cnRate, cnConns);
-      this.updateBeamSpeedGear('core_global', glRate, glConns);
-      this.updateBeamSpeedGear('core_blackhole', bhRate, bhConns);
-      this.updateBeamSpeedGear('cn_global', Math.round((cnRate + glRate) * 0.25), Math.round((cnConns + glConns) * 0.2));
+      this.updateBeamSpeedGear('core_cn', cnRate, cnConns, 0);
+      this.updateBeamSpeedGear('core_global', glRate, glConns, 0);
+      this.updateBeamSpeedGear('core_blackhole', bhRate, bhConns, bhHits);
 
       this.rebuildLiveConnectionArcs(payload);
     }
@@ -1103,7 +1075,6 @@
         const selected = !!(this.selected && this.selected.id === item.data.id);
         const gal = item.data.galaxy || item.data.region;
         const isFocusedGalaxy = this.mode !== 'panorama' && gal === this.mode;
-        /* In panorama mode, show all 4 cluster headers + top 3 satellites per galaxy so it is informative yet uncluttered */
         const topAllowed = !item.cluster && (item.data.topRank != null ? item.data.topRank < (isFocusedGalaxy ? 8 : (this.surge ? 5 : 3)) : false);
         const allowed = item.cluster || this.showLabels || selected || isFocusedGalaxy || topAllowed;
         if (!allowed || pos.z <= -1 || pos.z >= 1 || Math.abs(pos.x) > 1.06 || Math.abs(pos.y) > 1.06) return;
@@ -1139,7 +1110,7 @@
         const titleWidth = ctx.measureText(title).width;
         ctx.font = '400 8px Inter, "PingFang SC", sans-serif';
         const metaWidth = ctx.measureText(meta).width;
-        const boxWidth = Math.min(215, titleWidth + metaWidth + (isCluster ? 36 : 28));
+        const boxWidth = Math.min(220, titleWidth + metaWidth + (isCluster ? 36 : 28));
         const boxHeight = isCluster ? 30 : 21;
         const onRight = x + boxWidth + 22 < width - 8;
         const bx = clamp(onRight ? x + 12 : x - boxWidth - 12, 8, width - boxWidth - 8);
@@ -1193,7 +1164,7 @@
         }
       });
 
-      /* Draw 3-tier speed gear pills on main trunk beams (高 / 中 / 低) */
+      /* Readable Telemetry Data Pills on the 3 Real Routing Trunks (流速挡位 + 实时速率 + 并发连接数) */
       ['core_global', 'core_cn', 'core_blackhole'].forEach(bKey => {
         const bm = this.beamsByKey[bKey];
         if (!bm || !bm.midPoint) return;
@@ -1202,10 +1173,13 @@
         if (pos.z <= -1 || pos.z >= 1 || Math.abs(pos.x) > 0.96 || Math.abs(pos.y) > 0.96) return;
         const mx = (pos.x * .5 + .5) * width;
         const my = (-pos.y * .5 + .5) * height;
-        const pillTxt = '流速:' + bm.gearLabel + ' · ' + bm.conns + '连';
+        const ratePart = bKey === 'core_blackhole'
+          ? (bm.conns + ' 规则簇')
+          : ('↓' + fmtRateShort(bm.rateBps) + ' · ' + bm.conns + '连');
+        const pillTxt = '流速:' + bm.gearLabel + ' · ' + ratePart;
         ctx.font = '600 8px Inter, "PingFang SC", sans-serif';
         const pw = ctx.measureText(pillTxt).width + 14;
-        const ph = 17;
+        const ph = 18;
         const px = clamp(mx - pw / 2, 8, width - pw - 8);
         const py = clamp(my - ph / 2, 8, height - ph - 8);
         const rect = { x: px, y: py, w: pw, h: ph };
@@ -1214,7 +1188,7 @@
         occupied.push(rect);
         const pillColor = bKey === 'core_cn' ? '#f9a8d4' : (bKey === 'core_blackhole' ? '#f7bd68' : '#6ee7f5');
         this.roundedRect(ctx, px, py, pw, ph, 9);
-        ctx.fillStyle = 'rgba(6, 12, 24, 0.9)';
+        ctx.fillStyle = 'rgba(6, 12, 24, 0.92)';
         ctx.fill();
         ctx.strokeStyle = bm.gear === 'high' ? pillColor : 'rgba(148, 163, 196, 0.35)';
         ctx.lineWidth = 0.9;
@@ -1223,7 +1197,7 @@
         ctx.fillText(pillTxt, px + 7, py + ph / 2);
       });
 
-      /* When 流量激增 (Real 3D Connection Expression) is active, render HUD banner on top-center of 3D stage */
+      /* When 流量激增 (Real 3D Connection Expression) is active, render HUD banner + readable flow tags */
       if (this.surge && this.liveConnSummary) {
         const s = this.liveConnSummary;
         const bannerTxt = '⚡ 真实连接 3D 表达已激活 · 实时映射 ' + s.totalArcs + ' 条跨星系轨迹 (' + s.totalConns + ' 并发连接) · 挡位: 高[' + s.highCount + '] / 中[' + s.medCount + '] / 低[' + s.lowCount + ']';
@@ -1247,37 +1221,30 @@
       const dt = Math.min(this.clock.getDelta(), .05);
       if (!this.active || document.hidden) return;
       const elapsed = this.clock.elapsedTime;
-      if (this.autoRotate && !this.dragging) this.desired.theta += dt * .032;
+      if (this.autoRotate && !this.dragging) this.desired.theta += dt * .028;
       this.updateCamera(dt);
-      this.stars.rotation.y += dt * .002;
-      this.dust.rotation.y -= dt * .004;
+      if (this.stars) this.stars.rotation.y += dt * .0015;
       Object.entries(this.centers).forEach(([id, center], index) => {
-        const rotSpeed = (.035 + index * .008);
-        center.orbits.rotation.y += dt * rotSpeed;
+        const rotSpeed = (.03 + index * .006);
         if (center.satGroup) {
-          center.satGroup.rotation.y += dt * (id === 'blackhole' ? -rotSpeed * 1.35 : rotSpeed * .85);
+          center.satGroup.rotation.y += dt * (id === 'blackhole' ? -rotSpeed * 1.2 : rotSpeed * .75);
         }
-        center.rings.rotation.y += dt * (.08 + index * .02);
-        center.rings.rotation.z = Math.sin(elapsed * .16 + index) * .08;
-        center.mesh.rotation.y += dt * .13;
-        if (center.wire) center.wire.rotation.y -= dt * .08;
+        center.mesh.rotation.y += dt * .11;
         if (center.disk && center.particles && this.bhParticleMeta) {
-          center.disk.rotation.z -= dt * .28;
-          /* Animate blackhole accretion particles spiraling inward toward the event horizon */
+          center.disk.rotation.z -= dt * .24;
           const posAttr = center.particles.geometry.getAttribute('position');
           const arr = posAttr.array;
           const bhBeam = this.beamsByKey.core_blackhole;
           const pullMult = bhBeam && bhBeam.gear === 'high' ? 1.85 : (bhBeam && bhBeam.gear === 'med' ? 1.35 : 1.0);
           for (let i = 0; i < this.bhParticleMeta.length; i++) {
             const m = this.bhParticleMeta[i];
-            m.a += dt * m.speed * (2.6 / Math.max(1.05, m.r)) * pullMult;
-            m.r -= dt * .22 * m.speed * pullMult;
+            m.a += dt * m.speed * (2.5 / Math.max(1.05, m.r)) * pullMult;
+            m.r -= dt * .20 * m.speed * pullMult;
             if (m.r < 1.06) {
-              m.r = 2.9 + Math.random() * .75;
-              m.a = Math.random() * Math.PI * 2;
+              m.r = 2.7 + (i % 5) * .15;
             }
             arr[i * 3] = Math.cos(m.a) * m.r;
-            arr[i * 3 + 1] = m.y * ((m.r - 1.0) / 2.5);
+            arr[i * 3 + 1] = m.y * ((m.r - 1.0) / 2.2);
             arr[i * 3 + 2] = Math.sin(m.a) * m.r;
           }
           posAttr.needsUpdate = true;
@@ -1331,8 +1298,8 @@
         this.selectionRing.scale.setScalar(size * (1 + Math.sin(elapsed * 3) * .08));
         this.selectionRing.rotation.z += dt * .35;
       }
-      this.updateLabels();
       this.scene.updateMatrixWorld(true);
+      this.updateLabels();
       if (this.renderer) this.renderer.render(this.scene, this.camera);
     }
   }

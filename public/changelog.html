@@ -40,8 +40,19 @@
   </div>
 <article class="log-item latest">
   <div class="log-top">
-    <h2>v2.0.0</h2>
+    <h2>v2.0.2</h2>
     <span class="tag c">最新</span>
+    <time>2026-10-31</time>
+  </div>
+  <p style="margin:2px 0 6px;color:var(--dim)">自动节点池「6 步往复筛选检测 ➔ 确认入池 ➔ 直接移除无弹窗」深度打磨 · 危险操作确认弹窗全量接线版</p>
+<h3>🌟 核心修复与交互重构 (v2.0.2 Highlights)</h3>
+<ul><li><b>自动节点池「6 步往复筛选、增量检测、确认入池与直接移除」全流程闭环 (<code>#modal-autopool</code>)</b></li><li><b>Step 1 — 筛选器自由勾选新候选节点（1~10 个）</b>：通过「订阅源 → 国家/地区胶囊 → 关键词」找到节点并任意勾选 1~10 个新候选节点；已加入节点池的节点仅显示绿色 <b>「✓ 已添加」</b> 标识（复选框禁用且不置 <code>checked</code>），与新勾选的待测节点完全区分。</li><li><b>Step 2 — 增量检测（仅对新勾选节点进行检测，已入池节点不重复检测）</b>：点击 <b>「⚡ 仅测已勾选 Ping」</b> 或 <b>「🧪 检测已勾选 (Ping+服务)」</b> 时，严格只将当前新勾选的候选节点 (<code>stagedSet</code>) 发送至 <code>/api/auto_nodes/test_candidates</code> 进行检测，已添加进节点池 (<code>g1Set</code> / <code>g2Set</code>) 的节点绝不重复检测。</li><li><b>Step 3 — 确认加入节点池（支持「仅加检测通过」或「免测/已勾选直接入池」）</b>：</li><li>点击 <b>「✅ 将检测通过加入池 (<code>#btn-an-add-passed</code>)」</b>：仅将当前新勾选且检测通过 (<code>qualified === true</code>) 的节点加入当前分组节点池，自动丢弃未通过节点的勾选；</li><li>点击 <b>「➕ 将已勾选加入池 (<code>#btn-an-add-to-pool</code>)」</b>：可将不想测试的已勾选节点（或已检测节点）直接确认加入当前分组节点池，加入后自动清空筛选器本轮勾选以便继续下一轮挑选。</li><li><b>Step 4 — 已入池列表单点「🗑️ 移除」直接删除（彻底修复误弹「分流策略组编排 · Copilot 与 Edge 服务」弹窗的 Bug）</b>：</li><li><b>根因定位</b>：原先下方列表的「🗑️ 移除」按钮带有 <code>data-group=&quot;1&quot;</code> 属性，点击事件冒泡至 <code>document</code> 后命中了分流页面的 <code>event.target.closest(&#x27;[data-group]&#x27;)</code> 监听器（<code>mock.groups[1]</code> 即为 <code>Copilot 与 Edge 服务</code>），导致误弹出分流组编排弹窗覆盖了节点池弹窗；</li><li><b>彻底修复</b>：将移除按钮属性改为 <code>data-pool-group</code>、在 <code>#an-builder-root</code> 内调用 <code>ev.stopPropagation()</code> 阻断冒泡，并在 <code>document</code> 级 <code>[data-group]</code> 监听器增加 <code>!event.target.closest(&#x27;#modal&#x27;)</code> 守卫。现在点击 <b>「🗑️ 移除」</b> 直接将该节点从列表移除（同时上方筛选器内该节点立即恢复可勾选状态），<b>绝不弹出任何弹窗</b>。</li><li><b>Step 5 &amp; 6 — 多轮往复增删检测直至满意保存</b>：只要当前分组未满 10 个，可随时继续通过筛选器勾选新节点 → 仅对新选中节点检测 → 确认加入节点池 → 在下方列表直接移除不满意的节点，往复循环直至配置满意后点击底部固定栏的 <b>「确定保存节点池」</b>。</li><li><b><code>VERIFY-v2.0.1-install.md</code> 实测反馈 P0/P2/P3 全量闭环</b></li><li><b>P0（12 项危险删除与批量覆盖操作接入 <code>confirmModal</code> + 状态快照「↩ 撤销」）</b>：<code>恢复默认规则库</code>、<code>删除自定义分流组</code>、<code>全部海外组走智能自动池</code> 等 12 项高危/批量操作点击必先弹确认窗（点取消 0 API 调用、零副作用），确认执行后支持「↩ 撤销」。</li><li><b>P2（<code>aria-busy</code> 完整生命周期保持）</b>：回家节点路由切换下拉框跨重绘保持 <code>aria-busy=&quot;true&quot;</code> 直至请求与状态刷新完成，常态为 <code>&quot;false&quot;</code> 永不为 <code>null</code>。</li><li><b>P3（「☑️ 勾选筛选前10优」严格补足到 10）</b>：点击后严格按 <code>10 - targetSet.size</code> 补足新候选节点，勾选总数恒为 <code>10</code>。</li></ul>
+<p>---</p>
+</article>
+<article class="log-item">
+  <div class="log-top">
+    <h2>v2.0.0</h2>
+    <span class="tag">历史</span>
     <time>2026-10-27</time>
   </div>
   <p style="margin:2px 0 6px;color:var(--dim)">NEXUS 全域 3D 正式版 · 全量检查更新包</p>

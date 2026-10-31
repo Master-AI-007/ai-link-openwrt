@@ -1,7 +1,7 @@
 config ai-link 'global'
 	option enabled '1'
 	option build_mode 'auto'
-	option app_version '2.0.0'
+	option app_version '2.0.2'
 	option panel_port '9099'
 	option panel_pwd_customized '0'
 	option require_lan_auth '0'

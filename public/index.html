@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>AI-LINK v2.0.0 · NEXUS 全域 3D 智能网关</title>
-<meta name="description" content="AI-LINK 是运行在 OpenWrt 上的智能分流网关：sing-box 内核、15 组精细分流、双层 DNS 净网、回家隧道与全域 3D 星图。v2.0.0 NEXUS 正式版。" />
-<meta property="og:title" content="AI-LINK v2.0.0 · NEXUS 全域 3D 智能网关" />
+<title>AI-LINK v2.0.2 · 交互收尾版</title>
+<meta name="description" content="AI-LINK 是运行在 OpenWrt 上的智能分流网关：sing-box 内核、15 组精细分流、双层 DNS 净网、回家隧道与全域 3D 星图。v2.0.2 交互收尾版。" />
+<meta property="og:title" content="AI-LINK v2.0.2 · 交互收尾版" />
 <meta property="og:description" content="sing-box 内核 · 15 组精细分流 · 双层净网 · 回家隧道 · 全域 3D 星图" />
 <meta property="og:image" content="https://ai-link-official.pages.dev/assets/ui_surge.webp" />
 <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
@@ -27,7 +27,7 @@
       </svg>
       <span style="display:block">
         <b>AI-LINK</b>
-        <span>NEXUS · v2.0.0</span>
+        <span>NEXUS · v2.0.2</span>
       </span>
     </a>
     <div class="nav-links">
@@ -47,16 +47,16 @@
   <div class="wrap">
     <div class="hero-top">
       <div>
-        <span class="pill"><i></i> v2.0.0 · NEXUS 正式版</span>
+        <span class="pill"><i></i> v2.0.2 · 交互收尾版</span>
         <h1>让每一条连接<br /><em>都有轨迹可循</em></h1>
         <p class="lede">AI-LINK 是运行在 OpenWrt 上的智能分流网关：sing-box 单内核、15 组精细分流、双层 DNS 净网、加密回家隧道，以及一张能看见真实流量的全域 3D 星图。</p>
         <div class="hero-cta">
-          <a class="btn primary" href="https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.0.0/AI-LINK-v2.0.0.tar.gz">下载 v2.0.0</a>
+          <a class="btn primary" href="https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.0.2/AI-LINK-v2.0.2.tar.gz">下载 v2.0.2</a>
           <a class="btn" href="#screens">先看界面</a>
         </div>
         <div class="hero-meta">
-          <span>安装包 <b>1.62 MB</b></span>
-          <span>MD5 <b class="mono">7827f45b…11498</b></span>
+          <span>安装包 <b>1.64 MB</b></span>
+          <span>MD5 <b class="mono">d0b5f23e…e0ec9</b></span>
           <span>支持 <b>OpenWrt 23.05 / 24.10 / ImmortalWrt</b></span>
         </div>
       </div>
@@ -134,6 +134,37 @@
   </div>
 </section>
 
+<section id="reliability">
+  <div class="wrap">
+    <div class="sec-head">
+      <div>
+        <div class="eyebrow">INTERACTION SAFETY</div>
+        <h2>看得见的后果，撤得回的操作</h2>
+        <p>v2.0.2 专门收交互欠账：危险操作要确认、改完能撤销、失败要明说。</p>
+      </div>
+    </div>
+    <div class="grid-3">
+      <div class="card">
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M12 3 5 6v6c0 4.4 3 8.2 7 9 4-.8 7-4.6 7-9V6z"/><path d="m9 12 2 2 4-4"/></svg></div>
+        <h3>12 项危险操作二次确认</h3>
+        <p>恢复默认规则库、批量改分流、删除订阅/节点/回家节点…点「取消」零副作用，点「确认」后还带「↩ 撤销」。</p>
+        <div class="tags"><span class="tag m">取消 0 API</span><span class="tag c">确认可撤销</span></div>
+      </div>
+      <div class="card">
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h10M4 17h7"/><circle cx="18" cy="15" r="3"/><path d="m16.5 15 1.2 1.2 2-2.4"/></svg></div>
+        <h3>失败不再报成功</h3>
+        <p>检查更新、订阅同步、应用探测失败时，明确提示原因，不再出现「已是最新 / 同步完成」的假成功。</p>
+        <div class="tags"><span class="tag v">res.ok 判定</span><span class="tag p">warn 提示</span></div>
+      </div>
+      <div class="card">
+        <div class="ico"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><path d="M13.5 16.5h6M16.5 13.5v6"/></svg></div>
+        <h3>自动节点池六步流程</h3>
+        <p>筛选勾选 → 只测新选 → 两段式加入 → 行内移除（不再误弹编排窗）→ 往返调整 → 保存，10/10 边界实测通过。</p>
+        <div class="tags"><span class="tag c">六步</span><span class="tag m">G1/G2 独立</span></div>
+      </div>
+    </div>
+  </div>
+</section>
 <section id="screens">
   <div class="wrap">
     <div class="sec-head">
@@ -173,6 +204,14 @@
         <img src="/assets/ui_settings.webp" alt="连接与设置" loading="lazy" />
         <div class="cap"><b>07 连接与设置</b><span>Bento 三列</span></div>
       </a>
+      <a class="shot-card" href="/assets/ui_autopool.webp" target="_blank" rel="noopener">
+        <img src="/assets/ui_autopool.webp" alt="自动节点池六步流程" loading="lazy" />
+        <div class="cap"><b>自动节点池</b><span>六步选点</span></div>
+      </a>
+      <a class="shot-card" href="/assets/ui_confirm.webp" target="_blank" rel="noopener">
+        <img src="/assets/ui_confirm.webp" alt="危险操作二次确认" loading="lazy" />
+        <div class="cap"><b>危险操作确认</b><span>可撤销</span></div>
+      </a>
       <a class="shot-card" href="/assets/ui_modal.webp" target="_blank" rel="noopener">
         <img src="/assets/ui_modal.webp" alt="终端明细弹窗" loading="lazy" />
         <div class="cap"><b>终端明细</b><span>点击卡片查看</span></div>
@@ -201,7 +240,7 @@
 <pre><span class="c"># 全新安装（自动选架构、校验 MD5）</span>
 <span class="k">curl</span> -fsSL https://ai-link-official.pages.dev/install.sh | <span class="k">sh</span>
 
-<span class="c"># 已装用户升级到 2.0.0</span>
+<span class="c"># 已装用户升级到 2.0.2</span>
 <span class="k">ai-link</span> update --apply
 
 <span class="c"># 或走升级脚本</span>
@@ -251,7 +290,7 @@
         </svg>
         <b style="font-size:14px">AI-LINK</b>
       </div>
-      <div>NEXUS 全域 3D 智能网关 · v2.0.0 · 2026-10-27</div>
+      <div>NEXUS 全域 3D 智能网关 · v2.0.2 · 2026-10-31</div>
     </div>
     <div class="foot-links">
       <a href="https://github.com/Master-AI-007/ai-link-openwrt" target="_blank" rel="noopener">GitHub</a>

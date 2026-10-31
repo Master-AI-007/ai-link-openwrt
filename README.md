@@ -4,7 +4,7 @@
 
 **NEXUS 全域 3D 智能网关 · 运行在 OpenWrt 上的智能分流系统**
 
-[![version](https://img.shields.io/badge/version-2.0.0-6ee7f5?style=flat-square)](https://github.com/Master-AI-007/ai-link-openwrt/releases/tag/v2.0.0)
+[![version](https://img.shields.io/badge/version-2.0.2-6ee7f5?style=flat-square)](https://github.com/Master-AI-007/ai-link-openwrt/releases/tag/v2.0.2)
 [![platform](https://img.shields.io/badge/OpenWrt-23.05%20%7C%2024.10%20%7C%20ImmortalWrt-a994ff?style=flat-square)](#环境要求)
 [![core](https://img.shields.io/badge/sing--box-1.14.1-54e6b5?style=flat-square)](#技术架构)
 [![license](https://img.shields.io/badge/license-MIT-f9a8d4?style=flat-square)](#许可与免责)
@@ -30,7 +30,7 @@ AI-LINK 是一套面向 OpenWrt 的**智能分流网关**：用 sing-box 单内�
 
 ---
 
-## v2.0.0 新特性
+## v2.0.2 新特性（交互收尾）
 
 | | 能力 | 说明 |
 |---|---|---|
@@ -40,6 +40,8 @@ AI-LINK 是一套面向 OpenWrt 的**智能分流网关**：用 sing-box 单内�
 | 📊 | **概览三卡可点开** | 终端 / 出站节点 / 目标分流三张卡片点击弹出实时明细（KPI、筛选、搜索、快捷操作） |
 | 🛡 | **双层 DNS 净网** | DNS 层 `REFUSED` + 路由层 `REJECT`，50,000 条规则，拦截数与占比真实统计 |
 | 🏠 | **回家隧道** | Hysteria2 与 VLESS-Reality 双协议，二维码 / 标准链接导入，三种回家路由边界 |
+| 🧩 | **自动池六步流程** | 筛选勾选 → 只测新选 → 两段式加入 → 行内移除 → 往返调整 → 保存，10/10 边界实测通过 |
+| 🛡 | **确认与撤销** | 12 项危险操作二次确认，取消 0 副作用，确认后「↩ 撤销」可完整还原 |
 
 ---
 
@@ -55,9 +57,9 @@ AI-LINK 是一套面向 OpenWrt 的**智能分流网关**：用 sing-box 单内�
 |---|---|---|
 | <img src="public/assets/ui_homelink.webp" width="320" /> | <img src="public/assets/ui_dns.webp" width="320" /> | <img src="public/assets/ui_nodes.webp" width="320" /> |
 
-| 07 连接与设置 | 终端明细弹窗 | 移动端 |
+| 07 连接与设置 | 自动节点池 | 移动端 |
 |---|---|---|
-| <img src="public/assets/ui_settings.webp" width="320" /> | <img src="public/assets/ui_modal.webp" width="320" /> | <img src="public/assets/ui_mobile.webp" width="140" /> |
+| <img src="public/assets/ui_settings.webp" width="320" /> | <img src="public/assets/ui_autopool.webp" width="320" /> | <img src="public/assets/ui_mobile.webp" width="140" /> |
 
 </div>
 
@@ -162,7 +164,9 @@ sing-box 1.14.1（单内核）
 
 | 版本 | 日期 | 主题 |
 |---|---|---|
-| **2.0.0** | 2026-10-27 | NEXUS 全域 3D 正式版（真实连接 3D / 三挡流速 / 三卡明细） |
+| **2.0.2** | 2026-10-31 | 交互收尾：自动池六步流程 / 12 项危险操作确认+撤销 / 失败不再报成功 |
+| 2.0.1 | 2026-10-31 | 自动池筛选器内测试、回家独立路由、失败提示修复 |
+| 2.0.0 | 2026-10-27 | NEXUS 全域 3D 正式版（真实连接 3D / 三挡流速 / 三卡明细） |
 | 1.0.3 | 2026-10-26 | 内核防掉线自愈 + 非分流模式选点修复 |
 | 1.0.2 | 2026-10-26 | 全量修复与版本对齐 |
 | 1.0.1 | 2026-10-26 | 安全与稳定性修复 |
@@ -175,10 +179,10 @@ sing-box 1.14.1（单内核）
 ## 包指纹
 
 ```
-AI-LINK-v2.0.0.tar.gz
-size   1,694,889 B
-md5    7827f45b9039219c843a435a35411498
-sha256 02ced20e70c0ced9cf831368c5f46c866dc0ea023afd0f1a15bea5e05ecf9a95
+AI-LINK-v2.0.2.tar.gz
+size   1,715,254 B
+md5    d0b5f23e05e4712a54f16722039e0ec9
+sha256 488c596a78e5ebbbc1c866ad535d0652e291d03ced2ac57964800c982ae9f16e
 ```
 
 在线清单：<https://ai-link-official.pages.dev/version.json>

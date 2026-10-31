@@ -21,7 +21,7 @@ return view.extend({
 		var uciSecret = pwdIsCustom ? '' : (uciSecretRaw || 'ai-link-2026');
 		var luciToken = String(uci.get('ai-link', 'global', 'luci_bridge_token') || '');
 		// 版本号由 daemon 启动时同步写入 UCI（app_version），这里只做兜底
-		var currentVer = String(uci.get('ai-link', 'global', 'app_version') || '2.0.0');
+		var currentVer = String(uci.get('ai-link', 'global', 'app_version') || '2.0.2');
 		var pwdFieldHtml = pwdIsCustom
 			? '<span style="font-size:12px; color:#94a3b8; display:inline-flex; align-items:center; gap:6px;">面板密码: <code id="luci-panel-pwd-mask" style="background:#0f172a; padding:2px 7px; border-radius:5px; color:#e2e8f0; border:1px solid rgba(148,163,184,0.2);">已自定义 · 不回显</code> <span style="font-size:11px; color:#64748b;">（忘记可执行 ai-link password 重置）</span></span>'
 			: '<span style="font-size:12px; color:#94a3b8; display:inline-flex; align-items:center; gap:6px;">面板密码: <code id="luci-panel-pwd-mask" style="background:#0f172a; padding:2px 7px; border-radius:5px; color:#e2e8f0; border:1px solid rgba(148,163,184,0.2);">••••••••</code> <button type="button" id="luci-btn-toggle-pwd" style="padding:2px 8px; border-radius:5px; border:1px solid rgba(148,163,184,0.3); background:rgba(30,41,59,0.8); color:#cbd5e1; font-size:11px; cursor:pointer;">👁️ 查看</button></span>';
@@ -41,7 +41,7 @@ return view.extend({
 		}
 
 		m = new form.Map('ai-link', _('AI-LINK 智能分流网关'),
-			_('专为全屋智能分流、抗 DNS 污染、回家内网穿透与多区域故障自愈设计的轻量透明代理网关（v2.0.0 正式版 · 纯血 Sing-box 内核）。'));
+			_('专为全屋智能分流、抗 DNS 污染、回家内网穿透与多区域故障自愈设计的轻量透明代理网关（v2.0.2 正式版 · 纯血 Sing-box 内核）。'));
 
 		s = m.section(form.NamedSection, 'global', globalSecType, _('实时运行中枢与快捷控制'));
 		s.anonymous = true;

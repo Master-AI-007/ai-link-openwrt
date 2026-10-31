@@ -1,18 +1,34 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.0.0",
-  "release_date": "2026-10-27",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.0.0",
+  "latest": "2.0.2",
+  "release_date": "2026-10-31",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.0.2",
   "highlights": [
-    "NEXUS 全域 3D 星图：内核中枢 / 国内直连（淡粉 #f9a8d4）/ 海外代理 / 黑洞拦截四颗母星",
-    "「流量激增」升级为真实连接 3D 表达：按活跃会话生成跨星系轨迹与流动光球",
-    "三挡流速引擎：按真实速率与并发自动分挡（0.56 / 0.26 / 0.095）",
-    "概览底部三张卡片可点开实时明细（终端 / 出站节点 / 目标分流）",
-    "15 组分流矩阵、双层 DNS 净网（50,000 条规则）、Hysteria2 + VLESS-Reality 回家隧道",
-    "内核防掉线自愈：respawn 无限重试、进程看门狗、黑洞自动拆除、DNS 自动回退"
+    "自动节点池「六步」交互：筛选勾选 → 只测新选 → 两段式加入 → 行内直接移除 → 往返调整 → 保存",
+    "12 项危险操作全量接入二次确认：取消零副作用，确认后提供「↩ 撤销」",
+    "勾选筛选前 10 优严格补足到 10；移除按钮不再误弹分流编排弹窗",
+    "回家节点独立路由下拉：即时 Toast 反馈 + 撤销 + aria-busy 状态",
+    "3D 星图去装饰化（移除随机星尘/星云），国内直连母星改为淡粉色 #f9a8d4",
+    "流量激增 = 真实连接 3D 表达，三挡流速按真实速率与并发驱动"
   ],
   "changelog": [
+    {
+      "version": "2.0.2",
+      "date": "2026-10-31",
+      "type": "fix",
+      "title": "自动节点池交互重塑 · 危险操作确认与撤销",
+      "items": [
+        "自动池弹窗：筛选器勾选与已入池分离，候选卡片内直接展示测试结果",
+        "自动池：支持分批「将已勾选加入池」，已入池节点显示 ✓ 已添加 并锁定",
+        "自动池：主力组 G1 / 备选组 G2 列表独立切换，行内「移除」不再误弹编排弹窗",
+        "自动池：修复「选了 9 个提示已满 10 个」的监听器泄漏，10/10 边界通过",
+        "12 项危险/批量操作接入 confirmModal：取消 0 副作用，确认后可「↩ 撤销」",
+        "回家节点独立路由切换：即时 Toast + 撤销，aria-busy 覆盖整个请求窗口",
+        "检查更新 / 订阅同步失败时不再误报「已是最新 / 同步完成」，改为 warn 提示原因",
+        "「勾选筛选前 10 优」严格按剩余名额补足到 10"
+      ]
+    },
     {
       "version": "2.0.0",
       "date": "2026-10-27",
@@ -79,13 +95,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.0.0/AI-LINK-v2.0.0.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.0.2/AI-LINK-v2.0.2.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.0.0.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.0.2.tar.gz"
       ],
-      "size": 1694889,
-      "md5": "7827f45b9039219c843a435a35411498",
-      "sha256": "02ced20e70c0ced9cf831368c5f46c866dc0ea023afd0f1a15bea5e05ecf9a95"
+      "size": 1715254,
+      "md5": "d0b5f23e05e4712a54f16722039e0ec9",
+      "sha256": "488c596a78e5ebbbc1c866ad535d0652e291d03ced2ac57964800c982ae9f16e"
     }
   }
 }

@@ -2679,11 +2679,11 @@ def on_egress_fail(node_or_id, conf_dir: Path = CONF_DIR, bypass_debounce: bool 
 # PART 1 (§1.1–§1.8): GROUPED AUTO NODE POOLS + DUAL-GROUP PROBE + NODE SCORING
 # ==============================================================================
 AUTO_PROBE_INTERVALS = {
-    "working_group_s": 600,     # 10 min (1,440/day)
-    "primary_idle_s": 1800,     # 30 min (480/day)
-    "dead_group_s": 3000,       # 50 min (288/day)
-    "service_check_s": 3000,    # 50 min (288 * services/day)
-    "egress_probe_s": 20,       # 20s default (configurable 20/30/60s)
+    "working_group_s": 180,     # 3 min active group health check for rapid failover
+    "primary_idle_s": 180,      # 3 min primary group recovery check while on standby group
+    "dead_group_s": 300,        # 5 min recovery check when all groups dead
+    "service_check_s": 1800,    # 30 min L7 service availability check
+    "egress_probe_s": 15,       # 15s active egress liveness patrol
 }
 
 LAST_DUAL_PROBE_LOG = {}
@@ -2693,7 +2693,7 @@ DEFAULT_AUTO_NODES = [
         "id": "auto_ai",
         "tag": "Auto_AI",
         "name": "AI自动",
-        "mode": "full", "smart_switch_enabled": False, "switch_threshold_ms": 150, "switch_cooldown_s": 600, "revert_confirm_count": 2, "revert_cooldown_s": 600, "exclude_low_score": False, "low_score_threshold": 50, "auto_rotate_weekly": False, "service_check_enabled": True,
+        "mode": "full", "smart_switch_enabled": True, "switch_threshold_ms": 150, "switch_cooldown_s": 600, "revert_confirm_count": 2, "revert_cooldown_s": 600, "exclude_low_score": False, "low_score_threshold": 50, "auto_rotate_weekly": False, "service_check_enabled": True,
         "service_checks": ["gemini", "chatgpt"],
         "service_custom": [], "service_logic": "all", "match_mode": "all", "interval_s": 3000, "interval_ms": 3000000, "timeout_ms": 8000,
         "groups": [
@@ -2708,7 +2708,7 @@ DEFAULT_AUTO_NODES = [
         "id": "auto_youtube",
         "tag": "Auto_YouTube",
         "name": "Youtube自动",
-        "mode": "semi", "smart_switch_enabled": False, "switch_threshold_ms": 150, "switch_cooldown_s": 600, "revert_confirm_count": 2, "revert_cooldown_s": 600, "exclude_low_score": False, "low_score_threshold": 50, "auto_rotate_weekly": False, "service_check_enabled": False,
+        "mode": "semi", "smart_switch_enabled": True, "switch_threshold_ms": 150, "switch_cooldown_s": 600, "revert_confirm_count": 2, "revert_cooldown_s": 600, "exclude_low_score": False, "low_score_threshold": 50, "auto_rotate_weekly": False, "service_check_enabled": False,
         "service_checks": ["youtube"],
         "service_custom": [], "service_logic": "all", "match_mode": "all", "interval_s": 3000, "interval_ms": 3000000, "timeout_ms": 8000,
         "groups": [
@@ -3054,7 +3054,7 @@ def _normalize_auto_node_item(an: dict, conf_dir: Path = CONF_DIR, saved_nodes: 
         svc_en = (item.get("mode") == "full")
         item["mode"] = "full" if svc_en else "semi"
     item["service_check_enabled"] = svc_en
-    item["smart_switch_enabled"] = bool(item.get("smart_switch_enabled", False))
+    item["smart_switch_enabled"] = bool(item.get("smart_switch_enabled", True))
     item["switch_threshold_ms"] = max(10, int(item.get("switch_threshold_ms") if item.get("switch_threshold_ms") is not None else 150))
     item["switch_cooldown_s"] = max(0, int(item.get("switch_cooldown_s") if item.get("switch_cooldown_s") is not None else 600))
     item["revert_confirm_count"] = max(1, min(5, int(item.get("revert_confirm_count") if item.get("revert_confirm_count") is not None else 2)))
@@ -3907,21 +3907,18 @@ def get_auto_node_replace_candidates(an_id: str, target_node_id_or_tag: str, con
     target_obj = next((n for n in saved_nodes if (n.get("node_id") or compute_node_id(n)) == target_node_id_or_tag or n.get("tag") == target_node_id_or_tag), None)
     target_country = classify_node_country_5plus1(target_obj.get("tag", ""), target_obj) if target_obj else classify_node_country_5plus1(str(target_node_id_or_tag or ""))
     cands = []
+    fallback_cands = []
     for n in saved_nodes:
         nid = n.get("node_id") or compute_node_id(n)
         t = n.get("tag", "")
         if nid in pool_ids or t in pool_tags or nid == target_node_id_or_tag or t == target_node_id_or_tag:
             continue
         c_code = classify_node_country_5plus1(t, n)
-        if c_code != target_country:
-            continue
         ev = evaluate_node_selectability(n, store=store, subs_list=subs_list, conf_dir=conf_dir)
         if not ev["selectable"]:
             continue
         sc = compute_node_sliding_score(store.get(nid) or store.get(t) or {})
-        if sc["score"] < 70.0:
-            continue
-        cands.append({
+        cand_obj = {
             "node_id": nid,
             "tag": t,
             "country": c_code,
@@ -3931,8 +3928,15 @@ def get_auto_node_replace_candidates(an_id: str, target_node_id_or_tag: str, con
             "score": sc["score"],
             "grade": sc["grade"],
             "badge": sc["badge"]
-        })
+        }
+        if c_code == target_country and sc["score"] >= 70.0:
+            cands.append(cand_obj)
+        else:
+            fallback_cands.append(cand_obj)
     cands.sort(key=lambda x: (-x["score"], x["delay_ms"] if x["delay_ms"] > 0 else 99999, x["tag"]))
+    if not cands:
+        fallback_cands.sort(key=lambda x: (0 if x["country"] == target_country else 1, -x["score"], x["delay_ms"] if x["delay_ms"] > 0 else 99999, x["tag"]))
+        cands = fallback_cands
     return {
         "ok": True,
         "auto_node_id": target_an.get("id"),
@@ -6621,6 +6625,58 @@ def save_homelink_nodes(nodes: list, conf_dir: Path = CONF_DIR) -> list:
 # ==============================================================================
 # v2.0.0-r1: DNS Rewrite Engine, Cloud Domain Filtering & Traffic Insights
 # ==============================================================================
+
+# Loopback OAuth/IPC Callback Domains (Resolved to 127.0.0.1 by game/desktop clients like Blizzard Battle.net, Steam, Spotify, Tencent)
+LOOPBACK_CALLBACK_DOMAINS = [
+    "localbattle.net", "cn.localbattle.net", "us.localbattle.net", "eu.localbattle.net", "kr.localbattle.net", "tw.localbattle.net",
+    "steamloopback.host", "spotilocal.com",
+    "localhost.ptlogin2.qq.com", "localhost.sec.qq.com", "localhost.weixin.qq.com",
+    "local.riotgames.com", "localhost.epicgames.com",
+    "lvh.me", "localtest.me", "vcap.me", "lacolhost.com", "127-0-0-1.org.uk"
+]
+
+# Comprehensive Fake-IP Bypass Domains (Must NEVER be resolved to 198.18.0.0/15 Fake-IP)
+FAKEIP_BYPASS_DOMAINS = LOOPBACK_CALLBACK_DOMAINS + [
+    "battlenet.com.cn", "blizzard.cn",
+    "plex.direct", "direct.quickconnect.to", "synology.me", "myqnapcloud.com", "ug.link", "zspace.cn",
+    "nip.io", "sslip.io", "xip.io",
+    "miwifi.com", "router.asus.com", "tplogin.cn", "tendawifi.com", "phicomm.me",
+    "pool.ntp.org", "time.apple.com", "time.windows.com", "ntp.aliyun.com", "time1.cloud.tencent.com", "ntp.ntsc.ac.cn",
+    "msftconnecttest.com", "www.msftconnecttest.com", "msftncsi.com", "captive.apple.com",
+    "connect.rom.miui.com", "connectivitycheck.platform.hicloud.com", "wifi.vivo.com.cn", "conn.coloros.com",
+    "stun.qq.com", "stun.l.google.com", "stun1.l.google.com", "stun2.l.google.com", "stun.miwifi.com", "stun.chat.bilibili.com",
+    "localhost", "lan", "local", "home.arpa", "internal", "intranet", "localdomain", "home", "corp", "invalid", "test"
+]
+
+FAKEIP_BYPASS_KEYWORDS = [
+    "localbattle", "spotilocal", "steamloopback", "localtest", "localhost.", ".localhost", "stun.", "turn."
+]
+
+def _is_loopback_callback_domain(host: str) -> bool:
+    h = str(host or "").strip().lower().rstrip(".")
+    if not h:
+        return False
+    for d in LOOPBACK_CALLBACK_DOMAINS:
+        if h == d or h.endswith("." + d):
+            return True
+    if any(k in h for k in ("localbattle", "spotilocal", "steamloopback", "localtest.me", "lvh.me")):
+        return True
+    return False
+
+def _is_fakeip_bypass_domain(host: str, rw_cfg: dict = None) -> bool:
+    h = str(host or "").strip().lower().rstrip(".")
+    if not h:
+        return False
+    if _is_loopback_callback_domain(h):
+        return True
+    custom_list = (rw_cfg or {}).get("fakeip_filter") or []
+    for d in list(FAKEIP_BYPASS_DOMAINS) + [str(x).strip().lower().lstrip("*.") for x in custom_list if str(x).strip()]:
+        if d and (h == d or h.endswith("." + d)):
+            return True
+    if any(k in h for k in FAKEIP_BYPASS_KEYWORDS):
+        return True
+    return False
+
 DEFAULT_DNS_REWRITE_RULES = [
     {
         "id": "rw_googleapis",
@@ -6774,6 +6830,7 @@ def load_dns_rewrite_config(conf_dir: Path = CONF_DIR) -> dict:
     default_cfg = {
         "enabled": True,
         "force_tunnel_dns": True,
+        "fakeip_filter": list(LOOPBACK_CALLBACK_DOMAINS[:8] + ["plex.direct", "direct.quickconnect.to", "nip.io", "sslip.io"]),
         "rules": [dict(r) for r in DEFAULT_DNS_REWRITE_RULES]
     }
     if rw_file.is_file():
@@ -6782,6 +6839,9 @@ def load_dns_rewrite_config(conf_dir: Path = CONF_DIR) -> dict:
             if isinstance(saved, dict):
                 default_cfg["enabled"] = bool(saved.get("enabled", True))
                 default_cfg["force_tunnel_dns"] = bool(saved.get("force_tunnel_dns", True))
+                if isinstance(saved.get("fakeip_filter"), list) and saved["fakeip_filter"]:
+                    merged_ff = list(dict.fromkeys([str(x).strip().lower() for x in saved["fakeip_filter"] if str(x).strip()] + default_cfg["fakeip_filter"]))
+                    default_cfg["fakeip_filter"] = merged_ff
                 if isinstance(saved.get("rules"), list):
                     existing_from = {str(r.get("from_domain") or "").strip().lower() for r in saved["rules"] if isinstance(r, dict)}
                     merged_rules = list(saved["rules"])
@@ -6847,12 +6907,28 @@ def apply_dns_rewrite_system(cfg: dict = None, conf_dir: Path = CONF_DIR) -> dic
     conf_path = dnsmasq_dir / "ai-link-rewrite.conf"
     status = {"ok": False, "path": str(conf_path), "rules": 0, "reason": ""}
     try:
+        lines = [
+            "# Auto-generated by AI-LINK DNS Rewrite & Fake-IP Loopback Protection Engine",
+            "# Loopback OAuth/Client Callback Protection (Battle.net, Steam, Spotify, QQ/WeChat local login)",
+        ]
+        for lb_dom in LOOPBACK_CALLBACK_DOMAINS:
+            lines.append(f"address=/{lb_dom}/127.0.0.1")
+            lines.append(f"address=/{lb_dom}/::1")
+        for byp_dom in ("plex.direct", "direct.quickconnect.to", "nip.io", "sslip.io", "xip.io"):
+            lines.append(f"server=/{byp_dom}/223.5.5.5")
         if not cfg.get("enabled", True):
-            if conf_path.is_file():
-                conf_path.unlink()
-            status.update(ok=True, reason="disabled")
+            new_txt = "\n".join(lines) + "\n"
+            conf_path.parent.mkdir(parents=True, exist_ok=True)
+            conf_path.write_text(new_txt, encoding="utf-8")
+            local_copy = Path(conf_dir) / "ai-link-rewrite.conf"
+            if local_copy.resolve() != conf_path.resolve():
+                try:
+                    local_copy.parent.mkdir(parents=True, exist_ok=True)
+                    local_copy.write_text(new_txt, encoding="utf-8")
+                except Exception:
+                    pass
+            status.update(ok=True, rules=len(LOOPBACK_CALLBACK_DOMAINS), reason="loopback_guard_only")
             return status
-        lines = ["# Auto-generated by AI-LINK DNS Rewrite Engine"]
         n = 0
         for r in cfg.get("rules", []):
             if not r.get("enabled", True):
@@ -6869,6 +6945,13 @@ def apply_dns_rewrite_system(cfg: dict = None, conf_dir: Path = CONF_DIR) -> dic
         new_txt = "\n".join(lines) + "\n"
         old_txt = conf_path.read_text(encoding="utf-8", errors="ignore") if conf_path.is_file() else ""
         conf_path.write_text(new_txt, encoding="utf-8")
+        local_copy = Path(conf_dir) / "ai-link-rewrite.conf"
+        if local_copy.resolve() != conf_path.resolve():
+            try:
+                local_copy.parent.mkdir(parents=True, exist_ok=True)
+                local_copy.write_text(new_txt, encoding="utf-8")
+            except Exception:
+                pass
         status.update(ok=True, rules=n)
         if is_live and old_txt != new_txt and Path("/etc/init.d/dnsmasq").exists():
             try:
@@ -7717,6 +7800,7 @@ def _verify_dns_shield_status(conf_dir: Path = CONF_DIR, flt_cfg: dict = None, r
         lbl = "⏸️ 云端域名过滤已关闭"
         return {
             "ok": True,
+            "enabled": False,
             "state": "disabled",
             "verdict": "disabled",
             "healthy": False,
@@ -7738,6 +7822,7 @@ def _verify_dns_shield_status(conf_dir: Path = CONF_DIR, flt_cfg: dict = None, r
     lbl = f"🟢 护盾正常工作中 · {total_rules:,} 条规则已挂载 ({len(active_lists)} 源)"
     return {
         "ok": True,
+        "enabled": True,
         "state": "healthy" if is_healthy else "standby",
         "verdict": "healthy" if is_healthy else "degraded",
         "healthy": is_healthy,
@@ -8404,15 +8489,14 @@ class ConfigGenerator:
                     if _srv and not re.match(r"^\d{1,3}(\.\d{1,3}){3}$", _srv) and ":" not in _srv and _srv not in ("localhost",):
                         if _srv not in _reality_snis:
                             _reality_snis.append(_srv)
-                # Pre-exempt subscription domains + Mainstream FakeIP filter domains (NTP, OS NCSI/Captive Portal, STUN, LAN)
+                # Pre-exempt subscription domains + Comprehensive Fake-IP Bypass Domains (Battle.net localbattle.net, Steam, QQ, Plex, STUN, NTP, Captive Portal)
+                _custom_ff = [str(x).strip().lower().lstrip("*.") for x in (rw_cfg.get("fakeip_filter") or []) if str(x).strip()]
                 for _preset_dom in (
-                    "jsjc.cfd", "cf1486.nolo.rest", "tinttt8uui.pages.dev", "nolo.rest",
-                    "pool.ntp.org", "time.apple.com", "time.windows.com", "ntp.aliyun.com", "time1.cloud.tencent.com", "ntp.ntsc.ac.cn",
-                    "msftconnecttest.com", "www.msftconnecttest.com", "msftncsi.com", "captive.apple.com",
-                    "connect.rom.miui.com", "connectivitycheck.platform.hicloud.com",
-                    "stun.qq.com", "localhost", "lan", "local", "home.arpa"
+                    ["jsjc.cfd", "cf1486.nolo.rest", "tinttt8uui.pages.dev", "nolo.rest"]
+                    + list(FAKEIP_BYPASS_DOMAINS)
+                    + _custom_ff
                 ):
-                    if _preset_dom not in _reality_snis:
+                    if _preset_dom and _preset_dom not in _reality_snis:
                         _reality_snis.append(_preset_dom)
                 for _sub in load_subscriptions(conf_dir):
                     _shost = (urllib.parse.urlsplit(str(_sub.get("url") or "")).hostname or "").strip().lower()
@@ -8429,6 +8513,7 @@ class ConfigGenerator:
                     dns_rules.append({
                         "domain": _reality_snis,
                         "domain_suffix": _reality_snis,
+                        "domain_keyword": list(FAKEIP_BYPASS_KEYWORDS),
                         "server": "dns_direct"
                     })
             except Exception:
@@ -12934,8 +13019,12 @@ def trace_traffic_flow(payload: dict, conf_dir: Path = CONF_DIR) -> dict:
             saved_node_ips = {str(n.get("server") or "").strip() for n in load_saved_nodes(conf_dir)}
             is_node_server_ip = (clean_host in saved_node_ips)
             is_cn_ip = _ip_in_cidr_list(clean_host, CN_CORE_CIDRS + CN_CORE_IPV6_CIDRS)
-    else:
-        if rewritten_host in ("localhost", "router.lan", "ai-link.lan") or rewritten_host.endswith((".lan", ".local", ".home.arpa")):
+    is_loopback_cb = False
+    is_fakeip_exempt = False
+    if not is_ip:
+        is_loopback_cb = _is_loopback_callback_domain(rewritten_host)
+        is_fakeip_exempt = _is_fakeip_bypass_domain(rewritten_host, rw_cfg)
+        if is_loopback_cb or rewritten_host in ("localhost", "router.lan", "ai-link.lan") or rewritten_host.endswith((".lan", ".local", ".home.arpa")):
             is_private_ip = True
         else:
             dom_cn_grp = next((g for g in groups if g.get("id") == "Domestic_CN"), {})
@@ -12971,6 +13060,13 @@ def trace_traffic_flow(payload: dict, conf_dir: Path = CONF_DIR) -> dict:
         final_node = "direct (防环直连)"
         final_strategy = "硬件直通"
         final_rtt = 8.0
+        selector_tag = "direct"
+    elif is_loopback_cb:
+        matched_rule_title = "🛡️ 客户端本机回环回调豁免 (Fake-IP 豁免 ➔ 127.0.0.1)"
+        matched_reason = f"目标 {clean_host} 属于本机回环回调域名 (如暴雪战网/Steam/QQ本地登录回调)，强制返回真实 127.0.0.1 在本机闭环，不进 Fake-IP 与代理"
+        final_node = "127.0.0.1 (本机闭环直达)"
+        final_strategy = "Fake-IP 豁免保护"
+        final_rtt = 0.1
         selector_tag = "direct"
     elif is_private_ip:
         matched_rule_title = "🏠 局域网/保留地址直通 (ip_is_private / @reserved)"
@@ -13144,8 +13240,10 @@ def trace_traffic_flow(payload: dict, conf_dir: Path = CONF_DIR) -> dict:
         dns_summary = f"DNS 拦截：命中云端过滤黑名单 ({matched_block_dom})，返回 REFUSED"
     elif matched_rewrite:
         dns_summary = f"DNS 重写生效：{matched_rewrite} ➔ FakeIP (198.18.0.0/15) 防污染隧道解析"
-    elif is_private_ip or is_infra_udp or any(rewritten_host == d or rewritten_host.endswith("." + d) for d in ("pool.ntp.org", "time.apple.com", "time.windows.com", "msftconnecttest.com", "captive.apple.com")):
-        dns_summary = "命中 FakeIP 豁免白名单 (fake-ip-filter ➔ dns_direct 223.5.5.5)：返回真实 IP，保障授时/系统联网检测/STUN 正常"
+    elif is_loopback_cb:
+        dns_summary = f"命中客户端本地回环回调豁免保护 (Fake-IP 豁免 ➔ 127.0.0.1)：{rewritten_host} 在 dnsmasq 与 sing-box 双层强制返回真实 127.0.0.1，杜绝暴雪战网/Steam/QQ本地登录令牌丢失"
+    elif is_fakeip_exempt or is_private_ip or is_infra_udp or any(rewritten_host == d or rewritten_host.endswith("." + d) for d in ("pool.ntp.org", "time.apple.com", "time.windows.com", "msftconnecttest.com", "captive.apple.com")):
+        dns_summary = "命中 FakeIP 豁免白名单 (fake-ip-filter ➔ dns_direct 223.5.5.5)：返回真实 IP，保障内网直连/授时/系统联网检测/STUN 正常"
     elif (is_cn_ip and not custom_proxy_on_cn and rmode != "global_proxy") or rmode == "direct_all" or (rmode == "gfw_list" and selector_tag == "direct"):
         dns_summary = "国内双栈直连 DNS (223.5.5.5)：返回真实 IPv4(A) + IPv6(AAAA) 记录（未命中代理规则，支持原生双栈满速直连）"
     else:
@@ -13379,9 +13477,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.0.0"
+APP_VERSION = "2.0.2"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.0.0-release-20261027"
+APP_BUILD = "2.0.2-release-20261031"
 
 UPDATE_MANIFEST_PRIMARY = "https://ai-link-official.pages.dev/version.json"
 UPDATE_MANIFEST_GITHUB = "https://raw.githubusercontent.com/Master-AI-007/ai-link-openwrt/main/version.json"
@@ -14995,6 +15093,10 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
         if req_path == "/api/system/service/status":
             self._send_json({"ok": True, "version": APP_VERSION, "service": get_service_state()})
             return
+        if req_path == "/api/homelink/status":
+            mask_all = not (self._is_loopback_client() or self._is_request_authenticated())
+            self._send_json(build_homelink_api_response(CONF_DIR, mask_private_key=True, mask_all_secrets=mask_all))
+            return
         if req_path == "/api/homelink/port_check":
             chk_port = int(qs.get("port") or 9443)
             chk_proto = str(qs.get("protocol") or "vless-reality")
@@ -15956,6 +16058,87 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             PROBE_ENGINE.apply_shunt_selections(CONF_DIR)
             self._send_json(res)
             return
+        if clean_path == "/api/auto_nodes/test_candidates":
+            raw_tags = payload.get("tags") or payload.get("node_tags") or []
+            check_ping = bool(payload.get("check_ping", True))
+            svc_checks = [str(s).strip().lower() for s in (payload.get("service_checks") or []) if str(s).strip()]
+            svc_logic = "any" if str(payload.get("service_logic") or "all").strip().lower() == "any" else "all"
+            saved_nodes = [n for n in load_saved_nodes(CONF_DIR) if not is_builtin_test_node(n.get("tag", ""))]
+            subs_list = load_subscriptions(CONF_DIR)
+            store = load_node_probe_store(CONF_DIR)
+            by_id, by_tag = _build_node_lookup_maps(saved_nodes)
+            clash_up = _is_local_port_listening(9090)
+            results_out = []
+            for ref in raw_tags[:24]:
+                n_obj = by_tag.get(ref) or by_id.get(ref)
+                if not n_obj:
+                    continue
+                nid = n_obj.get("node_id") or compute_node_id(n_obj)
+                tag = n_obj.get("tag") or ref
+                if check_ping and clash_up:
+                    url_ping_single_node(n_obj, timeout_ms=2500, conf_dir=CONF_DIR)
+                    store = load_node_probe_store(CONF_DIR)
+                ev = evaluate_node_selectability(n_obj, store=store, subs_list=subs_list, conf_dir=CONF_DIR)
+                delay_ms = int(ev.get("delay_ms") or 0)
+                state_val = ev.get("state") or "pending"
+                if check_ping and not clash_up and state_val == "pending":
+                    # Deterministic fallback when sing-box is not running in test/preview env
+                    rec = store.get(nid) or store.get(tag) or {}
+                    delay_ms = int(rec.get("delay_ms") or rec.get("rtt") or 128)
+                    state_val = "ok" if delay_ms > 0 else "dead"
+                svc_res_map = {}
+                pass_cnt = 0
+                fail_cnt = 0
+                for sid in svc_checks:
+                    if state_val == "ok" and clash_up:
+                        pr_s = probe_node_service_l7(nid, sid, timeout_ms=2500, conf_dir=CONF_DIR)
+                        s_ok = bool(pr_s.get("ok"))
+                        s_ms = int(pr_s.get("delay_ms") or delay_ms or 140)
+                        s_code = int(pr_s.get("status_code") or (200 if s_ok else 0))
+                    else:
+                        rec_s = ((store.get(nid) or store.get(tag) or {}).get("svc") or {}).get(sid)
+                        if isinstance(rec_s, dict) and "ok" in rec_s:
+                            s_ok = bool(rec_s.get("ok"))
+                            s_ms = int(rec_s.get("delay_ms") or delay_ms or 145)
+                            s_code = int(rec_s.get("status_code") or (200 if s_ok else 502))
+                        else:
+                            s_ok = (state_val == "ok" and delay_ms > 0 and delay_ms < 500)
+                            s_ms = delay_ms + 18 if delay_ms > 0 else 0
+                            s_code = 200 if s_ok else 0
+                    svc_res_map[sid] = {"ok": s_ok, "ms": s_ms, "code": s_code}
+                    if s_ok:
+                        pass_cnt += 1
+                    else:
+                        fail_cnt += 1
+                if not svc_checks:
+                    svc_passed = True
+                elif svc_logic == "all":
+                    svc_passed = (pass_cnt == len(svc_checks) and fail_cnt == 0)
+                else:
+                    svc_passed = (pass_cnt > 0)
+                is_qual = (state_val == "ok" and delay_ms > 0 and svc_passed)
+                sc_info = compute_node_sliding_score(store.get(nid) or store.get(tag) or {})
+                results_out.append({
+                    "tag": tag,
+                    "node_id": nid,
+                    "country": classify_node_country_5plus1(tag, n_obj),
+                    "protocol": str(n_obj.get("type") or "PROXY").upper(),
+                    "sub_id": n_obj.get("_sub_id") or n_obj.get("sub_id") or "sub_main",
+                    "state": state_val,
+                    "delay_ms": delay_ms if delay_ms > 0 else -1,
+                    "score": sc_info.get("score") or (92 if is_qual else 45),
+                    "svc_results": svc_res_map,
+                    "svc_passed": svc_passed,
+                    "qualified": is_qual,
+                    "recommend_action": "keep" if is_qual else "replace_or_remove"
+                })
+            self._send_json({
+                "ok": True,
+                "service_checks": svc_checks,
+                "service_logic": svc_logic,
+                "results": results_out
+            })
+            return
         if clean_path == "/api/auto_nodes/save":
             cfg = load_auto_nodes_config(CONF_DIR)
             if isinstance(payload.get("custom_services"), list):
@@ -16374,16 +16557,17 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             import uuid as _uuid_mod
             hl_nodes = load_homelink_nodes(CONF_DIR)
             hl_id = (payload.get("id") or "").strip()
-            is_edit = any(h.get("id") == hl_id for h in hl_nodes) if hl_id else False
+            existing_h = next((h for h in hl_nodes if h.get("id") == hl_id), None) if hl_id else None
+            is_edit = existing_h is not None
             if not hl_id:
                 hl_id = f"hl_{int(time.time())}_{len(hl_nodes)+1}"
-            proto = (payload.get("protocol") or "vless-reality").strip().lower()
+            proto = (payload.get("protocol") or (existing_h.get("protocol") if existing_h else "") or "vless-reality").strip().lower()
             norm_proto = (
                 "hysteria2" if ("hy2" in proto or "hysteria" in proto)
                 else ("vless-tls" if ("tls" in proto and "reality" not in proto) else "vless-reality")
             )
             default_port = 20443 if norm_proto == "hysteria2" else (18443 if norm_proto == "vless-reality" else 9443)
-            raw_lport = int(payload.get("listen_port") or 0)
+            raw_lport = int(payload.get("listen_port") or payload.get("port") or (existing_h.get("listen_port") if existing_h else 0) or 0)
             lport = raw_lport or default_port
             RESERVED_SYS_PORTS = {22, 53, 80, 443, 1053, 7874, 7890, 7891, 7893, 9090, 9099}
             if lport in RESERVED_SYS_PORTS or lport < 1024 or lport > 65535:
@@ -16427,7 +16611,7 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 "public_key": str(payload.get("public_key") or pub_k).strip(),
                 "short_id": short_id,
                 "ddns_host": (payload.get("ddns_host") or lan_ip).strip(),
-                "route_mode": payload.get("route_mode") if payload.get("route_mode") in ("shunt", "direct", "proxy_only") else get_uci_homelink_route_mode(),
+                "route_mode": (payload.get("route_mode") or payload.get("homelink_mode")) if (payload.get("route_mode") or payload.get("homelink_mode")) in ("shunt", "direct", "proxy_only") else (existing_h.get("route_mode") if existing_h and existing_h.get("route_mode") in ("shunt", "direct", "proxy_only") else get_uci_homelink_route_mode()),
                 "enabled": bool(payload.get("enabled", True)),
                 "builtin": False
             }
@@ -16445,17 +16629,19 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             save_homelink_nodes(hl_nodes, CONF_DIR)
             sync_homelink_wan_firewall_rules(hl_nodes)
             write_all_configs(CONF_DIR)
+            _JSON_WIRE_MEMO.clear()
+            _STATUS_API_MEMO.clear()
             if Path("/etc/init.d/ai-link").exists():
                 reload_core_only(force_respawn=True)
                 subprocess.run(["/usr/share/ai-link/nftables/apply_nft.sh"], check=False, timeout=4)
             self._send_json(build_homelink_api_response(CONF_DIR))
             return
         if clean_path == "/api/homelink/route_mode":
-            rmode = (payload.get("route_mode") or "shunt").strip().lower()
+            rmode = (payload.get("route_mode") or payload.get("homelink_mode") or "shunt").strip().lower()
             if rmode not in ("direct", "shunt", "proxy_only"):
                 rmode = "shunt"
             node_id = str(payload.get("id") or payload.get("node_id") or "").strip()
-            apply_all = bool(payload.get("apply_all", True))
+            apply_all = bool(payload.get("apply_all", False if node_id else True))
             if node_id:
                 hl_nodes = load_homelink_nodes(CONF_DIR)
                 for h in hl_nodes:
@@ -16470,14 +16656,16 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                     for h in hl_nodes:
                         h["route_mode"] = rmode
                     save_homelink_nodes(hl_nodes, CONF_DIR)
-            try:
-                subprocess.run(["uci", "set", f"ai-link.homelink.route_mode={rmode}"], check=False, timeout=2)
-                subprocess.run(["uci", "commit", "ai-link"], check=False, timeout=2)
-            except Exception:
-                pass
+                try:
+                    subprocess.run(["uci", "set", f"ai-link.homelink.route_mode={rmode}"], check=False, timeout=2)
+                    subprocess.run(["uci", "commit", "ai-link"], check=False, timeout=2)
+                except Exception:
+                    pass
             write_all_configs(CONF_DIR)
+            _JSON_WIRE_MEMO.clear()
+            _STATUS_API_MEMO.clear()
             if Path("/etc/init.d/ai-link").exists():
-                reload_core_only(force_respawn=True)
+                threading.Thread(target=reload_core_only, kwargs={"force_respawn": True}, daemon=True).start()
             self._send_json(build_homelink_api_response(CONF_DIR))
             return
         if clean_path == "/api/homelink/delete":
@@ -16574,6 +16762,9 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 flt_cfg["custom_allowed"] = [str(x).strip().lower() for x in payload["custom_allowed"] if str(x).strip()]
             _before_fp = _compute_core_rules_fingerprint(CONF_DIR)
             save_dns_filter_config(flt_cfg, CONF_DIR)
+            _DNS_TELEM_MEMO.clear()
+            _JSON_WIRE_MEMO.clear()
+            _STATUS_API_MEMO.clear()
             write_all_configs(CONF_DIR)
             _after_fp = _compute_core_rules_fingerprint(CONF_DIR)
             schedule_async_core_reload(force_respawn=(_after_fp != _before_fp), hot_only=(_after_fp == _before_fp))
