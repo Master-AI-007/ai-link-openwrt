@@ -1,18 +1,41 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.0.2",
-  "release_date": "2026-10-31",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.0.2",
+  "latest": "2.3.1",
+  "release_date": "2026-11-01",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.3.1",
   "highlights": [
-    "自动节点池「六步」交互：筛选勾选 → 只测新选 → 两段式加入 → 行内直接移除 → 往返调整 → 保存",
-    "12 项危险操作全量接入二次确认：取消零副作用，确认后提供「↩ 撤销」",
-    "勾选筛选前 10 优严格补足到 10；移除按钮不再误弹分流编排弹窗",
-    "回家节点独立路由下拉：即时 Toast 反馈 + 撤销 + aria-busy 状态",
-    "3D 星图去装饰化（移除随机星尘/星云），国内直连母星改为淡粉色 #f9a8d4",
-    "流量激增 = 真实连接 3D 表达，三挡流速按真实速率与并发驱动"
+    "自动节点池 v2：目标驱动筛选（范围/模式/一键最快 10 个）+ 服务语义地区判定 + 订阅改名无损迁移",
+    "方案 A 智能运维：网络体检、接入向导、IPv6 防漏三档、告警（Webhook/Telegram/SMTP）、配置历史与双回滚",
+    "分流表达力：规则块（域名正则 / 源 IP / 端口 / 两级 AND-OR）+ 远程规则订阅 + 按组独立 DNS",
+    "节点严格锁定：手动指定节点失效时可选「宁可失败不漂移」，或允许容灾漂移并提示",
+    "取消入核数量上限：649 个节点全部原生挂载 sing-box，实测面板接口仍在 10–260 ms",
+    "节点三态：可用 / 不可达 / 未测速分开统计，不再把「没测过」算成「挂了」"
   ],
   "changelog": [
+    {
+      "version": "2.3.1",
+      "date": "2026-11-01",
+      "type": "feat",
+      "title": "自动节点池 v2 · 方案 A 智能运维全量交付",
+      "items": [
+        "自动节点池：目标驱动（scope_source / scope_countries / pool_mode / auto_maintain），一键按延迟选最快 10 个",
+        "自动节点池：L2 服务语义判定（Google 301 / chatgpt loc），HK 判定节点不再进 AI 池",
+        "自动节点池：node_key 稳定身份，订阅改名/换端口不丢成员，消失成员保留 7 天 missing 占位",
+        "T1 网络体检：8 项并发（DNS 归属 / AAAA / IPv6 绕过 / DDNS / 端口 / 上游 / MTU / 关键应用）",
+        "T2 接入向导：自动识别主路由/旁路由/单臂/Docker，3 步完成并复检",
+        "T3 IPv6 防漏：strict / loose / off 三档，nft forward_mss 阻断 + 国内 v6 白名单",
+        "T5 告警：Webhook / Telegram / SMTP，7 类事件，30 分钟去重，事件中心可查",
+        "T6 配置历史：每次写配置快照 + 结构化 diff + 「撤销此变更 / 恢复到此版本」双回滚",
+        "T8 规则块：domain_regex / src_ip_cidr / port / 两级 AND-OR + 试匹配 + 非法正则拦截",
+        "T9 远程规则订阅：域名列表 / .srs 导入式原子更新，失败保留旧版本",
+        "T10 DNS 按组：继承全局 / DoH / DoT / DoQ / 本地上游，组内生效且不影响其他组",
+        "BUG-006：Google 地区真实判定（301 正文标记），AI 池排除 Google 判定为 HK 的节点",
+        "BUG-007：节点池可在前端移除「正在使用」的节点，自动切换并支持撤销",
+        "BUG-008：严格锁定开关读写对称，锁定后死节点不漂移",
+        "取消入核上限：649 节点全部入核；节点列表三态（可用/不可达/未测速）"
+      ]
+    },
     {
       "version": "2.0.2",
       "date": "2026-10-31",
@@ -95,13 +118,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.0.2/AI-LINK-v2.0.2.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.3.1/AI-LINK-v2.3.1.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.0.2.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.3.1.tar.gz"
       ],
-      "size": 1715254,
-      "md5": "d0b5f23e05e4712a54f16722039e0ec9",
-      "sha256": "488c596a78e5ebbbc1c866ad535d0652e291d03ced2ac57964800c982ae9f16e"
+      "size": 986860,
+      "md5": "f1df8843b17533ec40a25fd92e008918",
+      "sha256": "51c07b44fdbb1e5fe1c8c9f4808623cd1216983845a61817b493bfa5299914ad"
     }
   }
 }

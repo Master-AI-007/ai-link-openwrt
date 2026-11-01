@@ -1797,3 +1797,192 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
   padding: 6px 8px;
   font-size: 8.5px;
 }
+
+/* v2.1.0 Phase 1 & Phase 2: T7 Sub Health, T4 Hit Leaderboard, T1 Network Doctor */
+.sub-health-box {
+  margin: 6px 0 4px;
+  padding: 7px 9px;
+  border-radius: 9px;
+  background: rgba(4, 10, 20, 0.58);
+  border: 1px solid rgba(132, 175, 255, 0.14);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.sub-health-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 8.5px;
+  color: var(--text);
+  gap: 6px;
+}
+.sub-health-bar {
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.sub-health-bar > i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--cyan), var(--mint));
+  transition: width 0.35s ease;
+}
+.sub-health-bar.warn > i {
+  background: linear-gradient(90deg, var(--amber), #ff9f43);
+}
+.sub-health-bar.danger > i {
+  background: linear-gradient(90deg, var(--rose), #ff5252);
+}
+.sub-health-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 8px;
+  color: var(--muted);
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.sub-expire-pill {
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 7.5px;
+  font-weight: 600;
+  border: 1px solid rgba(84, 230, 181, 0.35);
+  color: var(--mint);
+  background: rgba(84, 230, 181, 0.09);
+}
+.sub-expire-pill.warn {
+  border-color: rgba(255, 196, 86, 0.45);
+  color: var(--amber);
+  background: rgba(255, 196, 86, 0.12);
+}
+.sub-expire-pill.danger {
+  border-color: rgba(251, 125, 150, 0.5);
+  color: var(--rose);
+  background: rgba(251, 125, 150, 0.14);
+}
+.hit-stat-row {
+  display: grid;
+  grid-template-columns: 28px minmax(110px, 1.3fr) minmax(90px, 1.2fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 9px;
+  background: rgba(6, 13, 25, 0.62);
+  border: 1px solid var(--line);
+  cursor: pointer;
+  transition: border-color 0.2s ease, transform 0.18s ease;
+}
+.hit-stat-row:hover {
+  border-color: rgba(110, 231, 245, 0.42);
+  transform: translateY(-1px);
+}
+.hit-rank-badge {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8.5px;
+  font-weight: 700;
+  background: rgba(110, 231, 245, 0.12);
+  color: var(--cyan);
+  border: 1px solid rgba(110, 231, 245, 0.28);
+}
+.doctor-summary-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(8, 18, 34, 0.78);
+  border: 1px solid rgba(110, 231, 245, 0.28);
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.doctor-check-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 9px;
+  max-height: 390px;
+  overflow: auto;
+  padding-right: 2px;
+}
+.doctor-check-card {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(5, 11, 22, 0.72);
+  border: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.doctor-check-card.status-pass {
+  border-color: rgba(84, 230, 181, 0.28);
+}
+.doctor-check-card.status-warn {
+  border-color: rgba(255, 196, 86, 0.45);
+  background: rgba(36, 26, 8, 0.42);
+}
+.doctor-check-card.status-fail {
+  border-color: rgba(251, 125, 150, 0.52);
+  background: rgba(40, 12, 22, 0.45);
+}
+
+/* v2.1.1 BUG-006 Google Region, BUG-007 & Auto Node Pool v2 */
+.google-region-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 7.5px;
+  font-weight: 600;
+  border: 1px solid rgba(84, 230, 181, 0.35);
+  color: var(--mint);
+  background: rgba(84, 230, 181, 0.08);
+  margin-left: 5px;
+}
+.google-region-badge.blocked {
+  border-color: rgba(251, 125, 150, 0.58);
+  color: var(--rose);
+  background: rgba(251, 125, 150, 0.16);
+}
+.svc-matrix-inline {
+  display: inline-flex;
+  gap: 3px;
+  margin-left: 5px;
+  vertical-align: middle;
+}
+.svc-matrix-chip {
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-size: 7px;
+  font-family: var(--mono);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--muted);
+}
+.svc-matrix-chip.ok {
+  color: var(--mint);
+  border-color: rgba(84, 230, 181, 0.35);
+  background: rgba(84, 230, 181, 0.08);
+}
+.svc-matrix-chip.bad {
+  color: var(--rose);
+  border-color: rgba(251, 125, 150, 0.45);
+  background: rgba(251, 125, 150, 0.12);
+}
+.pool-explain-line {
+  font-size: 8px;
+  color: var(--mint);
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(84, 230, 181, 0.06);
+  border: 1px dashed rgba(84, 230, 181, 0.24);
+}

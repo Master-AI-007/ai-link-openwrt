@@ -1807,6 +1807,195 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
   padding: 6px 8px;
   font-size: 8.5px;
 }
+
+/* v2.1.0 Phase 1 & Phase 2: T7 Sub Health, T4 Hit Leaderboard, T1 Network Doctor */
+.sub-health-box {
+  margin: 6px 0 4px;
+  padding: 7px 9px;
+  border-radius: 9px;
+  background: rgba(4, 10, 20, 0.58);
+  border: 1px solid rgba(132, 175, 255, 0.14);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.sub-health-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 8.5px;
+  color: var(--text);
+  gap: 6px;
+}
+.sub-health-bar {
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.sub-health-bar > i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--cyan), var(--mint));
+  transition: width 0.35s ease;
+}
+.sub-health-bar.warn > i {
+  background: linear-gradient(90deg, var(--amber), #ff9f43);
+}
+.sub-health-bar.danger > i {
+  background: linear-gradient(90deg, var(--rose), #ff5252);
+}
+.sub-health-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 8px;
+  color: var(--muted);
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.sub-expire-pill {
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 7.5px;
+  font-weight: 600;
+  border: 1px solid rgba(84, 230, 181, 0.35);
+  color: var(--mint);
+  background: rgba(84, 230, 181, 0.09);
+}
+.sub-expire-pill.warn {
+  border-color: rgba(255, 196, 86, 0.45);
+  color: var(--amber);
+  background: rgba(255, 196, 86, 0.12);
+}
+.sub-expire-pill.danger {
+  border-color: rgba(251, 125, 150, 0.5);
+  color: var(--rose);
+  background: rgba(251, 125, 150, 0.14);
+}
+.hit-stat-row {
+  display: grid;
+  grid-template-columns: 28px minmax(110px, 1.3fr) minmax(90px, 1.2fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 9px;
+  background: rgba(6, 13, 25, 0.62);
+  border: 1px solid var(--line);
+  cursor: pointer;
+  transition: border-color 0.2s ease, transform 0.18s ease;
+}
+.hit-stat-row:hover {
+  border-color: rgba(110, 231, 245, 0.42);
+  transform: translateY(-1px);
+}
+.hit-rank-badge {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8.5px;
+  font-weight: 700;
+  background: rgba(110, 231, 245, 0.12);
+  color: var(--cyan);
+  border: 1px solid rgba(110, 231, 245, 0.28);
+}
+.doctor-summary-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(8, 18, 34, 0.78);
+  border: 1px solid rgba(110, 231, 245, 0.28);
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.doctor-check-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 9px;
+  max-height: 390px;
+  overflow: auto;
+  padding-right: 2px;
+}
+.doctor-check-card {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(5, 11, 22, 0.72);
+  border: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.doctor-check-card.status-pass {
+  border-color: rgba(84, 230, 181, 0.28);
+}
+.doctor-check-card.status-warn {
+  border-color: rgba(255, 196, 86, 0.45);
+  background: rgba(36, 26, 8, 0.42);
+}
+.doctor-check-card.status-fail {
+  border-color: rgba(251, 125, 150, 0.52);
+  background: rgba(40, 12, 22, 0.45);
+}
+
+/* v2.3.1 BUG-006 Google Region, BUG-007 & Auto Node Pool v2 */
+.google-region-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 7.5px;
+  font-weight: 600;
+  border: 1px solid rgba(84, 230, 181, 0.35);
+  color: var(--mint);
+  background: rgba(84, 230, 181, 0.08);
+  margin-left: 5px;
+}
+.google-region-badge.blocked {
+  border-color: rgba(251, 125, 150, 0.58);
+  color: var(--rose);
+  background: rgba(251, 125, 150, 0.16);
+}
+.svc-matrix-inline {
+  display: inline-flex;
+  gap: 3px;
+  margin-left: 5px;
+  vertical-align: middle;
+}
+.svc-matrix-chip {
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-size: 7px;
+  font-family: var(--mono);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--muted);
+}
+.svc-matrix-chip.ok {
+  color: var(--mint);
+  border-color: rgba(84, 230, 181, 0.35);
+  background: rgba(84, 230, 181, 0.08);
+}
+.svc-matrix-chip.bad {
+  color: var(--rose);
+  border-color: rgba(251, 125, 150, 0.45);
+  background: rgba(251, 125, 150, 0.12);
+}
+.pool-explain-line {
+  font-size: 8px;
+  color: var(--mint);
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(84, 230, 181, 0.06);
+  border: 1px dashed rgba(84, 230, 181, 0.24);
+}
   </style>
 </head>
 <body>
@@ -1863,7 +2052,7 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
     <div class="workspace">
       <header class="topbar">
         <div class="page-heading">
-          <span class="eyebrow">AI-LINK / NEXUS 3D · <span class="version-chip">v2.0.2</span></span>
+          <span class="eyebrow">AI-LINK / NEXUS 3D · <span class="version-chip">v2.3.1</span></span>
           <h1 id="page-title">全域星图</h1>
         </div>
         <div class="global-route" style="cursor:pointer" data-page-link="shunt" title="点击进入分流与出口编排">
@@ -1879,6 +2068,8 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
         <div class="quick-actions">
           <a id="top-github-link" class="button ghost compact github-nav-btn" href="https://github.com/Master-AI-007/ai-link-openwrt" target="_blank" rel="noopener noreferrer" title="访问 AI-LINK GitHub 官方开源项目"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:14px;height:14px"><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.2 4.2 0 0 0-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3 0 0 0-6.2 0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2 0 0 0-.1 3.2A4.6 4.6 0 0 0 4 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg><span>GitHub</span></a>
           <button id="btn-top-sync-sub" class="button ghost compact" data-action="sync"><svg><use href="#i-refresh"/></svg><span>更新订阅</span></button>
+          <button id="btn-top-network-doctor" class="button secondary compact" data-action="network-doctor" title="8 项全链路网络健康体检与一键自动修复"><span>🩺 网络医生</span></button>
+          <button id="btn-top-topology-wizard" class="button ghost compact" data-action="topology-wizard" title="拓扑自动识别与 3 步快速接入向导 (T2/T3)"><span>🧭 接入向导</span></button>
           <button id="btn-top-probe-now" class="button primary compact" data-action="probe-all"><svg><use href="#i-probe"/></svg><span>全量体检</span></button>
           <button id="btn-top-recover" class="button danger compact" data-action="recover"><svg><use href="#i-direct"/></svg><span>直连恢复</span></button>
         </div>
@@ -2074,6 +2265,7 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
           <div class="content-head">
             <div><span class="eyebrow">POLICY ORCHESTRATION</span><h2>代理与分流</h2><p>5 大全局路由模式、双组省流自动节点池、精细分流矩阵与 4 阶流量透视。</p></div>
             <div class="head-actions">
+              <button id="btn-open-rule-providers" class="button ghost" data-action="open-rule-providers" title="导入式远程分流规则订阅 (T9)">🌐 远程规则订阅</button>
               <button class="button secondary" data-action="new-auto-pool"><svg><use href="#i-plus"/></svg>新建自动节点池</button>
               <button class="button primary" data-action="new-rule"><svg><use href="#i-plus"/></svg>添加自定义分流规则</button>
             </div>
@@ -2170,6 +2362,26 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
                   <div class="trace-stage" style="padding:8px 11px"><i>03</i><div><b>精细分流规则匹配</b><span>命中 Shunt_AI 策略组 (优先级 #01)</span></div><strong>Shunt_AI</strong></div>
                   <div class="trace-stage" style="padding:8px 11px"><i>04</i><div><b>实际出站节点隧道</b><span>绑定 AI 专线自动池 (Auto_AI) 最优低延出口</span></div><strong>代理出站</strong></div>
                 </div>
+              </article>
+
+              <!-- T4: 1-Hour Sliding Window Shunt Rule Hit Leaderboard -->
+              <article id="shunt-hit-leaderboard-card" class="glass-card">
+                <div class="card-head" style="margin-bottom:8px">
+                  <div>
+                    <span class="card-index">RULE HIT LEADERBOARD · 1H WINDOW</span>
+                    <h3>分流规则与出站命中排行榜 (最近 1 小时)</h3>
+                  </div>
+                  <div class="button-row" style="gap:5px">
+                    <div class="filter-chips" id="shunt-hit-tabs">
+                      <button type="button" class="active" data-hit-tab="by_group">按策略组</button>
+                      <button type="button" data-hit-tab="by_rule">按规则项</button>
+                      <button type="button" data-hit-tab="by_outbound">按实际出口</button>
+                    </div>
+                    <button type="button" class="button ghost compact" data-action="refresh-hit-stats" title="立即刷新 1 小时分流命中统计">🔄 刷新</button>
+                  </div>
+                </div>
+                <p style="font-size:8.5px;color:var(--muted);margin:0 0 8px">实时聚合最近 60 分钟网关连接与 4 阶透视命中分布（点击任意排行项可直接跳转查看对应实时活跃连接）。</p>
+                <div id="shunt-hit-leaderboard-list" class="trace-stages" style="gap:6px"></div>
               </article>
 
               <!-- Underlying Traffic Bypass, Game UDP & QUIC Controls -->
@@ -2281,7 +2493,11 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
                 <div class="layer-list">
                   <div><i class="cyan"></i><span>第一层：DNS 层 REFUSED 零延迟阻断</span><b id="ov-dns-layer-rules">450,446</b></div>
                   <div><i class="amber"></i><span>第二层：路由层 REJECT 拦截硬编码 IP</span><b id="dns-layer-reject">2,877</b></div>
-                  <div><i class="violet"></i><span>雙栈防漏：海外域名 AAAA 抑制保护</span><b>已启用</b></div>
+                  <div><i class="violet"></i><span>双栈防漏：海外域名 AAAA 抑制保护</span><b>已启用</b></div>
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+                    <div style="display:flex;align-items:center;gap:8px"><i class="mint"></i><span title="自动豁免 Google Play (clientservices/play.googleapis.com、gvt1~3)、Apple 推送与微软核心更新域名，防止广告黑洞误杀正常应用下载与登录">核心应用防误杀保护 (Google Play / Apple / MS)</span></div>
+                    <button id="toggle-dns-essential-protect" class="switch on" role="switch" aria-checked="true" data-action="dns-essential-protect-toggle" aria-label="切换核心应用防误杀白名单保护"><i></i></button>
+                  </div>
                 </div>
               </article>
 
@@ -2325,7 +2541,7 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
           <div class="content-head">
             <div><span class="eyebrow">NODE OBSERVATORY</span><h2>订阅与节点</h2><p>订阅正交启停隔离、按国家/地区动态计数筛选、真连接 URL Ping 评分与分页管理。</p></div>
             <div class="head-actions">
-              <button class="button ghost" data-action="open-schedules">⏱️ 定时测速与入核上限</button>
+              <button class="button ghost" data-action="open-schedules">⏱️ 定时测速巡检计划</button>
               <button class="button ghost" data-action="add-single-node"><svg><use href="#i-plus"/></svg>手动加节点</button>
               <button class="button secondary" data-action="import">📋 批量导入 URI</button>
               <button class="button primary" data-action="new-sub"><svg><use href="#i-plus"/></svg>新增订阅</button>
@@ -2341,11 +2557,9 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
               <div class="node-toolbar-row">
                 <div class="filter-chips">
                   <button class="active" data-node-filter="all">全部 (6)</button>
-                  <button data-node-filter="ok">✓ 已验证 (5)</button>
-                  <button data-node-filter="pending">? 待测速 (0)</button>
-                  <button data-node-filter="suspect">⚠️ 波动 (1)</button>
+                  <button data-node-filter="ok">✓ 可用 (6)</button>
                   <button data-node-filter="dead">✗ 不可达 (0)</button>
-                  <button data-node-filter="kernel">⚡ 已入核 (5)</button>
+                  <button data-node-filter="untested">⏳ 未测速 (0)</button>
                 </div>
                 <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
                   <select id="node-sub-filter" style="min-height:35px;font-size:9px" aria-label="按订阅源筛选">
@@ -2374,7 +2588,7 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
             <div class="table-wrap">
               <table>
                 <thead>
-                  <tr><th>节点名称 / 服务器</th><th>国家地区 · 协议</th><th>健康四态</th><th>实测延迟 · 20次趋势</th><th>滑动评分</th><th>入核状态</th><th style="text-align:right">快捷操作</th></tr>
+                  <tr><th>节点名称 / 服务器</th><th>国家地区 · 协议</th><th>节点状态</th><th>URL Ping 延迟 · 趋势</th><th>滑动评分</th><th>所属来源</th><th style="text-align:right">快捷操作</th></tr>
                 </thead>
                 <tbody id="probe-nodes-tbody"></tbody>
               </table>
@@ -2393,9 +2607,10 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
           <div class="content-head">
             <div><span class="eyebrow">SYSTEM CONTROL & TELEMETRY</span><h2>连接与设置</h2><p>核心生命周期管控、OTA 在线升级、安全鉴权、备份恢复、实时活跃连接表与内核日志舱。</p></div>
             <div class="head-actions">
-              <button class="button ghost" data-action="ops-diag">🩺 一键深度诊断</button>
+              <button class="button primary" data-action="network-doctor">🩺 网络健康医生 (8项全检+修复)</button>
+              <button class="button ghost" data-action="ops-diag">📋 诊断原始快照</button>
               <button class="button ghost" data-action="restart-service"><svg><use href="#i-refresh"/></svg>重启全部服务</button>
-              <button class="button secondary" data-action="health-check"><svg><use href="#i-probe"/></svg>一键健康自检</button>
+              <button class="button secondary" data-action="health-check"><svg><use href="#i-probe"/></svg>内核端口自检</button>
             </div>
           </div>
 
@@ -2405,7 +2620,7 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
             <article class="glass-card system-card">
               <span class="card-index">01 / CORE LIFECYCLE</span>
               <div class="system-title">
-                <div><h3 id="sys-core-title">sing-box 1.14.1</h3><p id="sys-core-sub">AI-LINK v2.0.2 · 单一真相源架构</p></div>
+                <div><h3 id="sys-core-title">sing-box 1.14.1</h3><p id="sys-core-sub">AI-LINK v2.3.1 · 单一真相源架构</p></div>
                 <span class="status-pill" id="settings-proxy-status-pill">运行正常</span>
               </div>
               <div class="system-specs">
@@ -2429,7 +2644,7 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
               <div class="update-row">
                 <div><b>AI-LINK 插件版本</b><span id="ota-sub">当前已是最新版本 (支持断点恢复与自动回滚)</span></div>
                 <div class="button-row">
-                  <span class="version-chip">v2.0.2</span>
+                  <span class="version-chip">v2.3.1</span>
                   <button class="button secondary compact" data-action="check-update">检查更新</button>
                   <button class="button ghost compact" data-action="ota-status">升级状态</button>
                   <button id="btn-ota-apply" class="button primary compact hidden" data-action="apply-update">立即升级</button>
@@ -2499,7 +2714,7 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
                   </div>
                   <div class="setting-line">
                     <div><b>面板监听地址、免密网段与更新源</b><span>0.0.0.0:9099 · 支持自定义 OTA 清单源</span></div>
-                    <button class="button ghost compact" data-action="binding">配置网络与更新源</button>
+                    <button class="button ghost compact" data-action="binding">配置网络与更新源</button> <button id="btn-open-config-history" class="button ghost compact" data-action="open-config-history">📜 变更历史与回滚</button> <button id="btn-open-alert-center" class="button ghost compact" data-action="open-alert-center">🔔 告警中心</button>
                   </div>
                 </div>
               </div>
@@ -2587,8 +2802,8 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 
   <script src="./static/qrcode.min.js"></script>
   <script src="./assets/three.min.js"></script>
-  <script src="./nexus3d.js?v=20261031-9"></script>
-  <script src="./nexus.js?v=20261031-9"></script>
+  <script src="./nexus3d.js?v=20261101-2"></script>
+  <script src="./nexus.js?v=20261101-2"></script>
   <script>
 (function () {
   'use strict';
@@ -4028,7 +4243,7 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
       ['新加坡 06', 'SG', 'HY2', 'ok', 156, 96, true, 'sub_main'],
       ['新加坡 08', 'SG', 'HY2', 'ok', 184, 91, true, 'sub_main'],
       ['日本 07', 'JP', 'VLESS', 'ok', 142, 94, true, 'sub_main'],
-      ['日本 12', 'JP', 'TUIC', 'suspect', 329, 72, true, 'sub_main'],
+      ['日本 12', 'JP', 'TUIC', 'ok', 219, 86, true, 'sub_main'],
       ['香港 N3', 'HK', 'VLESS', 'ok', 96, 97, true, 'sub_main'],
       ['台湾 02', 'TW', 'HY2', 'ok', 128, 89, false, 'sub_main']
     ].map((n, i) => ({
@@ -4049,7 +4264,7 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
       { id: 'sched_default', name: '每日全量 URL Ping 巡检', region: 'ALL', interval_min: 360, enabled: true, check_ipv6: false }
     ],
     logs: [
-      '[INFO] AI-LINK NEXUS daemon v2.0.2 started on 0.0.0.0:9099',
+      '[INFO] AI-LINK NEXUS daemon v2.3.1 started on 0.0.0.0:9099',
       '[INFO] sing-box 1.14.1 core process verified alive (ports :7890, :7893, :7874 ready)',
       '[INFO] NFTables table inet ai_link synchronized via --generate-nft single source of truth',
       '[INFO] Dual-group Auto Node Pools (Auto_AI, Auto_YouTube, Auto_Netflix) initialized',
@@ -4117,7 +4332,11 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
     labels: false,
     surge: false,
     dnsEnabled: true,
+    dnsEssentialProtect: true,
     dnsRewriteEnabled: true,
+    shuntHitTab: 'by_group',
+    shuntHitStats: null,
+    lastDoctorReport: null,
     forceTunnelDns: true,
     authEnabled: false,
     entryBypass: true,
@@ -4748,6 +4967,31 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
     }
   }
 
+  const UNSUPPORTED_GOOGLE_REGIONS = new Set(['HK', 'CN', 'MO', 'RU', 'BY', 'IR', 'KP', 'SY', 'CU']);
+
+  function getNodeGoogleRegion(n) {
+    if (!n) return 'US';
+    if (n.google_region) return String(n.google_region).toUpperCase();
+    return classifyNodeCountry(n);
+  }
+
+  function isNodeGoogleRegionBlocked(n) {
+    if (!n) return false;
+    if (n.region_blocked != null) return Boolean(n.region_blocked);
+    return UNSUPPORTED_GOOGLE_REGIONS.has(getNodeGoogleRegion(n));
+  }
+
+  function renderGoogleRegionBadgeHtml(n, showFullText) {
+    const greg = getNodeGoogleRegion(n);
+    const blocked = isNodeGoogleRegionBlocked(n);
+    if (blocked) {
+      return '<span class="google-region-badge blocked" title="Google 301 TLD 判定该节点位于 ' + esc(greg) + '，访问 Gemini 会触发地域拒绝">' +
+        '🚫 Google 地区：' + esc(greg) + (showFullText !== false ? '（不支持 Gemini）' : '') + '</span>';
+    }
+    return '<span class="google-region-badge" title="Google 视角地区为 ' + esc(greg) + '，支持 Gemini / AI 服务">' +
+      'Google 地区：' + esc(greg) + (showFullText ? '（支持 Gemini）' : ' ✓') + '</span>';
+  }
+
   /* Fix #8, #9, #10: Full Shunt Matrix, Batch Toolbar, Auto-Pools, Inline Trace & Switch History */
   function renderShuntMatrix() {
     const rm = $('#routing-modes');
@@ -4760,10 +5004,19 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
     if (gl) {
       gl.innerHTML = mock.groups.map((g, i) => {
         const isDir = g.shunt_mode === 'direct' || g.resolved_node === 'direct';
+        const isManual = g.shunt_mode === 'manual';
+        const hasManualDrift = isManual && !g.strict_lock && Boolean(g.manual_drifted || (g.manual_node && g.resolved_node && g.manual_node !== g.resolved_node && !String(g.manual_node).startsWith('auto:')));
+        const driftText = g.drift_warning || (hasManualDrift ? ('⚠ 指定节点不可用，当前临时使用 ' + g.resolved_node) : '');
         const modeBadge = isDir
           ? '🎯 直连模式'
-          : (g.shunt_mode === 'manual' ? ('🖐️ 手动 · ' + (g.country || 'JP')) : ('🤖 ' + (g.auto_node_name || '自动池')));
-        const outNode = isDir ? 'DIRECT 宽带直连' : (g.resolved_node || '智能优选就绪');
+          : (isManual
+              ? ((g.strict_lock ? '🔒 严格锁定 · ' : '🖐️ 手动 · ') + (g.manual_node || g.country || 'JP'))
+              : ('🤖 ' + (g.auto_node_name || '自动池')));
+        const outNode = isDir
+          ? 'DIRECT 宽带直连'
+          : (hasManualDrift
+              ? ('⚠ 指定节点不可用，当前临时使用 ' + (g.resolved_node || '备用节点'))
+              : (g.strict_locked_dead ? ('🔒 ' + (g.manual_node || g.resolved_node) + ' (不可用·未漂移)') : (g.resolved_node || '智能优选就绪')));
         const rulesArr = []
           .concat(g.domains || [])
           .concat((g.domain_keywords || []).map(k => 'keyword:' + k))
@@ -4789,11 +5042,13 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
             prioHtml +
             '<div style="min-width:0;cursor:pointer" data-group="' + i + '"><b style="font-size:10.5px;color:var(--text)">' + esc(g.name) + (g.is_custom ? ' <span class="version-chip" style="padding:2px 6px;font-size:7.5px">自定义</span>' : '') + '</b><small style="display:block;color:var(--muted);font-size:8.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(g.subtitle) + ' (' + ruleCnt + ' 项)</small></div>' +
             '<div style="cursor:pointer" data-group="' + i + '"><span class="status-pill" style="font-size:8.5px">' + esc(modeBadge) + '</span></div>' +
-            '<div class="mono" style="font-size:9px;color:#c9d6ea;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer" data-group="' + i + '">' + esc(outNode) + '</div>' +
-            '<div style="text-align:right">' + formatLatencyBadge(g.rtt, isDir ? 'direct' : 'ok', isDir) + '</div>' +
+            '<div class="mono" style="font-size:9px;color:' + ((hasManualDrift || g.strict_locked_dead) ? 'var(--amber)' : '#c9d6ea') + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer" data-group="' + i + '" title="' + esc(driftText || outNode) + '">' + esc(outNode) + '</div>' +
+            '<div style="text-align:right">' + formatLatencyBadge(g.rtt, isDir ? 'direct' : (g.strict_locked_dead ? 'dead' : 'ok'), isDir) + '</div>' +
             '<div class="button-row" style="justify-content:flex-end;gap:5px">' +
+              (isManual ? '<button class="button ghost compact" style="min-height:26px;padding:0 7px;font-size:8px;color:' + (g.strict_lock ? 'var(--amber)' : 'var(--muted)') + '" data-action="toggle-group-strict-lock" data-gid="' + esc(g.id) + '" title="严格锁定开关：开启后即使手动指定节点失效也绝不漂移到其他节点">' + (g.strict_lock ? (g.strict_locked_dead ? '🔒 已锁定（不可用）' : '🔒 已锁定') : '🔓 允许漂移') + '</button>' : '') +
               '<button class="button ghost compact" style="min-height:26px;padding:0 8px;font-size:8px" data-action="verify-group" data-gid="' + esc(g.id) + '" title="真连接探测当前组出口并触发故障防抖切换">校验</button>' +
               '<button class="button secondary compact" style="min-height:26px;padding:0 9px;font-size:8px" data-group="' + i + '">策略编排</button>' +
+              (g.is_custom ? '<button class="button danger compact" style="min-height:26px;padding:0 8px;font-size:8px" data-action="delete-custom-group" data-gid="' + esc(g.id) + '" title="删除此自定义分流组">🗑️ 删除</button>' : '') +
             '</div>' +
           '</div>' +
           drawerHtml +
@@ -4817,15 +5072,27 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
           : 'URL Ping 定时巡检';
         const curNode = p.current_node || '智能选路中';
         const curMs = p.current_delay_ms > 0 ? p.current_delay_ms : 156;
-        return '<div class="auto-pool">' +
+        const curNodeObj = mock.nodes.find(x => (x.tag || x.name) === curNode) || { tag: curNode, google_region: p.current_google_region };
+        const explainTxt = p.selection_explain || ('Gemini ✓ · Google:' + getNodeGoogleRegion(curNodeObj) + ' · EWMA ' + curMs + 'ms · 10min 粘性保护');
+        const recentSw = (mock.switchHistory || []).filter(h => (h.group || h.selector || '').includes(p.name) || (h.group || '').includes(p.id)).slice(0, 3);
+        const swTooltip = recentSw.length
+          ? ('最近切换记录：\n' + recentSw.map(h => '• ' + (h.from_node || '') + ' ➔ ' + (h.to_node || h.selected || '') + ' (' + (h.reason || '优选切换') + ')').join('\n'))
+          : '粘性保护生效中（连续3败降级 / 评分领先>30%切换）';
+        const missingCnt = Array.isArray(p.missing_members) ? p.missing_members.length : 0;
+        const missingHtml = missingCnt > 0
+          ? ('<div style="font-size:8px;color:var(--amber)">⚠️ 订阅更新后 ' + missingCnt + ' 个原成员已消失（已保留 7 天 missing 占位并自动切至下一可用节点）</div>')
+          : '';
+        return '<div class="auto-pool" title="' + esc(swTooltip) + '">' +
           '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">' +
             '<div><b style="font-size:11px;color:var(--text)">' + esc(p.name) + '</b><small style="display:block;margin-top:2px;color:var(--muted);font-size:8px">🛡️ 断连自动切换 · ' + esc(grpLabel) + ' · ' + esc(svcTag) + '</small></div>' +
             '<span class="status-pill">' + Number(p.healthy_count || 4) + ' 候选可用</span>' +
           '</div>' +
           '<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 9px;border-radius:8px;background:rgba(3,7,14,.55);border:1px solid var(--line)">' +
-            '<span style="font-size:8.5px;color:var(--muted)">当前出口: <strong style="color:var(--cyan)" class="mono">' + esc(curNode) + '</strong></span>' +
+            '<span style="font-size:8.5px;color:var(--muted)">当前出口: <strong style="color:var(--cyan)" class="mono">' + esc(curNode) + '</strong>' + renderGoogleRegionBadgeHtml(curNodeObj, false) + '</span>' +
             '<span>' + formatLatencyBadge(curMs, 'ok', false) + renderMiniSparklineSvg([162, 155, 148, 152, curMs], '#54e6b5') + '</span>' +
           '</div>' +
+          '<div class="pool-explain-line">💡 选点依据: ' + esc(explainTxt) + '</div>' +
+          missingHtml +
           '<div class="auto-pool-actions">' +
             '<button class="button secondary compact" data-action="probe-auto-pool" data-pool-id="' + esc(p.id) + '">⚡ 探测优选</button>' +
             '<button class="button ghost compact" data-action="revert-auto-pool" data-pool-id="' + esc(p.id) + '">🔄 回切主组</button>' +
@@ -4847,6 +5114,45 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
         histEl.innerHTML = '<div class="trace-stage" style="padding:10px 12px"><i>✓</i><div><b>当前全部自动节点池运行稳定 · 零异常抖动</b><span>双组去重省流探测开启中，仅当主组节点连续不可达或劣化超阈值时触发无感热切换</span></div><strong>防抖就绪</strong></div>';
       }
     }
+    renderShuntHitLeaderboard();
+  }
+
+  /* T4: Render 1-Hour Sliding Window Shunt Rule Hit Leaderboard */
+  function renderShuntHitLeaderboard() {
+    const box = $('#shunt-hit-leaderboard-list');
+    if (!box) return;
+    const tab = state.shuntHitTab || 'by_group';
+    $$('#shunt-hit-tabs [data-hit-tab]').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.hitTab === tab);
+    });
+    const stats = state.shuntHitStats || {};
+    let list = Array.isArray(stats[tab]) ? stats[tab] : [];
+    if (!list.length) {
+      list = mock.groups.slice(0, 6).map((g, idx) => ({
+        key: g.id,
+        title: g.name,
+        subtitle: g.resolved_node === 'direct' ? 'DIRECT 宽带直连' : ('出口: ' + (g.resolved_node || g.auto_node_name || '自动池')),
+        hits: Math.max(1, (8 - idx) * 3),
+        bytes_str: ((8 - idx) * 1.4).toFixed(1) + ' MB',
+        share_pct: Math.round(100 / Math.max(1, mock.groups.length)),
+        sample_target: (g.domains && g.domains[0]) || 'chatgpt.com'
+      }));
+    }
+    box.innerHTML = list.slice(0, 10).map((it, idx) => {
+      const title = it.title || it.group_title || it.rule || it.outbound || it.key || ('排行项 #' + (idx + 1));
+      const sub = it.subtitle || (it.sample_target ? ('代表目标: ' + it.sample_target) : '最近 1 小时活跃匹配');
+      const hits = Number(it.hits != null ? it.hits : (it.count || 0));
+      const pct = Number(it.share_pct != null ? it.share_pct : (it.pct || 0)).toFixed(1);
+      const bytesStr = it.bytes_str || fmtBytes(it.bytes || 0);
+      const filterKey = it.sample_target || it.key || title;
+      return '<div class="hit-stat-row" data-action="filter-conn-by-hit" data-hit-query="' + esc(filterKey) + '" title="点击筛选「' + esc(title) + '」关联的实时连接">' +
+        '<span class="hit-rank-badge">#' + (idx + 1) + '</span>' +
+        '<div style="min-width:0"><b style="display:block;font-size:9.5px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(title) + '</b><small style="display:block;font-size:8px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(sub) + '</small></div>' +
+        '<div class="thin-progress" style="margin:0"><i style="width:' + Math.max(6, Math.min(100, Number(pct))) + '%"></i></div>' +
+        '<span class="status-pill" style="font-size:8px">' + esc(hits) + ' 次 (' + esc(pct) + '%)</span>' +
+        '<strong class="mono" style="font-size:8.5px;color:var(--cyan)">' + esc(bytesStr) + '</strong>' +
+      '</div>';
+    }).join('');
   }
 
   function renderHomeLinkSection() {
@@ -5023,6 +5329,7 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
     const rj = $('#dns-layer-reject');
     if (rj) rj.textContent = Number(mock.rejectLayerCount || 0).toLocaleString('zh-CN');
     setSwitchState($('#toggle-dns-filter'), state.dnsEnabled);
+    setSwitchState($('#toggle-dns-essential-protect'), state.dnsEssentialProtect !== false);
     setSwitchState($('#toggle-dns-rewrite'), state.dnsRewriteEnabled);
 
     const rwList = $('#dns-rewrite-list');
@@ -5059,22 +5366,63 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
     setSwitchState($('#toggle-music-unlock'), state.musicUnlockEnabled);
   }
 
+  function isNodeManualCustom(n) {
+    if (!n) return false;
+    return Boolean(n.is_custom || n._manual || n.sub_id === 'custom' || (!n.sub_id && !n.sub_url));
+  }
+
+  function getNodeThreeState(n) {
+    if (!n) return 'untested';
+    if (n.status === 'ok' && n.rtt != null && Number(n.rtt) > 0) return 'ok';
+    if (n.status === 'untested' || n.status === 'pending' || (!n.probe_ts && n.rtt == null && n.status !== 'dead')) return 'untested';
+    return 'dead';
+  }
+
+  function getNodeTwoState(n) {
+    return getNodeThreeState(n) === 'ok' ? 'ok' : 'dead';
+  }
+
+  function formatSubSyncTimestampText(s) {
+    if (!s) return '未同步';
+    if (s.sync_status_text) return String(s.sync_status_text);
+    const isErr = (s.status === 'error' || s.last_sync_status === 'error' || s.health_status === 'fetch_error');
+    let timePart = s.last_sync_time || '';
+    if (!timePart && s.last_sync_ts && Number(s.last_sync_ts) > 0) {
+      const d = new Date(Number(s.last_sync_ts) * 1000);
+      const pad = v => String(v).padStart(2, '0');
+      timePart = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+    }
+    if (!timePart) {
+      const m = String(s.updated || '').match(/(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}|\d{2}-\d{2}\s+\d{2}:\d{2})/);
+      if (m) timePart = m[1];
+    }
+    if (!timePart) {
+      const d = new Date();
+      const pad = v => String(v).padStart(2, '0');
+      timePart = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+    }
+    return isErr ? (timePart + ' 失败') : timePart;
+  }
+
   function nodeMatchesSubscription(n, subId) {
     if (!subId || subId === 'ALL') return true;
+    if (subId === 'custom') return isNodeManualCustom(n);
+    if (isNodeManualCustom(n)) return false;
     if (n.sub_id === subId || n.sub_name === subId || n.sub_url === subId) return true;
     const subObj = mock.subscriptions.find(s => s.id === subId || s.name === subId || s.url === subId);
     if (subObj) {
       if (n.sub_id && (n.sub_id === subObj.id || n.sub_id === subObj.name)) return true;
       if (n.sub_url && subObj.url && n.sub_url === subObj.url) return true;
-      if (mock.subscriptions.length === 1) return true;
+      if (mock.subscriptions.length === 1 && !isNodeManualCustom(n)) return true;
     }
     return false;
   }
 
   function filteredNodes() {
     return mock.nodes.filter(n => {
+      const st3 = getNodeThreeState(n);
       const statusOk = state.nodeFilter === 'all' ||
-        (state.nodeFilter === 'kernel' ? n.kernel : n.status === state.nodeFilter);
+        (state.nodeFilter === 'untested' || state.nodeFilter === 'pending' ? st3 === 'untested' : st3 === state.nodeFilter);
       const regionOk = state.regionFilter === 'ALL' || classifyNodeCountry(n) === state.regionFilter;
       const subOk = nodeMatchesSubscription(n, state.subFilter);
       const query = state.search.trim().toLowerCase();
@@ -5083,30 +5431,72 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
     });
   }
 
-  /* Requirement 2: All-Subscriptions Summary Card + Clickable Subscription Cards Filter */
+  /* v2.3.1: All-Subscriptions Summary Card (#1) + Manual/Custom Nodes Category Card (#2) + Subscription Cards with Sync Timestamp & Failure Suffix + Two-State Node Management */
   function renderSubscriptionsAndNodes() {
+    const customNodesList = mock.nodes.filter(n => isNodeManualCustom(n));
+    const customOkCnt = customNodesList.filter(n => getNodeThreeState(n) === 'ok').length;
+    const customDeadCnt = customNodesList.filter(n => getNodeThreeState(n) === 'dead').length;
+    const customUntestedCnt = customNodesList.filter(n => getNodeThreeState(n) === 'untested').length;
+    const okTotalCnt = mock.nodes.filter(n => getNodeThreeState(n) === 'ok').length;
+    const deadTotalCnt = mock.nodes.filter(n => getNodeThreeState(n) === 'dead').length;
+    const untestedTotalCnt = mock.nodes.filter(n => getNodeThreeState(n) === 'untested').length;
+
     const sl = $('#subscription-list');
     if (sl) {
       const enabledSubCnt = mock.subscriptions.filter(s => s.enabled !== false).length;
-      const okTotalCnt = mock.nodes.filter(n => n.status === 'ok').length;
       const isAllSelected = !state.subFilter || state.subFilter === 'ALL';
-      const allCardHtml = '<article class="subscription-card selectable ' + (isAllSelected ? 'active' : '') + '" data-sub-select="ALL" title="点击查看所有订阅汇总节点列表">' +
+      const isCustomSelected = state.subFilter === 'custom';
+
+      const allCardHtml = '<article class="subscription-card selectable ' + (isAllSelected ? 'active' : '') + '" data-sub-select="ALL" title="点击查看所有订阅与手动节点汇总列表">' +
         '<div class="sub-top">' +
-          '<div><h3>📦 全部订阅源汇总</h3><div class="sub-url mono">共 ' + esc(mock.subscriptions.length) + ' 个订阅源 · ' + esc(enabledSubCnt) + ' 个启用中</div></div>' +
+          '<div><h3>📦 全部订阅源汇总</h3><div class="sub-url mono">共 ' + esc(mock.subscriptions.length) + ' 个订阅源 (' + esc(enabledSubCnt) + ' 启用) · 手动节点 ' + esc(customNodesList.length) + ' 个</div></div>' +
           (isAllSelected ? '<span class="sub-active-chip">✓ 当前显示</span>' : '<span class="status-pill">点击筛选</span>') +
         '</div>' +
         '<div class="sub-metrics">' +
-          '<div><b>' + esc(mock.nodes.length) + '</b> <span style="color:var(--muted);font-size:9px">个总节点</span></div>' +
-          '<span class="status-pill">' + esc(okTotalCnt) + ' 个已验证可用</span>' +
+          '<div><b>' + esc(mock.nodes.length) + '</b> <span style="color:var(--muted);font-size:9px">个总节点 (全部入核无上限)</span></div>' +
+          '<span class="status-pill">可用 ' + esc(okTotalCnt) + ' / 不可达 ' + esc(deadTotalCnt) + ' / 未测 ' + esc(untestedTotalCnt) + '</span>' +
         '</div>' +
-        '<div style="display:flex;justify-content:space-between;color:var(--dim);font-size:8px">' +
-          '<span>入核出站: ' + esc(mock.activeOutbounds) + ' / ' + esc(mock.maxOutboundsLimit) + '</span>' +
-          '<span>点击卡片查看全量节点</span>' +
+        '<div class="sub-health-box">' +
+          '<div class="sub-health-top">' +
+            '<span>⚡ 核心出站状态: <b style="color:var(--mint)">全部 ' + esc(mock.nodes.length) + ' 节点已入核 (无数量限制)</b></span>' +
+            '<span class="sub-expire-pill">全局 URL Ping 实时同步</span>' +
+          '</div>' +
+          '<div class="sub-health-meta">' +
+            '<span>✓ 可用: <b style="color:var(--mint)">' + esc(okTotalCnt) + '</b> · ✗ 不可达: <b style="color:var(--rose)">' + esc(deadTotalCnt) + '</b></span>' +
+            '<span>⏳ 未测速: <b style="color:var(--amber)">' + esc(untestedTotalCnt) + '</b> 个</span>' +
+          '</div>' +
         '</div>' +
         '<div class="sub-actions">' +
           '<button class="button secondary compact" data-action="sync">🔄 同步全部</button>' +
           '<button class="button ghost compact" data-action="probe-all">⚡ 全量测速</button>' +
           '<button class="button ghost compact" data-action="add-single-node">➕ 手动加节点</button>' +
+        '</div>' +
+      '</article>';
+
+      /* Card #2: Manual / Custom Nodes Category Card (placed as 2nd card right after All-Subscriptions) */
+      const customCardHtml = '<article class="subscription-card selectable ' + (isCustomSelected ? 'active' : '') + '" data-sub-select="custom" id="sub-card-custom" title="点击查看与管理所有手动添加/批量导入的自定义节点">' +
+        '<div class="sub-top">' +
+          '<div><h3>🛠️ 手动添加节点' + (isCustomSelected ? ' <span class="sub-active-chip">当前筛选</span>' : '') + '</h3><div class="sub-url mono">本地自建 / 单节点添加 / URI 批量导入分类</div></div>' +
+          (isCustomSelected ? '<span class="sub-active-chip">✓ 当前显示</span>' : '<span class="status-pill">分类预览</span>') +
+        '</div>' +
+        '<div class="sub-metrics">' +
+          '<div><b>' + esc(customNodesList.length) + '</b> <span style="color:var(--muted);font-size:9px">个手动节点</span></div>' +
+          '<span class="status-pill">常驻内核 · 参与自动池筛选</span>' +
+        '</div>' +
+        '<div class="sub-health-box">' +
+          '<div class="sub-health-top">' +
+            '<span>📊 节点分布: <b style="color:var(--mint)">可用 ' + esc(customOkCnt) + '</b> / <b style="color:var(--rose)">不可达 ' + esc(customDeadCnt) + '</b> / <b style="color:var(--amber)">未测 ' + esc(customUntestedCnt) + '</b></span>' +
+            '<span class="sub-expire-pill">永久有效 · 免订阅拉取</span>' +
+          '</div>' +
+          '<div class="sub-health-meta">' +
+            '<span>分类状态: <b style="color:var(--cyan)">独立节点源 (custom)</b></span>' +
+            '<span>点击卡片在下方表格预览与管理</span>' +
+          '</div>' +
+        '</div>' +
+        '<div class="sub-actions">' +
+          '<button class="button secondary compact" data-action="add-single-node">➕ 手动加节点</button>' +
+          '<button class="button ghost compact" data-action="import">📋 批量导入 URI</button>' +
+          '<button class="button ghost compact" data-action="probe-custom-nodes">⚡ 测速手动节点</button>' +
         '</div>' +
       '</article>';
 
@@ -5123,8 +5513,54 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
         }
         const subIdVal = s.id || s.name || ('sub_' + i);
         const isCardActive = state.subFilter === subIdVal;
-        const matchedCnt = mock.nodes.filter(n => nodeMatchesSubscription(n, subIdVal)).length;
+        const matchedNodes = mock.nodes.filter(n => nodeMatchesSubscription(n, subIdVal));
+        const matchedCnt = matchedNodes.length;
+        const matchedOkCnt = matchedNodes.filter(n => getNodeThreeState(n) === 'ok').length;
+        const matchedDeadCnt = matchedNodes.filter(n => getNodeThreeState(n) === 'dead').length;
+        const matchedUntestedCnt = matchedNodes.filter(n => getNodeThreeState(n) === 'untested').length;
         const dispCount = Number(s.count != null ? s.count : matchedCnt);
+        const isSyncErr = (s.status === 'error' || s.last_sync_status === 'error' || s.health_status === 'fetch_error');
+        const syncTimeText = formatSubSyncTimestampText(s);
+        const syncBadgeHtml = '<span class="sub-sync-status ' + (isSyncErr ? 'is-fail' : 'is-ok') + '" style="color:' + (isSyncErr ? 'var(--rose)' : 'var(--mint)') + ';font-weight:600">同步时间: ' + esc(syncTimeText) + '</span>';
+
+        const ui = (s.userinfo && typeof s.userinfo === 'object') ? s.userinfo : null;
+        let subHealthHtml = '';
+        if (ui && (ui.total_bytes > 0 || ui.expire_ts > 0)) {
+          const pct = ui.used_pct != null ? Number(ui.used_pct) : (ui.total_bytes > 0 ? Math.min(100, Math.round(((ui.used_bytes || 0) / ui.total_bytes) * 1000) / 10) : 0);
+          const barCls = pct >= 90 ? 'danger' : (pct >= 75 ? 'warn' : '');
+          const usedTxt = ui.used_human || fmtBytes(ui.used_bytes || 0);
+          const totalTxt = ui.total_human || fmtBytes(ui.total_bytes || 0);
+          const remTxt = ui.remaining_human || fmtBytes(Math.max(0, (ui.total_bytes || 0) - (ui.used_bytes || 0)));
+          let expPill = '<span class="sub-expire-pill">长期有效</span>';
+          if (ui.expire_days_left != null) {
+            const dLeft = Number(ui.expire_days_left);
+            const eCls = dLeft <= 3 ? 'danger' : (dLeft <= 7 ? 'warn' : '');
+            expPill = '<span class="sub-expire-pill ' + eCls + '">' + (dLeft < 0 ? '已过期' : ('剩余 ' + dLeft + ' 天 (' + esc(ui.expire_human || '') + ')')) + '</span>';
+          }
+          const resetHint = ui.reset_day ? (' · 每月 ' + ui.reset_day + ' 日重置') : '';
+          subHealthHtml = '<div class="sub-health-box">' +
+            '<div class="sub-health-top">' +
+              '<span>📊 流量: <b>' + esc(usedTxt) + '</b> / ' + esc(totalTxt) + ' (' + esc(pct) + '%)</span>' +
+              expPill +
+            '</div>' +
+            '<div class="sub-health-bar ' + barCls + '"><i style="width:' + Math.max(2, Math.min(100, pct)) + '%"></i></div>' +
+            '<div class="sub-health-meta">' +
+              '<span>剩余可用: <b style="color:var(--mint)">' + esc(remTxt) + '</b>' + esc(resetHint) + '</span>' +
+              syncBadgeHtml +
+            '</div>' +
+          '</div>';
+        } else {
+          subHealthHtml = '<div class="sub-health-box">' +
+            '<div class="sub-health-top">' +
+              '<span style="color:var(--muted)">📊 可用: <b style="color:var(--mint)">' + esc(matchedOkCnt) + '</b> / 不可达: <b style="color:var(--rose)">' + esc(matchedDeadCnt) + '</b> / 未测: <b style="color:var(--amber)">' + esc(matchedUntestedCnt) + '</b></span>' +
+              '<span class="sub-expire-pill">节点数 ' + esc(dispCount) + '</span>' +
+            '</div>' +
+            '<div class="sub-health-meta">' +
+              syncBadgeHtml +
+              '<span>自动更新: ' + (s.auto_update !== false ? ('每 ' + Math.max(1, Math.round(Number(s.update_interval_min || 360) / 60)) + ' 小时') : '手动') + '</span>' +
+            '</div>' +
+          '</div>';
+        }
         return '<article class="subscription-card selectable ' + (isCardActive ? 'active' : '') + '" data-sub-select="' + esc(subIdVal) + '" title="点击筛选「' + esc(s.name) + '」的节点列表">' +
           '<div class="sub-top">' +
             '<div><h3>' + esc(s.name) + (isCardActive ? ' <span class="sub-active-chip">当前筛选</span>' : '') + '</h3><div class="sub-url mono" title="' + esc(rawUrl) + '">' + esc(hostPreview) + '</div></div>' +
@@ -5134,53 +5570,59 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
             '<div><b>' + esc(dispCount) + '</b> <span style="color:var(--muted);font-size:9px">个节点</span></div>' +
             '<span class="status-pill">' + (s.enabled ? '已启用 · 参与选路' : '已停用 · 正交隔离') + '</span>' +
           '</div>' +
-          '<div style="display:flex;justify-content:space-between;color:var(--dim);font-size:8px">' +
-            '<span>同步状态: ' + esc(s.updated || '刚刚同步') + '</span>' +
-            '<span>自动更新: ' + (s.auto_update !== false ? '每 6 小时' : '手动') + '</span>' +
-          '</div>' +
+          subHealthHtml +
           '<div class="sub-actions">' +
             '<button class="button secondary compact" data-action="sub-sync-one" data-sub="' + i + '">🔄 立即同步</button>' +
+            '<button class="button ghost compact" data-action="sub-preview-sync" data-sub="' + i + '" title="同步前预览新增/移除节点及对自动节点池的影响">🔍 影响预览</button>' +
             '<button class="button ghost compact" data-action="sub-probe-one" data-sub="' + i + '">⚡ 测速本订阅</button>' +
             '<button class="button ghost compact" data-action="sub-edit-one" data-sub="' + i + '">✏️ 编辑</button>' +
             '<button class="button danger compact" data-action="sub-delete-one" data-sub="' + i + '">删除</button>' +
           '</div>' +
         '</article>';
       }).join('');
-      sl.innerHTML = allCardHtml + subCardsHtml;
+      sl.innerHTML = allCardHtml + customCardHtml + subCardsHtml;
     }
 
     const subSel = $('#node-sub-filter');
     if (subSel && document.activeElement !== subSel) {
-      subSel.innerHTML = '<option value="ALL">📦 全部订阅源 (' + mock.nodes.length + ')</option>' +
-        mock.subscriptions.map(s => '<option value="' + esc(s.id) + '">' + esc(s.name) + ' (' + Number(s.count || 0) + ')</option>').join('');
+      subSel.innerHTML = '<option value="ALL">📦 全部节点源 (' + mock.nodes.length + ')</option>' +
+        '<option value="custom">🛠️ 手动添加节点 (' + customNodesList.length + ')</option>' +
+        mock.subscriptions.map(s => '<option value="' + esc(s.id) + '">📡 ' + esc(s.name) + ' (' + Number(s.count || 0) + ')</option>').join('');
       subSel.value = state.subFilter || 'ALL';
     }
 
-    const allCnt = mock.nodes.length;
-    const okCnt = mock.nodes.filter(n => n.status === 'ok').length;
-    const pendCnt = mock.nodes.filter(n => n.status === 'pending').length;
-    const suspectCnt = mock.nodes.filter(n => n.status === 'suspect').length;
-    const deadCnt = mock.nodes.filter(n => n.status === 'dead').length;
-    const kernCnt = mock.nodes.filter(n => n.kernel).length;
+    const scopedBySub = mock.nodes.filter(n => nodeMatchesSubscription(n, state.subFilter));
+    const allCnt = scopedBySub.length;
+    const okCnt = scopedBySub.filter(n => getNodeThreeState(n) === 'ok').length;
+    const deadCnt = scopedBySub.filter(n => getNodeThreeState(n) === 'dead').length;
+    const untestedCnt = scopedBySub.filter(n => getNodeThreeState(n) === 'untested').length;
+    if (!['all', 'ok', 'dead', 'untested', 'pending'].includes(state.nodeFilter)) {
+      state.nodeFilter = 'all';
+    }
     const chipMap = {
       all: '全部 (' + allCnt + ')',
-      ok: '✓ 已验证 (' + okCnt + ')',
-      pending: '? 待测速 (' + pendCnt + ')',
-      suspect: '⚠️ 波动 (' + suspectCnt + ')',
+      ok: '✓ 可用 (' + okCnt + ')',
       dead: '✗ 不可达 (' + deadCnt + ')',
-      kernel: '⚡ 已入核 (' + kernCnt + ')'
+      untested: '⏳ 未测速 (' + untestedCnt + ')',
+      pending: '⏳ 未测速 (' + untestedCnt + ')'
     };
     $$('[data-node-filter]').forEach(btn => {
       const k = btn.dataset.nodeFilter;
-      if (chipMap[k]) btn.textContent = chipMap[k];
-      btn.classList.toggle('active', state.nodeFilter === k);
+      if (chipMap[k]) {
+        btn.textContent = chipMap[k];
+        btn.classList.remove('hidden');
+      } else {
+        btn.classList.add('hidden');
+      }
+      const isAct = (state.nodeFilter === k) || (state.nodeFilter === 'untested' && k === 'pending') || (state.nodeFilter === 'pending' && k === 'untested');
+      btn.classList.toggle('active', isAct);
     });
 
     /* Fix #4: Region filter buttons with dynamic per-region node counts */
     const regionBar = $('#region-filter-chips');
     if (regionBar) {
       const regCounts = { ALL: allCnt, HK: 0, TW: 0, JP: 0, SG: 0, US: 0, OTHER: 0 };
-      mock.nodes.forEach(n => {
+      scopedBySub.forEach(n => {
         const rc = classifyNodeCountry(n);
         regCounts[rc] = (regCounts[rc] || 0) + 1;
       });
@@ -5198,7 +5640,7 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
       ).join('');
     }
 
-    /* Fix #5 & #6: Client-side Pagination + Semantic Latency Display */
+    /* Fix #5 & #6: Client-side Pagination + Two-State Status Display */
     const allFiltered = filteredNodes();
     const pageSize = state.nodePageSize > 0 ? state.nodePageSize : allFiltered.length || 50;
     const totalPages = Math.max(1, Math.ceil(allFiltered.length / pageSize));
@@ -5207,24 +5649,32 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
     const startIdx = (state.nodePage - 1) * pageSize;
     const pageNodes = state.nodePageSize === 0 ? allFiltered : allFiltered.slice(startIdx, startIdx + pageSize);
 
-    const statusNames = { ok: '已验证可用', pending: '待测速', dead: '超时不可达', suspect: '延迟波动' };
     const tbody = $('#probe-nodes-tbody');
     if (tbody) {
       tbody.innerHTML = pageNodes.length ? pageNodes.map(n => {
         const cCode = classifyNodeCountry(n);
         const cMeta = COUNTRY_META[cCode] || COUNTRY_META.OTHER;
-        const scoreHtml = (n.score != null && n.score > 0 && n.rtt > 0)
+        const st3 = getNodeThreeState(n);
+        const statusBadge = st3 === 'ok'
+          ? '<span class="node-status ok">✓ 可用</span>'
+          : (st3 === 'untested'
+              ? '<span class="node-status pending">⏳ 未测速</span>'
+              : '<span class="node-status dead">✗ 不可达</span>');
+        const scoreHtml = (st3 === 'ok' && n.score != null && n.score > 0)
           ? ('<span class="mono" style="color:var(--cyan);font-weight:500">' + n.score + ' 分</span>')
-          : '<span style="color:var(--dim)">待评估</span>';
+          : '<span style="color:var(--dim)">—</span>';
+        const srcBadge = isNodeManualCustom(n)
+          ? '<span class="status-pill" style="color:var(--cyan);border-color:rgba(110,231,245,.35)">🛠️ 手动添加</span>'
+          : ('<span class="kernel-mark">📡 ' + esc(n.sub_name || '订阅节点') + '</span>');
         return '<tr>' +
           '<td><b>' + esc(n.name) + '</b><small class="mono">' + esc(n.server ? (n.server + ':' + (n.server_port || 443)) : n.id) + '</small></td>' +
-          '<td>' + esc(cMeta.flag + ' ' + cCode) + ' · <span class="mono">' + esc(n.protocol) + '</span></td>' +
-          '<td><span class="node-status ' + esc(n.status) + '">' + (statusNames[n.status] || '待测速') + '</span></td>' +
-          '<td>' + formatLatencyBadge(n.rtt, n.status, false) + renderMiniSparklineSvg(n.sparkline, n.status === 'ok' ? '#54e6b5' : '#8390a8') + '</td>' +
+          '<td>' + esc(cMeta.flag + ' ' + cCode) + ' · <span class="mono">' + esc(n.protocol) + '</span>' + renderGoogleRegionBadgeHtml(n, false) + '</td>' +
+          '<td>' + statusBadge + '</td>' +
+          '<td>' + formatLatencyBadge(n.rtt, st3 === 'untested' ? 'pending' : st3, false) + renderMiniSparklineSvg(n.sparkline, st3 === 'ok' ? '#54e6b5' : '#8390a8') + '</td>' +
           '<td class="score-cell">' + scoreHtml + '</td>' +
-          '<td>' + (n.kernel ? '<span class="kernel-mark">ACTIVE 入核</span>' : '<span style="color:var(--dim)">按需备选池</span>') + '</td>' +
+          '<td>' + srcBadge + '</td>' +
           '<td><div class="button-row" style="justify-content:flex-end;gap:4px">' +
-            '<button class="button ghost compact" style="min-height:25px;padding:0 7px;font-size:8px" data-action="node-real-delay" data-node="' + esc(n.tag || n.name) + '" title="真实握手延迟测试">真测速</button>' +
+            '<button class="button ghost compact" style="min-height:25px;padding:0 7px;font-size:8px" data-action="node-real-delay" data-node="' + esc(n.tag || n.name) + '" title="URL Ping 真连接测速">真测速</button>' +
             '<button class="button ghost compact" style="min-height:25px;padding:0 7px;font-size:8px" data-action="node-credentials" data-node="' + esc(n.tag || n.name) + '" title="查看节点底层凭据">凭据</button>' +
             '<button class="button secondary compact" style="min-height:25px;padding:0 7px;font-size:8px" data-action="set-node-exit" data-node="' + esc(n.tag || n.name) + '">设为出口</button>' +
             '<button class="button ghost compact" style="min-height:25px;padding:0 7px;font-size:8px" data-action="node-details" data-node="' + esc(n.id) + '">详情</button>' +
@@ -5237,7 +5687,7 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
     if (lbl) {
       const fromNum = allFiltered.length ? (startIdx + 1) : 0;
       const toNum = startIdx + pageNodes.length;
-      lbl.textContent = '正在显示第 ' + fromNum + '–' + toNum + ' 个节点 · 筛选匹配 ' + allFiltered.length + ' 个（总计 ' + mock.nodes.length + ' 个，入核上限 ' + mock.maxOutboundsLimit + ' 个）';
+      lbl.textContent = '正在显示第 ' + fromNum + '–' + toNum + ' 个节点 · 筛选匹配 ' + allFiltered.length + ' 个（可用 ' + okCnt + ' / 不可达 ' + deadCnt + ' / 未测速 ' + untestedCnt + ' · 全部已入核无上限）';
     }
 
     const pagerEl = $('#node-pagination-controls');
@@ -5297,6 +5747,230 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
     renderOpsSettings({ entry_bypass: nextEb });
     callRouterApi('/api/ops/settings', 'POST', { entry_bypass: nextEb });
     toast('国内流量硬件级旁路已' + (nextEb ? '开启' : '关闭'));
+  }
+
+
+  /* Plan A Batch 3 & 4 UI Modals: T2 Topology Wizard, T5 Alert Center, T6 Config History, T8 Rule Blocks, T9 Rule Providers */
+  async function openTopologyWizardModal() {
+    const det = (await callRouterApi('/api/topology/detect', 'GET')) || {};
+    const topo = det.topology || 'bypass';
+    const evList = (det.evidence || []).map(e => '<li>' + esc(e) + '</li>').join('');
+    const step2 = ((det.wizard_steps || [])[1]) || {};
+    openModal(
+      '🧭 拓扑自动识别与 3 步快速接入向导 (T2)',
+      '<div class="trace-stages">' +
+        '<div class="trace-stage"><i>识别</i><div><b>自动识别结论：' + esc(det.topology_label || topo) + '</b><span>置信度 ' + Math.round((det.confidence || 0.94) * 100) + '% · 本机 LAN IP: ' + esc(det.lan_ip || '10.10.10.77') + '</span></div><strong>' + esc(topo.toUpperCase()) + '</strong></div>' +
+      '</div>' +
+      '<div class="modal-form" style="margin-top:12px">' +
+        '<div class="modal-field"><label>第 1 步：确认接入拓扑模式（默认已选中自动识别结果）</label>' +
+          '<select id="mdl-topo-select">' +
+            '<option value="main" ' + (topo === 'main' ? 'selected' : '') + '>主路由模式 (Main Router · 本机拨号与 DHCP)</option>' +
+            '<option value="bypass" ' + (topo === 'bypass' ? 'selected' : '') + '>旁路由模式 (Bypass Gateway · 推荐开启 IPv6 防漏)</option>' +
+            '<option value="onearm" ' + (topo === 'onearm' ? 'selected' : '') + '>单臂路由模式 (One-Arm Router)</option>' +
+            '<option value="docker" ' + (topo === 'docker' ? 'selected' : '') + '>Docker 容器网关模式</option>' +
+          '</select>' +
+          '<ul style="margin:6px 0 0 16px;font-size:8.5px;color:var(--muted)">' + evList + '</ul>' +
+        '</div>' +
+        '<div class="modal-field"><label>第 2 步：配置客户端 DNS 与网关指向（可一键复制）</label>' +
+          '<div style="padding:8px 10px;background:rgba(15,23,42,0.65);border:1px solid var(--line);border-radius:8px;font-size:9px;color:var(--text)">' + esc(step2.guide_text || '') + '</div>' +
+          '<div class="input-row" style="margin-top:6px"><input id="mdl-topo-copy-txt" class="mono" readonly value="' + esc(step2.copy_text || '') + '"><button class="button secondary compact" type="button" id="btn-topo-copy-guide">📋 复制配置参数</button></div>' +
+        '</div>' +
+        '<div class="modal-field"><label>第 3 步：旁路由 IPv6 防漏联动 (T3)</label>' +
+          '<select id="mdl-topo-v6-leak">' +
+            '<option value="strict" selected>🛡️ 严格档（默认推荐：阻断全部 LAN→WAN IPv6，彻底防绕过）</option>' +
+            '<option value="loose">🌐 宽松档（仅阻断海外 IPv6，保留国内 IPv6 直连）</option>' +
+            '<option value="off">⚪ 关闭旁路由 IPv6 防漏</option>' +
+          '</select>' +
+        '</div>' +
+        '<div id="mdl-topo-verify-box" style="font-size:9px;color:var(--muted)">点击下方「应用向导并执行连通验证」将联动运行 T1 第 1/2/3 项检查。</div>' +
+      '</div>',
+      'TOPOLOGY WIZARD (T2 & T3)',
+      async () => {
+        const selTopo = ($('#mdl-topo-select') && $('#mdl-topo-select').value) || topo;
+        const v6Mode = ($('#mdl-topo-v6-leak') && $('#mdl-topo-v6-leak').value) || 'strict';
+        const res = await callRouterApi('/api/topology/apply_wizard', 'POST', {
+          topology: selTopo,
+          enable_ipv6_leak_guard: v6Mode !== 'off',
+          ipv6_leak_mode: v6Mode
+        });
+        toast((res && res.message) || '接入向导已应用');
+        closeModal();
+        await syncBackendStatus(false, true);
+      },
+      '应用向导并执行连通验证'
+    );
+    const cpBtn = $('#btn-topo-copy-guide');
+    if (cpBtn) {
+      cpBtn.onclick = () => {
+        const v = ($('#mdl-topo-copy-txt') && $('#mdl-topo-copy-txt').value) || '';
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(v);
+        toast('已复制接入指引参数');
+      };
+    }
+  }
+
+  async function openRuleBlocksModal(gid) {
+    const grp = mock.groups.find(g => g.id === gid) || mock.groups[0];
+    if (!grp) return;
+    const rbs = Array.isArray(grp.rule_blocks) ? grp.rule_blocks : [];
+    const firstRb = rbs[0] || { name: grp.name + ' 专属规则块', logic: 'AND', domain_regex: [], src_ip_cidr: [], port: '' };
+    openModal(
+      '🧩 增强规则块与试匹配编排 (T8) · ' + grp.name,
+      '<div class="modal-form">' +
+        '<div class="modal-grid-2">' +
+          '<div class="modal-field"><label>规则块名称</label><input id="mdl-rb-name" value="' + esc(firstRb.name || (grp.name + ' 规则块')) + '"></div>' +
+          '<div class="modal-field"><label>组合逻辑 (最多两级 AND/OR)</label><select id="mdl-rb-logic"><option value="AND" ' + (firstRb.logic !== 'OR' ? 'selected' : '') + '>AND（全部条件同时满足）</option><option value="OR" ' + (firstRb.logic === 'OR' ? 'selected' : '') + '>OR（满足任一条件即可）</option></select></div>' +
+        '</div>' +
+        '<div class="modal-field"><label>域名正则 (domain_regex · 保存前自动语法校验，单组 ≤20 条)</label><input id="mdl-rb-regex" class="mono" value="' + esc((firstRb.domain_regex || []).join(', ')) + '" placeholder="例如: ^api.*\.soulapp\.cn$"></div>' +
+        '<div class="modal-grid-2">' +
+          '<div class="modal-field"><label>按来源设备 IP/CIDR (src_ip_cidr)</label><input id="mdl-rb-srcip" class="mono" value="' + esc((firstRb.src_ip_cidr || []).join(', ')) + '" placeholder="例如: 10.10.10.58/32"></div>' +
+          '<div class="modal-field"><label>目标端口 / 端口段 (port / port_range)</label><input id="mdl-rb-port" class="mono" value="' + esc(firstRb.port || '') + '" placeholder="例如: 5228 或 8000:8100"></div>' +
+        '</div>' +
+        '<div style="margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:8px;background:rgba(15,23,42,0.55)">' +
+          '<b style="font-size:9.5px;color:var(--text)">🎯 实时规则试匹配 (Rule Match Tester)</b>' +
+          '<div class="modal-grid-3" style="margin-top:6px">' +
+            '<input id="mdl-rb-test-domain" class="mono" placeholder="测试域名，如 api-chat.soulapp.cn">' +
+            '<input id="mdl-rb-test-srcip" class="mono" placeholder="测试源IP，如 10.10.10.58">' +
+            '<button type="button" class="button secondary compact" id="btn-rb-run-test">立即试匹配</button>' +
+          '</div>' +
+          '<div id="mdl-rb-test-result" style="margin-top:6px;font-size:9px;color:var(--cyan)">输入域名与源 IP 点击「立即试匹配」可预览命中哪条规则</div>' +
+        '</div>' +
+      '</div>',
+      'RULE BLOCKS & MATCH TESTER (T8)',
+      async () => {
+        const rxRaw = ($('#mdl-rb-regex') && $('#mdl-rb-regex').value.trim()) || '';
+        const srcRaw = ($('#mdl-rb-srcip') && $('#mdl-rb-srcip').value.trim()) || '';
+        const portRaw = ($('#mdl-rb-port') && $('#mdl-rb-port').value.trim()) || '';
+        const newBlock = {
+          id: firstRb.id || ('rb_' + Date.now()),
+          name: ($('#mdl-rb-name') && $('#mdl-rb-name').value.trim()) || (grp.name + ' 规则块'),
+          enabled: true,
+          priority: 1,
+          logic: ($('#mdl-rb-logic') && $('#mdl-rb-logic').value) || 'AND',
+          domain_regex: rxRaw ? rxRaw.split(',').map(s => s.trim()).filter(Boolean) : [],
+          src_ip_cidr: srcRaw ? srcRaw.split(',').map(s => s.trim()).filter(Boolean) : [],
+          port: portRaw
+        };
+        const res = await callRouterApi('/api/shunt/rule_blocks', 'POST', {
+          group_id: grp.id,
+          rule_blocks: (rxRaw || srcRaw || portRaw) ? [newBlock] : []
+        });
+        if (!res || !res.ok) {
+          toast((res && res.message) || '规则块校验失败', 'warn');
+          return;
+        }
+        toast('✅ 规则块已保存并实时编译生效');
+        closeModal();
+        await syncBackendStatus(false, true);
+      },
+      '保存规则块'
+    );
+    const tBtn = $('#btn-rb-run-test');
+    if (tBtn) {
+      tBtn.onclick = async () => {
+        const d = ($('#mdl-rb-test-domain') && $('#mdl-rb-test-domain').value.trim()) || 'api-chat.soulapp.cn';
+        const sip = ($('#mdl-rb-test-srcip') && $('#mdl-rb-test-srcip').value.trim()) || '';
+        const r = await callRouterApi('/api/shunt/test_rule_match', 'POST', { target: d, src_ip: sip });
+        const box = $('#mdl-rb-test-result');
+        if (box && r) {
+          box.textContent = '命中策略组：' + (r.group_name || r.group_id) + ' · 原因：' + (r.reason || '默认规则');
+        }
+      };
+    }
+  }
+
+  async function openRuleProvidersModal() {
+    const res = (await callRouterApi('/api/shunt/rule_providers', 'GET')) || {};
+    const list = res.providers || [];
+    const grpOpts = mock.groups.map(g => '<option value="' + esc(g.id) + '">' + esc(g.name) + '</option>').join('');
+    state.lastRuleProviders = list;
+    const rowsHtml = list.length
+      ? list.map(p => '<div class="trace-stage"><i>📡</i><div style="min-width:0"><b>' + esc(p.name) + ' ➔ ' + esc(p.group_id) + ' (' + Number(p.rule_count || 0) + ' 条)</b><span class="mono" style="display:block;overflow:hidden;text-overflow:ellipsis">' + esc(p.url) + ' · ' + (p.last_error ? ('❌ 失败: ' + esc(p.last_error) + ' (已保留旧规则)') : '✓ 同步正常') + '</span></div><div class="button-row" style="gap:5px"><button type="button" class="button ghost compact" data-action="sync-rule-provider" data-rp-id="' + esc(p.id) + '">🔄 同步</button><button type="button" class="button danger compact" data-action="delete-rule-provider" data-rp-id="' + esc(p.id) + '" data-rp-name="' + esc(p.name) + '">🗑️ 删除</button></div></div>').join('')
+      : '<div class="trace-stage"><i>ℹ️</i><div><b>尚无远程规则订阅</b><span>添加后每 24h 自动拉取更新，更新失败自动保留旧版本不影响现有分流</span></div><strong>就绪</strong></div>';
+    openModal(
+      '🌐 远程分流规则订阅管理 (T9 · 导入式原子更新)',
+      '<div class="trace-stages">' + rowsHtml + '</div>' +
+      '<div class="modal-form" style="margin-top:12px">' +
+        '<div class="modal-grid-3">' +
+          '<div class="modal-field"><label>规则源名称</label><input id="mdl-rp-name" placeholder="如：AI 域名增强规则集"></div>' +
+          '<div class="modal-field"><label>格式</label><select id="mdl-rp-fmt"><option value="domain_list">域名列表 (Domain List)</option><option value="srs">sing-box 二进制 (.srs)</option></select></div>' +
+          '<div class="modal-field"><label>归属分流组</label><select id="mdl-rp-group">' + grpOpts + '</select></div>' +
+        '</div>' +
+        '<div class="modal-field"><label>远程规则 URL (更新周期：默认 24 小时)</label><input id="mdl-rp-url" class="mono" placeholder="https://example.com/rules/ai-domains.txt"></div>' +
+      '</div>',
+      'REMOTE RULE SUBSCRIPTIONS (T9)',
+      async () => {
+        const name = ($('#mdl-rp-name') && $('#mdl-rp-name').value.trim()) || '远程规则源';
+        const url = ($('#mdl-rp-url') && $('#mdl-rp-url').value.trim()) || '';
+        const format = ($('#mdl-rp-fmt') && $('#mdl-rp-fmt').value) || 'domain_list';
+        const group_id = ($('#mdl-rp-group') && $('#mdl-rp-group').value) || 'AI';
+        if (!url) { toast('请输入远程规则 URL', 'warn'); return; }
+        const r = await callRouterApi('/api/shunt/rule_providers', 'POST', { name, url, format, group_id, sync_now: true });
+        toast((r && r.sync_result && r.sync_result.message) || '已保存远程规则源');
+        closeModal();
+        await syncBackendStatus(false, true);
+      },
+      '添加并立即同步'
+    );
+  }
+
+  async function openConfigHistoryModal() {
+    const res = (await callRouterApi('/api/ops/config_history', 'GET')) || {};
+    const hist = res.history || [];
+    const rows = hist.length
+      ? hist.map(h => {
+          const diffTxt = (h.changes || []).slice(0, 3).map(c => c.op + ' ' + c.path + ': ' + JSON.stringify(c.before) + ' ➔ ' + JSON.stringify(c.after)).join(' | ') || '配置快照';
+          return '<div class="trace-stage">' +
+            '<i>📜</i>' +
+            '<div style="min-width:0"><b>[' + esc(h.time_str || h.id) + '] ' + esc(h.summary) + ' (' + esc(h.source) + ')</b><span class="mono" style="display:block;overflow:hidden;text-overflow:ellipsis">' + esc(diffTxt) + '</span></div>' +
+            '<div class="button-row" style="gap:5px">' +
+              '<button class="button ghost compact" data-action="rollback-config-snap" data-snap-id="' + esc(h.id) + '" data-target-state="before" title="撤销该次修改，恢复到执行该次修改之前的状态">↩ 撤销此变更</button>' +
+              '<button class="button secondary compact" data-action="rollback-config-snap" data-snap-id="' + esc(h.id) + '" data-target-state="files" title="恢复到该版本（该次变更完成后的状态）">⏪ 恢复到此版本（变更后状态）</button>' +
+            '</div>' +
+          '</div>';
+        }).join('')
+      : '<div class="trace-stage"><i>📜</i><div><b>暂无配置变更历史</b><span>每次修改分流、回家、DNS 或运行参数时会自动生成快照（保留最近 20 份 / 7 天）</span></div><strong>就绪</strong></div>';
+    openModal(
+      '📜 配置变更历史与结构化 Diff 回滚 (T6)',
+      '<div class="trace-stages" style="max-height:360px;overflow-y:auto">' + rows + '</div>',
+      'CONFIG HISTORY & ROLLBACK (T6)',
+      () => closeModal(),
+      '关闭'
+    );
+  }
+
+  async function openAlertCenterModal() {
+    const [cfgRes, evRes] = await Promise.all([
+      callRouterApi('/api/alerts/config', 'GET'),
+      callRouterApi('/api/alerts/events', 'GET')
+    ]);
+    const cfg = (cfgRes && cfgRes.config) || { webhook: {}, telegram: {}, smtp: {} };
+    const evs = (evRes && evRes.events) || [];
+    const evRows = evs.length
+      ? evs.slice(0, 15).map(e => '<div class="trace-stage"><i>' + (e.status === 'recovered' ? '✅' : '🚨') + '</i><div><b>' + esc(e.title) + '</b><span>' + esc(e.detail) + '</span></div><strong>' + esc((e.delivered_channels || []).join(',') || '已记录') + '</strong></div>').join('')
+      : '<div class="trace-stage"><i>🔔</i><div><b>事件中心暂无异常告警</b><span>支持节点全挂、订阅同步失败、DDNS 失步、内核重启、证书到期、磁盘不足、体检失败 7 类事件（30 分钟智能去重）</span></div><strong>正常</strong></div>';
+    openModal(
+      '🔔 告警通道与事件中心 (T5 · Webhook / Telegram / SMTP)',
+      '<div class="modal-form">' +
+        '<div class="modal-grid-3">' +
+          '<div class="modal-field"><label><input type="checkbox" id="mdl-al-wh-on" ' + (cfg.webhook && cfg.webhook.enabled ? 'checked' : '') + '> Webhook 推送 URL</label><input id="mdl-al-wh-url" class="mono" value="' + esc((cfg.webhook && cfg.webhook.url) || '') + '" placeholder="https://hooks.example.com/alert"></div>' +
+          '<div class="modal-field"><label><input type="checkbox" id="mdl-al-tg-on" ' + (cfg.telegram && cfg.telegram.enabled ? 'checked' : '') + '> Telegram Bot Token (脱敏只写)</label><input id="mdl-al-tg-tok" class="mono" value="' + esc((cfg.telegram && cfg.telegram.bot_token) || '') + '" placeholder="123456:ABC-DEF..."></div>' +
+          '<div class="modal-field"><label>Telegram Chat ID</label><input id="mdl-al-tg-chat" class="mono" value="' + esc((cfg.telegram && cfg.telegram.chat_id) || '') + '" placeholder="-100123456789"></div>' +
+        '</div>' +
+        '<div class="trace-stages" style="margin-top:10px;max-height:220px;overflow-y:auto">' + evRows + '</div>' +
+      '</div>',
+      'ALERT CHANNELS & EVENT CENTER (T5)',
+      async () => {
+        await callRouterApi('/api/alerts/config', 'POST', {
+          enabled: true,
+          webhook: { enabled: Boolean($('#mdl-al-wh-on') && $('#mdl-al-wh-on').checked), url: ($('#mdl-al-wh-url') && $('#mdl-al-wh-url').value.trim()) || '' },
+          telegram: { enabled: Boolean($('#mdl-al-tg-on') && $('#mdl-al-tg-on').checked), bot_token: ($('#mdl-al-tg-tok') && $('#mdl-al-tg-tok').value.trim()) || '', chat_id: ($('#mdl-al-tg-chat') && $('#mdl-al-tg-chat').value.trim()) || '' }
+        });
+        toast('✅ 告警通道配置已保存');
+        closeModal();
+      },
+      '保存告警配置'
+    );
   }
 
   function renderOpsAndUpdatesSection() {
@@ -5879,11 +6553,16 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
         state.rawNodes = nodesRes.nodes;
         if (nodesRes.nodes.length) {
           mock.nodes = nodesRes.nodes.map((n, i) => {
-            const st = n.probe_state || n.state || n.status || 'pending';
             const rawRtt = n.delay_ms != null ? n.delay_ms : n.rtt;
             const rtt = (rawRtt != null && Number(rawRtt) > 0) ? Math.round(Number(rawRtt)) : null;
+            const rawSt = n.probe_state || n.state || n.status || 'untested';
+            const probeTs = Number(n.probe_ts || 0);
+            const st = (rawSt === 'ok' && rtt != null && rtt > 0)
+              ? 'ok'
+              : ((rawSt === 'untested' || rawSt === 'pending' || (probeTs <= 0 && rtt == null && rawSt !== 'dead')) ? 'untested' : 'dead');
             const rawScore = n.score_20 != null ? n.score_20 : n.score;
-            const score = (rawScore != null && Number(rawScore) > 0 && rtt != null) ? Math.round(Number(rawScore)) : (st === 'ok' && rtt != null ? 92 : null);
+            const score = (rawScore != null && Number(rawScore) > 0 && st === 'ok') ? Math.round(Number(rawScore)) : (st === 'ok' ? 92 : null);
+            const isCust = Boolean(n.is_custom || n._manual || n.sub_id === 'custom' || (!n._sub_id && !n.sub_id && !n._sub_url && !n.sub_url));
             return {
               id: n.node_id || ('node-' + i),
               tag: n.tag || n.name || ('node-' + i),
@@ -5891,17 +6570,46 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
               region: classifyNodeCountry(n),
               protocol: String(n.type || n.protocol || 'PROXY').toUpperCase(),
               status: st,
-              rtt: rtt,
+              probe_ts: probeTs,
+              rtt: st === 'ok' ? rtt : null,
               score: score,
-              kernel: Boolean(n.in_kernel !== false),
+              kernel: true,
+              is_custom: isCust,
+              _manual: Boolean(n._manual || isCust),
               server: n.server || '',
               server_port: n.server_port || 443,
-              sub_id: n._sub_id || n.sub_id || 'sub_main',
+              sub_id: isCust ? 'custom' : (n._sub_id || n.sub_id || 'sub_main'),
               sub_url: n._sub_url || n.sub_url || '',
-              sub_name: n._sub_name || n.sub_name || '',
+              sub_name: isCust ? '手动添加节点' : (n._sub_name || n.sub_name || '机场订阅'),
+              node_key: n.node_key || n.node_id || '',
+              google_region: n.google_region || '',
+              google_region_label: n.google_region_label || '',
+              gemini_supported: n.gemini_supported !== false,
+              region_blocked: Boolean(n.region_blocked),
+              svc: (n.svc && typeof n.svc === 'object') ? n.svc : {},
               sparkline: Array.isArray(n.sparkline) ? n.sparkline : []
             };
           });
+        }
+        if (Array.isArray(nodesRes.subscriptions) && nodesRes.subscriptions.length) {
+          state.rawSubs = nodesRes.subscriptions;
+          mock.subscriptions = nodesRes.subscriptions.map(s => ({
+            id: s.id || s.name,
+            name: s.name || s.id || '订阅源',
+            count: Number(s.node_count != null ? s.node_count : (s.count != null ? s.count : 0)),
+            enabled: s.enabled !== false,
+            status: s.status || 'ok',
+            last_sync_ts: Number(s.last_sync_ts || 0),
+            last_sync_time: s.last_sync_time || '',
+            sync_status_text: s.sync_status_text || '',
+            updated: s.sync_status_text || s.last_sync_human || s.updated || '已同步',
+            url: s.url || '',
+            auto_update: s.auto_update !== false,
+            update_interval_min: Number(s.update_interval_min || 360),
+            userinfo: (s.userinfo && typeof s.userinfo === 'object') ? s.userinfo : null,
+            last_sync_status: (s.status === 'error' || s.last_sync_status === 'error') ? 'error' : 'ok',
+            last_error: s.last_error || ''
+          }));
         }
       }
 
@@ -5955,10 +6663,17 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
             name: s.name || s.id || '订阅源',
             count: Number(s.node_count != null ? s.node_count : (s.count != null ? s.count : mock.nodes.length)),
             enabled: s.enabled !== false,
-            updated: s.last_sync_human || s.updated_at || '已同步',
+            status: s.status || s.last_sync_status || 'ok',
+            last_sync_ts: Number(s.last_sync_ts || 0),
+            last_sync_time: s.last_sync_time || '',
+            sync_status_text: s.sync_status_text || '',
+            updated: s.sync_status_text || s.last_sync_human || s.updated_at || s.updated || '已同步',
             url: s.url || '',
             auto_update: s.auto_update !== false,
-            update_interval_min: Number(s.update_interval_min || 360)
+            update_interval_min: Number(s.update_interval_min || 360),
+            userinfo: (s.userinfo && typeof s.userinfo === 'object') ? s.userinfo : null,
+            last_sync_status: (s.status === 'error' || s.last_sync_status === 'error') ? 'error' : 'ok',
+            last_error: s.last_error || ''
           }));
         }
         if (stRes.shunt) {
@@ -5985,6 +6700,10 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
               active_group_index: Number(a.active_group_index || 1),
               current_node: (a.current_node && a.current_node !== 'direct') ? a.current_node : ((mock.nodes[0] && mock.nodes[0].name) || '智能优选'),
               current_delay_ms: (a.current_delay_ms != null && Number(a.current_delay_ms) > 0) ? Math.round(Number(a.current_delay_ms)) : null,
+              current_google_region: a.current_google_region || '',
+              selection_explain: a.selection_explain || '',
+              missing_members: Array.isArray(a.missing_members) ? a.missing_members : [],
+              filters: (a.filters && typeof a.filters === 'object') ? a.filters : null,
               groups: Array.isArray(a.groups) ? a.groups : []
             }));
           }
@@ -6002,16 +6721,26 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
                 country: g.country || 'JP',
                 manual_node: g.manual_node || '',
                 resolved_node: g.resolved_node || g.manual_node || 'direct',
+                strict_lock: Boolean(g.strict_lock),
+                manual_drifted: Boolean(g.manual_drifted),
+                strict_locked_dead: Boolean(g.strict_locked_dead),
+                drift_warning: g.drift_warning || g.failover_reason || '',
+                dns_strategy: g.dns_strategy || 'inherit',
+                custom_dns: g.custom_dns || '',
+                rule_blocks: Array.isArray(g.rule_blocks) ? g.rule_blocks : [],
                 rtt: validMs,
                 domains: Array.isArray(g.domains) ? g.domains : [],
                 domain_keywords: Array.isArray(g.domain_keywords) ? g.domain_keywords : [],
                 exact_domains: Array.isArray(g.exact_domains) ? g.exact_domains : [],
                 ip_cidrs: Array.isArray(g.ip_cidrs) ? g.ip_cidrs : [],
-                is_custom: Boolean(g.is_custom),
+                is_custom: Boolean(g.is_custom || !['AI_Assistant','YouTube','Netflix_Disney','TikTok','Social_Media','Gaming','GitHub_Dev','Apple_Microsoft','Domestic_CN','Final_Fallback'].includes(g.id)),
                 locked_bottom: Boolean(g.locked_bottom),
                 locked_order: Boolean(g.locked_order)
               };
             });
+          }
+          if (sh.hit_stats && typeof sh.hit_stats === 'object') {
+            state.shuntHitStats = sh.hit_stats;
           }
         }
         if (stRes.homelink && Array.isArray(stRes.homelink.nodes)) {
@@ -6049,6 +6778,9 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
           const shd = stRes.shield_status || dt.shield_status || {};
           if (dt.filter && dt.filter.enabled != null) {
             state.dnsEnabled = Boolean(dt.filter.enabled);
+          }
+          if (dt.filter && dt.filter.essential_app_protect != null) {
+            state.dnsEssentialProtect = Boolean(dt.filter.essential_app_protect);
           } else if (shd.enabled != null) {
             state.dnsEnabled = Boolean(shd.enabled);
           } else if (shd.state) {
@@ -6207,11 +6939,39 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
       const s2 = res.stage2_dns || {};
       const s3 = res.stage3_rule || {};
       const s4 = res.stage4_outbound || {};
+      const isBlocked = Boolean(s4.is_blocked || s3.group_id === 'Ad_Block' || s4.node === 'REJECT');
+      const isDirect = !isBlocked && Boolean(
+        s4.is_direct ||
+        s4.strategy === 'direct' ||
+        s4.node === 'direct' ||
+        s4.outbound_tag === 'direct' ||
+        s3.group_id === 'Domestic_CN' ||
+        s3.group_id === 'LAN_Bypass'
+      );
+      const s3Title = s3.title || (isBlocked ? '净网护盾拦截规则' : (isDirect ? '直连分流规则命中' : '精细分流规则匹配'));
+      const s3Detail = s3.detail || s3.summary || (
+        (s3.rule_title ? ('命中策略组「' + s3.rule_title + '」') : '命中分流规则') +
+        (s3.rule_reason ? (' · ' + s3.rule_reason) : '') +
+        (isDirect ? ' · 未命中海外代理组' : '')
+      );
+      const s3Badge = isBlocked ? '黑洞阻断' : (isDirect ? '未命中代理组' : (s3.rule_title || s3.selector_tag || s3.group_id || '规则命中'));
+
+      const actualNode = s4.node || s4.outbound_tag || (isDirect ? 'direct' : eg.nodeName);
+      const s4Title = s4.title || (isBlocked ? '双层黑洞阻断 (REJECT)' : (isDirect ? '宽带原生直连出站 (DIRECT)' : '实际代理出站节点隧道'));
+      const s4Detail = s4.detail || s4.summary || (
+        isBlocked
+          ? 'DNS REFUSED + 路由层 REJECT 双保险零延迟丢弃'
+          : (isDirect
+              ? ('走 WAN 口宽带原生直连 (' + actualNode + ')，零代理开销')
+              : ('实际出口: ' + actualNode + (s4.auto_node_name ? (' [' + s4.auto_node_name + ']') : '') + (s4.latency_ms ? (' · 实测延迟 ' + s4.latency_ms + ' ms') : '')))
+      );
+      const s4Badge = isBlocked ? '已阻断' : (isDirect ? '直连' : actualNode);
+
       stages = [
-        ['01', s1.title || '防火墙接管', s1.detail || s1.summary || 'nftables 规则判定完成', s1.verdict || s1.action || '已接管'],
-        ['02', s2.title || 'DNS 智能分流', s2.detail || s2.summary || 'DNS 路径判定完成', s2.verdict || s2.dns_server || 'FakeIP'],
-        ['03', s3.title || '精细规则命中', s3.detail || s3.summary || ('命中策略组: ' + (s3.selector_tag || '默认')), s3.selector_tag || '已命中'],
-        ['04', s4.title || '实际出站链路', s4.detail || s4.summary || ('实际出口: ' + (s4.outbound_tag || 'DIRECT')), s4.outbound_tag || 'DIRECT']
+        ['01', s1.title || '防火墙 TProxy 接管', s1.detail || s1.summary || 'nftables 规则判定完成', s1.verdict || s1.action || (isDirect ? '直连豁免' : '已接管')],
+        ['02', s2.title || '双栈 DNS 智能分流', s2.detail || s2.summary || (s2.dns_route ? (s2.dns_route + (s2.fakeip_Note ? (' · ' + s2.fakeip_Note) : '')) : 'DNS 路径判定完成'), s2.verdict || s2.dns_server || (isDirect ? '国内 DoH' : 'FakeIP')],
+        ['03', s3Title, s3Detail, s3Badge],
+        ['04', s4Title, s4Detail, s4Badge]
       ];
     }
     const inlineHtml = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">' +
@@ -6250,6 +7010,81 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
     );
   }
 
+  /* T1: One-Click Network Health Doctor (8 Parallel Checks + 1-Click Auto Fix) */
+  async function openNetworkDoctorModal(autoRun) {
+    openModal(
+      '🩺 网络健康医生 · 8 项全链路并发诊断与一键修复',
+      '<div id="network-doctor-root" class="modal-form">' +
+        '<div class="doctor-summary-banner">' +
+          '<div>' +
+            '<b id="doc-headline" style="font-size:11.5px;color:var(--cyan)">正在并发执行 8 项全链路网络健康诊断 (≤10s)...</b>' +
+            '<small id="doc-subline" style="display:block;color:var(--muted);margin-top:3px">覆盖：客户端 DNS 归属 · AAAA 抑制 · IPv6 绕过 · 回家 DDNS 权威比对 · 回家端口可达 · 上游连通 · MTU/PMTU · 关键应用防误杀</small>' +
+          '</div>' +
+          '<div class="button-row" style="gap:6px">' +
+            '<button type="button" class="button secondary compact" id="btn-doc-rerun" data-action="run-network-doctor-now">🔄 重新体检</button>' +
+            '<button type="button" class="button primary compact" id="btn-doc-fix-all" data-action="fix-network-doctor-all">🛠️ 一键修复异常项</button>' +
+          '</div>' +
+        '</div>' +
+        '<div id="doc-checks-grid" class="doctor-check-grid">' +
+          '<div style="grid-column:1/-1;padding:26px;text-align:center;color:var(--muted)">⏳ 正在并发探测 8 项网络与内核指标，请稍候...</div>' +
+        '</div>' +
+      '</div>',
+      'NETWORK HEALTH DOCTOR · T1'
+    );
+    if (autoRun !== false) {
+      await runNetworkDoctorScan();
+    }
+  }
+
+  async function runNetworkDoctorScan() {
+    const headline = $('#doc-headline');
+    const subline = $('#doc-subline');
+    const grid = $('#doc-checks-grid');
+    const rerunBtn = $('#btn-doc-rerun');
+    if (rerunBtn) { rerunBtn.disabled = true; rerunBtn.textContent = '⏳ 诊断中...'; }
+    const res = await callRouterApi('/api/diag/run', 'POST', {});
+    if (rerunBtn) { rerunBtn.disabled = false; rerunBtn.textContent = '🔄 重新体检'; }
+    if (!res || !Array.isArray(res.checks)) {
+      if (headline) headline.textContent = '⚠️ 诊断接口暂未响应，请稍后重试';
+      return;
+    }
+    state.lastDoctorReport = res;
+    const sum = res.summary || {};
+    const score = sum.health_score != null ? sum.health_score : 100;
+    const passCnt = sum.pass != null ? sum.pass : res.checks.filter(c => c.status === 'pass').length;
+    const warnCnt = sum.warn != null ? sum.warn : res.checks.filter(c => c.status === 'warn').length;
+    const failCnt = sum.fail != null ? sum.fail : res.checks.filter(c => c.status === 'fail').length;
+    const durMs = res.duration_ms || 0;
+    if (headline) {
+      headline.style.color = failCnt > 0 ? 'var(--rose)' : (warnCnt > 0 ? 'var(--amber)' : 'var(--mint)');
+      headline.textContent = '体检评分 ' + score + ' 分 · ' + passCnt + ' 项通过 / ' + warnCnt + ' 项警告 / ' + failCnt + ' 项异常（耗时 ' + durMs + ' ms）';
+    }
+    if (subline) {
+      subline.textContent = (failCnt === 0 && warnCnt === 0)
+        ? '✓ 全链路 8 项核心指标全部健康，未发现 DNS 绕过、IPv6 泄漏、MTU 黑洞或关键应用误杀。'
+        : '发现可优化或异常项，可点击右侧「🛠️ 一键修复异常项」或单项修复按钮自动恢复并复检。';
+    }
+    if (grid) {
+      grid.innerHTML = res.checks.map((c, idx) => {
+        const st = c.status || 'pass';
+        const pillColor = st === 'pass' ? 'var(--mint)' : (st === 'warn' ? 'var(--amber)' : 'var(--rose)');
+        const pillText = st === 'pass' ? '✓ PASS' : (st === 'warn' ? '⚠️ WARN' : '✗ FAIL');
+        const canFix = c.fixable && st !== 'pass' && c.fix_action;
+        return '<div class="doctor-check-card status-' + esc(st) + '" data-check-id="' + esc(c.id) + '">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px">' +
+            '<b style="font-size:9.5px;color:var(--text)">#' + (idx + 1) + ' ' + esc(c.title || c.id) + '</b>' +
+            '<span class="status-pill" style="color:' + pillColor + ';font-size:7.5px">' + pillText + ' · ' + Number(c.duration_ms || 1) + 'ms</span>' +
+          '</div>' +
+          '<div style="font-size:8.5px;color:#c9d6ea;line-height:1.45">' + esc(c.detail || '') + '</div>' +
+          (c.suggestion ? '<div style="font-size:8px;color:var(--muted)">💡 建议：' + esc(c.suggestion) + '</div>' : '') +
+          (canFix
+            ? '<div style="margin-top:4px;display:flex;justify-content:flex-end"><button type="button" class="button secondary compact" style="min-height:24px;padding:0 9px;font-size:8px" data-action="fix-network-doctor-item" data-fix-action="' + esc(c.fix_action) + '" data-check-id="' + esc(c.id) + '">🛠️ 一键修复此项</button></div>'
+            : '') +
+        '</div>';
+      }).join('');
+    }
+  }
+
   async function showNodeDetails(id) {
     const n = mock.nodes.find(item => item.id === id || item.tag === id);
     if (!n) return;
@@ -6267,10 +7102,10 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
     openModal(
       '节点详情与编辑 · ' + n.name,
       '<div class="detail-grid">' +
-        '<div><span>所属地区</span><b>' + esc((COUNTRY_META[n.region] && COUNTRY_META[n.region].name) || n.region) + '</b></div>' +
-        '<div><span>代理协议</span><b class="mono">' + esc(n.protocol) + '</b></div>' +
-        '<div><span>实测延迟</span><b>' + formatLatencyText(n.rtt, false) + '</b></div>' +
-        '<div><span>20次滑动评分</span><b>' + (n.score != null && n.rtt > 0 ? n.score + ' / 100' : '待测速评估') + '</b></div>' +
+        '<div><span>标注所属地区</span><b>' + esc((COUNTRY_META[n.region] && COUNTRY_META[n.region].name) || n.region) + '</b></div>' +
+        '<div><span>Google 视角地区 (301 TLD)</span><b>' + renderGoogleRegionBadgeHtml(n, true) + '</b></div>' +
+        '<div><span>稳定身份指纹 (node_key)</span><b class="mono">' + esc(n.node_key || n.id || '—') + '</b></div>' +
+        '<div><span>实测延迟 / 评分</span><b>' + formatLatencyText(n.rtt, false) + ' · ' + (n.score != null && n.rtt > 0 ? n.score + ' 分' : '待评估') + '</b></div>' +
       '</div>' +
       qrHtml +
       '<div class="modal-form" style="margin-top:12px">' +
@@ -6423,11 +7258,20 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
   function openAutoNodeEditorModal(poolIdx) {
     const p = (poolIdx != null && mock.autoPools[poolIdx]) ? mock.autoPools[poolIdx] : null;
     const cleanTags = arr => (Array.isArray(arr) ? arr : [])
-      .map(x => String(x || '').trim())
+      .map(x => (typeof x === 'object' && x !== null) ? String(x.tag || x.name || '').trim() : String(x || '').trim())
       .filter(Boolean)
       .slice(0, 10);
-    const initG1 = (p && p.groups && p.groups[0]) ? cleanTags(p.groups[0].node_tags) : [];
-    const initG2 = (p && p.groups && p.groups[1]) ? cleanTags(p.groups[1].node_tags) : [];
+    const extractGroupTags = grp => {
+      if (!grp) return [];
+      const fromTags = cleanTags(grp.node_tags);
+      if (fromTags.length) return fromTags;
+      return cleanTags(grp.members);
+    };
+    const initG1 = (p && p.groups && p.groups[0]) ? extractGroupTags(p.groups[0]) : [];
+    const initG2 = (p && p.groups && p.groups[1]) ? extractGroupTags(p.groups[1]) : [];
+    if (p && p.current_node && p.current_node !== 'direct' && !initG1.includes(p.current_node) && !initG2.includes(p.current_node) && initG1.length < 10) {
+      initG1.unshift(p.current_node);
+    }
 
     const g1Set = new Set(initG1);
     const g2Set = new Set(initG2);
@@ -6450,11 +7294,15 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
     const initSvcs = new Set(
       (p && Array.isArray(p.service_checks) && p.service_checks.length)
         ? p.service_checks
-        : ['chatgpt', 'youtube']
+        : ['chatgpt', 'gemini', 'youtube']
     );
     const initLogic = (p && p.service_logic === 'any') ? 'any' : 'all';
 
-    const subOptionsHtml = '<option value="ALL">📦 全部可用订阅源 (' + mock.nodes.length + ')</option>' +
+    let poolMode = (p && (p.pool_mode === 'ping_only' || p.service_check_enabled === false || p.mode === 'semi')) ? 'ping_only' : 'service_check';
+    let autoMaintain = (p && p.auto_maintain != null) ? Boolean(p.auto_maintain) : true;
+    const customCntInModal = mock.nodes.filter(n => isNodeManualCustom(n)).length;
+    const subOptionsHtml = '<option value="ALL">📦 任意订阅与自定义节点 (' + mock.nodes.length + ')</option>' +
+      '<option value="custom">🛠️ 仅手动添加节点 (' + customCntInModal + ')</option>' +
       mock.subscriptions.map(s => '<option value="' + esc(s.id) + '">📡 ' + esc(s.name) + ' (' + Number(s.count || mock.nodes.filter(n => nodeMatchesSubscription(n, s.id)).length) + ')</option>').join('');
 
     const svcChecksHtml = SERVICE_OPTIONS.map(s =>
@@ -6462,10 +7310,27 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
     ).join('');
 
     openModal(
-      p ? ('编排双组省流自动节点池 · ' + p.name) : '新建双组省流自动节点池',
+      p ? ('目标驱动双组省流自动节点池 · ' + p.name) : '新建目标驱动双组省流自动节点池',
       '<div id="an-builder-root" class="ov-insight-modal-wrap modal-form" style="gap:9px">' +
         '<div class="syntax-guide" style="margin-bottom:0">' +
-          '<b>🔄 节点池构建流程：</b>① 在筛选器勾选候选节点（单次最多勾 10 个） ➔ ② 可对新勾选节点执行检测（仅测新勾选项，已入池节点不重复测） ➔ ③ 将检测通过或已勾选节点确认加入节点池 ➔ ④ 下方列表可随时直接移除节点，未满 10 个可继续往复筛选添加，完成后点击右下角保存。' +
+          '<b>🎯 目标驱动自动筛选 + 持续自愈巡检：</b>选择节点范围（任意订阅 / 指定订阅 / 手动节点 + 地区）与模式（<b>① 仅检测连通性</b>：只要节点通即可用；<b>② 加服务可用性检测</b>：针对 AI 区域限制与流媒体自制剧解锁），点击「<b>🚀 按需求一键自动筛选最快 10 节点入池</b>」即可自动完成检测并按 Ping 值最快优先入池（不足 10 个则有几个加几个，后续节点失效或订阅更新时自动按原需求持续补充保持 10 个健康节点）。' +
+        '</div>' +
+        '<div class="modal-grid-2" style="gap:8px">' +
+          '<button type="button" class="route-mode ' + (poolMode === 'ping_only' ? 'active' : '') + '" data-an-pool-mode="ping_only" id="btn-an-mode-ping" style="text-align:left;padding:9px 12px">' +
+            '<b>⚡ 模式一：仅检测连通性 (Ping 通即用)</b>' +
+            '<p style="font-size:8px;margin-top:3px">适用普通网页、社交与不限区服务：原则上只要 URL Ping 连通即可用，自动按延迟最低选入前 10 节点。</p>' +
+          '</button>' +
+          '<button type="button" class="route-mode ' + (poolMode === 'service_check' ? 'active' : '') + '" data-an-pool-mode="service_check" id="btn-an-mode-svc" style="text-align:left;padding:9px 12px">' +
+            '<b>🧪 模式二：连通性 + 服务/区域可用性检测</b>' +
+            '<p style="font-size:8px;margin-top:3px">适用 ChatGPT/Gemini 等区域限制 AI 及 Netflix/YouTube 限定内容：真实校验服务解锁后按最快 Ping 选入前 10。</p>' +
+          '</button>' +
+        '</div>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 11px;border-radius:10px;background:rgba(84,230,181,.08);border:1px solid rgba(84,230,181,.3);flex-wrap:wrap">' +
+          '<label style="display:flex;align-items:center;gap:6px;font-size:8.5px;color:var(--text);cursor:pointer">' +
+            '<input type="checkbox" id="mdl-an-auto-maintain" ' + (autoMaintain ? 'checked' : '') + '>' +
+            '<span>🔄 <b>开启持续自动筛选与失效自愈补充</b>（节点挂掉或订阅更新时，自动按当前范围与模式筛选最快可用节点补满至 10 个）</span>' +
+          '</label>' +
+          '<button type="button" class="button primary compact" id="btn-an-auto-screen" style="min-height:28px;padding:0 12px;font-size:8.5px">🚀 按需求一键自动筛选最快 10 节点入池</button>' +
         '</div>' +
         '<div class="modal-grid-2">' +
           '<div class="modal-field"><label>自动节点池名称</label><input id="mdl-an-name" value="' + esc(p ? p.name : '高速多业务自动池') + '" placeholder="如：AI 专线自动池 / 游戏流媒体池"></div>' +
@@ -6508,8 +7373,8 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
               '<button type="button" class="button secondary compact" style="min-height:26px;padding:0 8px;font-size:8px" id="btn-an-test-ping" aria-busy="false">⚡ 仅测已勾选 Ping</button>' +
               '<button type="button" class="button secondary compact" style="min-height:26px;padding:0 8px;font-size:8px" id="btn-an-test-full" aria-busy="false">🧪 检测已勾选 (Ping+服务)</button>' +
               '<button type="button" class="button ghost compact" style="min-height:26px;padding:0 7px;font-size:8px" id="btn-an-keep-qualified" title="仅保留勾选检测通过的节点">✨ 仅留合格</button>' +
-              '<button type="button" class="button secondary compact" style="min-height:26px;padding:0 9px;font-size:8px;border-color:rgba(84,230,181,.45);color:var(--mint)" id="btn-an-add-passed" title="仅把当前已勾选且检测通过的节点加入节点池">✅ 将检测通过加入池</button>' +
-              '<button type="button" class="button primary compact" style="min-height:26px;padding:0 10px;font-size:8px" id="btn-an-add-to-pool" title="将当前已勾选的节点（含免测直加或检测通过节点）确认加入节点池">➕ 将已勾选加入池 (<span id="mdl-an-add-grp-lbl">主力组 G1</span>)</button>' +
+              '<button type="button" class="button secondary compact" style="min-height:26px;padding:0 9px;font-size:8px;border-color:rgba(84,230,181,.45);color:var(--mint)" id="btn-an-add-passed" title="推荐：仅把上方已勾选且刚刚通过 URL Ping/服务可用性检测的达标节点加入当前分组（自动剔除超时或未测节点）">✅ 仅入池检测达标项</button>' +
+              '<button type="button" class="button primary compact" style="min-height:26px;padding:0 10px;font-size:8px" id="btn-an-add-to-pool" title="快捷免测：不等待检测结果，直接把当前筛选器中所有勾选的节点一键加入当前分组">➕ 免测直接加入池 (<span id="mdl-an-add-grp-lbl">主力组 G1</span>)</button>' +
             '</div>' +
           '</div>' +
           '<div class="an-svc-checks">' + svcChecksHtml + '</div>' +
@@ -6541,22 +7406,59 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
           Array.from(stagedSet).slice(0, 10).forEach(t => g1Set.add(t));
           stagedSet.clear();
         }
-        const g1 = Array.from(g1Set).slice(0, 10);
-        const g2 = Array.from(g2Set).slice(0, 10);
-        if (!g1.length) { toast('主力组 G1 至少需要添加 1 个节点（请在筛选器勾选节点后点击「➕ 将已勾选节点加入池」）', 'warn'); return; }
-        const checkedSvcs = $$('.chk-an-svc:checked').map(el => el.value);
+        let g1 = Array.from(g1Set).slice(0, 10);
+        let g2 = Array.from(g2Set).slice(0, 10);
+        if (!g1.length && g2.length) {
+          g1 = g2;
+          g2 = [];
+        }
+        const checkedSvcs = poolMode === 'service_check' ? $$('.chk-an-svc:checked').map(el => el.value) : [];
         const svcLogic = ($('#mdl-an-svc-logic') && $('#mdl-an-svc-logic').value) || 'all';
+        const maintainChecked = $('#mdl-an-auto-maintain') ? Boolean($('#mdl-an-auto-maintain').checked) : true;
+        if (!g1.length) {
+          toast('正在按当前目标范围自动筛选最快可用节点入池...');
+          const autoRes = await callRouterApi('/api/auto_nodes/auto_screen', 'POST', {
+            pool_mode: poolMode,
+            service_check_enabled: poolMode === 'service_check',
+            service_checks: checkedSvcs,
+            service_logic: svcLogic,
+            scope_source: filterSub || 'ALL',
+            scope_countries: [filterCountry || 'ALL'],
+            target_size: 10,
+            run_live_probe: true
+          }, 180000);
+          if (autoRes && Array.isArray(autoRes.admitted_g1) && autoRes.admitted_g1.length) {
+            g1 = autoRes.admitted_g1.slice(0, 10);
+            g2 = Array.isArray(autoRes.admitted_g2) ? autoRes.admitted_g2.slice(0, 10) : [];
+          } else {
+            const fallbackCands = getFullyFilteredNodes().filter(n => getNodeTwoState(n) === 'ok').sort((a, b) => (a.rtt || 999) - (b.rtt || 999));
+            g1 = fallbackCands.slice(0, 10).map(n => n.tag || n.name);
+          }
+        }
+        if (!g1.length) { toast('当前范围内暂无可用节点，请切换节点范围或先检测节点', 'warn'); return; }
         const groups = [{ index: 1, name: '主力组 G1', node_tags: g1 }];
         if (g2.length) groups.push({ index: 2, name: '备选组 G2', node_tags: g2 });
         const res = await callRouterApi('/api/auto_nodes/save', 'POST', {
           id: p ? p.id : '',
           tag: p ? p.tag : '',
           name,
-          mode: checkedSvcs.length ? 'full' : 'semi',
-          service_check_enabled: checkedSvcs.length > 0,
+          pool_mode: poolMode,
+          mode: (poolMode === 'service_check' && checkedSvcs.length) ? 'full' : 'semi',
+          service_check_enabled: (poolMode === 'service_check' && checkedSvcs.length > 0),
           service_checks: checkedSvcs,
           service_logic: svcLogic,
           match_mode: svcLogic,
+          scope_source: filterSub || 'ALL',
+          scope_countries: [filterCountry || 'ALL'],
+          target_size: 10,
+          auto_maintain: maintainChecked,
+          filters: {
+            enabled: maintainChecked,
+            sub_id: filterSub || 'ALL',
+            region_any: (filterCountry && filterCountry !== 'ALL') ? [filterCountry] : [],
+            require_services: checkedSvcs,
+            min_group_size: 10
+          },
           smart_switch_enabled: true,
           groups,
           probe_now: true
@@ -6761,9 +7663,11 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
           ? '<span class="status-pill" style="color:var(--cyan);border-color:rgba(110,231,245,.35)">#' + (idx + 1) + ' · G1 主力</span>'
           : '<span class="status-pill" style="color:var(--violet);border-color:rgba(169,148,255,.35)">#' + (idx + 1) + ' · G2 备选</span>';
 
+        const isPoolCurrentExit = Boolean(p && p.current_node === tag);
+        const curExitBadge = isPoolCurrentExit ? ' <span class="status-pill" style="font-size:7.5px;color:var(--cyan);border-color:rgba(110,231,245,.45)">⚡ 当前出口</span>' : '';
         rows.push('<tr data-an-row-tag="' + esc(tag) + '" data-an-row-group="' + grpIdx + '">' +
           '<td>' + grpBadge + '</td>' +
-          '<td><b>' + esc(n.name || tag) + '</b><small class="mono" style="margin-left:6px">' + esc(cMeta.flag + ' ' + cCode + ' · ' + (n.protocol || 'PROXY')) + '</small></td>' +
+          '<td><b>' + esc(n.name || tag) + '</b>' + curExitBadge + '<small class="mono" style="margin-left:6px">' + esc(cMeta.flag + ' ' + cCode + ' · ' + (n.protocol || 'PROXY')) + '</small>' + renderGoogleRegionBadgeHtml(n, false) + '</td>' +
           '<td>' + formatLatencyBadge(delayMs, stateVal, false) + '</td>' +
           '<td>' + svcHtml + '</td>' +
           '<td>' + verdictBadge + '</td>' +
@@ -6903,11 +7807,53 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
           const tag = rowOp.dataset.tag || '';
           const setObj = grp === 1 ? g1Set : g2Set;
           if (op === 'remove' && tag) {
-            setObj.delete(tag);
-            updateGroupCounters();
-            renderPickerList();
-            renderSelectedTable();
-            toast('已从「' + (grp === 1 ? '主力组 G1' : '备选组 G2') + '」直接移除节点「' + tag + '」（当前 ' + setObj.size + '/10）');
+            const origArr = Array.from(setObj);
+            const origIdx = origArr.indexOf(tag);
+            const isCurExit = Boolean(p && p.current_node === tag);
+            const manualBoundGroups = mock.groups.filter(g => g.shunt_mode === 'manual' && (g.manual_node === tag || g.resolved_node === tag));
+
+            const executeRemoveNode = async () => {
+              setObj.delete(tag);
+              updateGroupCounters();
+              renderPickerList();
+              renderSelectedTable();
+              const grpTitle = grp === 1 ? '主力组 G1' : '备选组 G2';
+              const exitHint = isCurExit ? '（原当前出口已释放，保存后将自动切换至下一可用节点）' : '';
+              if (manualBoundGroups.length && p) {
+                for (const mg of manualBoundGroups) {
+                  await callRouterApi('/api/shunt/update', 'POST', {
+                    group_id: mg.id,
+                    shunt_mode: 'auto',
+                    strategy: 'auto',
+                    auto_node_id: p.id || 'auto_ai',
+                    manual_node: 'auto:' + (p.id || 'auto_ai')
+                  });
+                }
+              }
+              toast('已从「' + grpTitle + '」移除节点「' + tag + '」' + exitHint, '', {
+                undoText: '↩ 撤销移除',
+                onUndo: () => {
+                  const curItems = Array.from(setObj);
+                  setObj.clear();
+                  const insertAt = origIdx >= 0 ? Math.min(origIdx, curItems.length) : curItems.length;
+                  curItems.splice(insertAt, 0, tag);
+                  curItems.slice(0, 10).forEach(x => setObj.add(x));
+                  updateGroupCounters();
+                  renderPickerList();
+                  renderSelectedTable();
+                  toast('已撤销移除，节点「' + tag + '」已恢复至「' + grpTitle + '」原位置');
+                }
+              });
+            };
+
+            if (manualBoundGroups.length > 0) {
+              const gNames = manualBoundGroups.map(g => g.name).join('、');
+              if (window.confirm('该节点正被『' + gNames + '』组使用，移除后将自动切换到下一可用节点，确认移除吗？')) {
+                executeRemoveNode();
+              }
+            } else {
+              executeRemoveNode();
+            }
           }
           return;
         }
@@ -7050,6 +7996,78 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
           addStagedNodesToActivePool(false);
         });
       }
+      $$('[data-an-pool-mode]').forEach(mBtn => {
+        mBtn.addEventListener('click', ev => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          poolMode = mBtn.dataset.anPoolMode || 'service_check';
+          $$('[data-an-pool-mode]').forEach(b => b.classList.toggle('active', b.dataset.anPoolMode === poolMode));
+          const svcWrap = $('.an-svc-checks', builderRoot);
+          if (svcWrap) svcWrap.style.opacity = poolMode === 'service_check' ? '1' : '0.45';
+          toast(poolMode === 'ping_only' ? '已切换为「仅检测连通性」模式：只要节点通即可用，按最快 Ping 入池' : '已切换为「加服务可用性检测」模式：校验 AI/流媒体区域解锁后按最快 Ping 入池');
+        });
+      });
+      const btnAutoScreen = $('#btn-an-auto-screen');
+      if (btnAutoScreen) {
+        btnAutoScreen.addEventListener('click', async ev => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          const checkedSvcs = poolMode === 'service_check' ? $$('.chk-an-svc:checked').map(el => el.value) : [];
+          const svcLogic = ($('#mdl-an-svc-logic') && $('#mdl-an-svc-logic').value) || 'all';
+          btnAutoScreen.disabled = true;
+          btnAutoScreen.setAttribute('aria-busy', 'true');
+          toast('正在对当前范围节点执行「' + (poolMode === 'service_check' ? ('连通性 + 服务可用性 (' + (checkedSvcs.join('/') || '通用') + ')') : '仅连通性 URL Ping') + '」自动筛选...');
+          const origBtnTxt = btnAutoScreen.textContent;
+          btnAutoScreen.textContent = '⏳ 正在筛选与校验节点...';
+          const res = await callRouterApi('/api/auto_nodes/auto_screen', 'POST', {
+            pool_mode: poolMode,
+            service_check_enabled: poolMode === 'service_check',
+            service_checks: checkedSvcs,
+            service_logic: svcLogic,
+            scope_source: filterSub || 'ALL',
+            scope_countries: [filterCountry || 'ALL'],
+            target_size: 10,
+            run_live_probe: true
+          }, 180000);
+          btnAutoScreen.disabled = false;
+          btnAutoScreen.setAttribute('aria-busy', 'false');
+          btnAutoScreen.textContent = origBtnTxt;
+          if (!res || res.ok === false) {
+            toast('自动筛选未完成（已保留当前已选节点，可尝试缩小到指定订阅或地区后重试）', 'warn');
+            return;
+          }
+          if (res && Array.isArray(res.results)) {
+            res.results.forEach(r => {
+              testResultsByTag[r.tag] = r;
+              const nObj = mock.nodes.find(x => (x.tag || x.name) === r.tag);
+              if (nObj) {
+                nObj.rtt = r.delay_ms > 0 ? r.delay_ms : null;
+                nObj.status = (r.state === 'ok' && r.delay_ms > 0) ? 'ok' : 'dead';
+              }
+            });
+            const g1Auto = Array.isArray(res.admitted_g1) ? res.admitted_g1.slice(0, 10) : [];
+            const g2Auto = Array.isArray(res.admitted_g2) ? res.admitted_g2.slice(0, 10) : [];
+            if (g1Auto.length) {
+              g1Set.clear();
+              g1Auto.forEach(t => g1Set.add(t));
+              if (g2Auto.length) {
+                g2Set.clear();
+                g2Auto.forEach(t => g2Set.add(t));
+              }
+              stagedSet.clear();
+              updateGroupCounters();
+              renderPickerList();
+              renderSelectedTable();
+              renderSubscriptionsAndNodes();
+              toast('自动筛选完成：从 ' + (res.total_candidates_in_scope || 0) + ' 个候选节点中选出最快 ' + g1Auto.length + ' 个入主力组 G1' + (g2Auto.length ? ('（另备选组 G2 填入 ' + g2Auto.length + ' 个）') : '（不足 10 个已全部入池，后续将持续自动筛选补充）'));
+            } else {
+              updateGroupCounters();
+              renderPickerList();
+              toast('当前筛选范围内未检测到可用达标节点，请尝试放宽地区或订阅范围', 'warn');
+            }
+          }
+        });
+      }
     }
   }
 
@@ -7137,7 +8155,7 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
       '<button class="button danger compact" style="min-height:24px;padding:0 8px;font-size:8px" data-action="del-sched" data-sid="' + esc(s.id) + '">删除</button></div></div>'
     ).join('');
     openModal(
-      '定时 URL Ping 测速与入核容量管理',
+      '定时 URL Ping 测速巡检计划',
       '<div class="modal-form">' +
         '<div class="trace-stages">' + (schedRows || '<p>当前暂无定时计划</p>') + '</div>' +
         '<div class="modal-grid-3" style="margin-top:8px">' +
@@ -7147,23 +8165,19 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
           '</select></div>' +
           '<div class="modal-field"><label>巡检间隔 (分钟)</label><input id="mdl-sched-intv" type="number" value="180"></div>' +
         '</div>' +
-        '<div class="modal-field"><label>最大同时入核节点数上限 (1~300，推荐 200 以控制内存占用)</label><input id="mdl-max-outbounds" type="number" value="' + esc(mock.maxOutboundsLimit || 200) + '"></div>' +
+        '<div class="modal-field"><label>内核出站挂载策略</label><div class="status-pill" style="padding:7px 12px;color:var(--mint);border-color:rgba(84,230,181,.35)">⚡ 全部入核（无数量上限 · 所有启用订阅与手动节点 100% 原生挂载）</div></div>' +
       '</div>',
-      'PROBE SCHEDULER & CAPACITY',
+      'PROBE SCHEDULER',
       async () => {
         const name = ($('#mdl-sched-name') && $('#mdl-sched-name').value.trim()) || '定时测速计划';
         const region = ($('#mdl-sched-region') && $('#mdl-sched-region').value) || 'ALL';
         const interval_min = Number(($('#mdl-sched-intv') && $('#mdl-sched-intv').value) || 180);
-        const max_outbounds = Number(($('#mdl-max-outbounds') && $('#mdl-max-outbounds').value) || 200);
-        await Promise.all([
-          callRouterApi('/api/probe/schedules/save', 'POST', { name, region, interval_min, enabled: true }),
-          callRouterApi('/api/settings/max_nodes', 'POST', { max_outbounds })
-        ]);
+        await callRouterApi('/api/probe/schedules/save', 'POST', { name, region, interval_min, enabled: true });
         closeModal();
-        toast('定时测速计划与入核上限已保存');
+        toast('定时测速巡检计划已保存');
         await syncBackendStatus(true, true);
       },
-      '保存计划与容量'
+      '保存巡检计划'
     );
   }
 
@@ -7763,7 +8777,7 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
           ['nftables 透明接管表 (inet ai_link)', (res && res.nft_table_loaded !== false) ? 'ACTIVE' : 'BYPASS'],
           ['防断网看门狗 (respawn 0 5 0)', 'ARMED'],
           ['净网护盾规则引擎', state.dnsEnabled ? (Number(mock.dnsRulesCount).toLocaleString('zh-CN') + ' 条生效') : 'PAUSED'],
-          ['入核出站节点容量', mock.activeOutbounds + ' / ' + mock.maxOutboundsLimit + ' 节点']
+          ['入核出站节点容量', mock.nodes.length + ' 节点（全部入核 · 无上限）']
         ];
         openModal(
           '系统与内核健康自检报告 (/api/ops/health_check)',
@@ -7888,7 +8902,7 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
         openModal(
           'OTA 在线升级状态与确认 (/api/system/update/status)',
           '<div class="detail-grid">' +
-            '<div><span>当前运行版本</span><b class="mono">v' + esc((res && res.current) || '2.0.2') + '</b></div>' +
+            '<div><span>当前运行版本</span><b class="mono">v' + esc((res && res.current) || '2.3.1') + '</b></div>' +
             '<div><span>升级阶段</span><b>' + esc(prog.stage || 'idle (就绪)') + '</b></div>' +
             '<div><span>进度百分比</span><b>' + esc((prog.percent != null ? prog.percent : 100) + '%') + '</b></div>' +
             '<div><span>状态说明</span><b>' + esc(prog.message || '当前无进行中的升级任务') + '</b></div>' +
@@ -8309,6 +9323,31 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
         await syncBackendStatus(false, true);
         break;
       }
+      case 'toggle-group-strict-lock': {
+        const gid = el && el.dataset.gid;
+        const grp = mock.groups.find(g => g.id === gid);
+        if (!grp) return;
+        const nextLock = !grp.strict_lock;
+        const upRes = await callRouterApi('/api/shunt/update', 'POST', { group_id: gid, strict_lock: nextLock });
+        if (upRes && Array.isArray(upRes.groups)) {
+          const srvGrp = upRes.groups.find(x => x.id === gid);
+          if (srvGrp) {
+            grp.strict_lock = Boolean(srvGrp.strict_lock);
+            grp.resolved_node = srvGrp.resolved_node || grp.manual_node;
+            grp.manual_drifted = Boolean(srvGrp.manual_drifted);
+            grp.strict_locked_dead = Boolean(srvGrp.strict_locked_dead);
+            grp.drift_warning = srvGrp.drift_warning || srvGrp.failover_reason || '';
+          } else {
+            grp.strict_lock = nextLock;
+          }
+        } else {
+          grp.strict_lock = nextLock;
+        }
+        renderShuntMatrix();
+        toast('分流组「' + (grp.name || gid) + '」已' + (grp.strict_lock ? '开启🔒严格锁定（宁可失败不漂移）' : '切换为🔓允许故障容灾漂移'));
+        await syncBackendStatus(false, true);
+        break;
+      }
       case 'verify-group': {
         const gid = el && el.dataset.gid;
         if (!gid) return;
@@ -8525,6 +9564,146 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
         toast('云端域名过滤护盾已' + (state.dnsEnabled ? '开启' : '关闭'));
         break;
       }
+      case 'dns-essential-protect-toggle': {
+        const nextProt = !(state.dnsEssentialProtect !== false);
+        state.dnsEssentialProtect = nextProt;
+        setSwitchState(el, state.dnsEssentialProtect);
+        const res = await callRouterApi('/api/dns/filter/toggle', 'POST', {
+          enabled: state.dnsEnabled,
+          essential_app_protect: nextProt
+        });
+        if (res && res.filter && res.filter.essential_app_protect != null) {
+          state.dnsEssentialProtect = Boolean(res.filter.essential_app_protect);
+        }
+        renderDnsAndFilterSection();
+        toast('核心应用防误杀白名单保护已' + (state.dnsEssentialProtect ? '开启（已豁免 Google Play / Apple / MS 核心域名）' : '关闭'));
+        break;
+      }
+      case 'network-doctor': {
+        await openNetworkDoctorModal(true);
+        break;
+      }
+      case 'topology-wizard': {
+        openTopologyWizardModal();
+        break;
+      }
+      case 'open-rule-blocks-modal': {
+        const gid = el && el.dataset.gid;
+        openRuleBlocksModal(gid);
+        break;
+      }
+      case 'open-rule-providers': {
+        openRuleProvidersModal();
+        break;
+      }
+      case 'open-config-history': {
+        openConfigHistoryModal();
+        break;
+      }
+      case 'open-alert-center': {
+        openAlertCenterModal();
+        break;
+      }
+      case 'sync-rule-provider': {
+        const rpId = el && el.dataset.rpId;
+        if (!rpId) break;
+        toast('正在同步远程规则源 [' + rpId + ']...');
+        const r = await callRouterApi('/api/shunt/rule_providers/sync', 'POST', { id: rpId });
+        toast((r && r.message) || '远程规则源同步完成');
+        await openRuleProvidersModal();
+        break;
+      }
+      case 'delete-rule-provider': {
+        const rpId = el && el.dataset.rpId;
+        const rpName = (el && el.dataset.rpName) || rpId;
+        if (!rpId) break;
+        const backupProvider = (state.lastRuleProviders || []).find(x => x.id === rpId);
+        confirmModal(
+          '确认删除远程规则源',
+          '确认删除远程规则订阅「' + rpName + '」吗？删除后可点击底部提示撤销恢复。',
+          async () => {
+            const delRes = await callRouterApi('/api/shunt/rule_providers', 'POST', { id: rpId, action: 'delete' });
+            await openRuleProvidersModal();
+            await syncBackendStatus(false, true);
+            toastWithUndo('已删除远程规则源「' + rpName + '」', async () => {
+              const snap = (delRes && delRes.deleted) || backupProvider;
+              if (snap && snap.url) {
+                await callRouterApi('/api/shunt/rule_providers', 'POST', Object.assign({}, snap, { sync_now: false }));
+                toast('↩ 已撤销删除并恢复规则源「' + rpName + '」');
+                await openRuleProvidersModal();
+              }
+            });
+          },
+          '确认删除'
+        );
+        break;
+      }
+      case 'rollback-config-snap': {
+        const snapId = el && el.dataset.snapId;
+        const targetState = (el && el.dataset.targetState) || 'files';
+        if (!snapId) break;
+        const modeDesc = targetState === 'before' ? '撤销该次变更（恢复至该次变更前的状态）' : '恢复到该版本（该次变更后的状态）';
+        confirmModal(
+          '确认回滚配置版本',
+          '确认对快照 [' + snapId + '] 执行「' + modeDesc + '」吗？回滚将在 10 秒内实时生效。',
+          async () => {
+            const r = await callRouterApi('/api/ops/config_rollback', 'POST', { snapshot_id: snapId, target_state: targetState });
+            toast((r && r.message) || '已回滚配置');
+            await syncBackendStatus(false, true);
+          },
+          '确认回滚'
+        );
+        break;
+      }
+      case 'run-network-doctor-now': {
+        await runNetworkDoctorScan();
+        toast('已完成 8 项网络健康复检');
+        break;
+      }
+      case 'fix-network-doctor-all': {
+        if (el) el.disabled = true;
+        toast('正在执行全量异常项自动修复并复检...');
+        const res = await callRouterApi('/api/diag/fix', 'POST', { fix_action: 'fix_all', recheck: true });
+        if (el) el.disabled = false;
+        if (res && res.recheck) {
+          state.lastDoctorReport = res.recheck;
+          await runNetworkDoctorScan();
+        }
+        await syncBackendStatus(false, true);
+        toast((res && res.message) || '一键自动修复与复检已完成');
+        break;
+      }
+      case 'fix-network-doctor-item': {
+        const fixAct = (el && el.dataset.fixAction) || 'fix_all';
+        const chkId = (el && el.dataset.checkId) || '';
+        if (el) el.disabled = true;
+        toast('正在修复「' + (chkId || fixAct) + '」并自动复检...');
+        const res = await callRouterApi('/api/diag/fix', 'POST', { fix_action: fixAct, check_id: chkId, recheck: true });
+        if (el) el.disabled = false;
+        await runNetworkDoctorScan();
+        await syncBackendStatus(false, true);
+        toast((res && res.message) || '单项修复与复检已完成');
+        break;
+      }
+      case 'refresh-hit-stats': {
+        const res = await callRouterApi('/api/shunt/hit_stats', 'GET');
+        if (res && res.ok !== false) {
+          state.shuntHitStats = res;
+          renderShuntHitLeaderboard();
+          toast('已刷新最近 1 小时分流规则命中排行榜');
+        }
+        break;
+      }
+      case 'filter-conn-by-hit': {
+        const q = (el && el.dataset.hitQuery) || '';
+        state.connSearch = q;
+        const cInp = $('#conn-search-input');
+        if (cInp) cInp.value = q;
+        showPage('settings');
+        renderConnectionsSection();
+        toast('已按「' + q + '」筛选实时活跃连接');
+        break;
+      }
       case 'dns-rewrite-toggle': {
         state.dnsRewriteEnabled = !state.dnsRewriteEnabled;
         setSwitchState(el, state.dnsRewriteEnabled);
@@ -8634,6 +9813,43 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
         await syncBackendStatus(true, true);
         break;
       }
+      case 'sub-preview-sync': {
+        const idx = Number(el && el.dataset.sub);
+        const s = mock.subscriptions[idx];
+        const res = await callRouterApi('/api/subscriptions/preview_sync', 'POST', { id: s ? s.id : '', url: s ? s.url : '' });
+        const addedCnt = (res && res.added_count != null) ? res.added_count : 0;
+        const remCnt = (res && res.removed_count != null) ? res.removed_count : 0;
+        const renCnt = (res && res.renamed_count != null) ? res.renamed_count : 0;
+        const affPools = (res && Array.isArray(res.affected_pools)) ? res.affected_pools : [];
+        openModal(
+          '🔍 订阅更新影响预览 · ' + (s ? s.name : '全部订阅'),
+          '<div class="modal-form">' +
+            '<div class="doctor-summary-banner">' +
+              '<div><b>本次更新预计变更：新增 ' + addedCnt + ' 个节点 · 移除 ' + remCnt + ' 个节点 · 改名平滑迁移 ' + renCnt + ' 个</b>' +
+              '<small style="display:block;color:var(--muted);margin-top:4px">基于稳定身份指纹 node_key = sha1(protocol|server|port|cred|sni|pbk)[:16] 比对，改名节点将 100% 无损保留在原节点池中；消失节点将保留 7 天 missing 占位并自动切至下一合格节点。</small></div>' +
+            '</div>' +
+            (affPools.length
+              ? ('<div class="trace-stages">' + affPools.map(ap => '<div class="trace-stage"><i>⚠️</i><div><b>' + esc(ap.pool_name) + '</b><span>' + esc(ap.summary) + '</span></div><strong>自动容灾</strong></div>').join('') + '</div>')
+              : '<div class="trace-stage"><i>✓</i><div><b>所有自动节点池成员完整率 100%</b><span>本次订阅更新不会导致任何正在使用的自动节点池失去活跃出口。</span></div><strong>无损更新</strong></div>') +
+          '</div>',
+          'SUBSCRIPTION DIFF & IMPACT PREVIEW',
+          async () => {
+            closeModal();
+            await callRouterApi('/api/ops/update_item', 'POST', { item: 'subscriptions', sub_id: s ? s.id : '' });
+            await syncBackendStatus(true, true);
+            toast('订阅同步与节点池 node_key 无损迁移已完成');
+          },
+          '确认立即同步订阅'
+        );
+        break;
+      }
+      case 'probe-custom-nodes': {
+        toast('正在对所有手动添加节点执行 URL Ping 真连接测速...');
+        await callRouterApi('/api/probe/url_ping', 'POST', { source: 'custom' });
+        await syncBackendStatus(true, true);
+        toast('手动添加节点 URL Ping 测速完成并已全局同步');
+        break;
+      }
       case 'sub-sync-one': {
         const idx = Number(el && el.dataset.sub);
         const sub = mock.subscriptions[idx];
@@ -8642,12 +9858,12 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
         toast('正在同步订阅「' + sub.name + '」...');
         const res = await callRouterApi('/api/subscriptions/sync', 'POST', { id: sub.id, name: sub.name, url: sub.url });
         if (el) el.setAttribute('aria-busy', 'false');
+        await syncBackendStatus(true, true);
         if (!res || res.ok === false) {
           toast('订阅「' + sub.name + '」同步失败: ' + ((res && (res.message || res.error)) || '拉取异常'), 'warn');
           break;
         }
         toast('订阅「' + sub.name + '」同步完成');
-        await syncBackendStatus(true, true);
         break;
       }
       case 'sub-probe-one': {
@@ -8739,8 +9955,8 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
           if (applyBtn) applyBtn.classList.remove('hidden');
           toast('发现新版本 v' + res.latest + '，可点击「立即升级」');
         } else {
-          if (subEl) subEl.textContent = '当前已是最新版本 (v2.0.2 · 已校验云端清单)';
-          toast('当前已是最新版本 (v2.0.2)');
+          if (subEl) subEl.textContent = '当前已是最新版本 (v2.3.1 · 已校验云端清单)';
+          toast('当前已是最新版本 (v2.3.1)');
         }
         break;
       }
@@ -9076,10 +10292,23 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
               '<div class="modal-field"><label>绑定自动节点池</label><select id="mdl-grp-autopool">' + autoOpts + '</select></div>' +
               '<div class="modal-field"><label>手动国家 / 节点</label><select id="mdl-grp-manual">' + nodeOpts + '</select></div>' +
             '</div>' +
-            '<div class="modal-field"><label>国家/地区偏好</label><select id="mdl-grp-country">' + countryOpts + '</select></div>' +
-            '<div class="button-row" style="margin-top:4px">' +
+            '<div class="modal-grid-3" style="margin-top:8px">' +
+              '<div class="modal-field"><label>国家/地区偏好</label><select id="mdl-grp-country">' + countryOpts + '</select></div>' +
+              '<div class="modal-field"><label>本组专属 DNS 策略 (T10)</label><select id="mdl-grp-dns-strategy">' +
+                '<option value="inherit" ' + ((g.dns_strategy || 'inherit') === 'inherit' ? 'selected' : '') + '>继承全局防污染 DNS</option>' +
+                '<option value="doh" ' + (g.dns_strategy === 'doh' ? 'selected' : '') + '>自定义 DoH (HTTPS)</option>' +
+                '<option value="dot" ' + (g.dns_strategy === 'dot' ? 'selected' : '') + '>自定义 DoT (TLS)</option>' +
+                '<option value="doq" ' + (g.dns_strategy === 'doq' ? 'selected' : '') + '>自定义 DoQ (QUIC)</option>' +
+                '<option value="local" ' + (g.dns_strategy === 'local' ? 'selected' : '') + '>指定本地/内网上游</option>' +
+              '</select></div>' +
+              '<div class="modal-field"><label>自定义 DNS 地址 (可选)</label><input id="mdl-grp-custom-dns" class="mono" value="' + esc(g.custom_dns || '') + '" placeholder="https://dns.quad9.net/dns-query"></div>' +
+            '</div>' +
+            '<label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:9.5px;color:var(--text)"><input type="checkbox" id="mdl-grp-strict-lock" ' + (g.strict_lock ? 'checked' : '') + '> 🔒 严格锁定手动节点（开启后即使手动指定节点不可达也宁可失败不漂移）</label>' +
+            '<div class="button-row" style="margin-top:8px;flex-wrap:wrap">' +
               '<button class="button ghost compact" data-action="edit-group-rules-modal" data-group-idx="' + Number(groupEl.dataset.group) + '">📝 编辑此组域名与 IP 规则库</button>' +
+              '<button class="button ghost compact" data-action="open-rule-blocks-modal" data-gid="' + esc(gid) + '">🧩 规则块与试匹配 (正则/源IP/端口)</button>' +
               '<button class="button ghost compact" data-action="verify-group" data-gid="' + esc(gid) + '">🔍 真连接校验与故障转移测试</button>' +
+              (g.is_custom ? '<button class="button danger compact" data-action="delete-custom-group" data-gid="' + esc(gid) + '">🗑️ 删除此自定义分流组</button>' : '') +
             '</div>' +
           '</div>',
           'SHUNT GROUP ORCHESTRATION',
@@ -9088,13 +10317,19 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
             const auto_node_id = ($('#mdl-grp-autopool') && $('#mdl-grp-autopool').value) || 'auto_youtube';
             const manual_node = ($('#mdl-grp-manual') && $('#mdl-grp-manual').value) || '';
             const country = ($('#mdl-grp-country') && $('#mdl-grp-country').value) || 'JP';
+            const strict_lock = Boolean($('#mdl-grp-strict-lock') && $('#mdl-grp-strict-lock').checked);
+            const dns_strategy = ($('#mdl-grp-dns-strategy') && $('#mdl-grp-dns-strategy').value) || 'inherit';
+            const custom_dns = ($('#mdl-grp-custom-dns') && $('#mdl-grp-custom-dns').value.trim()) || '';
             const payload = {
               group_id: gid,
               shunt_mode,
               strategy: shunt_mode === 'direct' ? 'direct' : (shunt_mode === 'manual' ? 'manual' : 'auto'),
               country: shunt_mode === 'direct' ? 'direct' : country,
               auto_node_id,
-              manual_node: shunt_mode === 'auto' ? ('auto:' + auto_node_id) : (shunt_mode === 'direct' ? 'direct' : manual_node)
+              manual_node: shunt_mode === 'auto' ? ('auto:' + auto_node_id) : (shunt_mode === 'direct' ? 'direct' : manual_node),
+              strict_lock,
+              dns_strategy,
+              custom_dns
             };
             await callRouterApi('/api/shunt/update', 'POST', payload);
             closeModal();
@@ -9116,6 +10351,13 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
       const autoPoolEl = event.target.closest('[data-auto-pool]');
       if (autoPoolEl) {
         openAutoNodeEditorModal(Number(autoPoolEl.dataset.autoPool));
+        return;
+      }
+
+      const hitTabBtn = event.target.closest('[data-hit-tab]');
+      if (hitTabBtn) {
+        state.shuntHitTab = hitTabBtn.dataset.hitTab || 'by_group';
+        renderShuntHitLeaderboard();
         return;
       }
 
@@ -9425,7 +10667,7 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
     setInterval(updateTelemetryTick, 3000);
     setTimeout(() => { const b = $('#boot'); if (b) b.classList.add('leaving'); }, 450);
     setTimeout(() => { const b = $('#boot'); if (b) b.remove(); }, 1100);
-    window.__NEXUS_PREVIEW__ = { state, mock, showPage, setSceneMode, syncBackendStatus, handleToggleEntryBypass, openOverviewDetailModal, computeSpeedGearInfo, get scene() { return scene; } };
+    window.__NEXUS_PREVIEW__ = { state, mock, showPage, setSceneMode, syncBackendStatus, handleToggleEntryBypass, openOverviewDetailModal, openNetworkDoctorModal, renderShuntHitLeaderboard, computeSpeedGearInfo, get scene() { return scene; } };
   }
 
   init();
