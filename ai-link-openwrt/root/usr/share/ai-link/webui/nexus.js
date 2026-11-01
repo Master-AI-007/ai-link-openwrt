@@ -134,7 +134,7 @@
       { id: 'sched_default', name: '每日全量 URL Ping 巡检', region: 'ALL', interval_min: 360, enabled: true, check_ipv6: false }
     ],
     logs: [
-      '[INFO] AI-LINK NEXUS daemon v2.3.1 started on 0.0.0.0:9099',
+      '[INFO] AI-LINK NEXUS daemon v2.3.2 started on 0.0.0.0:9099',
       '[INFO] sing-box 1.14.1 core process verified alive (ports :7890, :7893, :7874 ready)',
       '[INFO] NFTables table inet ai_link synchronized via --generate-nft single source of truth',
       '[INFO] Dual-group Auto Node Pools (Auto_AI, Auto_YouTube, Auto_Netflix) initialized',
@@ -1301,7 +1301,7 @@
     });
   }
 
-  /* v2.3.1: All-Subscriptions Summary Card (#1) + Manual/Custom Nodes Category Card (#2) + Subscription Cards with Sync Timestamp & Failure Suffix + Two-State Node Management */
+  /* v2.3.2: All-Subscriptions Summary Card (#1) + Manual/Custom Nodes Category Card (#2) + Subscription Cards with Sync Timestamp & Failure Suffix + Two-State Node Management */
   function renderSubscriptionsAndNodes() {
     const customNodesList = mock.nodes.filter(n => isNodeManualCustom(n));
     const customOkCnt = customNodesList.filter(n => getNodeThreeState(n) === 'ok').length;
@@ -4772,7 +4772,7 @@
         openModal(
           'OTA 在线升级状态与确认 (/api/system/update/status)',
           '<div class="detail-grid">' +
-            '<div><span>当前运行版本</span><b class="mono">v' + esc((res && res.current) || '2.3.1') + '</b></div>' +
+            '<div><span>当前运行版本</span><b class="mono">v' + esc((res && res.current) || '2.3.2') + '</b></div>' +
             '<div><span>升级阶段</span><b>' + esc(prog.stage || 'idle (就绪)') + '</b></div>' +
             '<div><span>进度百分比</span><b>' + esc((prog.percent != null ? prog.percent : 100) + '%') + '</b></div>' +
             '<div><span>状态说明</span><b>' + esc(prog.message || '当前无进行中的升级任务') + '</b></div>' +
@@ -5249,42 +5249,120 @@
         );
         break;
       }
-      case 'new-homelink':
+      case 'new-homelink': {
+        state.selectedNewHomelinkProto = 'vless-reality';
+        state.creatingHomelink = false;
+        const submitNewHomelink = async (forcedProto) => {
+          if (state.creatingHomelink) return;
+          state.creatingHomelink = true;
+          const proto = forcedProto || state.selectedNewHomelinkProto || 'vless-reality';
+          const customPort = Number(($('#mdl-new-hl-port') && $('#mdl-new-hl-port').value) || 0);
+          const ddns_host = ($('#mdl-new-hl-ddns') && $('#mdl-new-hl-ddns').value.trim()) || '';
+          const route_mode = ($('#mdl-new-hl-rmode') && $('#mdl-new-hl-rmode').value) || 'shunt';
+          const confirmBtn = $('#modal-confirm');
+          if (confirmBtn) {
+            confirmBtn.disabled = true;
+            confirmBtn.textContent = '⏳ 正在创建回家节点...';
+          }
+          $$('#modal-body .route-mode').forEach(b => { b.disabled = true; });
+          try {
+            const defaultP = proto === 'hysteria2' ? 20443 : (proto === 'vless-tls' ? 9443 : 18443);
+            const res = await callRouterApi('/api/homelink/quick_create', 'POST', {
+              protocol: proto,
+              listen_port: customPort || defaultP,
+              ddns_host,
+              route_mode,
+              enabled: true
+            });
+            closeModal();
+            if (res && res.ok === false) {
+              toast(res.message || '创建回家节点失败', 'warn');
+            } else {
+              toast((res && res.message) || ('✅ 已创建 ' + proto + ' 回家节点'));
+            }
+            await syncBackendStatus(false, true);
+          } finally {
+            state.creatingHomelink = false;
+            if (confirmBtn) confirmBtn.disabled = false;
+          }
+        };
         openModal(
           '创建加密回家节点 (支持单节点独立回家路由模式)',
           '<div class="modal-form">' +
             '<div class="modal-grid-3" style="margin-bottom:8px">' +
-              '<div class="modal-field"><label>该节点独立回家路由模式</label><select id="mdl-new-hl-rmode">' +
+              '<div class="modal-field"><label>① 该节点独立回家路由模式</label><select id="mdl-new-hl-rmode">' +
                 '<option value="shunt" selected>🌐 回家 + 科学上网分流</option>' +
                 '<option value="direct">🏠 仅访问内网与国内</option>' +
                 '<option value="proxy_only">🛡️ 仅科学上网 · 隔离内网</option>' +
               '</select></div>' +
-              '<div class="modal-field"><label>自定义监听端口（留空自动分配）</label><input id="mdl-new-hl-port" type="number" placeholder="如 18443 或 20443"></div>' +
-              '<div class="modal-field"><label>公网 DDNS 域名或 IP</label><input id="mdl-new-hl-ddns" value="' + esc(window.location.hostname || '') + '" placeholder="home.example.com"></div>' +
+              '<div class="modal-field"><label>② 自定义监听端口（留空自动分配）</label><input id="mdl-new-hl-port" type="number" placeholder="默认 18443 (自动防冲突递增)"></div>' +
+              '<div class="modal-field"><label>③ 公网 DDNS 域名或 IP</label><input id="mdl-new-hl-ddns" value="' + esc(window.location.hostname || '') + '" placeholder="home.example.com"></div>' +
             '</div>' +
-            '<div class="route-mode-grid">' +
-              '<button class="route-mode active" data-action="create-homelink" data-proto="vless-reality"><b>点击创建 VLESS-Reality</b><p>首选推荐，借用大厂 TLS 指纹免域名证书零暴露。</p></button>' +
-              '<button class="route-mode" data-action="create-homelink" data-proto="hysteria2"><b>点击创建 Hysteria2 QUIC</b><p>高丢包移动蜂窝网络与跨国弱网下的极速回家协议。</p></button>' +
-              '<button class="route-mode" data-action="create-homelink" data-proto="vless-tls"><b>点击创建 VLESS-TLS</b><p>内置自签根证书与 SHA256 指纹固定，兼容各级端口转发。</p></button>' +
+            '<div class="modal-field"><label>④ 选择加密回家协议（点击卡片切换协议，点击右下角「立即创建回家节点」完成创建）</label>' +
+              '<div class="route-mode-grid" id="mdl-new-hl-proto-grid">' +
+                '<button type="button" class="route-mode active" data-action="select-homelink-proto" data-proto="vless-reality"><b>✓ VLESS-Reality (推荐 · 默认 :18443)</b><p>借用大厂 TLS 指纹免域名证书零暴露，抗主动探测。</p></button>' +
+                '<button type="button" class="route-mode" data-action="select-homelink-proto" data-proto="hysteria2"><b>Hysteria2 QUIC (极速 · 默认 :20443)</b><p>5G 移动蜂窝网络与高丢包弱网下的满速回家协议。</p></button>' +
+                '<button type="button" class="route-mode" data-action="select-homelink-proto" data-proto="vless-tls"><b>VLESS-TLS (通用 · 默认 :9443)</b><p>内置自签根证书与 SHA256 指纹固定，兼容各级端口转发。</p></button>' +
+              '</div>' +
             '</div>' +
           '</div>',
-          'SECURE HOMELINK WIZARD'
+          'SECURE HOMELINK WIZARD',
+          () => submitNewHomelink(),
+          '🚀 立即创建 VLESS-Reality 回家节点'
         );
         break;
-      case 'create-homelink': {
+      }
+      case 'select-homelink-proto': {
         const proto = (el && el.dataset.proto) || 'vless-reality';
+        state.selectedNewHomelinkProto = proto;
+        $$('#mdl-new-hl-proto-grid .route-mode').forEach(btn => {
+          const isSel = btn.dataset.proto === proto;
+          btn.classList.toggle('active', isSel);
+          const bTag = btn.querySelector('b');
+          if (bTag) {
+            const rawTitle = bTag.textContent.replace(/^✓\s*/, '');
+            bTag.textContent = (isSel ? '✓ ' : '') + rawTitle;
+          }
+        });
+        const portInp = $('#mdl-new-hl-port');
+        if (portInp) {
+          portInp.placeholder = proto === 'hysteria2' ? '默认 20443 (UDP)' : (proto === 'vless-tls' ? '默认 9443 (TCP)' : '默认 18443 (TCP)');
+        }
+        const confirmBtn = $('#modal-confirm');
+        if (confirmBtn && !state.creatingHomelink) {
+          const pName = proto === 'hysteria2' ? 'Hysteria2 QUIC' : (proto === 'vless-tls' ? 'VLESS-TLS' : 'VLESS-Reality');
+          confirmBtn.textContent = '🚀 立即创建 ' + pName + ' 回家节点';
+        }
+        break;
+      }
+      case 'create-homelink': {
+        if (state.creatingHomelink) break;
+        state.creatingHomelink = true;
+        const proto = (el && el.dataset.proto) || state.selectedNewHomelinkProto || 'vless-reality';
         const customPort = Number(($('#mdl-new-hl-port') && $('#mdl-new-hl-port').value) || 0);
         const ddns_host = ($('#mdl-new-hl-ddns') && $('#mdl-new-hl-ddns').value.trim()) || '';
         const route_mode = ($('#mdl-new-hl-rmode') && $('#mdl-new-hl-rmode').value) || 'shunt';
-        const res = await callRouterApi('/api/homelink/quick_create', 'POST', {
-          protocol: proto,
-          listen_port: customPort || (proto === 'hysteria2' ? 20443 : 18443),
-          ddns_host,
-          route_mode,
-          enabled: true
-        });
-        closeModal();
-        toast((res && res.message) || ('已创建 ' + proto + ' 回家节点'));
+        if (el) el.disabled = true;
+        try {
+          const res = await callRouterApi('/api/homelink/quick_create', 'POST', {
+            protocol: proto,
+            listen_port: customPort || (proto === 'hysteria2' ? 20443 : 18443),
+            ddns_host,
+            route_mode,
+            enabled: true
+          });
+          closeModal();
+          toast((res && res.message) || ('已创建 ' + proto + ' 回家节点'));
+          await syncBackendStatus(false, true);
+        } finally {
+          state.creatingHomelink = false;
+          if (el) el.disabled = false;
+        }
+        break;
+      }
+      case 'dedup-homelink': {
+        const res = await callRouterApi('/api/homelink/dedup', 'POST', {});
+        toast((res && res.message) || '已清理重复回家节点');
         await syncBackendStatus(false, true);
         break;
       }
@@ -5825,8 +5903,8 @@
           if (applyBtn) applyBtn.classList.remove('hidden');
           toast('发现新版本 v' + res.latest + '，可点击「立即升级」');
         } else {
-          if (subEl) subEl.textContent = '当前已是最新版本 (v2.3.1 · 已校验云端清单)';
-          toast('当前已是最新版本 (v2.3.1)');
+          if (subEl) subEl.textContent = '当前已是最新版本 (v2.3.2 · 已校验云端清单)';
+          toast('当前已是最新版本 (v2.3.2)');
         }
         break;
       }

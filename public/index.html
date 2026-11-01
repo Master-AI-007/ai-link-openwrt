@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>AI-LINK v2.3.1 · 智能运维版</title>
-<meta name="description" content="AI-LINK 是运行在 OpenWrt 上的智能分流网关：sing-box 内核、15 组精细分流、双层 DNS 净网、回家隧道与全域 3D 星图。v2.3.1 智能运维版。" />
-<meta property="og:title" content="AI-LINK v2.3.1 · 智能运维版" />
+<title>AI-LINK v2.3.2 · 紧急修复版</title>
+<meta name="description" content="AI-LINK 是运行在 OpenWrt 上的智能分流网关：sing-box 内核、15 组精细分流、双层 DNS 净网、回家隧道与全域 3D 星图。v2.3.2 紧急修复版。" />
+<meta property="og:title" content="AI-LINK v2.3.2 · 紧急修复版" />
 <meta property="og:description" content="sing-box 内核 · 15 组精细分流 · 双层净网 · 回家隧道 · 全域 3D 星图" />
 <meta property="og:image" content="https://ai-link-official.pages.dev/assets/ui_surge.webp" />
 <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
@@ -27,7 +27,7 @@
       </svg>
       <span style="display:block">
         <b>AI-LINK</b>
-        <span>NEXUS · v2.3.1</span>
+        <span>NEXUS · v2.3.2</span>
       </span>
     </a>
     <div class="nav-links">
@@ -47,16 +47,16 @@
   <div class="wrap">
     <div class="hero-top">
       <div>
-        <span class="pill"><i></i> v2.3.1 · 智能运维版</span>
+        <span class="pill"><i></i> v2.3.2 · 紧急修复版</span>
         <h1>让每一条连接<br /><em>都有轨迹可循</em></h1>
         <p class="lede">AI-LINK 是运行在 OpenWrt 上的智能分流网关：sing-box 单内核、15 组精细分流、双层 DNS 净网、加密回家隧道，以及一张能看见真实流量的全域 3D 星图。</p>
         <div class="hero-cta">
-          <a class="btn primary" href="https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.3.1/AI-LINK-v2.3.1.tar.gz">下载 v2.3.1</a>
+          <a class="btn primary" href="https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.3.2/AI-LINK-v2.3.2.tar.gz">下载 v2.3.2</a>
           <a class="btn" href="#screens">先看界面</a>
         </div>
         <div class="hero-meta">
-          <span>安装包 <b>0.94 MB</b></span>
-          <span>MD5 <b class="mono">f1df8843…008918</b></span>
+          <span>安装包 <b>0.95 MB</b></span>
+          <span>MD5 <b class="mono">7729b8dc…67c26</b></span>
           <span>支持 <b>OpenWrt 23.05 / 24.10 / ImmortalWrt</b></span>
         </div>
       </div>
@@ -140,7 +140,7 @@
       <div>
         <div class="eyebrow">INTERACTION SAFETY</div>
         <h2>看得见的后果，撤得回的操作</h2>
-        <p>v2.3.1 把「自动节点池」重做成目标驱动，并补齐体检、向导、告警、回滚、规则表达与按组 DNS。</p>
+        <p>v2.3.2 拆掉了 Play 下载链路的三个拦截点，并把回家节点弹窗重做成零卡顿、防重复。</p>
       </div>
     </div>
     <div class="grid-3">
@@ -166,13 +166,46 @@
   </div>
 </section>
 
+
+<section id="urgent-fix">
+  <div class="wrap">
+    <div class="sec-head">
+      <div>
+        <div class="eyebrow">URGENT FIXES</div>
+        <h2>这两个坑，已经填了</h2>
+        <p>v2.3.2 只做两件事：让手机在旁路由下能正常下载，和让回家节点弹窗不再"点了没反应"。</p>
+      </div>
+    </div>
+    <div class="grid-3">
+      <div class="card">
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><rect x="5" y="18" width="14" height="3" rx="1.2"/></svg></div>
+        <h3>Play 下载链路闭环</h3>
+        <p>移除 dnsmasq <code>cname=</code> 黑洞（.cn 域名不再返回空记录）、抑制 HTTPS/SVCB 查询避免 GGC 死 IP、新增 <code>@google_play_v4</code> 强制走代理。</p>
+        <div class="tags"><span class="tag c">下载令牌</span><span class="tag m">GGC 网段</span></div>
+      </div>
+      <div class="card">
+        <div class="ico"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2.5"/><path d="M8 10h8M8 14h5"/></svg></div>
+        <h3>回家节点弹窗零卡顿</h3>
+        <p>协议卡点击即时高亮、主按钮防重入并显示进度；后端防火墙同步与内核重载转为后台，3 秒内连点幂等去重，不再批量建节点。</p>
+        <div class="tags"><span class="tag v">幂等去重</span><span class="tag c">亚秒响应</span></div>
+      </div>
+      <div class="card">
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M4 12h5l2-4 3 8 2-4h4"/><circle cx="18" cy="6" r="2"/></svg></div>
+        <h3>升级后不再"连不上"</h3>
+        <p>核心重载时同步重启 dnsmasq，清理旧 FakeIP 缓存，避免客户端拿着升级前地址被内核丢弃。</p>
+        <div class="tags"><span class="tag p">FakeIP</span><span class="tag m">自愈</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <section id="autopilot">
   <div class="wrap">
     <div class="sec-head">
       <div>
         <div class="eyebrow">AUTOPILOT</div>
         <h2>节点池，自己会选、会补、会解释</h2>
-        <p>v2.3.1 把「手动挑节点」改成目标驱动：说清要什么，它自己筛、自己测、自己补位。</p>
+        <p>v2.3.1 起节点池改成目标驱动；v2.3.2 继续把「能不能下载」这类体验问题补齐。</p>
       </div>
     </div>
     <div class="grid-3">
@@ -290,6 +323,11 @@
       <a class="shot-card" href="/assets/ui_shunt.webp" target="_blank" rel="noopener">
         <img src="/assets/ui_shunt.webp" alt="代理与分流" loading="lazy" />
         <div class="cap"><b>03 代理与分流</b><span>15 组矩阵</span></div>
+      </a>
+
+      <a class="shot-card" href="/assets/ui_homelink_modal.webp" target="_blank" rel="noopener">
+        <img src="/assets/ui_homelink_modal.webp" alt="回家节点创建弹窗" loading="lazy" />
+        <div class="cap"><b>新建回家节点</b><span>防重复</span></div>
       </a>
       <a class="shot-card" href="/assets/ui_homelink.webp" target="_blank" rel="noopener">
         <img src="/assets/ui_homelink.webp" alt="回家节点" loading="lazy" />
@@ -414,7 +452,7 @@
         </svg>
         <b style="font-size:14px">AI-LINK</b>
       </div>
-      <div>NEXUS 全域 3D 智能网关 · v2.3.1 · 2026-11-01</div>
+      <div>NEXUS 全域 3D 智能网关 · v2.3.2 · 2026-11-01</div>
     </div>
     <div class="foot-links">
       <a href="https://github.com/Master-AI-007/ai-link-openwrt" target="_blank" rel="noopener">GitHub</a>

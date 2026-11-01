@@ -1,18 +1,34 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.3.1",
+  "latest": "2.3.2",
   "release_date": "2026-11-01",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.3.1",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.3.2",
   "highlights": [
-    "自动节点池 v2：目标驱动筛选（范围/模式/一键最快 10 个）+ 服务语义地区判定 + 订阅改名无损迁移",
-    "方案 A 智能运维：网络体检、接入向导、IPv6 防漏三档、告警（Webhook/Telegram/SMTP）、配置历史与双回滚",
-    "分流表达力：规则块（域名正则 / 源 IP / 端口 / 两级 AND-OR）+ 远程规则订阅 + 按组独立 DNS",
-    "节点严格锁定：手动指定节点失效时可选「宁可失败不漂移」，或允许容灾漂移并提示",
-    "取消入核数量上限：649 个节点全部原生挂载 sing-box，实测面板接口仍在 10–260 ms",
-    "节点三态：可用 / 不可达 / 未测速分开统计，不再把「没测过」算成「挂了」"
+    "Play 商店局域网下载闭环：移除 dnsmasq cname 黑洞（.cn 域名不再返回空记录）",
+    "抑制 HTTPS/SVCB 查询：不再把国内 GGC 死 IP 与 h3 提示下发给 Play 下载器",
+    "新增 nft @google_play_v4 集合并置于 @cn_ip4 之前，35 个 Play 域名直达 Shunt_Google",
+    "回家节点新建弹窗：协议卡 0ms 切换 + 主按钮防重入，后端异步化与 3 秒幂等去重",
+    "新增「🧹 清理重复节点」一键去重接口 /api/homelink/dedup",
+    "核心重载自动重启 dnsmasq，避免旧 FakeIP 缓存导致的连接被丢弃"
   ],
   "changelog": [
+    {
+      "version": "2.3.2",
+      "date": "2026-11-01",
+      "type": "fix",
+      "title": "紧急修复：Play 局域网下载闭环 + 回家节点弹窗零卡顿",
+      "items": [
+        "移除 dnsmasq cname= 黑洞：.cn Google 鉴权/下载域名统一 server=/{domain}/127.0.0.1#7874 走 FakeIP",
+        "35 个 Google Play 核心域名写入 dnsmasq server 规则与路由白名单，置于 blocklist_custom 之前",
+        "全局抑制 HTTPS(65)/SVCB(64) 查询（NOERROR 空答案），阻断国内 GGC 死 IP 与 h3 ipv4hint 泄漏",
+        "nftables 新增 @google_play_v4 集合（203.208.32.0/19、180.163.150.0/23、114.250.64.0/20 等）置于 @cn_ip4 之前",
+        "回家节点弹窗：协议卡改为即时选中（select-homelink-proto），主按钮防重入锁 creatingHomelink",
+        "/api/homelink/quick_create 异步化：防火墙同步与内核重载转后台，3 秒幂等去重",
+        "新增 POST /api/homelink/dedup 与「🧹 清理重复节点」按钮",
+        "restart_core 同时重启 dnsmasq，清理旧 FakeIP 缓存"
+      ]
+    },
     {
       "version": "2.3.1",
       "date": "2026-11-01",
@@ -118,13 +134,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.3.1/AI-LINK-v2.3.1.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.3.2/AI-LINK-v2.3.2.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.3.1.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.3.2.tar.gz"
       ],
-      "size": 986860,
-      "md5": "f1df8843b17533ec40a25fd92e008918",
-      "sha256": "51c07b44fdbb1e5fe1c8c9f4808623cd1216983845a61817b493bfa5299914ad"
+      "size": 992845,
+      "md5": "7729b8dcbbe68a8b4e7415533dd67c26",
+      "sha256": "956b3aceab130c881025d7e6a31f36e407f3ade664c60223fd36a748752d32d2"
     }
   }
 }

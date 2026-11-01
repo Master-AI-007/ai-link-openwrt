@@ -8204,8 +8204,15 @@ def apply_dns_rewrite_system(cfg: dict = None, conf_dir: Path = CONF_DIR) -> dic
                 if re.match(r"^\d+\.\d+\.\d+\.\d+$", dst):
                     lines.append(f"address=/{src}/{dst}")
                 else:
-                    lines.append(f"cname={src},{dst}")
+                    # CRITICAL FIX: Never write `cname=src,dst` to dnsmasq when `dst` is an external domain
+                    # not in /etc/hosts! dnsmasq's `cname=` marks `src` as local authoritative config and returns
+                    # empty NODATA (0 IPs) if `dst` is not in /etc/hosts, breaking `services.googleapis.cn` &
+                    # `gstatic.cn` on LAN Wi-Fi while 5G HomeLink works! Forwarding to 127.0.0.1#7874 lets
+                    # sing-box allocate Fake-IP 198.18.x.x directly.
+                    lines.append(f"server=/{src}/127.0.0.1#7874")
                 n += 1
+        for ep_dom in ESSENTIAL_APP_WHITELIST:
+            lines.append(f"server=/{ep_dom}/127.0.0.1#7874")
         conf_path.parent.mkdir(parents=True, exist_ok=True)
         new_txt = "\n".join(lines) + "\n"
         old_txt = conf_path.read_text(encoding="utf-8", errors="ignore") if conf_path.is_file() else ""
@@ -8381,17 +8388,48 @@ def apply_dns_adblock_system(conf_dir: Path = CONF_DIR, force_live_mount: bool =
     return status
 
 ESSENTIAL_APP_WHITELIST = (
+    "googleapis.com",
+    "googleapis.cn",
+    "services.googleapis.cn",
     "clientservices.googleapis.com",
+    "clientservices.googleapis.cn",
     "clouderrorreporting.googleapis.com",
     "play.googleapis.com",
+    "play.googleapis.cn",
     "play-fe.googleapis.com",
+    "play-fe.googleapis.cn",
+    "playatoms-pa.googleapis.com",
+    "playdeveloperreporting.googleapis.com",
+    "firebaseinstallations.googleapis.com",
+    "firebaseremoteconfig.googleapis.com",
+    "fcm.googleapis.com",
     "android.clients.google.com",
+    "c.android.clients.google.com",
+    "clients1.google.com",
+    "clients2.google.com",
+    "clients3.google.com",
+    "clients4.google.com",
+    "clients5.google.com",
+    "clients6.google.com",
     "update.googleapis.com",
     "gvt1.com",
     "gvt2.com",
     "gvt3.com",
+    "xn--ngstr-lra8j.com",
+    "dl.google.com",
+    "dl-ssl.google.com",
+    "dl.google.cn",
+    "play.google.com",
+    "mtalk.google.com",
+    "googlezip.net",
+    "ota.googlezip.net",
     "googleusercontent.com",
+    "ggpht.com",
     "gstatic.com",
+    "gstatic.cn",
+    "1e100.net",
+    "pki.goog",
+    "android.com",
 )
 
 def is_essential_app_domain(dom: str) -> bool:
@@ -9526,6 +9564,25 @@ class ConfigGenerator:
                 "sniffer": ["tls", "http", "quic"],
                 "timeout": "300ms"
             })
+        # Urgent Fix #1: High-Priority Google Play Download & Auth Protection Rule BEFORE blocklist_custom!
+        # Guarantees that even if blocklist_custom.srs has false-positive entries or Domestic_CN is reordered,
+        # Google Play APK downloads (*.gvt1.com, dl.google.com, c.android.clients.google.com, services.googleapis.cn)
+        # on LAN Wi-Fi ALWAYS route through Shunt_Google / AI_Best_Auto just like 5G HomeLink!
+        if routing_mode != "direct_all":
+            _gp_outbound = "Shunt_Google" if routing_mode == "rule_shunt" else "AI_Best_Auto"
+            route_rules.append({
+                "domain_suffix": list(ESSENTIAL_APP_WHITELIST),
+                "outbound": _gp_outbound
+            })
+            route_rules.append({
+                "ip_cidr": [
+                    "203.208.32.0/19", "180.163.150.0/23", "114.250.64.0/20",
+                    "220.181.174.0/24", "120.253.250.0/22",
+                    "142.250.0.0/15", "172.217.0.0/16", "74.125.0.0/16",
+                    "173.194.0.0/16", "108.177.0.0/17"
+                ],
+                "outbound": _gp_outbound
+            })
         # Cloud Domain Filtering (AdBlock / PCDN / Telemetry) block rule
         # P0-1 & Section 10.4 Fix: Mount all 50,000+ domains via local rule_set (blocklist_custom.srs / blocklist_custom.json)
         # so the 20,000th+ domains (e.g. buddycanvas.com) are blocked while keeping sing-box.json slim (~1.29 MB)!
@@ -9755,13 +9812,19 @@ class ConfigGenerator:
             rw_cfg = load_dns_rewrite_config(conf_dir)
             apply_dns_rewrite_system(rw_cfg, conf_dir)
             apply_dns_adblock_system(conf_dir)
-            dns_rules = []
+            dns_rules = [
+                # Urgent Fix #1: Suppress HTTPS (TYPE 65) and SVCB (TYPE 64) DNS records globally so Android Cronet /
+                # Google Play DownloadManager never receives China GGC ipv4hint (203.208.x.x / 180.163.x.x), ipv6hint,
+                # or h3 ALPN from dns_direct (223.5.5.5), forcing clean A-record Fake-IP resolution!
+                {"query_type": ["HTTPS", "SVCB"], "action": "predefined", "rcode": "NOERROR"}
+            ]
             v6_proxy_on = bool(get_uci_ipv6_proxy(conf_dir))
+            _fakeip_qtypes = ["A", "AAAA"] if v6_proxy_on else ["A"]
             _flt_cfg_sb = load_dns_filter_config(conf_dir)
             if bool(_flt_cfg_sb.get("essential_app_protect", True)):
                 if not v6_proxy_on:
                     dns_rules.append({"domain_suffix": list(ESSENTIAL_APP_WHITELIST), "query_type": ["AAAA"], "action": "predefined", "rcode": "NOERROR"})
-                dns_rules.append({"domain_suffix": list(ESSENTIAL_APP_WHITELIST), "server": "dns_fakeip"})
+                dns_rules.append({"domain_suffix": list(ESSENTIAL_APP_WHITELIST), "query_type": _fakeip_qtypes, "server": "dns_fakeip"})
             if active_blocked_doms:
                 if enable_tls_outbounds and any(r.get("tag") == "blocklist_custom" for r in local_rule_sets):
                     dns_rules.append({"rule_set": ["blocklist_custom"], "action": "predefined", "rcode": "REFUSED"})
@@ -9770,7 +9833,7 @@ class ConfigGenerator:
                 rw_domains = [r.get("from_domain", "").strip() for r in rw_cfg.get("rules", []) if r.get("enabled", True) and r.get("from_domain")]
                 if rw_domains:
                     dns_rules.append({"domain_suffix": rw_domains, "query_type": ["AAAA"], "action": "predefined", "rcode": "NOERROR"})
-                    dns_rules.append({"domain_suffix": rw_domains, "server": "dns_fakeip"})
+                    dns_rules.append({"domain_suffix": rw_domains, "query_type": _fakeip_qtypes, "server": "dns_fakeip"})
             # Reality handshake hosts MUST resolve to real addresses. With the
             # fakeip catch-all below they resolve to 198.18.x.x, so the inbound's
             # fallback dial fails and every client without the Reality key gets a
@@ -9846,11 +9909,11 @@ class ConfigGenerator:
                     _sorted_pdoms = sorted(list(set(proxy_prio_doms)))
                     # Smart AAAA Shunt: always suppress AAAA for overseas proxy domains so side-router & router-local clients get IPv4 FakeIP (198.18.0.0/15)
                     dns_rules.append({"domain_suffix": _sorted_pdoms, "query_type": ["AAAA"], "action": "predefined", "rcode": "NOERROR"})
-                    dns_rules.append({"domain_suffix": _sorted_pdoms, "server": "dns_fakeip"})
+                    dns_rules.append({"domain_suffix": _sorted_pdoms, "query_type": _fakeip_qtypes, "server": "dns_fakeip"})
                 proxy_prio_rs = list(dict.fromkeys(ai_rs + google_rs + youtube_rs + tiktok_rs + netflix_rs + github_rs + (gfw_only_rs if routing_mode == "gfw_list" else [])))
                 if proxy_prio_rs:
                     dns_rules.append({"rule_set": proxy_prio_rs, "query_type": ["AAAA"], "action": "predefined", "rcode": "NOERROR"})
-                    dns_rules.append({"rule_set": proxy_prio_rs, "server": "dns_fakeip"})
+                    dns_rules.append({"rule_set": proxy_prio_rs, "query_type": _fakeip_qtypes, "server": "dns_fakeip"})
                 if cn_direct_doms:
                     # Exclude Google .cn domains that belong to Shunt_Google
                     google_cn_keep = {"google.cn", "www.google.cn", "googleapis.cn", "services.googleapis.cn", "developers.google.cn", "gstatic.cn"}
@@ -10560,6 +10623,16 @@ def generate_nft_rules_file(conf_dir: Path = CONF_DIR, run_dir: Path = RUN_DIR,
         "\t\t}",
         "\t}",
         "",
+        "\tset google_play_v4 {",
+        "\t\ttype ipv4_addr",
+        "\t\tflags interval",
+        "\t\telements = {",
+        "\t\t\t8.8.8.8/32, 8.8.4.4/32, 74.125.0.0/16, 108.177.0.0/17, 114.250.64.0/20,",
+        "\t\t\t120.253.250.0/22, 142.250.0.0/15, 172.217.0.0/16, 173.194.0.0/16,",
+        "\t\t\t180.163.150.0/23, 203.208.32.0/19, 220.181.174.0/24",
+        "\t\t}",
+        "\t}",
+        "",
         "\tset cn_ip4 {",
         "\t\ttype ipv4_addr",
         "\t\tflags interval",
@@ -10675,6 +10748,7 @@ def generate_nft_rules_file(conf_dir: Path = CONF_DIR, run_dir: Path = RUN_DIR,
         "\t\tip daddr @reserved_ip4 accept",
         "\t\tip6 daddr @reserved_ip6 accept",
         "\t\tip daddr @node_server_v4 accept",
+        f"\t\tip daddr @google_play_v4 meta l4proto tcp redirect to :{redir_port}",
     ]
     if eb:
         lines.append("\t\tip daddr @cn_ip4 accept")
@@ -10747,6 +10821,8 @@ def generate_nft_rules_file(conf_dir: Path = CONF_DIR, run_dir: Path = RUN_DIR,
         "\t\tip6 daddr @reserved_ip6 accept",
         "\t\tip daddr @node_server_v4 accept",
     ]
+    # Force Google Play / GGC IPs (including 180.163.150.0/23, 114.250.64.0/20, 203.208.32.0/19) into TProxy BEFORE @cn_ip4!
+    lines.append(f"\t\tip daddr @google_play_v4 meta l4proto {{ tcp, udp }} tproxy ip to 127.0.0.1:{tproxy_port} meta mark set {fw_mark} accept")
     if gu:
         lines.append("\t\tip daddr @cn_ip4 meta l4proto udp meta mark set 0x02000000")
         lines.append("\t\tip daddr @cn_ip4 meta l4proto udp ct mark set 0x02000000")
@@ -16700,9 +16776,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.3.1"
+APP_VERSION = "2.3.2"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.3.1-release-20261101"
+APP_BUILD = "2.3.2-release-20261101"
 
 UPDATE_MANIFEST_PRIMARY = "https://ai-link-official.pages.dev/version.json"
 UPDATE_MANIFEST_GITHUB = "https://raw.githubusercontent.com/Master-AI-007/ai-link-openwrt/main/version.json"
@@ -20125,98 +20201,143 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 "shunt": build_shunt_api_response(CONF_DIR)
             })
             return
-        if clean_path in ("/api/homelink/add", "/api/homelink/update", "/api/homelink/quick_create"):
-            import uuid as _uuid_mod
+        if clean_path == "/api/homelink/dedup":
             hl_nodes = load_homelink_nodes(CONF_DIR)
-            hl_id = (payload.get("id") or "").strip()
-            existing_h = next((h for h in hl_nodes if h.get("id") == hl_id), None) if hl_id else None
-            is_edit = existing_h is not None
-            if not hl_id:
-                hl_id = f"hl_{int(time.time())}_{len(hl_nodes)+1}"
-            proto = (payload.get("protocol") or (existing_h.get("protocol") if existing_h else "") or "vless-reality").strip().lower()
-            norm_proto = (
-                "hysteria2" if ("hy2" in proto or "hysteria" in proto)
-                else ("vless-tls" if ("tls" in proto and "reality" not in proto) else "vless-reality")
-            )
-            default_port = 20443 if norm_proto == "hysteria2" else (18443 if norm_proto == "vless-reality" else 9443)
-            raw_lport = int(payload.get("listen_port") or payload.get("port") or (existing_h.get("listen_port") if existing_h else 0) or 0)
-            lport = raw_lport or default_port
-            RESERVED_SYS_PORTS = {22, 53, 80, 443, 1053, 7874, 7890, 7891, 7893, 9090, 9099}
-            if lport in RESERVED_SYS_PORTS or lport < 1024 or lport > 65535:
-                self._send_json({
-                    "ok": False,
-                    "error": "reserved_or_invalid_port",
-                    "message": f"端口 {lport} 为系统/网关核心保留端口或超出合法范围 (1024-65535)，请更换其他端口"
-                }, status=400)
-                return
-            used_hl_ports = {int(h.get("listen_port") or 0) for h in hl_nodes if h.get("id") != hl_id}
-            p_chk = validate_homelink_port(lport, norm_proto, hl_id, CONF_DIR)
-            if not p_chk.get("ok"):
-                if is_edit or (raw_lport and clean_path != "/api/homelink/quick_create"):
-                    self._send_json({
-                        "ok": False,
-                        "error": "port_conflict",
-                        "message": p_chk.get("reason") or f"监听端口 {lport} 不可用"
-                    }, status=400)
-                    return
-                while not validate_homelink_port(lport, norm_proto, hl_id, CONF_DIR).get("ok"):
-                    lport += 1
-            ext_port = int(payload.get("external_port") or 0) or lport
-            gen_uuid = str(_uuid_mod.uuid4())
-            gen_pwd = f"ailink_{gen_uuid[:8]}"
-            lan_ip = _detect_router_lan_ip()
-            default_sni = "www.apple.com" if norm_proto == "vless-reality" else "ai-link.ailink.lan"
-            priv_k, pub_k = generate_reality_keypair(str(payload.get("private_key") or "").strip())
-            short_id = (str(payload.get("short_id") or "").strip() or gen_uuid.replace("-", "")[:8])
-            proto_label = "Hysteria2" if norm_proto == "hysteria2" else ("VLESS-Reality" if norm_proto == "vless-reality" else "VLESS-TLS")
-            new_entry = {
-                "id": hl_id,
-                "tag": payload.get("tag") or f"homelink-{hl_id}-in",
-                "name": (payload.get("name") or f"回家隧道 · {proto_label} (:{ext_port})").strip(),
-                "protocol": norm_proto,
-                "listen_port": lport,
-                "external_port": ext_port,
-                "password": (payload.get("password") or gen_pwd).strip(),
-                "uuid": (payload.get("uuid") or gen_uuid).strip(),
-                "sni": (payload.get("sni") or default_sni).strip(),
-                "private_key": priv_k,
-                "public_key": str(payload.get("public_key") or pub_k).strip(),
-                "short_id": short_id,
-                "ddns_host": (payload.get("ddns_host") or lan_ip).strip(),
-                "route_mode": (payload.get("route_mode") or payload.get("homelink_mode")) if (payload.get("route_mode") or payload.get("homelink_mode")) in ("shunt", "direct", "proxy_only") else (existing_h.get("route_mode") if existing_h and existing_h.get("route_mode") in ("shunt", "direct", "proxy_only") else get_uci_homelink_route_mode()),
-                "enabled": bool(payload.get("enabled", True)),
-                "builtin": False
-            }
-            if is_edit:
-                for idx, h in enumerate(hl_nodes):
-                    if h.get("id") == hl_id:
-                        new_entry["tag"] = h.get("tag") or new_entry["tag"]
-                        old_lp = int(h.get("listen_port") or 0)
-                        old_ep = int(h.get("external_port") or old_lp)
-                        for k in ("name", "protocol", "listen_port", "external_port", "password", "uuid", "sni", "ddns_host", "route_mode", "enabled", "private_key", "public_key", "short_id"):
-                            if k not in payload and k in h:
-                                new_entry[k] = h[k]
-                        if ("listen_port" in payload or "port" in payload) and "external_port" not in payload and old_ep == old_lp:
-                            new_entry["external_port"] = lport
-                        cur_p = int(payload.get("external_port") or payload.get("listen_port") or payload.get("port") or new_entry.get("external_port") or new_entry.get("listen_port") or ext_port)
-                        if re.search(r"\(:\d+\)", str(new_entry.get("name") or "")):
-                            new_entry["name"] = re.sub(r"\(:\d+\)", f"(:{cur_p})", str(new_entry["name"]))
-                        elif re.search(r":\d{4,5}\b", str(new_entry.get("name") or "")):
-                            new_entry["name"] = re.sub(r":\d{4,5}\b", f":{cur_p}", str(new_entry["name"]))
-                        hl_nodes[idx] = new_entry
-                        break
-            else:
-                hl_nodes.append(new_entry)
-            save_homelink_nodes(hl_nodes, CONF_DIR)
-            sync_homelink_wan_firewall_rules(hl_nodes)
+            seen_sig = set()
+            deduped = []
+            removed_cnt = 0
+            for h in hl_nodes:
+                if h.get("builtin") or h.get("id") in ("hy2", "reality"):
+                    deduped.append(h)
+                    seen_sig.add((h.get("protocol"), h.get("route_mode"), h.get("ddns_host")))
+                    continue
+                sig = (h.get("protocol"), h.get("route_mode"), h.get("ddns_host"))
+                if sig in seen_sig:
+                    removed_cnt += 1
+                    continue
+                seen_sig.add(sig)
+                deduped.append(h)
+            save_homelink_nodes(deduped, CONF_DIR)
             write_all_configs(CONF_DIR)
             _JSON_WIRE_MEMO.clear()
             _STATUS_API_MEMO.clear()
-            if Path("/etc/init.d/ai-link").exists():
-                reload_core_only(force_respawn=True)
-                subprocess.run(["/usr/share/ai-link/nftables/apply_nft.sh"], check=False, timeout=4)
-            self._send_json(build_homelink_api_response(CONF_DIR))
+            schedule_async_core_reload(force_respawn=True, apply_nft=True)
+            resp_d = build_homelink_api_response(CONF_DIR)
+            resp_d["removed_count"] = removed_cnt
+            resp_d["message"] = f"🧹 已清理 {removed_cnt} 个重复创建的回家节点，保留 {len(deduped)} 个节点"
+            self._send_json(resp_d)
             return
+        if clean_path in ("/api/homelink/add", "/api/homelink/update", "/api/homelink/quick_create"):
+            import uuid as _uuid_mod
+            _hl_lock = globals().setdefault("_HOMELINK_CREATE_LOCK", threading.Lock())
+            _hl_dedup = globals().setdefault("_LAST_HOMELINK_CREATE", {"ts": 0.0, "sig": "", "resp": None})
+            with _hl_lock:
+                hl_nodes = load_homelink_nodes(CONF_DIR)
+                hl_id = (payload.get("id") or "").strip()
+                existing_h = next((h for h in hl_nodes if h.get("id") == hl_id), None) if hl_id else None
+                is_edit = existing_h is not None
+                if not is_edit and not hl_id:
+                    req_sig = f"{payload.get('protocol')}|{payload.get('listen_port')}|{payload.get('ddns_host')}|{payload.get('route_mode')}"
+                    now_m = time.time()
+                    if _hl_dedup["resp"] is not None and _hl_dedup["sig"] == req_sig and (now_m - _hl_dedup["ts"]) < 3.0:
+                        dup_resp = dict(_hl_dedup["resp"])
+                        dup_resp["deduplicated"] = True
+                        self._send_json(dup_resp)
+                        return
+                if not hl_id:
+                    hl_id = f"hl_{int(time.time() * 1000)}_{len(hl_nodes)+1}"
+                proto = (payload.get("protocol") or (existing_h.get("protocol") if existing_h else "") or "vless-reality").strip().lower()
+                norm_proto = (
+                    "hysteria2" if ("hy2" in proto or "hysteria" in proto)
+                    else ("vless-tls" if ("tls" in proto and "reality" not in proto) else "vless-reality")
+                )
+                default_port = 20443 if norm_proto == "hysteria2" else (18443 if norm_proto == "vless-reality" else 9443)
+                raw_lport = int(payload.get("listen_port") or payload.get("port") or (existing_h.get("listen_port") if existing_h else 0) or 0)
+                lport = raw_lport or default_port
+                RESERVED_SYS_PORTS = {22, 53, 80, 443, 1053, 7874, 7890, 7891, 7893, 9090, 9099}
+                if lport in RESERVED_SYS_PORTS or lport < 1024 or lport > 65535:
+                    self._send_json({
+                        "ok": False,
+                        "error": "reserved_or_invalid_port",
+                        "message": f"端口 {lport} 为系统/网关核心保留端口或超出合法范围 (1024-65535)，请更换其他端口"
+                    }, status=400)
+                    return
+                used_hl_ports = {int(h.get("listen_port") or 0) for h in hl_nodes if h.get("id") != hl_id}
+                p_chk = validate_homelink_port(lport, norm_proto, hl_id, CONF_DIR)
+                if not p_chk.get("ok"):
+                    if is_edit or (raw_lport and clean_path != "/api/homelink/quick_create"):
+                        self._send_json({
+                            "ok": False,
+                            "error": "port_conflict",
+                            "message": p_chk.get("reason") or f"监听端口 {lport} 不可用"
+                        }, status=400)
+                        return
+                    while not validate_homelink_port(lport, norm_proto, hl_id, CONF_DIR).get("ok"):
+                        lport += 1
+                ext_port = int(payload.get("external_port") or 0) or lport
+                gen_uuid = str(_uuid_mod.uuid4())
+                gen_pwd = f"ailink_{gen_uuid[:8]}"
+                lan_ip = _detect_router_lan_ip()
+                default_sni = "www.apple.com" if norm_proto == "vless-reality" else "ai-link.ailink.lan"
+                priv_k, pub_k = generate_reality_keypair(str(payload.get("private_key") or "").strip())
+                short_id = (str(payload.get("short_id") or "").strip() or gen_uuid.replace("-", "")[:8])
+                proto_label = "Hysteria2" if norm_proto == "hysteria2" else ("VLESS-Reality" if norm_proto == "vless-reality" else "VLESS-TLS")
+                new_entry = {
+                    "id": hl_id,
+                    "tag": payload.get("tag") or f"homelink-{hl_id}-in",
+                    "name": (payload.get("name") or f"回家隧道 · {proto_label} (:{ext_port})").strip(),
+                    "protocol": norm_proto,
+                    "listen_port": lport,
+                    "external_port": ext_port,
+                    "password": (payload.get("password") or gen_pwd).strip(),
+                    "uuid": (payload.get("uuid") or gen_uuid).strip(),
+                    "sni": (payload.get("sni") or default_sni).strip(),
+                    "private_key": priv_k,
+                    "public_key": str(payload.get("public_key") or pub_k).strip(),
+                    "short_id": short_id,
+                    "ddns_host": (payload.get("ddns_host") or lan_ip).strip(),
+                    "route_mode": (payload.get("route_mode") or payload.get("homelink_mode")) if (payload.get("route_mode") or payload.get("homelink_mode")) in ("shunt", "direct", "proxy_only") else (existing_h.get("route_mode") if existing_h and existing_h.get("route_mode") in ("shunt", "direct", "proxy_only") else get_uci_homelink_route_mode()),
+                    "enabled": bool(payload.get("enabled", True)),
+                    "builtin": False
+                }
+                if is_edit:
+                    for idx, h in enumerate(hl_nodes):
+                        if h.get("id") == hl_id:
+                            new_entry["tag"] = h.get("tag") or new_entry["tag"]
+                            old_lp = int(h.get("listen_port") or 0)
+                            old_ep = int(h.get("external_port") or old_lp)
+                            for k in ("name", "protocol", "listen_port", "external_port", "password", "uuid", "sni", "ddns_host", "route_mode", "enabled", "private_key", "public_key", "short_id"):
+                                if k not in payload and k in h:
+                                    new_entry[k] = h[k]
+                            if ("listen_port" in payload or "port" in payload) and "external_port" not in payload and old_ep == old_lp:
+                                new_entry["external_port"] = lport
+                            cur_p = int(payload.get("external_port") or payload.get("listen_port") or payload.get("port") or new_entry.get("external_port") or new_entry.get("listen_port") or ext_port)
+                            if re.search(r"\(:\d+\)", str(new_entry.get("name") or "")):
+                                new_entry["name"] = re.sub(r"\(:\d+\)", f"(:{cur_p})", str(new_entry["name"]))
+                            elif re.search(r":\d{4,5}\b", str(new_entry.get("name") or "")):
+                                new_entry["name"] = re.sub(r":\d{4,5}\b", f":{cur_p}", str(new_entry["name"]))
+                            hl_nodes[idx] = new_entry
+                            break
+                else:
+                    hl_nodes.append(new_entry)
+                save_homelink_nodes(hl_nodes, CONF_DIR)
+                write_all_configs(CONF_DIR)
+                _JSON_WIRE_MEMO.clear()
+                _STATUS_API_MEMO.clear()
+                # Urgent Fix #2: Run WAN firewall sync & core reload asynchronously in background so the HTTP response
+                # returns in <50ms instead of blocking the modal UI for 6-12 seconds!
+                threading.Thread(target=sync_homelink_wan_firewall_rules, args=(list(hl_nodes),), daemon=True).start()
+                if Path("/etc/init.d/ai-link").exists():
+                    schedule_async_core_reload(force_respawn=True, apply_nft=True)
+                hl_resp = build_homelink_api_response(CONF_DIR)
+                hl_resp["created_node"] = new_entry
+                hl_resp["message"] = f"✅ 已{'更新' if is_edit else '创建'}回家节点「{new_entry.get('name')}」"
+                if not is_edit:
+                    _hl_dedup["ts"] = time.time()
+                    _hl_dedup["sig"] = f"{payload.get('protocol')}|{payload.get('listen_port')}|{payload.get('ddns_host')}|{payload.get('route_mode')}"
+                    _hl_dedup["resp"] = hl_resp
+                self._send_json(hl_resp)
+                return
         if clean_path == "/api/homelink/route_mode":
             rmode = (payload.get("route_mode") or payload.get("homelink_mode") or "shunt").strip().lower()
             if rmode not in ("direct", "shunt", "proxy_only"):

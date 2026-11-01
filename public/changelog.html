@@ -40,8 +40,18 @@
   </div>
 <article class="log-item latest">
   <div class="log-top">
-    <h2>v2.3.1</h2>
+    <h2>v2.3.2</h2>
     <span class="tag c">最新</span>
+    <time>2026-11-01</time>
+  </div>
+  <p style="margin:2px 0 6px;color:var(--dim)">紧急修复版：Play 商店 LAN Wi-Fi 下载更新闭环 + 回家节点新建弹窗零卡顿防重复创建</p>
+<h3>🌟 两项紧急问题根因修复 (v2.3.2 Highlights)</h3>
+<ul><li><b>[紧急修复 1] 彻底解决「Play 商店在局域网 Wi-Fi 下可以打开但无法更新，而 5G 连回家节点却能更新」的问题</b></li><li><b>根因 1（<code>dnsmasq</code> <code>cname=</code> 导致 <code>.cn</code> 谷歌鉴权/下载域名返回空记录 NODATA）</b>：此前 <code>apply_dns_rewrite_system</code> 将 <code>DEFAULT_DNS_REWRITE_RULES</code>（<code>services.googleapis.cn</code>、<code>googleapis.cn</code>、<code>gstatic.cn</code>、<code>developers.google.cn</code>、<code>google.cn</code>）写入 <code>/tmp/dnsmasq.d/ai-link-rewrite.conf</code> 为 <code>cname=services.googleapis.cn,services.googleapis.com</code>；而 <code>dnsmasq</code> 的 <code>cname=</code> 指令要求目标域名必须存在于本机 <code>/etc/hosts</code> 中，否则 <code>dnsmasq</code> 会将源域名标记为本地权威记录并直接返回 <b>0 条 IP（NODATA）</b> 且绝不转发给 <code>:7874</code> <code>sing-box</code>！国行/插国内 SIM 卡的安卓手机在打开 Play 商店浏览时走 <code>.com</code>（正常打开），但点击「更新」时系统 <code>DownloadManager</code> / <code>GmsCore</code> 会请求 <code>services.googleapis.cn</code> 与 <code>gstatic.cn</code> 校验下载令牌，在局域网 Wi-Fi 下经 <code>:53</code> <code>dnsmasq</code> 直接收到空记录导致无法更新；而切到 5G 连回家节点时，流量直接进入 <code>sing-box</code> 的 <code>homelink-*-in</code> 入站绕过了 <code>dnsmasq</code>，所以能正常更新。<b>现已将 <code>ai-link-rewrite.conf</code> 中非 IP 重写统一改为 <code>server=/{src}/127.0.0.1#7874</code></b>，强制交由 <code>sing-box</code> 分配 Fake-IP 并走代理分流。</li><li><b>根因 2（<code>HTTPS</code> Type 65 / <code>SVCB</code> Type 64 记录泄漏国内 GGC 死 IP 与 <code>h3</code> ALPN）</b>：在 <code>sing-box.json</code> <code>dns.rules</code> 首条新增 <code>{&quot;query_type&quot;: [&quot;HTTPS&quot;, &quot;SVCB&quot;], &quot;action&quot;: &quot;predefined&quot;, &quot;rcode&quot;: &quot;NOERROR&quot;}</code>，并为所有 <code>dns_fakeip</code> 规则显式限定 <code>query_type: [&quot;A&quot;]</code>（或 <code>[&quot;A&quot;, &quot;AAAA&quot;]</code>），防止安卓 Cronet 下载器收到 <code>223.5.5.5</code> 返回的 <code>HTTPS</code> 记录（内含 <code>203.208.x.x</code> / <code>180.163.x.x</code> 国内 GGC 死 IP 的 <code>ipv4hint</code> 与 <code>ipv6hint</code>）。</li><li><b>根因 3（<code>route.rules</code> 顶层 Google Play 保护规则早于 <code>blocklist_custom</code> 与 <code>Domestic_CN</code>）</b>：扩展 <code>ESSENTIAL_APP_WHITELIST</code> 覆盖 35 个 Google Play 下载与鉴权核心域名（含 <code>googleapis.com</code>、<code>googleapis.cn</code>、<code>services.googleapis.cn</code>、<code>play-fe.googleapis.cn</code>、<code>c.android.clients.google.com</code>、<code>dl.google.com</code>、<code>dl-ssl.google.com</code>、<code>gvt1~3.com</code>、<code>xn--ngstr-lra8j.com</code>、<code>ota.googlezip.net</code> 等），并在 <code>sing-box.json</code> <code>route.rules</code> 置于 <code>blocklist_custom</code> 之前直达 <code>Shunt_Google</code>。</li><li><b>根因 4（<code>nftables</code> <code>@google_play_v4</code> 集合前置拦截国内 GGC 网段）</b>：在 <code>generate_nft_rules_file</code> 新增 <code>@google_play_v4</code>（含 <code>203.208.32.0/19</code>、<code>180.163.150.0/23</code>、<code>114.250.64.0/20</code>、<code>220.181.174.0/24</code>、<code>120.253.250.0/22</code>、<code>142.250.0.0/15</code>、<code>172.217.0.0/16</code>、<code>74.125.0.0/16</code>），在 <code>output_nat</code> 与 <code>prerouting_tproxy</code> 中置于 <code>@cn_ip4</code>（国内流量不进内核）之前强制送入 TProxy <code>:7893</code>。</li><li><b>[紧急修复 2] 彻底解决「添加回家节点弹窗无法点击、类似卡顿、点几下后无响应并多出一堆回家节点」的重大 BUG</b></li><li><b>根因定位</b>：① 原弹窗内 3 张协议卡片绑定了直接提交创建的 <code>data-action=&quot;create-homelink&quot;</code>，点击时既不切换 <code>.active</code> 高亮也不禁用按钮，而底部「完成」按钮未绑定回调（点击只关闭弹窗）；② 后端 <code>/api/homelink/quick_create</code> 在 HTTP 请求线程内同步执行了 <code>sync_homelink_wan_firewall_rules</code> + <code>reload_core_only(force_respawn=True)</code> + <code>apply_nft.sh</code>，单次请求阻塞长达 <b>6~12 秒</b>；用户以为点击未生效而连续点击多次，导致后台排队生成一堆带递增端口的回家节点并连续重启内核。</li><li><b>前端交互重构</b>：将弹窗内 3 张协议卡片改为 <b>0ms 即时切换选中态 (<code>data-action=&quot;select-homelink-proto&quot;</code>)</b>，点击卡片立即高亮 <code>.active</code>、显示 <code>✓</code> 并自动联动默认端口提示（<code>18443</code>/<code>20443</code>/<code>9443</code>）与底部主按钮文案（<code>🚀 立即创建 VLESS-Reality / Hysteria2 QUIC / VLESS-TLS 回家节点</code>）；点击底部主按钮执行创建时立即置 <code>state.creatingHomelink = true</code> 防重入锁并禁用按钮显示 <code>⏳ 正在创建回家节点...</code>。</li><li><b>后端异步非阻塞化（<code>&lt;50ms</code>）+ 3 秒幂等防重 + 一键清理重复节点</b>：<code>/api/homelink/quick_create</code> 与 <code>/api/homelink/add</code> 增加 <code>_HOMELINK_CREATE_LOCK</code> 与 3 秒幂等去重保护（拦截连点产生的重复请求），并将防火墙同步与内核重载改为后台异步执行（<code>schedule_async_core_reload</code>），响应耗时从 <code>~8000ms</code> 降至 <b><code>&lt;50ms</code></b>；同时在回家节点页顶部新增 <b>「🧹 清理重复节点 (<code>POST /api/homelink/dedup</code>)」</b> 按钮，可一键清理此前产生的多余回家节点。</li></ul>
+</article>
+<article class="log-item">
+  <div class="log-top">
+    <h2>v2.3.1</h2>
+    <span class="tag">历史</span>
     <time>2026-11-01</time>
   </div>
   <p style="margin:2px 0 6px;color:var(--dim)">远程规则源删除与400严格参数校验 (P2-1) + GET /api/shunt/rule_blocks (P3-2) + 补丁30/30字节一致 (P3-1) 正式版</p>
@@ -64,7 +74,7 @@
     <span class="tag">历史</span>
     <time>2026-11-01</time>
   </div>
-  <p style="margin:2px 0 6px;color:var(--dim)">目标驱动自动节点池 + 取消入核上限 + ULR Ping 全链路修复</p>
+  <p style="margin:2px 0 6px;color:var(--dim)">目标驱动自动节点池 + 取消入核上限 + URL Ping 全链路修复</p>
 <h3>亮点</h3>
 <ul><li><b>目标驱动自动节点池</b>：节点范围（订阅/手动/全部）、两种模式（仅连通性 / 连通性+服务）、一键按延迟选最快 10 个；</li><li><b>URL Ping 全链路修复</b>：移除 <code>/delay</code> 超时对全局熔断器的误伤、默认超时 5s + 双目标见证、全量节点直接入核；</li><li><b>取消入核数量上限</b>：649 个节点 100% 写入 <code>sing-box</code> outbounds；</li><li><b>节点两态简化</b>：可用 / 不可达（后续在 2.3.1 补为三态）；</li><li><b>订阅卡片</b>：同步时间精确到分钟，失败追加红色「失败」后缀。</li></ul>
 </article>
