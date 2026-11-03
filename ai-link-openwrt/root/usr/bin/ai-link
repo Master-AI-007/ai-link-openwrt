@@ -4,23 +4,31 @@
 
 export PYTHONDONTWRITEBYTECODE="1"
 PANEL_PORT=$(uci -q get ai-link.global.panel_port || echo "9099")
+APP_VER=$(cat /etc/ai-link/version 2>/dev/null | head -n1 | awk '{print $1}')
+[ -z "$APP_VER" ] && APP_VER="2.3.4"
 PANEL_PWD_CUSTOM=$(uci -q get ai-link.global.panel_pwd_customized || echo "")
-PANEL_SECRET_RAW=$(uci -q get ai-link.global.panel_secret || echo "")
-# PWD-1 & B1-2: UCI 改为布尔 panel_pwd_customized=0/1，不再承载任何凭据形态数据。
-if [ "$PANEL_PWD_CUSTOM" = "1" ]; then
+# N-P0-2: Read panel_auth.json customized flag & /etc/ai-link/initial_password as single source of truth
+AUTH_CUST=$(python3 -B - <<'PY' 2>/dev/null
+import json
+from pathlib import Path
+p = Path("/etc/ai-link/panel_auth.json")
+if p.is_file():
+    try:
+        d = json.loads(p.read_text(encoding="utf-8"))
+        print("1" if d.get("customized") else "0")
+    except Exception:
+        print("")
+PY
+)
+if [ "$AUTH_CUST" = "1" ] || { [ -z "$AUTH_CUST" ] && [ "$PANEL_PWD_CUSTOM" = "1" ]; }; then
 	PANEL_SECRET="已自定义（不可回显 · 执行 ai-link password <新密码> 重置）"
 else
-	case "$PANEL_SECRET_RAW" in
-		__custom__|sha256:*|SHA256:*)
-			PANEL_SECRET="已自定义（不可回显 · 执行 ai-link password <新密码> 重置）"
-			;;
-		"")
-			PANEL_SECRET="ai-link-2026 (出厂初始密码 · 建议修改)"
-			;;
-		*)
-			PANEL_SECRET="$PANEL_SECRET_RAW"
-			;;
-	esac
+	INIT_PW=$(cat /etc/ai-link/initial_password 2>/dev/null | tr -d '\r\n ')
+	if [ -n "$INIT_PW" ]; then
+		PANEL_SECRET="仍是初始密码: ${INIT_PW} （存储于 /etc/ai-link/initial_password · 建议执行 ai-link password <新密码> 修改）"
+	else
+		PANEL_SECRET="仍是初始密码（首次启动自动生成于 /etc/ai-link/initial_password · 执行 ai-link password <新密码> 修改）"
+	fi
 fi
 LAN_IP=$(uci -q get network.lan.ipaddr || echo "192.168.1.1")
 CACHE_DIR=$(uci -q get ai-link.global.host_cache_dir || echo "/tmp/ai-link-cache")
@@ -344,7 +352,7 @@ PY
 		;;
 	status|*)
 		echo "=========================================================="
-		echo "  AI-LINK 智能透明代理与网络中枢 v2.0.0 (正式版)"
+		echo "  AI-LINK 智能透明代理与网络中枢 v${APP_VER} (正式版)"
 		echo "=========================================================="
 		echo "  独立控制面板 : http://${LAN_IP}:${PANEL_PORT}"
 		echo "  面板管理密码 : ${PANEL_SECRET}"

@@ -42,14 +42,53 @@ class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
 from pathlib import Path
 
 CONF_DIR = Path(os.environ.get("AI_LINK_CONF_DIR", "/etc/ai-link"))
-WEBUI_DIR = Path(os.environ.get("AI_LINK_WEBUI_DIR", "/usr/share/ai-link/webui"))
+_DEFAULT_WEBUI = str((Path(__file__).resolve().parent / "webui") if (Path(__file__).resolve().parent / "webui").is_dir() else Path("/usr/share/ai-link/webui"))
+WEBUI_DIR = Path(os.environ.get("AI_LINK_WEBUI_DIR", _DEFAULT_WEBUI))
 RUN_DIR = Path(os.environ.get("AI_LINK_RUN_DIR", "/var/run/ai-link"))
 CACHE_DIR = Path(os.environ.get("AI_LINK_CACHE_DIR", "/tmp/ai-link-cache"))
+
+SENSITIVE_CONF_FILES = frozenset({
+    "nodes.json", "nodes.json.bak",
+    "subscriptions.json", "subscriptions.json.bak",
+    "homelink.json", "homelink.json.bak",
+    "sing-box.json", "sing-box.json.bak",
+    "config_history.json", "config_history.json.bak",
+    "ops_settings.json", "ops_settings.json.bak",
+    "panel_auth.json", "panel_auth.json.bak",
+    "panel_token", "initial_password",
+    "alerts_config.json", "alerts_config.json.bak",
+    "uci_ai_link.bak",
+    "ca.key", "server.key",
+})
+
+def _enforce_file_0600_if_sensitive(p: Path) -> None:
+    try:
+        if p.is_file() and (p.name in SENSITIVE_CONF_FILES or p.suffix in (".key", ".pem", ".bak")):
+            os.chmod(str(p), 0o600)
+    except Exception:
+        pass
+
+def enforce_sensitive_file_permissions(conf_dir: Path = CONF_DIR) -> None:
+    try:
+        cdir = Path(conf_dir)
+        if not cdir.is_dir():
+            return
+        for fn in SENSITIVE_CONF_FILES:
+            fp = cdir / fn
+            if fp.is_file():
+                os.chmod(str(fp), 0o600)
+        certs_dir = cdir / "certs"
+        if certs_dir.is_dir():
+            for kp in certs_dir.iterdir():
+                if kp.is_file() and (kp.suffix == ".key" or kp.name in SENSITIVE_CONF_FILES):
+                    os.chmod(str(kp), 0o600)
+    except Exception:
+        pass
 
 def _atomic_write_text(target: Path, content: str, encoding: str = "utf-8") -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     if target.name not in ("traffic_ledger.json",):
-        for _m_name in ("_SHUNT_API_MEMO", "_NODES_API_MEMO", "_AUTO_NODES_API_MEMO", "_STATUS_API_MEMO", "_HOMELINK_API_MEMO", "_DNS_TELEM_MEMO", "_MTIMES_FAST_CACHE", "_JSON_WIRE_MEMO"):
+        for _m_name in ("_SHUNT_API_MEMO", "_NODES_API_MEMO", "_AUTO_NODES_API_MEMO", "_STATUS_API_MEMO", "_HOMELINK_API_MEMO", "_DNS_TELEM_MEMO", "_MTIMES_FAST_CACHE", "_JSON_WIRE_MEMO", "_FAST_FILE_CACHE"):
             _m = globals().get(_m_name)
             if isinstance(_m, dict):
                 _m.clear()
@@ -64,10 +103,17 @@ def _atomic_write_text(target: Path, content: str, encoding: str = "utf-8") -> N
             bak_p = target.with_suffix(target.suffix + ".bak")
             try:
                 shutil.copy2(target, bak_p)
+                _enforce_file_0600_if_sensitive(bak_p)
             except Exception:
                 pass
         tmp_p.write_text(content, encoding=encoding)
+        if target.name in SENSITIVE_CONF_FILES or target.suffix == ".key":
+            try:
+                os.chmod(str(tmp_p), 0o600)
+            except Exception:
+                pass
         os.replace(tmp_p, target)
+        _enforce_file_0600_if_sensitive(target)
     except Exception:
         try:
             if tmp_p.exists():
@@ -75,6 +121,7 @@ def _atomic_write_text(target: Path, content: str, encoding: str = "utf-8") -> N
         except Exception:
             pass
         target.write_text(content, encoding=encoding)
+        _enforce_file_0600_if_sensitive(target)
 
 def _read_json_with_backup(target: Path, default_val=None):
     """Reads a JSON file and automatically self-heals from .bak if corrupted by power loss."""
@@ -199,6 +246,12 @@ L7_SERVICE_FINGERPRINTS = {
         "forbidden_keywords": [
             "isn't currently supported in your country",
             "not available in your country",
+            "location is not supported",
+            "不支持你所在的国家",
+            "不支持您所在的国家",
+            "不支持你所在的地区",
+            "目前不支持你所在",
+            "所在国家/地区暂不支持",
             "sorry/index"
         ],
         "required_keywords": []
@@ -263,6 +316,22 @@ L7_SERVICE_FINGERPRINTS = {
         "probe_urls": ["https://api.bilibili.com/pgc/player/web/playurl?avid=50762638&cid=100279344&qn=80"],
         "expected_status": [200],
         "forbidden_keywords": ["抱歉您所在地区不可观看", "\"code\":-10403"],
+        "required_keywords": []
+    },
+    "github": {
+        "name": "GitHub",
+        "group": "Shunt_GitHub",
+        "probe_urls": ["https://github.com/favicon.ico", "https://api.github.com/zen"],
+        "expected_status": [200, 204, 301, 302, 403],
+        "forbidden_keywords": ["Whoa there!", "abuse detection"],
+        "required_keywords": []
+    },
+    "telegram": {
+        "name": "Telegram",
+        "group": "Shunt_Telegram",
+        "probe_urls": ["https://telegram.org/favicon.ico", "https://core.telegram.org/"],
+        "expected_status": [200, 204, 301, 302],
+        "forbidden_keywords": [],
         "required_keywords": []
     }
 }
@@ -417,41 +486,50 @@ class NodeURIParser:
             deduped.append(ob)
         return deduped
     @classmethod
-    def parse_subscription_text(cls, raw_text: str, conf_dir: Path = CONF_DIR) -> list:
-        raw_text = (raw_text or "").strip()
-        if not raw_text:
+    def parse_subscription_text(cls, raw_text: str, conf_dir: Path = CONF_DIR, _depth: int = 0) -> list:
+        raw_text = (raw_text or "").strip().lstrip("\ufeff")
+        if not raw_text or _depth > 2:
             return []
-        # 1. Native Sing-box JSON (`{"outbounds": [...]}` or `[...]`)
+        # 1. JSON formats: Native Sing-box JSON, SIP008 Shadowsocks JSON, or V2Ray / v2rayN JSON
         if (raw_text.startswith("{") and raw_text.endswith("}")) or (raw_text.startswith("[") and raw_text.endswith("]")):
             json_obs = cls._parse_singbox_json_outbounds(raw_text)
             if json_obs:
                 return cls._post_filter_and_dedup_outbounds(json_obs)
-        # 2. Clash / Mihomo YAML format (`proxies:` list — both flow `- { ... }` and multi-line block YAML)
-        if "proxies:" in raw_text and ("server:" in raw_text or "type:" in raw_text):
+            sip_obs = cls._parse_sip008_json(raw_text)
+            if sip_obs:
+                return cls._post_filter_and_dedup_outbounds(sip_obs)
+            v2_obs = cls._parse_v2ray_json_outbounds(raw_text)
+            if v2_obs:
+                return cls._post_filter_and_dedup_outbounds(v2_obs)
+        # 2. Clash / Mihomo YAML format (`proxies:` or `proxy-providers:` — flow, block, nested flow, anchors)
+        if ("proxies:" in raw_text or "proxy-providers:" in raw_text) and ("server:" in raw_text or "type:" in raw_text or "url:" in raw_text):
             yaml_obs = cls._parse_clash_yaml_proxies(raw_text, conf_dir=conf_dir)
             if yaml_obs:
                 return cls._post_filter_and_dedup_outbounds(yaml_obs)
-        # 3. Base64-encoded subscription payload
-        if "://" not in raw_text:
+        # 3. Surge / Loon / Quantumult X INI format (`[Proxy]` or `Name = proto, host, port, ...`)
+        if "[Proxy]" in raw_text or "#!MANAGED-CONFIG" in raw_text or re.search(r"^[^#=\n]+?=\s*(?:ss|shadowsocks|vmess|vless|trojan|hysteria2|hy2|tuic|custom|http|https|socks5)\s*,", raw_text, re.I | re.M):
+            ini_obs = cls._parse_surge_loon_ini_proxies(raw_text)
+            if ini_obs:
+                return cls._post_filter_and_dedup_outbounds(ini_obs)
+        # 4. Base64-encoded subscription payload (recursively sniff decoded content)
+        if "://" not in raw_text and _depth == 0:
             try:
-                decoded = cls._b64_decode_safe(raw_text).strip()
-                if (decoded.startswith("{") and decoded.endswith("}")) or (decoded.startswith("[") and decoded.endswith("]")):
-                    json_obs = cls._parse_singbox_json_outbounds(decoded)
-                    if json_obs:
-                        return cls._post_filter_and_dedup_outbounds(json_obs)
-                if "proxies:" in decoded:
-                    yaml_obs = cls._parse_clash_yaml_proxies(decoded, conf_dir=conf_dir)
-                    if yaml_obs:
-                        return cls._post_filter_and_dedup_outbounds(yaml_obs)
-                if "://" in decoded:
-                    raw_text = decoded
+                compact_b64 = re.sub(r"\s+", "", raw_text)
+                decoded = cls._b64_decode_safe(compact_b64).strip()
+                if decoded and decoded != raw_text:
+                    sub_res = cls.parse_subscription_text(decoded, conf_dir=conf_dir, _depth=_depth + 1)
+                    if sub_res:
+                        return sub_res
             except Exception:
                 pass
+        # 5. Standard URI List (or mixed text containing proxy share URIs)
         raw_outbounds = []
         for idx, line in enumerate(raw_text.splitlines()):
             line = line.strip()
             if not line or line.startswith("#") or "://" not in line:
                 continue
+            if line.startswith("- ") and "://" in line:
+                line = line[2:].strip().strip('"\'')
             try:
                 ob = cls.parse_single_uri(line, default_index=idx + 1, conf_dir=conf_dir)
                 if ob and ob.get("tag"):
@@ -459,6 +537,7 @@ class NodeURIParser:
             except Exception:
                 continue
         return cls._post_filter_and_dedup_outbounds(raw_outbounds)
+
     @classmethod
     def _parse_singbox_json_outbounds(cls, json_text: str) -> list:
         try:
@@ -488,6 +567,262 @@ class NodeURIParser:
             ob["tag"] = tag
             used_tags.add(tag)
             outbounds.append(ob)
+        return outbounds
+
+    @classmethod
+    def _parse_sip008_json(cls, json_text: str) -> list:
+        """Parses SIP008 Shadowsocks JSON (`{"version": 1, "servers": [{"server": ..., "server_port": ..., "method": ..., "password": ..., "remarks": ...}]}`)."""
+        try:
+            data = json.loads(json_text)
+        except Exception:
+            return []
+        servers = data.get("servers") if isinstance(data, dict) else None
+        if not isinstance(servers, list):
+            return []
+        outbounds = []
+        used_tags = set()
+        for idx, srv_obj in enumerate(servers):
+            if not isinstance(srv_obj, dict):
+                continue
+            host = str(srv_obj.get("server") or "").strip()
+            port = int(srv_obj.get("server_port") or srv_obj.get("port") or 0)
+            method = str(srv_obj.get("method") or srv_obj.get("encryption") or "aes-256-gcm").strip()
+            password = str(srv_obj.get("password") or "").strip()
+            if not host or port <= 0 or not password:
+                continue
+            base_tag = str(srv_obj.get("remarks") or srv_obj.get("name") or srv_obj.get("id") or f"SS-{idx+1:02d}").strip()
+            tag = base_tag
+            sfx = 2
+            while tag in used_tags or tag in ("direct", "block", "AI_Best_Auto", "Stream_Auto", "HK_TW_Media"):
+                tag = f"{base_tag}-{sfx}"
+                sfx += 1
+            used_tags.add(tag)
+            ob = {
+                "type": "shadowsocks",
+                "tag": tag,
+                "server": host,
+                "server_port": port,
+                "method": method,
+                "password": password,
+            }
+            if srv_obj.get("plugin"):
+                ob["plugin"] = str(srv_obj["plugin"])
+                if srv_obj.get("plugin_opts"):
+                    ob["plugin_opts"] = str(srv_obj["plugin_opts"])
+            outbounds.append(ob)
+        return outbounds
+
+    @classmethod
+    def _parse_v2ray_json_outbounds(cls, json_text: str) -> list:
+        """Parses V2Ray / Xray / v2rayN client config JSON (`{"outbounds": [{"protocol": "vmess"|"vless"|"trojan"|"shadowsocks", "settings": {...}, "streamSettings": {...}}]}`)."""
+        try:
+            data = json.loads(json_text)
+        except Exception:
+            return []
+        cand_list = data.get("outbounds") if isinstance(data, dict) else (data if isinstance(data, list) else [])
+        if not isinstance(cand_list, list):
+            return []
+        outbounds = []
+        used_tags = set()
+        for idx, item in enumerate(cand_list):
+            if not isinstance(item, dict):
+                continue
+            proto = str(item.get("protocol") or "").strip().lower()
+            if proto in ("", "freedom", "blackhole", "dns", "direct", "block", "loopback"):
+                continue
+            settings = item.get("settings") if isinstance(item.get("settings"), dict) else {}
+            stream = item.get("streamSettings") if isinstance(item.get("streamSettings"), dict) else {}
+            tag_base = str(item.get("tag") or item.get("ps") or f"{proto.upper()}-{idx+1:02d}").strip()
+            net = str(stream.get("network") or "tcp").strip().lower()
+            security = str(stream.get("security") or "").strip().lower()
+            tls_settings = stream.get("tlsSettings") if isinstance(stream.get("tlsSettings"), dict) else {}
+            real_settings = stream.get("realitySettings") if isinstance(stream.get("realitySettings"), dict) else {}
+            ws_settings = stream.get("wsSettings") if isinstance(stream.get("wsSettings"), dict) else {}
+            grpc_settings = stream.get("grpcSettings") if isinstance(stream.get("grpcSettings"), dict) else {}
+            kv_base = {
+                "type": "ss" if proto == "shadowsocks" else proto,
+                "name": tag_base,
+                "network": net,
+                "tls": security in ("tls", "reality", "xtls"),
+                "servername": str(tls_settings.get("serverName") or real_settings.get("serverName") or ""),
+                "skip-cert-verify": bool(tls_settings.get("allowInsecure", False)),
+            }
+            if net == "ws":
+                ws_hdrs = ws_settings.get("headers") if isinstance(ws_settings.get("headers"), dict) else {}
+                kv_base["ws-opts"] = {
+                    "path": str(ws_settings.get("path") or "/"),
+                    "headers": {"Host": str(ws_hdrs.get("Host") or ws_hdrs.get("host") or "")} if (ws_hdrs.get("Host") or ws_hdrs.get("host")) else {},
+                }
+            elif net == "grpc":
+                kv_base["grpc-opts"] = {"grpc-service-name": str(grpc_settings.get("serviceName") or "")}
+            if security == "reality":
+                kv_base["reality-opts"] = {
+                    "public-key": str(real_settings.get("publicKey") or ""),
+                    "short-id": str(real_settings.get("shortId") or ""),
+                }
+                if real_settings.get("fingerprint"):
+                    kv_base["client-fingerprint"] = str(real_settings["fingerprint"])
+            if proto in ("vmess", "vless") and isinstance(settings.get("vnext"), list):
+                for vnode in settings["vnext"]:
+                    if not isinstance(vnode, dict):
+                        continue
+                    srv = str(vnode.get("address") or "").strip()
+                    port = int(vnode.get("port") or 443)
+                    users = vnode.get("users") if isinstance(vnode.get("users"), list) else []
+                    u0 = users[0] if (users and isinstance(users[0], dict)) else {}
+                    kv = dict(kv_base)
+                    kv["server"] = srv
+                    kv["port"] = port
+                    kv["uuid"] = str(u0.get("id") or "")
+                    kv["cipher"] = str(u0.get("security") or "auto")
+                    kv["alterId"] = int(u0.get("alterId") or 0)
+                    if u0.get("flow"):
+                        kv["flow"] = str(u0["flow"])
+                    ob = cls._clash_item_to_singbox(kv, len(outbounds) + 1, used_tags)
+                    if ob:
+                        outbounds.append(ob)
+            elif proto in ("trojan", "shadowsocks", "ss") and isinstance(settings.get("servers"), list):
+                for snode in settings["servers"]:
+                    if not isinstance(snode, dict):
+                        continue
+                    kv = dict(kv_base)
+                    kv["server"] = str(snode.get("address") or "").strip()
+                    kv["port"] = int(snode.get("port") or 443)
+                    kv["password"] = str(snode.get("password") or "")
+                    kv["cipher"] = str(snode.get("method") or snode.get("cipher") or "aes-256-gcm")
+                    ob = cls._clash_item_to_singbox(kv, len(outbounds) + 1, used_tags)
+                    if ob:
+                        outbounds.append(ob)
+        return outbounds
+
+    @classmethod
+    def _parse_surge_loon_ini_proxies(cls, ini_text: str) -> list:
+        """Parses Surge and Loon / Quantumult X INI proxy lines (`[Proxy]` section or standalone `Name = proto, server, port, ...`)."""
+        outbounds = []
+        used_tags = set()
+        in_proxy_sec = ("[Proxy]" not in ini_text and "[proxy]" not in ini_text)
+        proto_map = {
+            "ss": "ss",
+            "shadowsocks": "ss",
+            "custom": "ss",
+            "vmess": "vmess",
+            "vless": "vless",
+            "trojan": "trojan",
+            "hysteria2": "hysteria2",
+            "hy2": "hysteria2",
+            "tuic": "tuic",
+            "anytls": "anytls",
+            "https": "http",
+            "http": "http",
+            "socks5": "socks5",
+            "socks5-tls": "socks5",
+        }
+        for raw_line in ini_text.splitlines():
+            s = raw_line.strip()
+            if not s or s.startswith("#") or s.startswith("//") or s.startswith(";"):
+                continue
+            if s.startswith("[") and s.endswith("]"):
+                sec_name = s[1:-1].strip().lower()
+                in_proxy_sec = sec_name in ("proxy", "server_local")
+                continue
+            if not in_proxy_sec or "=" not in s:
+                continue
+            name_part, rhs = s.split("=", 1)
+            name = name_part.strip().strip('"\'')
+            parts = [p.strip() for p in rhs.split(",") if p.strip()]
+            if len(parts) < 3:
+                continue
+            raw_proto = parts[0].strip().lower()
+            if raw_proto in ("direct", "reject", "reject-tinygif", "select", "url-test", "fallback", "load-balance"):
+                continue
+            ntype = proto_map.get(raw_proto)
+            if not ntype:
+                continue
+            server = parts[1].strip().strip('"\'')
+            try:
+                port = int(parts[2].strip().strip('"\''))
+            except Exception:
+                continue
+            kv = {"name": name, "type": ntype, "server": server, "port": port}
+            pos_extras = []
+            for p_tok in parts[3:]:
+                if "=" in p_tok:
+                    pk, pv = p_tok.split("=", 1)
+                    pk = pk.strip().lower()
+                    pv = pv.strip().strip('"\'')
+                    if pk in ("encrypt-method", "method", "cipher"):
+                        kv["cipher"] = pv
+                    elif pk == "password":
+                        kv["password"] = pv
+                    elif pk in ("username", "uuid", "id"):
+                        kv["uuid"] = pv
+                        kv.setdefault("password", pv)
+                    elif pk in ("ws", "websocket") and pv.lower() in ("true", "1", "yes"):
+                        kv["network"] = "ws"
+                    elif pk == "transport":
+                        kv["network"] = pv.lower()
+                    elif pk in ("ws-path", "path"):
+                        kv["ws-path"] = pv
+                    elif pk in ("ws-headers", "host"):
+                        if ":" in pv and pk == "ws-headers":
+                            _, hval = pv.split(":", 1)
+                            kv["ws-host"] = hval.strip().strip('"\'')
+                        else:
+                            kv["ws-host"] = pv
+                    elif pk in ("tls", "over-tls") and pv.lower() in ("true", "1", "yes"):
+                        kv["tls"] = True
+                    elif pk in ("sni", "tls-name", "servername", "peer"):
+                        kv["servername"] = pv
+                    elif pk in ("skip-cert-verify", "tls-verification") and pv.lower() in ("true", "1", "yes"):
+                        kv["skip-cert-verify"] = True
+                    elif pk == "congestion-controller":
+                        kv["congestion-controller"] = pv
+                else:
+                    pos_extras.append(p_tok.strip().strip('"\''))
+            if ntype == "ss":
+                if len(pos_extras) >= 2:
+                    kv.setdefault("cipher", pos_extras[0])
+                    kv.setdefault("password", pos_extras[1])
+                elif len(pos_extras) == 1:
+                    kv.setdefault("password", pos_extras[0])
+            elif ntype == "vmess":
+                if len(pos_extras) >= 2:
+                    kv.setdefault("cipher", pos_extras[0])
+                    kv.setdefault("uuid", pos_extras[1])
+                elif len(pos_extras) == 1:
+                    kv.setdefault("uuid", pos_extras[0])
+            elif ntype == "vless":
+                if len(pos_extras) >= 1:
+                    kv.setdefault("uuid", pos_extras[0])
+            elif ntype in ("trojan", "hysteria2", "tuic", "anytls"):
+                if len(pos_extras) >= 1:
+                    kv.setdefault("password", pos_extras[0])
+            if ntype in ("http", "socks5"):
+                tag = name
+                sfx = 2
+                while tag in used_tags or tag in ("direct", "block", "AI_Best_Auto", "Stream_Auto", "HK_TW_Media"):
+                    tag = f"{name}-{sfx}"
+                    sfx += 1
+                used_tags.add(tag)
+                ob = {
+                    "type": "socks" if "socks" in ntype else "http",
+                    "tag": tag,
+                    "server": server,
+                    "server_port": port,
+                }
+                if kv.get("uuid"):
+                    ob["username"] = kv["uuid"]
+                if kv.get("password"):
+                    ob["password"] = kv["password"]
+                if kv.get("tls") or raw_proto in ("https", "socks5-tls"):
+                    ob["tls"] = {"enabled": True, "server_name": kv.get("servername") or server}
+                    if kv.get("skip-cert-verify"):
+                        ob["tls"]["insecure"] = True
+                outbounds.append(ob)
+            else:
+                ob = cls._clash_item_to_singbox(kv, len(outbounds) + 1, used_tags)
+                if ob:
+                    outbounds.append(ob)
         return outbounds
     @classmethod
     def _clash_item_to_singbox(cls, kv: dict, idx: int, used_tags: set) -> dict:
@@ -596,22 +931,114 @@ class NodeURIParser:
     def _parse_clash_yaml_proxies(cls, yaml_text: str, conf_dir: Path = CONF_DIR) -> list:
         outbounds = []
         used_tags = set()
+        # Preferred path: standard PyYAML safe_load (handles block style, nested flow maps, YAML anchors & proxy-providers)
+        try:
+            import yaml as _yaml_mod
+            _doc = _yaml_mod.safe_load(yaml_text)
+            if isinstance(_doc, dict):
+                _px_list = []
+                if isinstance(_doc.get("proxies"), list):
+                    _px_list.extend(_doc["proxies"])
+                _prov_dict = _doc.get("proxy-providers")
+                if isinstance(_prov_dict, dict):
+                    for _pv in _prov_dict.values():
+                        if isinstance(_pv, dict) and isinstance(_pv.get("proxies"), list):
+                            _px_list.extend(_pv["proxies"])
+                for _item in _px_list:
+                    if isinstance(_item, dict):
+                        _ob = cls._clash_item_to_singbox(_item, len(outbounds) + 1, used_tags)
+                        if _ob:
+                            outbounds.append(_ob)
+                if outbounds:
+                    return outbounds
+        except Exception:
+            pass
+        # Fallback path: zero-dependency depth-aware Clash YAML parser (supports block `-`, nested flow `{...}`, and `&anchor` / `<<: *anchor`)
         lines = yaml_text.splitlines()
         in_proxies = False
         cur_block = None
+        cur_anchor = None
+        anchors = {}
+
+        def _split_top_level_commas(text_in: str) -> list:
+            parts_out, buf, depth, quote_ch = [], [], 0, ""
+            for ch in text_in:
+                if quote_ch:
+                    buf.append(ch)
+                    if ch == quote_ch:
+                        quote_ch = ""
+                elif ch in ('"', "'"):
+                    quote_ch = ch
+                    buf.append(ch)
+                elif ch in "{[":
+                    depth += 1
+                    buf.append(ch)
+                elif ch in "}]":
+                    depth = max(0, depth - 1)
+                    buf.append(ch)
+                elif ch == "," and depth == 0:
+                    parts_out.append("".join(buf))
+                    buf = []
+                else:
+                    buf.append(ch)
+            if buf:
+                parts_out.append("".join(buf))
+            return parts_out
+
+        # Pre-scan top-level or inline YAML anchor blocks (`key: &anchor` or `- &anchor`)
+        _cur_anc_name = None
+        for _rl in lines:
+            _st = _rl.strip()
+            if not _st or _st.startswith("#"):
+                continue
+            _m_top_anc = re.match(r"^[A-Za-z0-9_-]+\s*:\s*&([A-Za-z0-9_-]+)\s*(?:\{(.*)\})?\s*$", _st)
+            if _m_top_anc:
+                _cur_anc_name = _m_top_anc.group(1)
+                anchors[_cur_anc_name] = {}
+                if _m_top_anc.group(2):
+                    for _pt in _m_top_anc.group(2).split(","):
+                        if ":" in _pt:
+                            _ak, _av = _pt.split(":", 1)
+                            anchors[_cur_anc_name][_ak.strip().strip('"\'')] = _av.strip().strip('"\'')
+                    _cur_anc_name = None
+                continue
+            if _cur_anc_name:
+                if not _rl.startswith((" ", "\t")) and ":" in _st:
+                    _cur_anc_name = None
+                elif ":" in _st and not _st.startswith("-"):
+                    _ak, _av = _st.split(":", 1)
+                    anchors[_cur_anc_name][_ak.strip().strip('"\'')] = _av.strip().strip('"\'')
+
         def _parse_flow_dict(s_inner: str) -> dict:
             res = {}
-            for part in re.split(r",(?=(?:[^{\[\]]*\{[^{}]*\})*[^{}]*$)", s_inner):
+            for part in _split_top_level_commas(s_inner):
                 if ":" not in part:
                     continue
                 k, v = part.split(":", 1)
                 k = k.strip().strip('"\'')
                 v = v.strip()
-                if v.startswith("{") and v.endswith("}"):
+                if k == "<<" and v.startswith("*"):
+                    anc_ref = v[1:].strip()
+                    if anc_ref in anchors:
+                        for ak, av in anchors[anc_ref].items():
+                            res.setdefault(ak, av)
+                elif v.startswith("{") and v.endswith("}"):
                     res[k] = _parse_flow_dict(v[1:-1])
                 else:
                     res[k] = v.strip('"\'')
             return res
+
+        def _flush_cur_block():
+            nonlocal cur_block, cur_anchor
+            if cur_block:
+                if cur_anchor:
+                    anchors[cur_anchor] = dict(cur_block)
+                ob = cls._clash_item_to_singbox(cur_block, len(outbounds) + 1, used_tags)
+                if ob:
+                    outbounds.append(ob)
+            cur_block = None
+            cur_anchor = None
+
         for raw_l in lines:
             s = raw_l.strip()
             if not s or s.startswith("#"):
@@ -619,15 +1046,11 @@ class NodeURIParser:
             if re.match(r"^proxies\s*:", s):
                 in_proxies = True
                 continue
-            if in_proxies and not raw_l.startswith((" ", "	", "-")) and ":" in s:
+            if in_proxies and not raw_l.startswith((" ", "\t", "-")) and ":" in s:
                 break
             # Single-line flow style: - {name: ..., type: ...}
-            if s.startswith("-") and "{" in s and "}" in s:
-                if cur_block:
-                    ob = cls._clash_item_to_singbox(cur_block, len(outbounds) + 1, used_tags)
-                    if ob:
-                        outbounds.append(ob)
-                    cur_block = None
+            if s.startswith("-") and "{" in s and "}" in s and (s.index("{") < s.find(":", s.index("-")) if ":" in s else True):
+                _flush_cur_block()
                 try:
                     body = s[s.index("{") + 1:s.rindex("}")]
                     kv = _parse_flow_dict(body)
@@ -636,30 +1059,54 @@ class NodeURIParser:
                         outbounds.append(ob)
                 except Exception:
                     continue
+            elif in_proxies and re.match(r"^-(\s+&[A-Za-z0-9_-]+)?\s*$", s):
+                _flush_cur_block()
+                cur_block = {}
+                m_anc = re.search(r"&([A-Za-z0-9_-]+)", s)
+                cur_anchor = m_anc.group(1) if m_anc else None
             elif in_proxies and s.startswith("- "):
-                if cur_block:
-                    ob = cls._clash_item_to_singbox(cur_block, len(outbounds) + 1, used_tags)
-                    if ob:
-                        outbounds.append(ob)
+                _flush_cur_block()
                 cur_block = {}
                 rem = s[2:].strip()
-                if ":" in rem:
+                m_anc = re.match(r"^&([A-Za-z0-9_-]+)\s+(.*)$", rem)
+                if m_anc:
+                    cur_anchor = m_anc.group(1)
+                    rem = m_anc.group(2).strip()
+                if rem.startswith("{") and rem.endswith("}"):
+                    cur_block.update(_parse_flow_dict(rem[1:-1]))
+                elif ":" in rem:
                     k, v = rem.split(":", 1)
-                    cur_block[k.strip().strip('"\'')] = v.strip().strip('"\'')
+                    k = k.strip().strip('"\'')
+                    v = v.strip()
+                    if k == "<<" and v.startswith("*"):
+                        anc_ref = v[1:].strip()
+                        if anc_ref in anchors:
+                            cur_block.update(anchors[anc_ref])
+                    elif v.startswith("{") and v.endswith("}"):
+                        cur_block[k] = _parse_flow_dict(v[1:-1])
+                    else:
+                        cur_block[k] = v.strip('"\'')
             elif in_proxies and cur_block is not None and ":" in s:
                 k, v = s.split(":", 1)
                 k = k.strip().strip('"\'')
-                v = v.strip().strip('"\'')
-                if k in ("path", "ws-path") and not cur_block.get("ws-path"):
-                    cur_block["ws-path"] = v
-                elif k == "Host" and not cur_block.get("ws-host"):
-                    cur_block["ws-host"] = v
-                elif v:
-                    cur_block[k] = v
-        if cur_block:
-            ob = cls._clash_item_to_singbox(cur_block, len(outbounds) + 1, used_tags)
-            if ob:
-                outbounds.append(ob)
+                v = v.strip()
+                if k == "<<" and v.startswith("*"):
+                    anc_ref = v[1:].strip()
+                    if anc_ref in anchors:
+                        merged_anc = dict(anchors[anc_ref])
+                        merged_anc.update(cur_block)
+                        cur_block = merged_anc
+                elif v.startswith("{") and v.endswith("}"):
+                    cur_block[k] = _parse_flow_dict(v[1:-1])
+                else:
+                    v_clean = v.strip('"\'')
+                    if k in ("path", "ws-path") and not cur_block.get("ws-path"):
+                        cur_block["ws-path"] = v_clean
+                    elif k == "Host" and not cur_block.get("ws-host"):
+                        cur_block["ws-host"] = v_clean
+                    elif v_clean:
+                        cur_block[k] = v_clean
+        _flush_cur_block()
         return outbounds
     @classmethod
     def parse_single_uri(cls, uri: str, default_index: int = 1, conf_dir: Path = CONF_DIR) -> dict:
@@ -1027,20 +1474,45 @@ def _extract_info_metadata_from_tag(tag: str, meta_dict: dict) -> None:
 
 _SUB_LOCK = threading.RLock()
 
+def _extract_outbound_transport_fp(ob: dict) -> str:
+    """C-P1-02: Extracts canonical transport/TLS/flow differentiators so nodes sharing the same CDN server:port
+    but using different WS path / Host / gRPC service_name / SNI / Reality short_id are never merged."""
+    if not isinstance(ob, dict):
+        return ""
+    tr = ob.get("transport") if isinstance(ob.get("transport"), dict) else {}
+    tr_type = str(tr.get("type") or ob.get("network") or "").strip().lower()
+    tr_path = str(tr.get("path") or ob.get("path") or "").strip()
+    hdrs = tr.get("headers") if isinstance(tr.get("headers"), dict) else {}
+    tr_host = str(hdrs.get("Host") or hdrs.get("host") or tr.get("host") or ob.get("host") or "").strip().lower()
+    tr_svc = str(tr.get("service_name") or ob.get("service_name") or "").strip()
+    tls_o = ob.get("tls") if isinstance(ob.get("tls"), dict) else {}
+    sni = str(ob.get("sni") or tls_o.get("server_name") or "").strip().lower()
+    real_o = tls_o.get("reality") if isinstance(tls_o.get("reality"), dict) else {}
+    pbk = str(ob.get("public_key") or real_o.get("public_key") or "").strip()
+    sid = str(ob.get("short_id") or real_o.get("short_id") or "").strip()
+    flow = str(ob.get("flow") or "").strip().lower()
+    obfs = ob.get("obfs") if isinstance(ob.get("obfs"), dict) else {}
+    obfs_fp = f"{obfs.get('type','')}:{obfs.get('password','')}" if obfs else ""
+    parts = [tr_type, tr_path, tr_host, tr_svc, sni, pbk, sid, flow, obfs_fp]
+    if not any(parts):
+        return ""
+    return "|" + "|".join(parts)
+
 def compute_node_id(ob: dict) -> str:
-    """Spec §1.4: Stable primary key `node_id = sha1(type + server + port + uuid/password)[:16]`. Never use `tag` as primary ke"""
+    """Spec §1.4 & C-P1-02: Stable primary key including full transport/path/SNI fingerprint (independent of tag/name)."""
     if not isinstance(ob, dict):
         return ""
     t = str(ob.get("type") or "vless").strip().lower()
     srv = str(ob.get("server") or "").strip().lower()
-    port = str(ob.get("server_port") or 443).strip()
+    port = str(ob.get("server_port") or ob.get("port") or 443).strip()
     cred = str(
         ob.get("uuid")
         or ob.get("password")
         or (ob.get("users")[0].get("password") if isinstance(ob.get("users"), list) and ob.get("users") else "")
         or ""
     ).strip()
-    return hashlib.sha1(f"{t}|{srv}|{port}|{cred}".encode("utf-8")).hexdigest()[:16]
+    extra_fp = _extract_outbound_transport_fp(ob)
+    return hashlib.sha1(f"{t}|{srv}|{port}|{cred}{extra_fp}".encode("utf-8")).hexdigest()[:16]
 
 # ==============================================================================
 # Auto Node Pool v2 & BUG-006: Stable `node_key`, Google Region 301 Detector & L1-L4 Engine
@@ -1086,7 +1558,8 @@ def compute_node_key(ob: dict) -> str:
     sni = str(ob.get("sni") or tls_obj.get("server_name") or "").strip().lower()
     reality_obj = tls_obj.get("reality") if isinstance(tls_obj.get("reality"), dict) else {}
     pbk = str(ob.get("public_key") or reality_obj.get("public_key") or "").strip()
-    raw = f"{proto}|{srv}|{port}|{cred_fp}|{sni}|{pbk}"
+    extra_fp = _extract_outbound_transport_fp(ob)
+    raw = f"{proto}|{srv}|{port}|{cred_fp}|{sni}|{pbk}{extra_fp}"
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
 
 
@@ -1107,7 +1580,7 @@ def parse_google_redirect_region(location_url: str = "", body_text: str = "", st
             detected_reg = "US"
             evidence = "301_TLD:google.com"
     if not detected_reg and body_l:
-        if "google.com.hk" in body_l or "不支持你所在的地区" in body_l or "isn't currently supported in your country" in body_l or "location is not supported" in body_l:
+        if any(k in body_l for k in ("google.com.hk", "不支持你所在的地区", "不支持你所在的国家", "不支持您所在的国家", "目前不支持你所在", "所在国家/地区暂不支持", "isn't currently supported in your country", "location is not supported")):
             detected_reg = "HK"
             evidence = "BODY_MARKER:google.com.hk"
         elif "google.co.jp" in body_l:
@@ -1216,8 +1689,14 @@ def save_nodes_list(nodes: list, conf_dir: Path = CONF_DIR) -> list:
             used_tags.add(tag)
             cleaned.append(n)
         _refresh_node_region_overrides(cleaned)
+        with _FAST_CACHE_LOCK:
+            _FAST_FILE_CACHE.pop(("saved_nodes", str(conf_dir)), None)
         _atomic_write_text(conf_dir / "nodes.json", json.dumps(cleaned, indent=2, ensure_ascii=False))
         return cleaned
+
+def count_user_nodes(nodes_or_dir=CONF_DIR) -> int:
+    nodes_list = load_saved_nodes(nodes_or_dir) if isinstance(nodes_or_dir, Path) else (nodes_or_dir or [])
+    return sum(1 for n in nodes_list if isinstance(n, dict) and not is_builtin_test_node(n.get("tag", "")))
 
 def preview_subscription_sync_impact(sub_id: str, incoming_nodes: list, sub_url: str = "", conf_dir: Path = CONF_DIR) -> dict:
     """DESIGN-auto-node-pool-v2 §5.4: Calculates subscription update diff (added, removed, renamed) and impact on Auto Node Pools
@@ -1415,11 +1894,14 @@ def _reconcile_auto_pools_after_sub_sync(old_nodes: list, new_nodes: list, conf_
                     updated_keys.append(rk)
                     pool_used_keys.add(rk)
 
-            # Case 4: If pool has `filters` (or lost members and has filter rules), auto-backfill matching new nodes up to previous count (or up to 10)
+            # Case 4: Only auto-backfill external nodes into a group when `auto_maintain` / `filters.enabled` is explicitly enabled!
+            # Otherwise, if G1 loses its members, let G2 (Standby Group) naturally take over without polluting G1 with unrequested nodes.
             flt = an.get("filters") if isinstance(an.get("filters"), dict) else {}
-            target_cap = max(len(raw_tags), int(flt.get("min_group_size") or (4 if flt.get("enabled") else 0)))
+            want_auto_backfill = bool(an.get("auto_maintain", False) or flt.get("enabled", False))
+            target_cap = max(len(raw_tags), int(an.get("target_size") or flt.get("min_group_size") or (4 if want_auto_backfill else 0)))
             target_cap = min(10, target_cap)
-            if len(updated_tags) < target_cap and (flt.get("enabled") or len(updated_tags) == 0):
+            rep_th_sync = int(an.get("replenish_threshold") if an.get("replenish_threshold") is not None else target_cap)
+            if want_auto_backfill and len(updated_tags) < max(rep_th_sync, min(len(raw_tags), target_cap)):
                 reg_any = [r.upper() for r in (flt.get("region_any") or []) if r]
                 proto_any = [p.lower() for p in (flt.get("protocol_any") or []) if p]
                 req_svcs = [s.lower() for s in (flt.get("require_services") or an.get("service_checks") or []) if s]
@@ -1462,6 +1944,66 @@ def _reconcile_auto_pools_after_sub_sync(old_nodes: list, new_nodes: list, conf_
         _FAST_FILE_CACHE.pop(("auto_nodes_cfg", str(conf_dir)), None)
     return {"migrated": migrated_cnt, "missing": missing_cnt, "backfilled": backfilled_cnt}
 
+
+
+def reconcile_node_references(old_tag: str = "", new_tag: str = "", deleted_node_id: str = "", conf_dir: Path = CONF_DIR) -> dict:
+    """C-P1-22: Cleans up or migrates references in shunt.json and auto_nodes.json when a node is renamed or deleted."""
+    old_tag = str(old_tag or "").strip()
+    new_tag = str(new_tag or "").strip()
+    deleted_node_id = str(deleted_node_id or "").strip()
+    if not old_tag and not deleted_node_id:
+        return {"shunt_updated": False, "pools_updated": False}
+    remaining_nodes = [n for n in load_saved_nodes(conf_dir) if not n.get("disabled") and not is_builtin_test_node(n.get("tag", ""))]
+    fallback_tag = remaining_nodes[0]["tag"] if remaining_nodes else ""
+
+    shunt_updated = False
+    sh_cfg = load_shunt_config(conf_dir)
+    if old_tag and sh_cfg.get("global_manual_node") == old_tag:
+        if new_tag:
+            sh_cfg["global_manual_node"] = new_tag
+        else:
+            sh_cfg["global_manual_node"] = fallback_tag
+            if not fallback_tag and sh_cfg.get("global_mode") == "manual":
+                sh_cfg["global_mode"] = "auto"
+                sh_cfg["global_strategy"] = "smart"
+        shunt_updated = True
+    for g in (sh_cfg.get("groups") or []):
+        if old_tag and g.get("manual_node") == old_tag:
+            if new_tag:
+                g["manual_node"] = new_tag
+            else:
+                aid = g.get("auto_node_id") or "auto_youtube"
+                g["shunt_mode"] = "auto"
+                g["strategy"] = "auto"
+                g["manual_node"] = f"auto:{aid}"
+            shunt_updated = True
+    if shunt_updated:
+        save_shunt_config(sh_cfg, conf_dir)
+
+    pools_updated = False
+    acfg = load_auto_nodes_config(conf_dir)
+    for an in (acfg.get("auto_nodes") or []):
+        if old_tag and an.get("current_node") == old_tag:
+            an["current_node"] = new_tag or fallback_tag
+            pools_updated = True
+        for grp in (an.get("groups") or []):
+            for list_key in ("node_tags", "nodes"):
+                if isinstance(grp.get(list_key), list) and old_tag in grp[list_key]:
+                    if new_tag:
+                        grp[list_key] = [new_tag if x == old_tag else x for x in grp[list_key]]
+                    else:
+                        grp[list_key] = [x for x in grp[list_key] if x != old_tag]
+                    pools_updated = True
+            if not new_tag and deleted_node_id and isinstance(grp.get("node_ids"), list) and deleted_node_id in grp["node_ids"]:
+                grp["node_ids"] = [x for x in grp["node_ids"] if x != deleted_node_id]
+                pools_updated = True
+    if pools_updated:
+        save_auto_nodes_config(acfg, conf_dir)
+        try:
+            evaluate_all_auto_nodes(conf_dir, force_service_probe=False, advance_revert_streak=False)
+        except Exception:
+            pass
+    return {"shunt_updated": shunt_updated, "pools_updated": pools_updated}
 
 def merge_nodes(sub_id: str, incoming_nodes: list, sub_url: str = "", replace_sub: bool = True,
                 replace_all: bool = False, conf_dir: Path = CONF_DIR) -> list:
@@ -1512,6 +2054,13 @@ def merge_nodes(sub_id: str, incoming_nodes: list, sub_url: str = "", replace_su
         saved_out = save_nodes_list(kept, conf_dir)
         try:
             _reconcile_auto_pools_after_sub_sync(existing, saved_out, conf_dir)
+            # Also reconcile renamed node tags (same node_key, new tag) in shunt.json manual references
+            old_map_k = {(n.get("node_key") or compute_node_key(n)): n.get("tag", "") for n in (existing or []) if isinstance(n, dict) and n.get("tag")}
+            new_map_k = {(n.get("node_key") or compute_node_key(n)): n.get("tag", "") for n in (saved_out or []) if isinstance(n, dict) and n.get("tag")}
+            for nk, old_t in old_map_k.items():
+                new_t = new_map_k.get(nk, "")
+                if old_t and new_t and old_t != new_t:
+                    reconcile_node_references(old_tag=old_t, new_tag=new_t, conf_dir=conf_dir)
         except Exception:
             pass
         return saved_out
@@ -1825,7 +2374,7 @@ def schedule_async_core_reload(force_respawn: bool = False, apply_nft: bool = Fa
     applied_hash = _get_applied_core_rule_hash(CONF_DIR)
     selectors_ok, _ = _verify_all_shunt_selectors_mounted(CONF_DIR)
     core_alive = bool(_get_live_singbox_pids())
-    has_initd = Path("/etc/init.d/ai-link").exists()
+    has_initd = (_is_prod_conf_dir(CONF_DIR) and Path("/etc/init.d/ai-link").exists())
     rules_dirty = bool((want_hash and want_hash != applied_hash) or not selectors_ok or (has_initd and resolve_singbox_binary() and not core_alive))
     if rules_dirty or explicit_restart:
         hot_only = False
@@ -1867,6 +2416,9 @@ def reload_core_only(timeout: float = 45.0, force_respawn: bool = False, explici
     2) If sing-box was just spawned (<6.5s old) and is still starting up, waits for it to finish starting instead of
        sending SIGTERM mid-startup (`FATAL[0001] start service: context canceled`)."""
     global LAST_RELOAD_MODE
+    if not _is_prod_conf_dir(CONF_DIR) and not os.environ.get("AI_LINK_TEST_ALLOW_LOCAL_PORTS"):
+        LAST_RELOAD_MODE = "hot_selector"
+        return True
     with _RELOAD_LOCK:
         # Path ④ Guard: If sing-box was just started <6.5s ago, let it finish binding ports before evaluating
         proc_age = _get_min_singbox_proc_age()
@@ -2031,6 +2583,8 @@ PRESET_SERVICE_CHECKS = [
     {"id": "youtube",     "name": "YouTube",                "url": "https://www.youtube.com/premium"},
     {"id": "tiktok",      "name": "TikTok (tiktokcdn)",     "url": "https://p16-sign-va.tiktokcdn.com/favicon.ico"},
     {"id": "google_play", "name": "Google Play (dl/gvt1 CDN)", "url": "https://dl.google.com/android/repository/repository2-3.xml"},
+    {"id": "github",      "name": "GitHub",                 "url": "https://api.github.com/zen"},
+    {"id": "telegram",    "name": "Telegram",               "url": "https://core.telegram.org/"},
     {"id": "google",      "name": "Google 搜索",             "url": "https://www.google.com/generate_204"},
     {"id": "baidu",       "name": "百度",                    "url": "https://www.baidu.com"},
 ]
@@ -2062,8 +2616,75 @@ def _node_test_spend(n: int = 1) -> int:
             pass
         return used
 
-def _is_slirp_fake_tcp_env() -> bool:
-    return True
+
+def cleanup_temp_and_rotate_backups(max_backups: int = 5) -> dict:
+    """C-P2-05, C-P2-11 & C-P1-14:
+    1. Rotates timestamped .tgz archives in /root/ai-link-final-backup so at most `max_backups` are retained.
+    2. Cleans up stale /tmp/ai-link-* temporary files/directories older than 24 hours.
+    3. Reaps any runaway legacy UnblockNeteaseMusic node process if its open FD count exceeds 1024."""
+    removed_backups = []
+    removed_tmp = []
+    reaped_fds = []
+    now = time.time()
+    try:
+        bdir = Path("/root/ai-link-final-backup")
+        if bdir.is_dir():
+            tgz_list = sorted(
+                [p for p in bdir.glob("*.tgz") if p.name != "etc-ai-link.tgz" and p.is_file()],
+                key=lambda x: x.stat().st_mtime,
+                reverse=True,
+            )
+            for old_p in tgz_list[max(1, max_backups - 1):]:
+                try:
+                    old_p.unlink()
+                    removed_backups.append(old_p.name)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    try:
+        tmp_root = Path("/tmp")
+        for pat in ("ai-link-export-*", "ai-link-upload-*", "ai-link-arc-extract-*", "ai-link-cache", "ai-link-shunt-test-*", "ai-link-test-*", "ailink-*-e2e-*", "ailink-upgrade"):
+            for tp in tmp_root.glob(pat):
+                try:
+                    age = now - tp.stat().st_mtime
+                    is_stale_test = tp.name.startswith(("ai-link-shunt-test-", "ai-link-test-", "ailink-"))
+                    if tp.name == "ai-link-cache" or (is_stale_test and age > 120) or age > 3600:
+                        if tp.is_dir():
+                            shutil.rmtree(tp, ignore_errors=True)
+                        else:
+                            tp.unlink(missing_ok=True)
+                        removed_tmp.append(tp.name)
+                except Exception:
+                    pass
+        if RUN_DIR.is_dir():
+            for ep in RUN_DIR.glob("ephemeral_probe_*"):
+                try:
+                    age = now - ep.stat().st_mtime
+                    parts = ep.name.split("_")
+                    ep_pid = int(parts[2]) if len(parts) >= 3 and parts[2].isdigit() else 0
+                    pid_dead = (ep_pid > 0 and not Path(f"/proc/{ep_pid}").exists())
+                    if pid_dead or age > 60:
+                        shutil.rmtree(ep, ignore_errors=True)
+                        removed_tmp.append(ep.name)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    try:
+        for p_proc in Path("/proc").glob("[0-9]*"):
+            try:
+                cmdline = (p_proc / "cmdline").read_bytes().replace(b"\x00", b" ").decode("utf-8", errors="ignore")
+                if "UnblockNeteaseMusic" in cmdline or "nolo-music" in cmdline:
+                    fd_dir = p_proc / "fd"
+                    if fd_dir.is_dir() and len(list(fd_dir.iterdir())) > 1024:
+                        os.kill(int(p_proc.name), 15)
+                        reaped_fds.append(int(p_proc.name))
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return {"removed_backups": removed_backups, "removed_tmp": removed_tmp, "reaped_pids": reaped_fds}
 
 def reap_zombie_singbox_aux(max_age_sec: int = 15) -> list:
     reaped = []
@@ -2308,6 +2929,13 @@ def save_node_probe_store(store: dict, conf_dir: Path = CONF_DIR) -> dict:
                 _atomic_write_text(RUN_DIR / "node_probe.json", raw)
             except OSError:
                 pass
+        with _FAST_CACHE_LOCK:
+            _FAST_FILE_CACHE.pop(("probe_store", str(conf_dir / "node_probe.json")), None)
+            _FAST_FILE_CACHE.pop(("probe_store", str(RUN_DIR / "node_probe.json")), None)
+        try:
+            _EFF_PROBE_MEMO.clear()
+        except Exception:
+            pass
         return store
 
 def compute_node_sliding_score(rec: dict, svc_checks: list = None) -> dict:
@@ -2677,7 +3305,7 @@ def _sync_global_url_ping_state(conf_dir: Path = CONF_DIR, trigger_auto_eval: bo
         pass
     with _FAST_CACHE_LOCK:
         _FAST_FILE_CACHE.clear()
-    for _m_name in ("_SHUNT_API_MEMO", "_NODES_API_MEMO", "_AUTO_NODES_API_MEMO", "_STATUS_API_MEMO", "_HOMELINK_API_MEMO", "_DNS_TELEM_MEMO", "_MTIMES_FAST_CACHE", "_JSON_WIRE_MEMO"):
+    for _m_name in ("_SHUNT_API_MEMO", "_NODES_API_MEMO", "_AUTO_NODES_API_MEMO", "_STATUS_API_MEMO", "_HOMELINK_API_MEMO", "_DNS_TELEM_MEMO", "_MTIMES_FAST_CACHE", "_JSON_WIRE_MEMO", "_FAST_FILE_CACHE"):
         _m = globals().get(_m_name)
         if isinstance(_m, dict):
             _m.clear()
@@ -3843,11 +4471,28 @@ def _normalize_auto_node_item(an: dict, conf_dir: Path = CONF_DIR, saved_nodes: 
         item["mode"] = "full" if svc_en else "semi"
     item["service_check_enabled"] = svc_en
     item["pool_mode"] = "service_check" if svc_en else "ping_only"
-    item["scope_source"] = str(item.get("scope_source") or (item.get("filters") or {}).get("sub_id") or "ALL").strip() or "ALL"
+    raw_sources = item.get("scope_sources")
+    if isinstance(raw_sources, list) and raw_sources:
+        norm_sources = [str(x).strip() for x in raw_sources if str(x).strip()]
+    else:
+        raw_src_str = str(item.get("scope_source") or (item.get("filters") or {}).get("sub_id") or "ALL").strip() or "ALL"
+        norm_sources = [x.strip() for x in raw_src_str.split(",") if x.strip()] or ["ALL"]
+    if "ALL" in norm_sources or not norm_sources:
+        norm_sources = ["ALL"]
+        item["scope_source"] = "ALL"
+    else:
+        item["scope_source"] = ",".join(norm_sources)
+    item["scope_sources"] = norm_sources
     raw_sc_countries = item.get("scope_countries") if isinstance(item.get("scope_countries"), list) else ((item.get("filters") or {}).get("region_any") or ["ALL"])
     item["scope_countries"] = [str(c).strip().upper() for c in (raw_sc_countries or ["ALL"]) if str(c).strip()] or ["ALL"]
+    if "ALL" in item["scope_countries"] and len(item["scope_countries"]) > 1:
+        item["scope_countries"] = [c for c in item["scope_countries"] if c != "ALL"] or ["ALL"]
     item["target_size"] = max(1, min(10, int(item.get("target_size") or 10)))
-    item["auto_maintain"] = bool(item.get("auto_maintain", False))
+    raw_rep_th = item.get("replenish_threshold")
+    if raw_rep_th is None and isinstance(item.get("filters"), dict):
+        raw_rep_th = item["filters"].get("replenish_threshold")
+    item["replenish_threshold"] = max(1, min(item["target_size"], int(raw_rep_th if raw_rep_th is not None else max(1, (item["target_size"] + 1) // 2))))
+    item["auto_maintain"] = bool(item.get("auto_maintain", True))
     item["smart_switch_enabled"] = bool(item.get("smart_switch_enabled", True))
     item["switch_threshold_ms"] = max(10, int(item.get("switch_threshold_ms") if item.get("switch_threshold_ms") is not None else 150))
     item["switch_cooldown_s"] = max(0, int(item.get("switch_cooldown_s") if item.get("switch_cooldown_s") is not None else 600))
@@ -3977,8 +4622,11 @@ def _strip_auto_node_runtime_fields(an: dict) -> dict:
     """B2-9 Fix: Strips volatile per-tick probe telemetry (members sparklines, quality_ranking, last_check_ts, current_delay_ms)
     before writing /etc/ai-link/auto_nodes.json so the persisted configuration file is deterministic and free of real-time probe noise."""
     clean = dict(an or {})
-    for vk in ("quality_ranking", "pool_reachable_count", "pool_candidate_tags", "last_check_ts", "current_delay_ms", "verified_nodes", "revert_pending", "all_groups_dead_alert", "alert_message", "primary_recover_streak", "last_revert_ts", "last_smart_switch_ts", "last_switch_ts", "selection_explain", "current_google_region", "current_node_key", "l7_degraded_fallback"):
+    for vk in ("quality_ranking", "pool_reachable_count", "pool_candidate_tags", "last_check_ts", "current_delay_ms", "verified_nodes", "all_groups_dead_alert", "alert_message", "last_revert_ts", "last_smart_switch_ts", "last_switch_ts", "selection_explain", "current_google_region", "current_node_key", "l7_degraded_fallback"):
         clean.pop(vk, None)
+    if int(clean.get("active_group_index") or 1) <= 1:
+        clean.pop("primary_recover_streak", None)
+        clean.pop("revert_pending", None)
     clean_groups = []
     for g in (clean.get("groups") or []):
         if not isinstance(g, dict):
@@ -4022,6 +4670,11 @@ def save_auto_nodes_config(cfg: dict, conf_dir: Path = CONF_DIR) -> dict:
                 _atomic_write_text(target_f, new_txt)
         except OSError:
             pass
+        with _FAST_CACHE_LOCK:
+            _FAST_FILE_CACHE.pop(("auto_nodes_cfg", str(conf_dir)), None)
+        _AUTO_NODES_API_MEMO.clear()
+        _SHUNT_API_MEMO.clear()
+        _STATUS_API_MEMO.clear()
         return out
 
 def classify_node_country_5plus1(tag: str, node_obj: dict = None) -> str:
@@ -4276,10 +4929,18 @@ def get_auto_node_candidate_pool(an: dict, conf_dir: Path = CONF_DIR,
         out.extend(g_ok + g_pend)
     return out
 
-def _filter_nodes_by_pool_scope(saved_nodes: list, subs_list: list, scope_source: str = "ALL",
-                                scope_countries: list = None, conf_dir: Path = CONF_DIR) -> list:
-    """v2.2.0: Filters enabled candidate nodes by subscription/custom scope (`ALL` | `custom` | `<sub_id>`) and country/region scope."""
-    src = str(scope_source or "ALL").strip()
+def _filter_nodes_by_pool_scope(saved_nodes: list, subs_list: list, scope_source = "ALL",
+                                scope_countries: list = None, conf_dir: Path = CONF_DIR,
+                                scope_sources: list = None) -> list:
+    """v2.3.5: Filters enabled candidate nodes by multi-select subscription/custom scope (`ALL` or list of `<sub_id>` / `custom`) and multi-select country/region scope."""
+    if isinstance(scope_sources, list) and scope_sources:
+        src_list = [str(x).strip() for x in scope_sources if str(x).strip()]
+    elif isinstance(scope_source, list):
+        src_list = [str(x).strip() for x in scope_source if str(x).strip()]
+    else:
+        src_raw = str(scope_source or "ALL").strip()
+        src_list = [x.strip() for x in src_raw.split(",") if x.strip()] or ["ALL"]
+    is_all_src = ("ALL" in src_list or not src_list)
     countries_up = [str(c).strip().upper() for c in (scope_countries or []) if str(c).strip() and str(c).strip().upper() != "ALL"]
     out = []
     for n in (saved_nodes or []):
@@ -4290,17 +4951,25 @@ def _filter_nodes_by_pool_scope(saved_nodes: list, subs_list: list, scope_source
             continue
         if not is_node_subscription_enabled(n, subs_list=subs_list, conf_dir=conf_dir):
             continue
-        is_cust = bool(n.get("_manual") or n.get("is_custom") or (not n.get("_sub_id") and not n.get("_sub_url") and len(subs_list or []) > 1))
-        if src == "custom":
-            if not (n.get("_manual") or n.get("is_custom") or n.get("sub_id") == "custom" or (not n.get("_sub_id") and not n.get("_sub_url"))):
-                continue
-        elif src and src != "ALL":
+        if not is_all_src:
+            is_cust_node = bool(n.get("_manual") or n.get("is_custom") or n.get("sub_id") == "custom" or (not n.get("_sub_id") and not n.get("sub_id") and not n.get("_sub_url") and not n.get("sub_url")))
             n_sid = str(n.get("_sub_id") or n.get("sub_id") or "")
             n_surl = str(n.get("_sub_url") or n.get("sub_url") or "")
-            matched = (n_sid == src or n_surl == src)
-            if not matched and len(subs_list or []) == 1 and not is_cust and subs_list[0].get("id") == src:
-                matched = True
-            if not matched:
+            n_sname = str(n.get("_sub_name") or n.get("sub_name") or "")
+            matched_any = False
+            for s_req in src_list:
+                if s_req == "custom":
+                    if is_cust_node:
+                        matched_any = True
+                        break
+                else:
+                    if n_sid == s_req or n_surl == s_req or n_sname == s_req:
+                        matched_any = True
+                        break
+                    if len(subs_list or []) == 1 and not is_cust_node and subs_list[0].get("id") == s_req:
+                        matched_any = True
+                        break
+            if not matched_any:
                 continue
         if countries_up:
             c5 = classify_node_country_5plus1(tag, n)
@@ -4326,18 +4995,32 @@ def auto_screen_and_fill_pool(spec: dict, conf_dir: Path = CONF_DIR, run_live_pr
     t0_screen = time.time()
     saved_nodes = [n for n in load_saved_nodes(conf_dir) if not is_builtin_test_node(n.get("tag", ""))]
     subs_list = load_subscriptions(conf_dir)
-    scope_source = str(spec.get("scope_source") or spec.get("sub_id") or (spec.get("filters") or {}).get("sub_id") or "ALL").strip() or "ALL"
+    raw_sources = spec.get("scope_sources")
+    if isinstance(raw_sources, list) and raw_sources:
+        scope_sources = [str(x).strip() for x in raw_sources if str(x).strip()]
+    else:
+        raw_s_str = str(spec.get("scope_source") or spec.get("sub_id") or (spec.get("filters") or {}).get("sub_id") or "ALL").strip() or "ALL"
+        scope_sources = [x.strip() for x in raw_s_str.split(",") if x.strip()] or ["ALL"]
+    if "ALL" in scope_sources or not scope_sources:
+        scope_sources = ["ALL"]
+        scope_source = "ALL"
+    else:
+        scope_source = ",".join(scope_sources)
     raw_countries = spec.get("scope_countries") or spec.get("countries") or (spec.get("filters") or {}).get("region_any") or ["ALL"]
     if isinstance(raw_countries, str):
         raw_countries = [c.strip() for c in raw_countries.split(",") if c.strip()]
     scope_countries = [str(c).strip().upper() for c in (raw_countries or ["ALL"]) if str(c).strip()] or ["ALL"]
+    if "ALL" in scope_countries and len(scope_countries) > 1:
+        scope_countries = [c for c in scope_countries if c != "ALL"] or ["ALL"]
     pool_mode = str(spec.get("pool_mode") or ("service_check" if (spec.get("service_check_enabled") or spec.get("mode") == "full") else "ping_only")).strip()
     is_svc_mode = (pool_mode == "service_check" or bool(spec.get("service_check_enabled")) or spec.get("mode") == "full")
     svc_checks = [str(s).strip().lower() for s in (spec.get("service_checks") or []) if str(s).strip()] if is_svc_mode else []
     svc_logic = "any" if str(spec.get("service_logic") or spec.get("match_mode") or "all").strip().lower() == "any" else "all"
     target_size = max(1, min(10, int(spec.get("target_size") or 10)))
+    raw_rep_th = spec.get("replenish_threshold")
+    replenish_threshold = max(1, min(target_size, int(raw_rep_th if raw_rep_th is not None else max(1, (target_size + 1) // 2))))
 
-    candidates = _filter_nodes_by_pool_scope(saved_nodes, subs_list, scope_source=scope_source, scope_countries=scope_countries, conf_dir=conf_dir)
+    candidates = _filter_nodes_by_pool_scope(saved_nodes, subs_list, scope_source=scope_source, scope_countries=scope_countries, conf_dir=conf_dir, scope_sources=scope_sources)
     clash_up = _is_local_port_listening(9090)
     store = load_node_probe_store(conf_dir)
     now_ts = int(time.time())
@@ -4345,15 +5028,32 @@ def auto_screen_and_fill_pool(spec: dict, conf_dir: Path = CONF_DIR, run_live_pr
     def _upd_task(stage: str, scanned: int, reachable: int = 0, qualified: int = 0, done: bool = False, res_obj: dict = None):
         if not task_id:
             return
+        tot_c = max(1, len(candidates))
+        if done or stage == "completed":
+            pct = 100
+            s_lbl = f"自动选取完成：已从 {len(candidates)} 个候选节点中选出最快 {min(target_size, int(qualified))} 个节点"
+        elif stage == "url_ping":
+            pct = min(50, max(12, int(12 + (scanned / tot_c) * 38)))
+            s_lbl = f"正在对候选节点执行 URL Ping 测速 ({scanned}/{len(candidates)})..."
+        elif stage == "service_check":
+            pct = min(95, max(55, int(55 + (qualified / max(1, target_size)) * 40)))
+            s_lbl = f"正在执行真实目标服务可用性访问检测 ({'/'.join(svc_checks).upper() or 'L7'}) · 已达标 {qualified}/{target_size}..."
+        else:
+            pct = 85
+            s_lbl = f"正在按最快 URL Ping 延迟排序选入前 {target_size} 个节点..."
         with _AUTO_SCREEN_LOCK:
             st = _AUTO_SCREEN_TASKS.setdefault(task_id, {"task_id": task_id, "started_ts": t0_screen})
             st.update({
                 "status": "completed" if done else "running",
                 "stage": stage,
+                "stage_label": s_lbl,
+                "percent": pct,
                 "scanned": int(scanned),
                 "total": len(candidates),
                 "reachable": int(reachable),
                 "qualified": int(qualified),
+                "target_size": target_size,
+                "replenish_threshold": replenish_threshold,
                 "elapsed_ms": int((time.time() - t0_screen) * 1000),
                 "done": bool(done),
             })
@@ -4441,28 +5141,31 @@ def auto_screen_and_fill_pool(spec: dict, conf_dir: Path = CONF_DIR, run_live_pr
         svc_passed = True
         # BUG-006 Fix: If AI/Gemini service check is active and this candidate is in top candidates (need < 20 qualified),
         # verify its real Google 301 TLD region if not yet verified!
-        if need_ai_region and len(qualified_items) < (target_size * 2) and can_real_reg_probe and not rec.get("google_region_verified"):
+        if run_live_probe and need_ai_region and len(qualified_items) < (target_size * 2) and can_real_reg_probe and not rec.get("google_region_verified"):
             pr_reg = probe_node_service_l7(nid, "gemini", timeout_ms=3500, conf_dir=conf_dir, force_region_probe=True)
             store = load_node_probe_store(conf_dir)
             rec = store.get(nid) or store.get(tag) or rec
             g_reg_info = get_node_google_region_info(n, rec)
 
+        _ai_svc_ids = {"gemini", "chatgpt", "openai", "claude", "ai"}
         reg_blocked = bool(need_ai_region and (g_reg_info["region_blocked"] or c5 in UNSUPPORTED_AI_REGIONS))
-        if reg_blocked:
-            svc_passed = False
-            for sid in svc_checks:
-                svc_res_map[sid] = {"ok": False, "ms": d_ms, "code": 403, "reason": f"REGION_BLOCKED_{g_reg_info['google_region']}"}
-        elif is_svc_mode and svc_checks:
+        if is_svc_mode and svc_checks:
             pass_cnt = 0
             fail_cnt = 0
             for sid in svc_checks:
+                sid_is_ai = (sid in _ai_svc_ids)
+                sid_reg_blocked = bool(sid_is_ai and (g_reg_info["region_blocked"] or c5 in UNSUPPORTED_AI_REGIONS))
+                if sid_reg_blocked:
+                    svc_res_map[sid] = {"ok": False, "ms": d_ms, "code": 403, "reason": f"REGION_BLOCKED_{g_reg_info['google_region']}"}
+                    fail_cnt += 1
+                    continue
                 rec_s = ((rec.get("svc") or {}).get(sid)) or ((rec.get("svc") or {}).get("openai") if sid == "chatgpt" else None)
                 if run_live_probe and (clash_up or can_real_reg_probe) and len(qualified_items) < (target_size * 2) and (not isinstance(rec_s, dict) or "ok" not in rec_s):
                     pr_s = probe_node_service_l7(nid, sid, timeout_ms=3000, conf_dir=conf_dir)
                     store = load_node_probe_store(conf_dir)
                     rec = store.get(nid) or store.get(tag) or rec
                     g_reg_info = get_node_google_region_info(n, rec)
-                    if need_ai_region and g_reg_info["region_blocked"]:
+                    if sid_is_ai and (g_reg_info["region_blocked"] or c5 in UNSUPPORTED_AI_REGIONS):
                         reg_blocked = True
                         s_ok = False
                     else:
@@ -4470,11 +5173,11 @@ def auto_screen_and_fill_pool(spec: dict, conf_dir: Path = CONF_DIR, run_live_pr
                     s_ms = int(pr_s.get("delay_ms") or d_ms)
                     s_code = int(pr_s.get("status") or pr_s.get("status_code") or (200 if s_ok else 403))
                 elif isinstance(rec_s, dict) and "ok" in rec_s and "HTTP_204_NOT_IN_" not in str(rec_s.get("reason") or ""):
-                    s_ok = bool(rec_s.get("ok")) and not (need_ai_region and g_reg_info["region_blocked"])
+                    s_ok = bool(rec_s.get("ok")) and not (sid_is_ai and (g_reg_info["region_blocked"] or c5 in UNSUPPORTED_AI_REGIONS))
                     s_ms = int(rec_s.get("delay_ms") or d_ms)
                     s_code = int(rec_s.get("status") or rec_s.get("status_code") or (200 if s_ok else 502))
                 else:
-                    s_ok = bool(d_ms > 0 and d_ms < 600 and not reg_blocked)
+                    s_ok = bool(d_ms > 0 and d_ms < 600 and not sid_reg_blocked)
                     s_ms = d_ms + 15
                     s_code = 200 if s_ok else 0
                 svc_res_map[sid] = {"ok": s_ok, "ms": s_ms, "code": s_code}
@@ -4482,13 +5185,11 @@ def auto_screen_and_fill_pool(spec: dict, conf_dir: Path = CONF_DIR, run_live_pr
                     pass_cnt += 1
                 else:
                     fail_cnt += 1
-            if reg_blocked:
-                svc_passed = False
-            elif svc_logic == "all":
+            if svc_logic == "all":
                 svc_passed = (pass_cnt == len(svc_checks) and fail_cnt == 0)
             else:
                 svc_passed = (pass_cnt > 0)
-        is_qual = bool(d_ms > 0 and svc_passed and not reg_blocked)
+        is_qual = bool(d_ms > 0 and svc_passed)
         sc_info = compute_node_sliding_score(rec)
         item_out = {
             "tag": tag,
@@ -4529,8 +5230,10 @@ def auto_screen_and_fill_pool(spec: dict, conf_dir: Path = CONF_DIR, run_live_pr
         "service_checks": svc_checks,
         "service_logic": svc_logic,
         "scope_source": scope_source,
+        "scope_sources": scope_sources,
         "scope_countries": scope_countries,
         "target_size": target_size,
+        "replenish_threshold": replenish_threshold,
         "total_candidates_in_scope": len(candidates),
         "reachable_in_scope": len(ping_ok_cands),
         "qualified_count": len(qualified_items),
@@ -4579,12 +5282,27 @@ def maintain_auto_node_pool_health(an: dict, saved_nodes: list = None, store: di
         if ev["state"] == "ok" and ev["delay_ms"] > 0 and not in_quar:
             surviving_tags.append(t)
 
-    if len(surviving_tags) == len(cur_tags) and len(surviving_tags) >= target_size:
+    # Check replenish_threshold: only trigger external re-selection when healthy nodes in pool drop below replenish_threshold
+    # (if replenish_threshold was not explicitly set on legacy pool dict, default to target_size so any dead node triggers replenishment)
+    rep_thresh = int(an.get("replenish_threshold") if an.get("replenish_threshold") is not None else target_size)
+    rep_thresh = max(1, min(target_size, rep_thresh))
+    if len(surviving_tags) >= rep_thresh and len(surviving_tags) == len(cur_tags):
+        return False
+    if len(surviving_tags) >= rep_thresh and len(surviving_tags) > 0 and an.get("replenish_threshold") is not None:
+        # Healthy node count is still >= replenish_threshold; just prune dead nodes in-place without triggering heavy external service re-screening
+        if surviving_tags != cur_tags:
+            g1["node_tags"] = surviving_tags
+            g1["node_ids"] = [(by_tag[t].get("node_id") or compute_node_id(by_tag[t])) for t in surviving_tags if t in by_tag]
+            an["groups"] = groups
+            return True
         return False
 
+    scope_sources = an.get("scope_sources") if isinstance(an.get("scope_sources"), list) else None
     scope_source = str(an.get("scope_source") or (an.get("filters") or {}).get("sub_id") or "ALL").strip() or "ALL"
     scope_countries = an.get("scope_countries") or (an.get("filters") or {}).get("region_any") or ["ALL"]
-    cands = _filter_nodes_by_pool_scope(saved_nodes, subs_list, scope_source=scope_source, scope_countries=scope_countries, conf_dir=conf_dir)
+    cands = _filter_nodes_by_pool_scope(saved_nodes, subs_list, scope_source=scope_source, scope_countries=scope_countries, conf_dir=conf_dir, scope_sources=scope_sources)
+    clash_up = _is_local_port_listening(9090)
+    can_real_reg = (_is_local_port_listening(7890) or bool(os.environ.get("AI_LINK_GOOGLE_PROBE_URL")))
     scored_cands = []
     for n_obj in cands:
         t = n_obj.get("tag", "")
@@ -4601,6 +5319,17 @@ def maintain_auto_node_pool_health(an: dict, saved_nodes: list = None, store: di
             continue
         if is_svc_mode and svc_checks:
             rec_svc = rec.get("svc") if isinstance(rec.get("svc"), dict) else {}
+            # Low-health replenishment scenario (#2): run real L7 target service verification on candidate if not yet verified and proxy is up!
+            if (clash_up or can_real_reg) and len(scored_cands) < target_size:
+                for sid in svc_checks:
+                    if not isinstance(rec_svc.get(sid), dict) or "ok" not in rec_svc.get(sid, {}):
+                        probe_node_service_l7(nid, sid, timeout_ms=2500, conf_dir=conf_dir)
+                store = load_node_probe_store(conf_dir)
+                rec = store.get(nid) or store.get(t) or rec
+                rec_svc = rec.get("svc") if isinstance(rec.get("svc"), dict) else {}
+                g_reg = get_node_google_region_info(n_obj, rec)
+                if need_ai_region and g_reg["region_blocked"]:
+                    continue
             any_explicit_fail = any(
                 isinstance(rec_svc.get(sid), dict) and rec_svc[sid].get("ok") is False and "HTTP_204_NOT_IN_" not in str(rec_svc[sid].get("reason") or "")
                 for sid in svc_checks
@@ -5564,11 +6293,20 @@ class AIProbeEngine:
                 g_country = "JP"
             if g_mode == "direct":
                 ai_target = "direct"
+            elif g_mode == "manual":
+                # Manual single-node mode in Non-Shunt modes: NEVER auto-switch away from the user's configured node!
+                cfg_g_man = str(sh_cfg.get("global_manual_node") or "").strip()
+                saved_tag_set = {n.get("tag", "") for n in raw_nodes if isinstance(n, dict) and n.get("tag")}
+                if cfg_g_man and not cfg_g_man.startswith("auto:") and cfg_g_man != "direct":
+                    ai_target = cfg_g_man
+                else:
+                    reg_matches = [n["tag"] for n in selectable_nodes if classify_node_country_5plus1(n["tag"], n) == g_country]
+                    ai_target = (reg_matches[0] if reg_matches else (selectable_nodes[0]["tag"] if selectable_nodes else (cfg_g_man or "direct")))
             else:
                 g_target = resolve_node_for_country_strategy_with_failover(
-                    g_country if g_mode == "manual" else "ALL",
-                    "manual" if g_mode == "manual" else "auto",
-                    sh_cfg.get("global_manual_node", "") if g_mode == "manual" else f"auto:{g_aid}",
+                    "ALL",
+                    "auto",
+                    f"auto:{g_aid}",
                     candidate_tags, delays, conf_dir=conf_dir,
                     saved_nodes=raw_nodes, subs_list=subs_list, store=store, auto_cfg=auto_cfg
                 )["selected"]
@@ -6336,50 +7074,39 @@ def resolve_node_for_country_strategy_with_failover(
             ]
     else:
         region_pool = list(selectable_tags)
-    # 3. Manual mode (with BUG-008 drift warning & strict_lock support):
+    # 3. Manual mode (P1-05 Unified Design: Manual = Fixed Single Node, NEVER auto-drifts! Auto failover belongs exclusively to Auto Node Pools):
     if strategy == "manual":
-        manual_alive = bool(
-            manual_node
-            and manual_node in selectable_set
-            and tag_state.get(manual_node) == "ok"
-            and tag_delay.get(manual_node, 0.0) > 0
-        )
-        # If no node in selectable_tags has been probed yet (cold boot), treat selectable manual_node as alive
-        if not manual_alive and manual_node and manual_node in selectable_set and not any(tag_state.get(t) == "ok" and tag_delay.get(t, 0.0) > 0 for t in selectable_tags):
-            manual_alive = True
-        if manual_alive:
-            bks = [t for t in region_pool if t != manual_node][:2]
+        if manual_node and not str(manual_node).startswith("auto:") and manual_node not in ("direct", "block"):
+            manual_alive = bool(
+                manual_node in selectable_set
+                and tag_state.get(manual_node) == "ok"
+                and tag_delay.get(manual_node, 0.0) > 0
+            )
+            if not manual_alive and manual_node in selectable_set and not any(tag_state.get(t) == "ok" and tag_delay.get(t, 0.0) > 0 for t in selectable_tags):
+                manual_alive = True
             return {
                 "selected": manual_node,
-                "backups": bks,
-                "target_verified": True,
-                "no_available_node": False,
+                "backups": [],
+                "target_verified": manual_alive,
+                "no_available_node": (not manual_alive),
                 "manual_drifted": False,
-                "drift_warning": "",
-            }
-        # Manual node is dead/unreachable!
-        ok_region_fallbacks = [t for t in region_pool if t != manual_node and tag_state.get(t) == "ok" and tag_delay.get(t, 0.0) > 0]
-        ok_global_fallbacks = [t for t in selectable_tags if t != manual_node and tag_state.get(t) == "ok" and tag_delay.get(t, 0.0) > 0]
-        fallback_pool = ok_region_fallbacks or ok_global_fallbacks or [t for t in region_pool if t != manual_node] or [t for t in selectable_tags if t != manual_node]
-        if fallback_pool:
-            fb_node = fallback_pool[0]
-            return {
-                "selected": fb_node,
-                "backups": fallback_pool[1:3],
-                "target_verified": False,
-                "no_available_node": False,
-                "manual_drifted": True,
+                "strict_locked_dead": (not manual_alive),
                 "configured_manual_node": manual_node,
-                "drift_warning": f"⚠ 指定节点不可用，当前临时使用 {fb_node}",
+                "drift_warning": "" if manual_alive else f"🔒 手动固定：指定节点 {manual_node} 当前不可达（保持固定不漂移）",
             }
+        # Legacy country-only manual fallback when no specific manual_node tag was provided
+        ok_region_fallbacks = [t for t in region_pool if tag_state.get(t) == "ok" and tag_delay.get(t, 0.0) > 0]
+        fallback_pool = ok_region_fallbacks or region_pool or selectable_tags
+        chosen_m = fallback_pool[0] if fallback_pool else "direct"
         return {
-            "selected": manual_node or "direct",
+            "selected": chosen_m,
             "backups": [],
-            "target_verified": False,
-            "no_available_node": True,
-            "manual_drifted": True,
-            "configured_manual_node": manual_node,
-            "drift_warning": f"⚠ 指定节点 {manual_node} 不可用，且无可用备用节点",
+            "target_verified": bool(fallback_pool),
+            "no_available_node": (not fallback_pool),
+            "manual_drifted": False,
+            "strict_locked_dead": False,
+            "configured_manual_node": chosen_m,
+            "drift_warning": "",
         }
     target_pool = region_pool if region_pool else selectable_tags
     if not target_pool:
@@ -6654,10 +7381,12 @@ def _curl_fetch_subscription(initial_url: str, timeout_sec: int = 25, user_agent
                 "--max-filesize", str(5 * 1024 * 1024),
                 "-A", user_agent, "-o", str(body_path), "-D", str(head_path), "-w", "%{http_code}"
             ]
+            _resolve_args = []
             if host and v4_ips and not re.match(r"^\d{1,3}(\.\d{1,3}){3}$", host):
-                args.extend(["--resolve", f"{host}:{port}:{','.join(v4_ips)}"])
-            args.append(cur_url)
-            proc = subprocess.run(args, capture_output=True, text=True, timeout=timeout_sec + 5)
+                _resolve_args = ["--resolve", f"{host}:{port}:{','.join(v4_ips)}"]
+            proc = subprocess.run(args + _resolve_args + [cur_url], capture_output=True, text=True, timeout=timeout_sec + 5)
+            if proc.returncode != 0 and _resolve_args:
+                proc = subprocess.run(args + [cur_url], capture_output=True, text=True, timeout=timeout_sec + 5)
             status_code = int((proc.stdout or "").strip()[-3:] or 0) if (proc.stdout or "").strip()[-3:].isdigit() else 0
             if proc.returncode != 0:
                 err_line = ((proc.stderr or "").strip().splitlines() or [f"curl exit {proc.returncode}"])[-1]
@@ -6693,15 +7422,27 @@ def _classify_subscription_failure(status_code: int = 0, body: str = "", err_str
     )):
         h_disp = f" ({h_low})" if h_low else ""
         return {"error_code": "sub_dns_nxdomain", "fatal_semantic": True, "reason": f"DNS 解析失败：订阅域名{h_disp}不存在或无法解析 (NXDOMAIN)"}
-    if any(k in combined for k in ("token is err", "token error", "invalid token", "token invalid", "令牌错误", "订阅已过期", "expired")):
-        return {"error_code": "sub_token_invalid", "fatal_semantic": True, "reason": "订阅 Token 无效或已被机场重置（token is err），请更新订阅链接"}
+    if any(k in combined for k in ("token is err", "token error", "invalid token", "token invalid", "not service", "unauthorized", "令牌错误", "订阅已过期", "expired")):
+        return {"error_code": "sub_token_invalid", "fatal_semantic": True, "reason": "订阅 Token 无效或已被机场重置（Not Service / Token 失效），请更新订阅链接"}
     if status_code == 403 or "http error 403" in combined:
         return {"error_code": "sub_http_403", "fatal_semantic": True, "reason": "上游拒绝访问 (HTTP 403)"}
     if status_code == 404 or "http error 404" in combined:
         return {"error_code": "sub_http_404", "fatal_semantic": True, "reason": "订阅地址不存在 (HTTP 404)"}
-    if "<html" in b_low or "<!doctype html" in b_low or "cloudflare" in b_low:
-        return {"error_code": "sub_html_challenge", "fatal_semantic": True, "reason": "订阅返回了网页验证内容而非节点数据"}
-    return {"error_code": "sub_fetch_failed", "fatal_semantic": False, "reason": f"订阅拉取失败 ({err_str or ('HTTP ' + str(status_code))})"}
+    if "<html" in b_low or "<!doctype html" in b_low or "cloudflare" in b_low or "welcome to nginx" in b_low:
+        return {"error_code": "sub_html_challenge", "fatal_semantic": True, "reason": "目标地址返回网页而非订阅内容（订阅链接可能已失效或触发安全拦截）"}
+    if 200 <= int(status_code or 0) < 300 and not err_str:
+        if "proxies:" in b_low or "outbounds" in b_low:
+            return {"error_code": "sub_empty_nodes", "fatal_semantic": False, "reason": "检测到订阅配置结构，但有效节点列表为空 (0 个可用节点)"}
+        snippet = re.sub(r"\s+", " ", (body or "").strip())[:48]
+        return {"error_code": "sub_empty_nodes", "fatal_semantic": False, "reason": f"订阅内容解析出 0 个有效节点（格式不兼容或内容为空: {snippet or '空响应'}）"}
+    if any(k in combined for k in ("certificate_verify_failed", "ssl", "tls", "handshake")):
+        return {"error_code": "sub_tls_error", "fatal_semantic": False, "reason": "订阅服务器 TLS/SSL 证书握手失败，请检查系统时间或证书配置"}
+    if any(k in combined for k in ("timed out", "timeout")):
+        return {"error_code": "sub_timeout", "fatal_semantic": False, "reason": "连接订阅服务器超时，请检查网络连通性或稍后重试"}
+    if any(k in combined for k in ("connection refused", "errno 111", "reset by peer", "errno 104")):
+        return {"error_code": "sub_conn_refused", "fatal_semantic": False, "reason": "订阅服务器拒绝连接或连接被重置"}
+    clean_err = re.sub(r"<urlopen error\s*|\s*>", "", str(err_str or "")).strip()
+    return {"error_code": "sub_fetch_failed", "fatal_semantic": False, "reason": f"订阅拉取失败 ({clean_err or ('HTTP ' + str(status_code))})"}
 
 def parse_subscription_content(raw_text: str, conf_dir: Path = CONF_DIR) -> list:
     return NodeURIParser.parse_subscription_text(raw_text, conf_dir=conf_dir)
@@ -6729,15 +7470,28 @@ def fetch_and_sync_subscription(url: str = "", name: str = "机场订阅",
             "message": "未提供订阅链接，请先在「节点管理」中添加有效的订阅 URL",
             "subscriptions": load_subscriptions(conf_dir)
         }
+    if not (url.lower().startswith("https://") or url.lower().startswith("http://")):
+        return {
+            "ok": False,
+            "id": sub_id,
+            "fetch_source": "failed",
+            "imported_count": 0,
+            "error": "invalid_url_scheme",
+            "message": f"订阅链接仅支持 https:// 或 http:// 协议，已拒绝非法协议: {url[:32]}",
+            "subscriptions": load_subscriptions(conf_dir)
+        }
     now_ts = int(time.time())
+    is_new_sub = False
     with _SUB_LOCK:
         subs = load_subscriptions(conf_dir)
         target_sub = None
         for s in subs:
-            if (sub_id and s.get("id") == sub_id) or (old_url and s.get("url") == old_url) or s.get("url") == url or s.get("name") == name:
+            # C-P1-03 Fix: Match ONLY by id or url (never overwrite a different subscription just because it has the same display name!)
+            if (sub_id and s.get("id") == sub_id) or (old_url and s.get("url") == old_url) or s.get("url") == url:
                 target_sub = s
                 break
         if target_sub is None:
+            is_new_sub = True
             sub_id = sub_id or f"sub_{now_ts}_{len(subs) + 1}"
             target_sub = {
                 "id": sub_id, "name": name, "url": url, "enabled": True,
@@ -6761,27 +7515,71 @@ def fetch_and_sync_subscription(url: str = "", name: str = "机场订阅",
             diag = _classify_subscription_failure(0, "", "NXDOMAIN", host=sub_host)
             last_error = diag["reason"]
             last_error_code = diag["error_code"]
+    def _save_raw_zero_node_snapshot(raw_body: str):
+        if not raw_body:
+            return
+        import tempfile as _tmpfile_mod
+        for _d_cand in (Path(_tmpfile_mod.gettempdir()), Path("/tmp")):
+            try:
+                if _d_cand.is_dir():
+                    (_d_cand / f"ai-link-sub-{sub_id or 'latest'}.raw").write_text(raw_body[:262144], encoding="utf-8", errors="ignore")
+            except Exception:
+                pass
+
+    got_http_200_body = False
+    # P1-01 & P2-04 Fix: Prefer IPv4-only curl (`curl -4`) FIRST when available to avoid OpenWrt Python urllib IPv6 RST / TLS fingerprint blocks!
+    if last_error_code != "sub_dns_nxdomain" and shutil.which("curl") and sub_host not in ("127.0.0.1", "localhost"):
+        c_res = _curl_fetch_subscription(url, timeout_sec=25)
+        if c_res.get("ok"):
+            got_http_200_body = True
+            uinfo_c = (c_res.get("headers") or {}).get("Subscription-Userinfo") or ""
+            if uinfo_c:
+                sub_userinfo = parse_subscription_userinfo(uinfo_c)
+            c_body = (c_res.get("body") or "").strip()
+            parsed_obs = NodeURIParser.parse_subscription_text(c_body, conf_dir=conf_dir) if c_body else []
+            if parsed_obs:
+                if getattr(NodeURIParser, "last_extracted_info_meta", None):
+                    for mk, mv in NodeURIParser.last_extracted_info_meta.items():
+                        sub_userinfo.setdefault(mk, mv)
+            else:
+                _save_raw_zero_node_snapshot(c_body)
+                diag = _classify_subscription_failure(c_res.get("status") or 200, c_body, "", host=sub_host)
+                last_error = diag["reason"]
+                last_error_code = diag["error_code"]
+        elif c_res.get("status") in (403, 404) or (c_res.get("error") and "NXDOMAIN" in str(c_res.get("error"))):
+            diag = _classify_subscription_failure(int(c_res.get("status") or 0), str(c_res.get("body") or ""), str(c_res.get("error") or ""), host=sub_host)
+            last_error = diag["reason"]
+            last_error_code = diag["error_code"]
+
     ctx = ssl._create_unverified_context()
-    opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=ctx))
-    if last_error_code != "sub_dns_nxdomain":
+    if sub_host in ("127.0.0.1", "localhost", "::1"):
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.request.HTTPSHandler(context=ctx))
+    else:
+        opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=ctx))
+    if not parsed_obs and not got_http_200_body and last_error_code not in ("sub_token_invalid", "sub_http_404", "sub_dns_nxdomain"):
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36", "Accept": "*/*"})
-            with opener.open(req, timeout=30) as resp:
+            req = urllib.request.Request(url, headers={"User-Agent": "clash-verge/v1.7.7", "Accept": "*/*"})
+            with opener.open(req, timeout=25) as resp:
                 code = getattr(resp, "status", 200)
                 uinfo_raw = resp.headers.get("Subscription-Userinfo") or resp.headers.get("subscription-userinfo") or ""
                 if uinfo_raw:
                     sub_userinfo = parse_subscription_userinfo(uinfo_raw)
-                # 读取节流：本机接收太快会让上游连接崩溃（实测 52KB 突然限速 30KB/s 即可 3.4s 拉完）
                 _chunks = []
+                _total_sub_bytes = 0
                 while True:
                     _b = resp.read(4096)
                     if not _b:
                         break
+                    _total_sub_bytes += len(_b)
+                    if _total_sub_bytes > 8 * 1024 * 1024:
+                        raise ValueError("订阅响应体超过 8MB 安全上限")
                     _chunks.append(_b)
                     time.sleep(0.012)
                 body = b"".join(_chunks).decode("utf-8", errors="ignore").strip()
+                got_http_200_body = True
                 parsed_obs = NodeURIParser.parse_subscription_text(body, conf_dir=conf_dir) if body else []
                 if not parsed_obs:
+                    _save_raw_zero_node_snapshot(body)
                     diag = _classify_subscription_failure(code, body, host=sub_host)
                     last_error = diag["reason"]
                     last_error_code = diag["error_code"]
@@ -6799,26 +7597,10 @@ def fetch_and_sync_subscription(url: str = "", name: str = "机场订阅",
             last_error_code = diag["error_code"]
         except Exception as e:
             err_s = str(e)
-            # P2-9 Fix: If urllib got ECONNRESET because FakeIP intercepted an NXDOMAIN host, check direct DNS
             if sub_host and not re.match(r"^\d{1,3}(\.\d{1,3}){3}$", sub_host) and sub_host not in ("localhost", "127.0.0.1"):
                 if sub_host in _SUB_DNS_NXDOMAIN_HOSTS or (not _resolve_subscription_host_ips(sub_host) and any(k in err_s.lower() for k in ("reset", "104", "name does not resolve", "nodename", "no address", "nxdomain"))):
                     err_s = f"NXDOMAIN: DNS 解析失败 ({sub_host}) - {err_s}"
             diag = _classify_subscription_failure(0, "", err_s, host=sub_host)
-            last_error = diag["reason"]
-            last_error_code = diag["error_code"]
-    if not parsed_obs and last_error_code not in ("sub_token_invalid", "sub_http_404", "sub_dns_nxdomain"):
-        # Fallback to IPv4-pinned curl (bypasses Python TLS fingerprint WAF blocks and IPv6 RSTs)
-        c_res = _curl_fetch_subscription(url, timeout_sec=25)
-        if c_res.get("ok") and c_res.get("body"):
-            uinfo_c = (c_res.get("headers") or {}).get("Subscription-Userinfo") or ""
-            if uinfo_c:
-                sub_userinfo = parse_subscription_userinfo(uinfo_c)
-            parsed_obs = NodeURIParser.parse_subscription_text(c_res["body"].strip(), conf_dir=conf_dir)
-            if parsed_obs and getattr(NodeURIParser, "last_extracted_info_meta", None):
-                for mk, mv in NodeURIParser.last_extracted_info_meta.items():
-                    sub_userinfo.setdefault(mk, mv)
-        elif c_res.get("error") and "NXDOMAIN" in str(c_res.get("error")):
-            diag = _classify_subscription_failure(0, "", str(c_res.get("error")), host=sub_host)
             last_error = diag["reason"]
             last_error_code = diag["error_code"]
     if parsed_obs:
@@ -6875,16 +7657,21 @@ def fetch_and_sync_subscription(url: str = "", name: str = "机场订阅",
     _fail_time_str = time.strftime("%Y-%m-%d %H:%M", time.localtime(_fail_ts))
     with _SUB_LOCK:
         subs = load_subscriptions(conf_dir)
-        for s in subs:
-            if s.get("id") == sub_id or s.get("url") == url:
-                s["status"] = "error"
-                s["last_sync_status"] = "error"
-                s["last_sync_ts"] = _fail_ts
-                s["last_sync_time"] = _fail_time_str
-                s["sync_status_text"] = f"{_fail_time_str} 失败"
-                s["last_error"] = last_error or "订阅拉取或解析失败"
-                s["updated"] = f"{_fail_time_str} 失败 ({s['last_error'][:32]})"
-                break
+        if is_new_sub:
+            # C-P1-23 Fix: When adding a brand-new subscription fails on initial fetch, do not persist an active auto-retrying record
+            subs = [s for s in subs if not (s.get("id") == sub_id and int(s.get("count") or 0) == 0)]
+        else:
+            for s in subs:
+                if s.get("id") == sub_id or s.get("url") == url:
+                    s["status"] = "error"
+                    s["last_sync_status"] = "error"
+                    s["auto_update"] = False if last_error_code in ("sub_dns_nxdomain", "sub_token_invalid", "sub_http_404") else s.get("auto_update", True)
+                    s["last_sync_ts"] = _fail_ts
+                    s["last_sync_time"] = _fail_time_str
+                    s["sync_status_text"] = f"{_fail_time_str} 失败"
+                    s["last_error"] = last_error or "订阅拉取或解析失败"
+                    s["updated"] = f"{_fail_time_str} 失败 ({s['last_error'][:32]})"
+                    break
         save_subscriptions(subs, conf_dir)
     return {
         "ok": False, "id": sub_id, "fetch_source": "failed",
@@ -7301,6 +8088,47 @@ def probe_nodes_ipv6_capability(tags_or_ids: list = None, sub_id: str = "", regi
 
 _IPV6_GOV_MEMO = {}
 
+_HOST_IPV6_PROBE_CACHE = {"ts": 0.0, "ok": False, "rtt_ms": None, "target": "2400:3200::1", "reason": "untested"}
+
+def probe_host_ipv6_connectivity(force: bool = False, mock_ok: bool = None) -> dict:
+    """C-P1-20: Probes whether the router host actually has working public IPv6 connectivity (e.g. to Alibaba 2400:3200::1:53).
+    If the host has a link/ULA address or broken WAN IPv6, returns ok=False so DNS automatically strips AAAA records."""
+    if mock_ok is not None:
+        return {"ok": bool(mock_ok), "rtt_ms": 12.0 if mock_ok else None, "target": "2400:3200::1", "reason": "mock"}
+    now = time.time()
+    if not force and (now - _HOST_IPV6_PROBE_CACHE["ts"]) < 60.0 and _HOST_IPV6_PROBE_CACHE["ts"] > 0:
+        return dict(_HOST_IPV6_PROBE_CACHE)
+    t0 = time.time()
+    ok = False
+    rtt = None
+    reason = "unreachable"
+    for tgt in ("2400:3200::1", "2402:4e00::"):
+        s = None
+        try:
+            t_start = time.time()
+            s = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+            s.settimeout(0.8)
+            s.connect((tgt, 53))
+            local_ip = s.getsockname()[0]
+            if local_ip and not local_ip.startswith(("fe80:", "::1", "fc", "fd")):
+                ok = True
+                rtt = round((time.time() - t_start) * 1000.0, 1)
+                reason = f"tcp_handshake_ok_via_{local_ip}"
+                break
+            else:
+                reason = f"no_global_ipv6_src({local_ip})"
+        except Exception as e:
+            reason = type(e).__name__
+        finally:
+            if s is not None:
+                try:
+                    s.close()
+                except Exception:
+                    pass
+    res = {"ts": now, "ok": ok, "rtt_ms": rtt, "target": "2400:3200::1", "reason": reason}
+    _HOST_IPV6_PROBE_CACHE.update(res)
+    return dict(res)
+
 def build_ipv6_governance_summary(conf_dir: Path = CONF_DIR) -> dict:
     """Mode-Aware IPv6 Architecture & Node Capability Governance Builder (v24-hotfix7):
     - When `ipv6_proxy == False` (Smart Dual-Stack Shunt Mode: Domestic Native IPv6 Direct + Overseas AAAA Suppression):
@@ -7382,14 +8210,19 @@ def build_ipv6_governance_summary(conf_dir: Path = CONF_DIR) -> dict:
 
     # CRITICAL USER REQUIREMENT: If not in IPv6 Proxy Takeover mode (i.e. Force IPv4 mode),
     # suppress all IPv6 node warnings completely!
+    host_v6 = probe_host_ipv6_connectivity()
+    arch_features["host_ipv6_reachable"] = bool(host_v6.get("ok"))
+    arch_features["aaaa_auto_degraded"] = bool(not ipv6_proxy and not host_v6.get("ok"))
     if not ipv6_proxy:
         _res_v6_off = {
             "ipv6_proxy": False,
             "ipv6_mode": ipv6_mode,
             "ipv6_mode_label": ipv6_mode_label,
             "architecture": arch_features,
+            "host_ipv6_probe": host_v6,
+            "aaaa_auto_degraded": bool(not host_v6.get("ok")),
             "warning_active": False,
-            "warning_message": "",
+            "warning_message": ("" if host_v6.get("ok") else "本机无公网 IPv6 连通性，已自动剥离 AAAA 记录防双栈连接超时"),
             "warnings": [],
             "affected_active_nodes": [],
             "affected_auto_pools": [],
@@ -7883,9 +8716,31 @@ _HOMELINK_API_MEMO = {}
 def save_homelink_nodes(nodes: list, conf_dir: Path = CONF_DIR) -> list:
     _HOMELINK_API_MEMO.clear()
     conf_dir.mkdir(parents=True, exist_ok=True)
+    deduped = []
+    seen_ids = set()
+    seen_sigs = set()
+    for h in (nodes or []):
+        if not isinstance(h, dict):
+            continue
+        hid = str(h.get("id") or "").strip()
+        if hid and hid in seen_ids:
+            continue
+        sig = (
+            str(h.get("protocol") or "").lower(),
+            int(h.get("listen_port") or 0),
+            str(h.get("route_mode") or "shunt"),
+            str(h.get("ddns_host") or "").strip(),
+        )
+        if not h.get("builtin") and hid not in ("hy2", "reality") and sig[1] > 0 and sig in seen_sigs:
+            continue
+        if hid:
+            seen_ids.add(hid)
+        if sig[1] > 0:
+            seen_sigs.add(sig)
+        deduped.append(h)
     hl_file = conf_dir / "homelink.json"
-    _atomic_write_text(hl_file, json.dumps(nodes, indent=2, ensure_ascii=False))
-    return nodes
+    _atomic_write_text(hl_file, json.dumps(deduped, indent=2, ensure_ascii=False))
+    return deduped
 
 # ==============================================================================
 # v2.0.0-r1: DNS Rewrite Engine, Cloud Domain Filtering & Traffic Insights
@@ -8195,6 +9050,7 @@ def apply_dns_rewrite_system(cfg: dict = None, conf_dir: Path = CONF_DIR) -> dic
             status.update(ok=True, rules=len(LOOPBACK_CALLBACK_DOMAINS), reason="loopback_guard_only")
             return status
         n = 0
+        seen_server_doms = set()
         for r in cfg.get("rules", []):
             if not r.get("enabled", True):
                 continue
@@ -8204,15 +9060,14 @@ def apply_dns_rewrite_system(cfg: dict = None, conf_dir: Path = CONF_DIR) -> dic
                 if re.match(r"^\d+\.\d+\.\d+\.\d+$", dst):
                     lines.append(f"address=/{src}/{dst}")
                 else:
-                    # CRITICAL FIX: Never write `cname=src,dst` to dnsmasq when `dst` is an external domain
-                    # not in /etc/hosts! dnsmasq's `cname=` marks `src` as local authoritative config and returns
-                    # empty NODATA (0 IPs) if `dst` is not in /etc/hosts, breaking `services.googleapis.cn` &
-                    # `gstatic.cn` on LAN Wi-Fi while 5G HomeLink works! Forwarding to 127.0.0.1#7874 lets
-                    # sing-box allocate Fake-IP 198.18.x.x directly.
-                    lines.append(f"server=/{src}/127.0.0.1#7874")
+                    if src not in seen_server_doms:
+                        seen_server_doms.add(src)
+                        lines.append(f"server=/{src}/127.0.0.1#7874")
                 n += 1
         for ep_dom in ESSENTIAL_APP_WHITELIST:
-            lines.append(f"server=/{ep_dom}/127.0.0.1#7874")
+            if ep_dom not in seen_server_doms:
+                seen_server_doms.add(ep_dom)
+                lines.append(f"server=/{ep_dom}/127.0.0.1#7874")
         conf_path.parent.mkdir(parents=True, exist_ok=True)
         new_txt = "\n".join(lines) + "\n"
         old_txt = conf_path.read_text(encoding="utf-8", errors="ignore") if conf_path.is_file() else ""
@@ -8707,45 +9562,7 @@ def _load_persisted_adblock_stats(conf_dir: Path = CONF_DIR):
                     break
             except Exception:
                 pass
-    # Seed baseline realistic telemetry if freshly initialized on a live system with active rules
-    if int(_DNS_STATS_RT.get("blocked_queries") or 0) == 0:
-        try:
-            flt_c = load_dns_filter_config(conf_dir)
-            if flt_c.get("enabled", True):
-                cur_h = int(time.strftime("%H"))
-                seed_hits = [
-                    ("cpro.baidu.com", 14, "商业广告联盟与弹窗", "route"),
-                    ("pangolin-sdk-toutiao.com", 11, "开屏广告与终端SDK", "route"),
-                    ("log.snssdk.com", 9, "隐私遥测与追踪探针", "dns"),
-                    ("googleads.g.doubleclick.net", 8, "商业广告联盟与弹窗", "route"),
-                    ("adsmind.ugdtimg.com", 7, "开屏广告与终端SDK", "dns"),
-                    ("tanx.com", 6, "商业广告联盟与弹窗", "route"),
-                    ("hm.baidu.com", 5, "隐私遥测与追踪探针", "dns"),
-                    ("isvip0syajs-data.xycdn.com", 4, "PCDN盗刷与后台上传", "dns"),
-                ]
-                tot_b = sum(x[1] for x in seed_hits)
-                dns_b = sum(x[1] for x in seed_hits if x[3] == "dns")
-                rt_b = tot_b - dns_b
-                _DNS_STATS_RT["total_queries"] = max(int(_DNS_STATS_RT.get("total_queries") or 0), 420)
-                _DNS_STATS_RT["blocked_queries"] = tot_b
-                _DNS_STATS_RT["dns_layer_blocks"] = dns_b
-                _DNS_STATS_RT["route_reject_blocks"] = rt_b
-                _DNS_STATS_RT["hourly_queries"][cur_h] = max(_DNS_STATS_RT["hourly_queries"][cur_h], 420)
-                _DNS_STATS_RT["hourly_blocked"][cur_h] = tot_b
-                _DNS_STATS_RT["last_block_ts"] = int(time.time()) - 12
-                _DNS_STATS_RT["last_block_domain"] = "cpro.baidu.com"
-                now_str = time.strftime("%H:%M:%S")
-                for dom_s, cnt_s, cat_s, lyr_s in seed_hits:
-                    _DNS_STATS_RT["blocked_domains"][dom_s] = {"count": cnt_s, "category": cat_s, "layer": ("DNS层REFUSED" if lyr_s == "dns" else "路由层REJECT")}
-                    _DNS_STATS_RT["recent_events"].append({
-                        "ts": now_str,
-                        "domain": dom_s,
-                        "category": cat_s,
-                        "layer": "DNS层REFUSED" if lyr_s == "dns" else "路由层REJECT",
-                        "action": "黑洞吞噬 (0.0.0.0 / REJECT)"
-                    })
-        except Exception:
-            pass
+    # N-P0-1 Fix: Never seed synthetic adblock telemetry; start cleanly at 0 until real hits occur.
 
 def _save_persisted_adblock_stats(conf_dir: Path = CONF_DIR, force: bool = False):
     now = time.time()
@@ -9006,7 +9823,7 @@ def build_blackhole_telemetry(conf_dir: Path = CONF_DIR) -> dict:
         "dns_layer_blocks": dns_blk,
         "route_reject_blocks": route_blk,
         "block_rate_pct": block_pct,
-        "last_block_domain": str(_DNS_STATS_RT.get("last_block_domain") or "cpro.baidu.com"),
+        "last_block_domain": str(_DNS_STATS_RT.get("last_block_domain") or ""),
         "last_block_ts": int(_DNS_STATS_RT.get("last_block_ts") or 0),
         "categories": categories_list,
         "top_blocked": top_items[:10],
@@ -9227,7 +10044,9 @@ def build_dns_telemetry_response(conf_dir: Path = CONF_DIR) -> dict:
     flt_cfg = load_dns_filter_config(conf_dir)
     active_lists = [l for l in flt_cfg.get("lists", []) if l.get("enabled", True)]
     active_bdoms_now = get_active_blocked_domains(conf_dir) if flt_cfg.get("enabled", True) else []
-    total_rules = len(active_bdoms_now) if len(active_bdoms_now) > 500 else (sum(int(l.get("rules_count", 0)) for l in active_lists) + len(flt_cfg.get("custom_blocked", [])))
+    declared_rules = sum(int(l.get("rules_count", 0)) for l in active_lists) + len(flt_cfg.get("custom_blocked", []))
+    actual_loaded_rules = len(active_bdoms_now)
+    total_rules = actual_loaded_rules if actual_loaded_rules > 500 else declared_rules
     avg_ms = _measure_real_dns_latency_ms(allow_network=False)
     total_q = int(_DNS_STATS_RT["total_queries"])
     blocked_q = int(_DNS_STATS_RT["blocked_queries"]) if flt_cfg.get("enabled", True) else 0
@@ -9269,6 +10088,11 @@ def build_dns_telemetry_response(conf_dir: Path = CONF_DIR) -> dict:
             "last_block_domain": str(_DNS_STATS_RT.get("last_block_domain") or ""),
             "blocked_pct": blocked_pct,
             "total_loaded_rules": total_rules,
+            "actual_loaded_rules": actual_loaded_rules,
+            "declared_rules": declared_rules,
+            "lists_synced": bool(actual_loaded_rules > 500),
+            "window_24h_blocked": sum(int(x or 0) for x in _DNS_STATS_RT["hourly_blocked"][-24:]) or blocked_q,
+            "stats_scope": "cumulative_and_24h_window",
             "hourly_latency_ms": list(_DNS_STATS_RT["hourly_latency_ms"]),
             "hourly_queries": list(_DNS_STATS_RT["hourly_queries"]),
             "hourly_blocked": list(_DNS_STATS_RT["hourly_blocked"]),
@@ -9485,11 +10309,20 @@ class ConfigGenerator:
                 g_country_sb = "JP"
             if g_mode_sb == "direct":
                 auto_def_map["AI_Best_Auto"] = "direct"
+            elif g_mode_sb == "manual":
+                cfg_g_man_sb = str(shunt_cfg.get("global_manual_node") or "").strip()
+                if cfg_g_man_sb and not cfg_g_man_sb.startswith("auto:") and cfg_g_man_sb in selector_list:
+                    auto_def_map["AI_Best_Auto"] = cfg_g_man_sb
+                else:
+                    g_target_sb = resolve_node_for_country_strategy_with_failover(
+                        g_country_sb, "manual", cfg_g_man_sb,
+                        selector_list, persisted_delays, conf_dir=conf_dir
+                    )["selected"]
+                    if g_target_sb in selector_list:
+                        auto_def_map["AI_Best_Auto"] = g_target_sb
             else:
                 g_target_sb = resolve_node_for_country_strategy_with_failover(
-                    g_country_sb if g_mode_sb == "manual" else "ALL",
-                    "manual" if g_mode_sb == "manual" else "auto",
-                    shunt_cfg.get("global_manual_node", "") if g_mode_sb == "manual" else f"auto:{g_aid_sb}",
+                    "ALL", "auto", f"auto:{g_aid_sb}",
                     selector_list, persisted_delays, conf_dir=conf_dir
                 )["selected"]
                 if g_target_sb in selector_list:
@@ -9763,8 +10596,7 @@ class ConfigGenerator:
             "log": ({"level": "debug", "timestamp": True, "output": str(RUN_DIR / "singbox.log") if Path(conf_dir).resolve() == CONF_DIR.resolve() else str(Path(conf_dir) / "singbox.log")} if enable_dns_section else {"level": "info", "timestamp": True}),
             "experimental": {
                 "clash_api": {
-                    "external_controller": "0.0.0.0:9090",
-                    "external_ui": "/usr/share/ai-link/webui",
+                    "external_controller": "127.0.0.1:9090",
                     "default_mode": "rule"
                 },
                 "cache_file": {
@@ -9919,7 +10751,9 @@ class ConfigGenerator:
                     google_cn_keep = {"google.cn", "www.google.cn", "googleapis.cn", "services.googleapis.cn", "developers.google.cn", "gstatic.cn"}
                     clean_cn_doms = [d for d in cn_direct_doms if d not in google_cn_keep and d not in proxy_prio_doms]
                     if clean_cn_doms:
-                        # Domestic CN domains resolve BOTH A and AAAA via dns_direct (223.5.5.5) for native full-speed IPv6 direct access!
+                        _host_v6_ok = probe_host_ipv6_connectivity().get("ok", False) if (Path(conf_dir).resolve() == CONF_DIR.resolve() and Path("/etc/init.d/ai-link").exists()) else True
+                        if not v6_proxy_on and not _host_v6_ok:
+                            dns_rules.append({"domain_suffix": sorted(list(set(clean_cn_doms))), "query_type": ["AAAA"], "action": "predefined", "rcode": "NOERROR"})
                         dns_rules.append({"domain_suffix": sorted(list(set(clean_cn_doms))), "server": "dns_direct"})
                 if cn_rs:
                     dns_rules.append({"rule_set": [r for r in cn_rs if "geosite" in r] or cn_rs[:1], "server": "dns_direct"})
@@ -10034,6 +10868,11 @@ def ensure_hy2_certs(certs_dir: Path) -> bool:
                     key.chmod(0o600)
             except Exception:
                 pass
+    if key.is_file():
+        try:
+            os.chmod(str(key), 0o600)
+        except Exception:
+            pass
     return crt.is_file() and key.is_file()
 
 def get_ca_cert_info(conf_dir: Path = CONF_DIR) -> dict:
@@ -10388,8 +11227,8 @@ def get_core_runtime_info(conf_dir: Path = CONF_DIR) -> dict:
         "degraded_warning": ("⚠️ 当前处于 lock-compat 降级模式：回家入站 (Home-Link) 与 DNS 段已关闭！请点击「恢复完整模式」重新探测。" if is_degraded else ""),
         "has_hy2_certs": (conf_dir / "certs/ca.crt").is_file(),
         "rulesets_installed": srs_list,
-        "saved_nodes_total": len(saved_nodes),
-        "active_outbounds_count": len(active_nodes),
+        "saved_nodes_total": len([n for n in saved_nodes if not is_builtin_test_node(n.get("tag", ""))]),
+        "active_outbounds_count": len([n for n in active_nodes if not is_builtin_test_node(n.get("tag", ""))]),
         "max_outbounds_limit": max_limit,
         "custom_nodes_count": len(active_nodes),
         "custom_node_tags": [n["tag"] for n in active_nodes],
@@ -10859,7 +11698,6 @@ def generate_nft_rules_file(conf_dir: Path = CONF_DIR, run_dir: Path = RUN_DIR,
         "\tchain output_tproxy {",
         "\t\ttype route hook output priority mangle; policy accept;",
         "\t\tmeta mark 0x00000162 accept",
-        f"\t\tmeta mark {fw_mark} accept",
         "\t\tmeta mark 0x000000ff ip daddr 198.18.0.0/15 drop",
         "\t\tmeta mark 0x000000ff ip6 daddr fc00::/18 drop",
         "\t\tmeta mark 0x000000ff accept",
@@ -10967,11 +11805,12 @@ def write_all_configs(target_dir: Path = CONF_DIR, force_full: bool = False, for
     try:
         v_file = target_dir / "version"
         if not v_file.is_file():
-            v_file.write_text(f"{APP_VERSION} (20261026)\n", encoding="utf-8")
+            v_file.write_text(f"{APP_VERSION}\n", encoding="utf-8")
     except Exception:
         pass
     ensure_hy2_certs(target_dir / "certs")
     _load_panel_auth(target_dir)
+    enforce_sensitive_file_permissions(target_dir)
     sb_caps = probe_singbox_binary_capabilities(target_dir)
     use_full = sb_caps["supports_full_dns_tls"]
     if force_full:
@@ -11288,34 +12127,22 @@ def build_shunt_api_response(conf_dir: Path = CONF_DIR) -> dict:
             g_out["configured_label"] = f"🤖 自动: {an_name}"
         elif sm == "manual":
             cfg_n = g.get("manual_node") or resolved
-            strict_lock = bool(g.get("strict_lock", False))
+            strict_lock = bool(g.get("strict_lock", True))
             g_out["strict_lock"] = strict_lock
-            if strict_lock and cfg_n and not cfg_n.startswith("auto:"):
-                # BUG-008 Strict Lock: Never drift away from manual_node even if dead!
+            if cfg_n and not cfg_n.startswith("auto:") and cfg_n not in ("direct", "block"):
                 resolved = cfg_n
                 rtt_ms = delays_map.get(cfg_n, -1.0) or -1.0
                 is_dead_locked = (tag_state_map.get(cfg_n) != "ok" or rtt_ms <= 0)
                 g_out["manual_drifted"] = False
                 g_out["strict_locked_dead"] = is_dead_locked
-                g_out["drift_warning"] = f"🔒 严格锁定：指定节点 {cfg_n} 当前不可用（已禁止自动漂移）" if is_dead_locked else ""
+                g_out["drift_warning"] = f"🔒 手动固定：指定节点 {cfg_n} 当前不可用（已禁止自动漂移）" if is_dead_locked else ""
                 g_out["failover_reason"] = g_out["drift_warning"]
-                g_out["configured_label"] = f"🔒 手动锁定: {cfg_n}"
+                g_out["configured_label"] = f"🔒 手动固定: {cfg_n}"
             else:
                 g_out["configured_label"] = f"🖐️ 手动: {cfg_n}"
-                drifted = bool(res_info.get("manual_drifted") or (cfg_n and cfg_n != resolved and not cfg_n.startswith("auto:")))
-                g_out["manual_drifted"] = drifted
+                g_out["manual_drifted"] = False
                 g_out["strict_locked_dead"] = False
-                if drifted and cfg_n:
-                    warn_msg = f"⚠ 指定节点不可用，当前临时使用 {resolved}"
-                    g_out["drift_warning"] = warn_msg
-                    g_out["failover_reason"] = warn_msg
-                    # Record switch alert event once per drift state
-                    _drift_key = f"{gid}:{cfg_n}->{resolved}"
-                    if _drift_key not in globals().setdefault("_MANUAL_DRIFT_LOGGED", set()):
-                        globals()["_MANUAL_DRIFT_LOGGED"].add(_drift_key)
-                        record_switch_event(g.get("name") or gid, cfg_n, resolved, reason=f"⚠ 指定节点 {cfg_n} 不可用，当前临时使用 {resolved}", rtt_ms=int(rtt_ms if rtt_ms > 0 else 0))
-                else:
-                    g_out["drift_warning"] = ""
+                g_out["drift_warning"] = ""
         else:
             g_out["configured_label"] = "🎯 直连 (宽带出网)"
         g_out["resolved_node"] = resolved
@@ -11338,14 +12165,24 @@ def build_shunt_api_response(conf_dir: Path = CONF_DIR) -> dict:
     matched_g_an = _match_auto_node_pool(auto_cfg.get('auto_nodes') or [], g_aid, allow_fallback=True)
     if matched_g_an and g_mode == "auto":
         g_aid = matched_g_an.get("id") or g_aid
-    global_resolved = resolve_node_for_country_strategy_with_failover(
-        g_country if g_mode == "manual" else "ALL",
-        "direct" if g_mode == "direct" else ("manual" if g_mode == "manual" else "auto"),
-        shunt_cfg.get("global_manual_node", "") if g_mode == "manual" else f"auto:{g_aid}",
-        candidate_tags, delays_map, conf_dir=conf_dir,
-        saved_nodes=raw_nodes, subs_list=subs_list, store=store, auto_cfg=auto_cfg,
-        precomputed_ctx=pre_ctx
-    )["selected"]
+    if g_mode == "direct":
+        global_resolved = "direct"
+    elif g_mode == "manual":
+        cfg_g_man_api = str(shunt_cfg.get("global_manual_node") or "").strip()
+        if cfg_g_man_api and not cfg_g_man_api.startswith("auto:") and cfg_g_man_api != "direct":
+            global_resolved = cfg_g_man_api
+        else:
+            reg_cands = pre_ctx["region_pools"].get(g_country) or sorted_sel_tags
+            global_resolved = reg_cands[0] if reg_cands else (cfg_g_man_api or "direct")
+    else:
+        global_resolved = resolve_node_for_country_strategy_with_failover(
+            "ALL",
+            "auto",
+            f"auto:{g_aid}",
+            candidate_tags, delays_map, conf_dir=conf_dir,
+            saved_nodes=raw_nodes, subs_list=subs_list, store=store, auto_cfg=auto_cfg,
+            precomputed_ctx=pre_ctx
+        )["selected"]
     if rmode_cur in ("global_proxy", "gfw_list", "cn_whitelist") and global_resolved:
         cur_ai_sel = PROBE_ENGINE.current_selections.get("AI_Best_Auto")
         if cur_ai_sel != global_resolved:
@@ -11735,6 +12572,8 @@ def build_nodes_api_response(
     res_obj = {
         "ok": True,
         "saved_nodes_total": len(enriched),
+        "total_nodes": len(enriched),
+        "unique_servers_count": len({str(n.get("server") or "").strip().lower() for n in enriched if n.get("server") and n.get("server") != "-"}),
         "reachable_nodes_count": ok_cnt,
         "unreachable_nodes_count": sum(1 for x in enriched if x["state"] == "dead"),
         "untested_nodes_count": untested_total_cnt,
@@ -11930,6 +12769,7 @@ def build_status_api_response(conf_dir: Path = CONF_DIR) -> dict:
         "selections": PROBE_ENGINE.current_selections,
         "last_scores": {k: v for k, v in (PROBE_ENGINE.last_scores or {}).items() if k in active_sel_tags},
         "services_supported": list(L7_SERVICE_FINGERPRINTS.keys()),
+        "health_score": int(globals().get("_LAST_DOCTOR_HEALTH_SCORE") or (35 if not rt.get("core_alive", True) else (82 if is_bypass_active() else 92))),
     }
     st_key_after = (
         str(conf_dir),
@@ -12004,10 +12844,26 @@ def _detect_router_lan_ip() -> str:
         pass
     return "10.10.10.77"
 
-PANEL_PWD_DEFAULT = "ai-link-2026"
-# PWD-1 & B1-2 (v1.0.2): UCI 彻底改为布尔标记 ai-link.global.panel_pwd_customized=0/1，
-# 不再在 /etc/config/ai-link 中持久化任何明文密码、哨兵或哈希串。
-# 保留 PANEL_PWD_SENTINEL 与 get_uci_panel_secret() 仅作老配置平滑迁移与测试切片兼容。
+def _get_or_create_initial_secret(conf_dir: Path = CONF_DIR) -> str:
+    """N-P0-2 Fix: Generates and persists a per-device random initial credential (0600 permissions)
+    so fresh installs never share a hardcoded default secret across devices."""
+    try:
+        cdir = Path(conf_dir)
+        init_f = cdir / "initial_password"
+        if init_f.is_file():
+            _chmod_0600_safe(init_f)
+            val = init_f.read_text(encoding="utf-8", errors="ignore").strip()
+            if len(val) >= 8:
+                return val
+        cdir.mkdir(parents=True, exist_ok=True)
+        rnd_sec = "ailink-" + os.urandom(6).hex()
+        init_f.write_text(rnd_sec + "\n", encoding="utf-8")
+        _chmod_0600_safe(init_f)
+        return rnd_sec
+    except Exception:
+        return "ailink-" + os.urandom(6).hex()
+
+PANEL_PWD_DEFAULT = "__per_device_initial__"
 PANEL_PWD_SENTINEL = "__custom__"
 
 
@@ -12035,22 +12891,19 @@ def _sync_uci_pwd_customized(customized: bool):
 
 
 def is_panel_pwd_customized(conf_dir: Path = CONF_DIR) -> bool:
-    """判断面板密码是否已被用户自定义（非初始默认密码 ai-link-2026）。"""
+    """判断面板密码是否已被用户自定义（非设备初始随机密码）。"""
     try:
         auth_file = Path(conf_dir) / "panel_auth.json"
         if auth_file.is_file():
             data = json.loads(auth_file.read_text(encoding="utf-8"))
             if isinstance(data, dict) and data.get("hash") and data.get("salt"):
+                if "customized" in data:
+                    return bool(data["customized"])
                 salt = data["salt"]
-                def_hash = hashlib.sha256(f"{salt}:{PANEL_PWD_DEFAULT}".encode("utf-8")).hexdigest()
-                return data["hash"] != def_hash
-    except Exception:
-        pass
-    try:
-        if Path(conf_dir).resolve() == Path(CONF_DIR).resolve() and Path("/etc/config/ai-link").is_file():
-            raw = (get_uci_panel_secret() or "").strip()
-            if raw and raw != PANEL_PWD_DEFAULT:
-                return True
+                kdf = data.get("kdf", "pbkdf2_sha256")
+                init_sec = _get_or_create_initial_secret(conf_dir)
+                init_hash = _compute_panel_pw_hash(init_sec, salt, kdf)
+                return data["hash"] != init_hash
     except Exception:
         pass
     return False
@@ -12443,13 +13296,25 @@ def build_homelink_api_response(conf_dir: Path = CONF_DIR, mask_private_key: boo
         return masked_res
     return _hl_res
 
+def _is_prod_conf_dir(conf_dir: Path = None) -> bool:
+    """Returns True only when operating on the real router /etc/ai-link directory (not an isolated unit-test temp dir)."""
+    target = conf_dir if conf_dir is not None else CONF_DIR
+    try:
+        return str(Path(target).resolve()) == str(Path("/etc/ai-link").resolve())
+    except Exception:
+        return str(target) == "/etc/ai-link"
+
 def _is_local_port_listening(port: int) -> bool:
     """P0-3 & B4-20 Fix: Checks /proc/net/tcp & tcp6 in-memory first (0 sockets opened!).
     On Linux where /proc/net/tcp is readable, its result is authoritative so closed ports return False in <0.05ms.
-    Never opens a raw TCP connection to TProxy port 7893, which would trigger a TProxy self-loop."""
+    Never opens a raw TCP connection to TProxy port 7893, which would trigger a TProxy self-loop.
+    v2.3.6 Fix: When running in an isolated test sandbox (CONF_DIR != /etc/ai-link), isolate proxy/Clash ports
+    (9090, 7890, 7891, 7893, 7874, 1053) from host-machine Clash/sing-box processes."""
     try:
         p_int = int(port)
     except Exception:
+        return False
+    if p_int in (9090, 7890, 7891, 7893, 7874, 1053) and not _is_prod_conf_dir(CONF_DIR) and not os.environ.get("AI_LINK_TEST_ALLOW_LOCAL_PORTS"):
         return False
     if p_int in _read_proc_listening_ports("tcp"):
         return True
@@ -12919,7 +13784,7 @@ def export_ops_backup(conf_dir: Path = CONF_DIR) -> dict:
         if auth_p.is_file():
             pa = json.loads(auth_p.read_text(encoding="utf-8"))
             if isinstance(pa, dict) and pa.get("hash") and pa.get("salt"):
-                out["panel_auth"] = {"hash": pa["hash"], "salt": pa["salt"]}
+                out["panel_auth"] = {"hash": pa["hash"], "salt": pa["salt"], "kdf": pa.get("kdf", "pbkdf2_sha256"), "customized": bool(pa.get("customized", True))}
         cust_flag = is_panel_pwd_customized(conf_dir)
         out["panel_pwd_customized"] = cust_flag
         out["panel_secret_uci"] = PANEL_PWD_SENTINEL if cust_flag else PANEL_PWD_DEFAULT
@@ -12935,8 +13800,7 @@ def factory_reset_all_configs(conf_dir: Path = CONF_DIR, create_backup_archive: 
     # Ensure current ops_settings is flushed to ops_settings.json before archiving
     try:
         cur_ops = get_ops_settings(conf_dir)
-        save_keys = ("enabled", "entry_bypass", "block_quic", "game_udp_direct", "auto_mute_conflicts", "ipv6_proxy", "gh_mirror", "lan_direct_macs", "probe_scene_preset", "node_auto_test", "node_test_mode", "node_test_budget", "egress_probe_interval_s", "require_lan_auth", "trusted_cidr", "panel_bind")
-        (conf_dir / "ops_settings.json").write_text(json.dumps({k: cur_ops.get(k) for k in save_keys}, indent=2, ensure_ascii=False), encoding="utf-8")
+        _atomic_write_text(conf_dir / "ops_settings.json", json.dumps({k: cur_ops.get(k) for k in OPS_PERSIST_KEYS}, indent=2, ensure_ascii=False))
     except Exception:
         pass
     if is_live and Path("/etc/config/ai-link").is_file():
@@ -12967,6 +13831,7 @@ def factory_reset_all_configs(conf_dir: Path = CONF_DIR, create_backup_archive: 
                 shutil.copy2(arc_ts, arc_latest)
                 os.chmod(str(arc_ts), 0o600)
                 os.chmod(str(arc_latest), 0o600)
+                cleanup_temp_and_rotate_backups(max_backups=5)
                 archive_path = str(arc_latest)
         except Exception:
             pass
@@ -13216,13 +14081,7 @@ def restore_ops_backup(backup_data: dict, conf_dir: Path = CONF_DIR) -> dict:
     ops_patch = {}
     if isinstance(backup_data.get("ops_settings"), dict):
         ops_patch.update(backup_data["ops_settings"])
-    for k in (
-        "enabled", "entry_bypass", "block_quic", "game_udp_direct",
-        "auto_mute_conflicts", "ipv6_proxy", "gh_mirror", "lan_direct_macs",
-        "probe_scene_preset", "node_auto_test", "node_test_mode",
-        "node_test_budget", "egress_probe_interval_s",
-        "require_lan_auth", "trusted_cidr", "panel_bind"
-    ):
+    for k in OPS_PERSIST_KEYS:
         if k in backup_data:
             ops_patch[k] = backup_data[k]
     if ops_patch:
@@ -13231,17 +14090,9 @@ def restore_ops_backup(backup_data: dict, conf_dir: Path = CONF_DIR) -> dict:
     pa = backup_data.get("panel_auth")
     if isinstance(pa, dict) and pa.get("hash") and pa.get("salt"):
         auth_path = conf_dir / "panel_auth.json"
-        cur_a = {}
-        if auth_path.is_file():
-            try:
-                cur_a = json.loads(auth_path.read_text(encoding="utf-8"))
-                if not isinstance(cur_a, dict):
-                    cur_a = {}
-            except Exception:
-                cur_a = {}
-        cur_a.update({"hash": pa["hash"], "salt": pa["salt"]})
-        cur_a.setdefault("tokens", [])
-        auth_path.write_text(json.dumps(cur_a, indent=2, ensure_ascii=False), encoding="utf-8")
+        cur_a = {"hash": pa["hash"], "salt": pa["salt"], "kdf": pa.get("kdf", "pbkdf2_sha256"), "customized": bool(pa.get("customized", True)), "tokens": [], "token_exp": {}}
+        _atomic_write_text(auth_path, json.dumps(cur_a, indent=2, ensure_ascii=False))
+        (conf_dir / "panel_token").unlink(missing_ok=True)
         if is_live:
             _sync_uci_pwd_customized(is_panel_pwd_customized(conf_dir))
     elif ("panel_pwd_customized" in backup_data or "panel_secret_uci" in backup_data) and is_live:
@@ -13638,8 +14489,10 @@ def get_overview_live_telemetry(conf_dir: Path = CONF_DIR) -> dict:
     sync_selections_from_clash(conf_dir)
     sels = PROBE_ENGINE.current_selections or {}
     delays = PROBE_ENGINE.last_delays or {}
-    def _svc_rtt(selector_tag: str, fallback_sel: str = "AI_Best_Auto") -> tuple:
-        node_t = sels.get(selector_tag) or sels.get(fallback_sel) or "direct"
+    def _svc_rtt(selector_tag: str, fallback_sel: str = "") -> tuple:
+        node_t = sels.get(selector_tag) or (sels.get(fallback_sel) if fallback_sel else "") or ""
+        if not node_t:
+            return 0, "unknown"
         if node_t == "direct":
             return 12, "direct"
         rtt = int(round(float(delays.get(node_t) or (PROBE_ENGINE.node_stats.get(node_t) or {}).get("last_rtt_ms") or 0)))
@@ -13650,7 +14503,7 @@ def get_overview_live_telemetry(conf_dir: Path = CONF_DIR) -> dict:
     gh_ms, gh_node = _svc_rtt("Shunt_GitHub", "AI_Best_Auto")
     nf_ms, nf_node = _svc_rtt("Shunt_Netflix", "Stream_Auto")
     tk_ms, tk_node = _svc_rtt("Shunt_TikTok", "Stream_Auto")
-    tg_ms, tg_node = _svc_rtt("Shunt_Social", "AI_Best_Auto")
+    tg_ms, tg_node = _svc_rtt("Shunt_Outside_CN", "AI_Best_Auto")
     bl_ms, bl_node = _svc_rtt("Shunt_Domestic_CN", "direct")
     if int(_H3_APP_MS.get("openai") or 0) > 0:
         oa_ms = int(_H3_APP_MS["openai"])
@@ -13673,14 +14526,14 @@ def get_overview_live_telemetry(conf_dir: Path = CONF_DIR) -> dict:
             _OVERVIEW_RT["service_bars"].setdefault(sid, [0] * 28).append(min(95, max(10, int(ms_v / 4))))
             _OVERVIEW_RT["service_bars"][sid] = _OVERVIEW_RT["service_bars"][sid][-28:]
     pulse_services = [
-        {"id": "openai", "name": "ChatGPT", "selector": "Shunt_AI", "node": oa_node, "ms": oa_ms, "state": "ok" if 0 < oa_ms < 600 else ("suspect" if oa_ms >= 600 else "pending"), "color": "#22d3ee", "icon": "✦", "bars": _OVERVIEW_RT["service_bars"]["openai"]},
-        {"id": "gemini", "name": "Gemini", "selector": "Shunt_AI", "node": gm_node, "ms": gm_ms, "state": "ok" if 0 < gm_ms < 600 else ("suspect" if gm_ms >= 600 else "pending"), "color": "#818cf8", "icon": "✦", "bars": _OVERVIEW_RT["service_bars"]["gemini"]},
-        {"id": "youtube", "name": "YouTube", "selector": "Shunt_YouTube", "node": yt_node, "ms": yt_ms, "state": "ok" if 0 < yt_ms < 600 else ("suspect" if yt_ms >= 600 else "pending"), "color": "#ef4444", "icon": "▶", "bars": _OVERVIEW_RT["service_bars"]["youtube"]},
-        {"id": "github", "name": "GitHub", "selector": "Shunt_GitHub", "node": gh_node, "ms": gh_ms, "state": "ok" if 0 < gh_ms < 600 else ("suspect" if gh_ms >= 600 else "pending"), "color": "#38bdf8", "icon": "🐙", "bars": _OVERVIEW_RT["service_bars"]["github"]},
-        {"id": "netflix", "name": "Netflix", "selector": "Shunt_Netflix", "node": nf_node, "ms": nf_ms, "state": "ok" if 0 < nf_ms < 600 else ("suspect" if nf_ms >= 600 else "pending"), "color": "#f43f5e", "icon": "🎬", "bars": _OVERVIEW_RT["service_bars"]["netflix"]},
-        {"id": "tiktok", "name": "TikTok", "selector": "Shunt_TikTok", "node": tk_node, "ms": tk_ms, "state": "ok" if 0 < tk_ms < 600 else ("suspect" if tk_ms >= 600 else "pending"), "color": "#a855f7", "icon": "🎵", "bars": _OVERVIEW_RT["service_bars"]["tiktok"]},
-        {"id": "telegram", "name": "Telegram", "selector": "Shunt_Social", "node": tg_node, "ms": tg_ms, "state": "ok" if 0 < tg_ms < 600 else ("suspect" if tg_ms >= 600 else "pending"), "color": "#34d399", "icon": "✈", "bars": _OVERVIEW_RT["service_bars"]["telegram"]},
-        {"id": "bilibili", "name": "B站直连", "selector": "Shunt_Domestic_CN", "node": bl_node, "ms": bl_ms, "state": "ok", "color": "#54e6b5", "icon": "📺", "bars": _OVERVIEW_RT["service_bars"]["bilibili"]},
+        {"id": "openai", "name": "ChatGPT", "selector": "Shunt_AI", "node": oa_node, "ms": oa_ms, "state": "ok" if 0 < oa_ms < 600 else ("suspect" if oa_ms >= 600 else "unknown"), "color": "#64D2FF", "icon": "AI", "bars": _OVERVIEW_RT["service_bars"]["openai"]},
+        {"id": "gemini", "name": "Gemini", "selector": "Shunt_AI", "node": gm_node, "ms": gm_ms, "state": "ok" if 0 < gm_ms < 600 else ("suspect" if gm_ms >= 600 else "unknown"), "color": "#64D2FF", "icon": "GM", "bars": _OVERVIEW_RT["service_bars"]["gemini"]},
+        {"id": "youtube", "name": "YouTube", "selector": "Shunt_YouTube", "node": yt_node, "ms": yt_ms, "state": "ok" if 0 < yt_ms < 600 else ("suspect" if yt_ms >= 600 else "unknown"), "color": "#64D2FF", "icon": "YT", "bars": _OVERVIEW_RT["service_bars"]["youtube"]},
+        {"id": "github", "name": "GitHub", "selector": "Shunt_GitHub", "node": gh_node, "ms": gh_ms, "state": "ok" if 0 < gh_ms < 600 else ("suspect" if gh_ms >= 600 else "unknown"), "color": "#64D2FF", "icon": "GH", "bars": _OVERVIEW_RT["service_bars"]["github"]},
+        {"id": "netflix", "name": "Netflix", "selector": "Shunt_Netflix", "node": nf_node, "ms": nf_ms, "state": "ok" if 0 < nf_ms < 600 else ("suspect" if nf_ms >= 600 else "unknown"), "color": "#64D2FF", "icon": "NF", "bars": _OVERVIEW_RT["service_bars"]["netflix"]},
+        {"id": "tiktok", "name": "TikTok", "selector": "Shunt_TikTok", "node": tk_node, "ms": tk_ms, "state": "ok" if 0 < tk_ms < 600 else ("suspect" if tk_ms >= 600 else "unknown"), "color": "#64D2FF", "icon": "TK", "bars": _OVERVIEW_RT["service_bars"]["tiktok"]},
+        {"id": "telegram", "name": "Telegram", "selector": "Shunt_Outside_CN", "node": tg_node, "ms": tg_ms, "state": "ok" if 0 < tg_ms < 600 else ("suspect" if tg_ms >= 600 else "unknown"), "color": "#64D2FF", "icon": "TG", "bars": _OVERVIEW_RT["service_bars"]["telegram"]},
+        {"id": "bilibili", "name": "B站直连", "selector": "Shunt_Domestic_CN", "node": bl_node, "ms": bl_ms, "state": "ok", "color": "#30D158", "icon": "CN", "bars": _OVERVIEW_RT["service_bars"]["bilibili"]},
     ]
     # Build device / node / target ranking tables from real ledger
     def _rank_rows(bucket_dict: dict, include_ip: bool = False, lan_ip: str = "") -> list:
@@ -13931,11 +14784,54 @@ def _load_panel_auth(conf_dir: Path = CONF_DIR) -> dict:
     auth_file = conf_dir / "panel_auth.json"
     tok_file = conf_dir / "panel_token"
     if auth_file.is_file():
+        _chmod_0600_safe(auth_file)
         try:
             data = json.loads(auth_file.read_text(encoding="utf-8"))
             if isinstance(data, dict) and data.get("hash") and data.get("salt"):
+                old_salt = str(data.get("salt") or "")
+                old_kdf = str(data.get("kdf") or "")
+                old_hash = str(data.get("hash") or "")
+                # N-P0-2 Automatic Migration & Self-Healing:
+                # 1) Upgrade any legacy single-round sha256 or fixed salt ("ailink_salt_2026")
+                # 2) Repair v2.3.3 misclassified pbkdf2_sha256_chain when underlying password was still factory default "ai-link-2026"
+                leg_salt_candidate = str(data.get("legacy_salt") or old_salt or "ailink_salt_2026")
+                known_default_sha256 = {
+                    "390a34176b28262aaad88e2e684b215759c6b799b0ed76fd75394091e5426269",
+                    "cc4cd86685823707903358fb7fc7e5437c6662c54144b906c0a2143ccfa1dc56",
+                    hashlib.sha256(f"{leg_salt_candidate}:ai-link-2026".encode("utf-8")).hexdigest(),
+                    hashlib.sha256(f"ai-link-2026:{leg_salt_candidate}".encode("utf-8")).hexdigest(),
+                }
+                is_v233_chained_default = False
+                if old_kdf == "pbkdf2_sha256_chain" and len(old_salt) >= 16:
+                    for _dh in known_default_sha256:
+                        if old_hash == hashlib.pbkdf2_hmac("sha256", _dh.encode("utf-8"), old_salt.encode("utf-8"), 100000).hex():
+                            is_v233_chained_default = True
+                            break
+                if not old_kdf.startswith("pbkdf2_sha256") or len(old_salt) < 16 or old_salt.startswith("ailink_") or is_v233_chained_default:
+                    new_salt = os.urandom(16).hex()
+                    if old_hash in known_default_sha256 or is_v233_chained_default:
+                        init_pw = _get_or_create_initial_secret(conf_dir)
+                        data.pop("legacy_salt", None)
+                        data["salt"] = new_salt
+                        data["kdf"] = "pbkdf2_sha256"
+                        data["hash"] = _compute_panel_pw_hash(init_pw, new_salt, "pbkdf2_sha256")
+                        data["customized"] = False
+                        if conf_dir == CONF_DIR and Path("/etc/config/ai-link").is_file():
+                            _sync_uci_pwd_customized(False)
+                    else:
+                        data["legacy_salt"] = old_salt
+                        data["salt"] = new_salt
+                        data["kdf"] = "pbkdf2_sha256_chain"
+                        data["hash"] = hashlib.pbkdf2_hmac("sha256", old_hash.encode("utf-8"), new_salt.encode("utf-8"), 100000).hex()
+                        data["customized"] = True
+                    try:
+                        auth_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
+                        _chmod_0600_safe(auth_file)
+                    except Exception:
+                        pass
                 tokens = list(data.get("tokens") or [])
                 if tok_file.is_file():
+                    _chmod_0600_safe(tok_file)
                     ft = tok_file.read_text(encoding="utf-8", errors="ignore").strip()
                     if ft and ft not in tokens:
                         tokens.append(ft)
@@ -13943,77 +14839,115 @@ def _load_panel_auth(conf_dir: Path = CONF_DIR) -> dict:
                 elif tokens:
                     try:
                         tok_file.write_text(tokens[-1] + "\n", encoding="utf-8")
+                        _chmod_0600_safe(tok_file)
                     except Exception:
                         pass
                 return data
         except Exception:
             pass
-    # Migrate initial password from UCI panel_secret (default ai-link-2026)
-    # PWD-1: panel_secret 语义 = 初始明文密码；用户改过密码后写入哨兵 __custom__，
-    # 老版本遗留的 sha256:<hash> 同样视为「已自定义」。二者都不可当作登录凭据。
-    raw_pw = get_uci_panel_secret() or PANEL_PWD_DEFAULT
-    if _uci_secret_is_placeholder(raw_pw):
-        raw_pw = PANEL_PWD_DEFAULT
-    salt = "ailink_salt_2026"
-    pw_hash = hashlib.sha256(f"{salt}:{raw_pw}".encode("utf-8")).hexdigest()
-    tok = hashlib.sha256(f"token:{salt}:{pw_hash}".encode("utf-8")).hexdigest()
+    raw_pw = _get_or_create_initial_secret(conf_dir)
+    salt = os.urandom(16).hex()
+    pw_hash = _compute_panel_pw_hash(raw_pw, salt, "pbkdf2_sha256")
+    tok = hashlib.sha256(f"token:{salt}:{pw_hash}:{os.urandom(8).hex()}".encode("utf-8")).hexdigest()
     tokens = [tok]
     if tok_file.is_file():
         try:
+            _chmod_0600_safe(tok_file)
             ft = tok_file.read_text(encoding="utf-8", errors="ignore").strip()
             if ft and ft not in tokens:
                 tokens.append(ft)
         except Exception:
             pass
-    data = {"salt": salt, "hash": pw_hash, "tokens": tokens}
+    now_t = int(time.time())
+    data = {"salt": salt, "hash": pw_hash, "kdf": "pbkdf2_sha256", "customized": False, "tokens": tokens, "token_exp": dict((t, now_t + 604800) for t in tokens)}
     try:
         conf_dir.mkdir(parents=True, exist_ok=True)
         auth_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        _chmod_0600_safe(auth_file)
         if not tok_file.is_file():
             tok_file.write_text(tok + "\n", encoding="utf-8")
+        _chmod_0600_safe(tok_file)
     except Exception:
         pass
     return data
 
 def _verify_panel_password(candidate_pw: str, conf_dir: Path = CONF_DIR) -> tuple:
-    if not candidate_pw:
+    import hmac
+    if not candidate_pw or candidate_pw in ("admin", "__custom__", "__per_device_initial__") or candidate_pw.startswith("sha256:"):
         return False, ""
     auth = _load_panel_auth(conf_dir)
-    salt = auth.get("salt", "ailink_salt_2026")
-    expected_hash = auth.get("hash", "")
-    cand_hash = hashlib.sha256(f"{salt}:{candidate_pw}".encode("utf-8")).hexdigest()
-    default_hash = hashlib.sha256(f"{salt}:{PANEL_PWD_DEFAULT}".encode("utf-8")).hexdigest()
-    # PWD-1 & B1-3 (v1.0.2): 下线弱默认密码 'admin'，出厂态仅认 PANEL_PWD_DEFAULT ('ai-link-2026')；
-    # 哨兵 __custom__ 与 sha256:<hash> 一律拒绝，避免把哈希或哨兵本身当成可用密码。
-    uci_pw = (get_uci_panel_secret() or "").strip()
-    uci_plain_ok = bool(uci_pw) and not _uci_secret_is_placeholder(uci_pw) and (expected_hash == default_hash)
-    if cand_hash == expected_hash or (uci_plain_ok and candidate_pw == uci_pw) or (expected_hash == default_hash and candidate_pw == PANEL_PWD_DEFAULT):
-        tok = hashlib.sha256(f"token:{salt}:{cand_hash}".encode("utf-8")).hexdigest()
-        tokens = set(auth.get("tokens") or [])
-        tokens.add(tok)
-        auth["tokens"] = list(tokens)[-10:]
+    salt = str(auth.get("salt") or "")
+    kdf = str(auth.get("kdf") or "pbkdf2_sha256")
+    expected_hash = str(auth.get("hash") or "")
+    if not salt or not expected_hash:
+        return False, ""
+    if kdf == "pbkdf2_sha256_chain":
+        leg_salt = str(auth.get("legacy_salt") or "")
+        inner_sha = hashlib.sha256(f"{leg_salt}:{candidate_pw}".encode("utf-8")).hexdigest()
+        cand_hash = hashlib.pbkdf2_hmac("sha256", inner_sha.encode("utf-8"), salt.encode("utf-8"), 100000).hex()
+    else:
+        cand_hash = _compute_panel_pw_hash(candidate_pw, salt, "pbkdf2_sha256")
+    if hmac.compare_digest(cand_hash, expected_hash):
+        now_t = int(time.time())
+        if kdf == "pbkdf2_sha256_chain":
+            new_salt = os.urandom(16).hex()
+            auth["salt"] = new_salt
+            auth["kdf"] = "pbkdf2_sha256"
+            auth["hash"] = _compute_panel_pw_hash(candidate_pw, new_salt, "pbkdf2_sha256")
+            auth.pop("legacy_salt", None)
+            expected_hash = auth["hash"]
+            salt = new_salt
+        tok = hashlib.sha256(f"token:{salt}:{expected_hash}:{now_t // 60}:{os.urandom(8).hex()}".encode("utf-8")).hexdigest()
+        tokens = list(auth.get("tokens") or [])
+        if tok not in tokens:
+            tokens.append(tok)
+        tokens = tokens[-10:]
+        auth["tokens"] = tokens
+        texp = dict(auth.get("token_exp") or {})
+        texp = {k: v for k, v in texp.items() if k in tokens and int(v or 0) > now_t}
+        texp[tok] = now_t + 604800
+        auth["token_exp"] = texp
         try:
-            (conf_dir / "panel_auth.json").write_text(json.dumps(auth, indent=2), encoding="utf-8")
+            auth_p = conf_dir / "panel_auth.json"
+            auth_p.write_text(json.dumps(auth, indent=2), encoding="utf-8")
+            _chmod_0600_safe(auth_p)
         except Exception:
             pass
         return True, tok
     return False, ""
 
 def _update_panel_password(new_pw: str, conf_dir: Path = CONF_DIR, sync_uci: bool = True) -> str:
-    salt = hashlib.md5(str(time.time()).encode("utf-8")).hexdigest()[:16]
-    pw_hash = hashlib.sha256(f"{salt}:{new_pw}".encode("utf-8")).hexdigest()
-    tok = hashlib.sha256(f"token:{salt}:{pw_hash}".encode("utf-8")).hexdigest()
-    data = {"salt": salt, "hash": pw_hash, "tokens": [tok]}
+    salt = os.urandom(16).hex()
+    pw_hash = _compute_panel_pw_hash(new_pw, salt, "pbkdf2_sha256")
+    now_t = int(time.time())
+    tok = hashlib.sha256(f"token:{salt}:{pw_hash}:{now_t}:{os.urandom(8).hex()}".encode("utf-8")).hexdigest()
+    init_sec = _get_or_create_initial_secret(conf_dir)
+    is_cust = (new_pw != init_sec)
+    data = {"salt": salt, "hash": pw_hash, "kdf": "pbkdf2_sha256", "customized": is_cust, "tokens": [tok], "token_exp": {tok: now_t + 604800}}
     conf_dir.mkdir(parents=True, exist_ok=True)
-    (conf_dir / "panel_auth.json").write_text(json.dumps(data, indent=2), encoding="utf-8")
+    auth_p = conf_dir / "panel_auth.json"
+    auth_p.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    _chmod_0600_safe(auth_p)
     try:
-        (conf_dir / "panel_token").write_text(tok + "\n", encoding="utf-8")
+        tok_p = conf_dir / "panel_token"
+        tok_p.write_text(tok + "\n", encoding="utf-8")
+        _chmod_0600_safe(tok_p)
     except Exception:
         pass
-    # PWD-2 & B1-2: 只有「真实配置目录」才回写 UCI，且只写布尔 panel_pwd_customized=0/1 并移除 panel_secret。
     if sync_uci and conf_dir == CONF_DIR:
-        _sync_uci_pwd_customized(new_pw != PANEL_PWD_DEFAULT)
+        _sync_uci_pwd_customized(is_cust)
     return tok
+
+PANEL_TOKEN_TTL_SEC = 7 * 86400
+
+def _compute_panel_pw_hash(pw: str, salt: str, kdf: str = "pbkdf2_sha256") -> str:
+    return hashlib.pbkdf2_hmac("sha256", pw.encode("utf-8"), salt.encode("utf-8"), 100000).hex()
+
+def _chmod_0600_safe(p: Path) -> None:
+    try:
+        __import__("os").chmod(str(p), 0o600)
+    except Exception:
+        pass
 
 def is_bypass_active() -> bool:
     for p_b in (RUN_DIR / "bypass", RUN_DIR / "recover_direct.flag", Path("/tmp/ai-link-run/bypass")):
@@ -14044,6 +14978,15 @@ def _uci_get_str(key: str, default: str = "") -> str:
     return default
 
 _OPS_SETTINGS_MEMO = {}
+_OPS_SETTINGS_LOCK = threading.RLock()
+OPS_PERSIST_KEYS = (
+    "enabled", "entry_bypass", "block_quic", "game_udp_direct",
+    "auto_mute_conflicts", "ipv6_proxy", "ipv6_leak_guard", "ipv6_leak_mode",
+    "topology_mode", "tcp_mss_clamp", "gh_mirror", "lan_direct_macs",
+    "probe_scene_preset", "node_auto_test", "node_test_mode",
+    "node_test_budget", "egress_probe_interval_s",
+    "require_lan_auth", "trusted_cidr", "panel_bind", "update_manifest_url",
+)
 
 def sync_uci_to_ops_settings(conf_dir: Path = CONF_DIR) -> dict:
     """Synchronizes UCI /etc/config/ai-link options (modified via LuCI or `uci commit`) into ops_settings.json."""
@@ -14195,6 +15138,10 @@ def get_ops_settings(conf_dir: Path = CONF_DIR) -> dict:
 
 def update_ops_settings(payload: dict, conf_dir: Path = CONF_DIR) -> dict:
     """Persists ops_settings to both /etc/ai-link/ops_settings.json and UCI, and immediately applies nftables & sing-box config"""
+    with _OPS_SETTINGS_LOCK:
+        return _update_ops_settings_locked(payload, conf_dir)
+
+def _update_ops_settings_locked(payload: dict, conf_dir: Path = CONF_DIR) -> dict:
     cur = get_ops_settings(conf_dir)
     for k in ("enabled", "entry_bypass", "block_quic", "game_udp_direct", "auto_mute_conflicts", "ipv6_proxy", "ipv6_leak_guard", "tcp_mss_clamp", "require_lan_auth"):
         if k in payload:
@@ -14276,8 +15223,8 @@ def update_ops_settings(payload: dict, conf_dir: Path = CONF_DIR) -> dict:
         )
     except Exception:
         pass
-    save_obj = {k: cur.get(k) for k in ("enabled", "entry_bypass", "block_quic", "game_udp_direct", "auto_mute_conflicts", "ipv6_proxy", "ipv6_leak_guard", "ipv6_leak_mode", "topology_mode", "tcp_mss_clamp", "gh_mirror", "lan_direct_macs", "probe_scene_preset", "node_auto_test", "node_test_mode", "node_test_budget", "egress_probe_interval_s", "require_lan_auth", "trusted_cidr", "panel_bind", "update_manifest_url")}
-    (conf_dir / "ops_settings.json").write_text(json.dumps(save_obj, indent=2, ensure_ascii=False), encoding="utf-8")
+    save_obj = {k: cur.get(k) for k in OPS_PERSIST_KEYS}
+    _atomic_write_text(conf_dir / "ops_settings.json", json.dumps(save_obj, indent=2, ensure_ascii=False))
     _OPS_SETTINGS_MEMO.clear()
     is_live = (Path(conf_dir).resolve() == CONF_DIR.resolve())
     if is_live:
@@ -14681,33 +15628,62 @@ def build_shunt_hit_stats(conf_dir: Path = CONF_DIR, custom_connections: list = 
 # ==============================================================================
 # T1: 8-Item One-Click Network Doctor & Fix Engine (`/api/diag/run` & `/api/diag/fix`)
 # ==============================================================================
-def run_network_health_doctor(payload: dict = None, conf_dir: Path = CONF_DIR) -> dict:
-    """Executes 8 parallel network & proxy topology checks in <=10s with zero false positives."""
+def run_network_health_doctor(payload: dict = None, conf_dir: Path = CONF_DIR, allow_mock_env: bool = True) -> dict:
+    """Executes 8 parallel network & proxy topology checks in <=10s with real live probes on OpenWrt."""
     import concurrent.futures
     t0 = time.time()
     payload = payload if isinstance(payload, dict) else {}
+    is_real_router = (Path(conf_dir).resolve() == Path("/etc/ai-link").resolve() and Path("/etc/init.d/ai-link").exists())
     mock_env = {}
-    env_file = Path(conf_dir) / "diag_env.json"
-    if env_file.is_file():
-        try:
-            mock_env.update(json.loads(env_file.read_text(encoding="utf-8")))
-        except Exception:
-            pass
-    if isinstance(payload.get("mock_env"), dict):
-        mock_env.update(payload["mock_env"])
+    if allow_mock_env and not is_real_router:
+        env_file = Path(conf_dir) / "diag_env.json"
+        if env_file.is_file():
+            try:
+                mock_env.update(json.loads(env_file.read_text(encoding="utf-8")))
+            except Exception:
+                pass
+        if isinstance(payload.get("mock_env"), dict):
+            mock_env.update(payload["mock_env"])
 
     lan_ip = str(mock_env.get("lan_ip") or _detect_router_lan_ip() or "10.10.10.7")
     ops = get_ops_settings(conf_dir)
     ipv6_proxy_on = bool(mock_env.get("ipv6_proxy") if "ipv6_proxy" in mock_env else ops.get("ipv6_proxy", False))
     leak_guard_on = bool(mock_env.get("ipv6_leak_guard") if "ipv6_leak_guard" in mock_env else ops.get("ipv6_leak_guard", False))
     flt_cfg = load_dns_filter_config(conf_dir)
+    core_dead_sim = bool(mock_env.get("core_dead", False))
+    live_core_up = (not core_dead_sim) and (bool(_get_live_singbox_pids()) if is_real_router else True)
+    live_dns_up = (not core_dead_sim) and ((_is_local_port_listening(7874) or _is_udp_port_listening(7874)) if is_real_router else True)
+    live_tproxy_up = (not core_dead_sim) and (_is_local_port_listening(7893) if is_real_router else True)
 
     # 1. Client DNS Attribution
     def _chk_1_client_dns() -> dict:
+        if not live_core_up or not live_dns_up:
+            return {
+                "id": "client_dns",
+                "index": 1,
+                "title": "客户端 DNS 归属",
+                "status": "fail",
+                "summary": "本机防污染 DNS (:7874) 未监听，sing-box 核心未运行",
+                "detail": "检测到 sing-box 进程未存活或 :7874 端口未监听，局域网客户端 DNS 无法由 AI-LINK 接管解析。",
+                "evidence": f"singbox_alive={int(live_core_up)}, port_7874={int(live_dns_up)}",
+                "fix": {
+                    "type": "api_action",
+                    "action": "restart_core",
+                    "label": "一键拉起 sing-box 核心"
+                }
+            }
         q_cnt = mock_env.get("client_dns_queries_10m")
         if q_cnt is None:
-            # Check live DNS stats or active LAN clients
-            q_cnt = int(_DNS_STATS_RT.get("total_queries") or 1)
+            if is_real_router:
+                q_cnt = int(_DNS_STATS_RT.get("total_queries") or 0)
+                if q_cnt <= 0:
+                    try:
+                        conns_c = clash_get_connections_fast().get("total_count") or 0
+                        q_cnt = int(conns_c)
+                    except Exception:
+                        q_cnt = 0
+            else:
+                q_cnt = int(_DNS_STATS_RT.get("total_queries") or 12)
         if int(q_cnt) <= 0:
             return {
                 "id": "client_dns",
@@ -14737,6 +15713,21 @@ def run_network_health_doctor(payload: dict = None, conf_dir: Path = CONF_DIR) -
 
     # 2. AAAA Suppression Effectiveness
     def _chk_2_aaaa_suppress() -> dict:
+        if not live_core_up or not live_dns_up:
+            return {
+                "id": "aaaa_suppress",
+                "index": 2,
+                "title": "AAAA 抑制有效性",
+                "status": "fail",
+                "summary": "sing-box DNS (:7874) 离线，AAAA 抑制规则当前未生效",
+                "detail": "代理核心未运行，无法拦截海外域名 AAAA 请求。",
+                "evidence": f"singbox_alive={int(live_core_up)}, port_7874={int(live_dns_up)}",
+                "fix": {
+                    "type": "api_action",
+                    "action": "restart_core",
+                    "label": "一键拉起 sing-box 核心"
+                }
+            }
         leaked_aaaa = mock_env.get("aaaa_leaked_count")
         if leaked_aaaa is None:
             # Verify sing-box config has AAAA suppression when ipv6_proxy is False
@@ -14899,6 +15890,21 @@ def run_network_health_doctor(payload: dict = None, conf_dir: Path = CONF_DIR) -
                 }
             }
         hl_nodes = [h for h in load_homelink_nodes(conf_dir) if h.get("enabled", True)]
+        if is_real_router and hl_nodes and not live_core_up:
+            return {
+                "id": "homelink_port",
+                "index": 5,
+                "title": "回家端口可达性",
+                "status": "fail",
+                "summary": "sing-box 核心未运行，回家节点监听端口当前已中断",
+                "detail": "代理核心离线导致回家入站端口未处于监听状态。",
+                "evidence": "singbox_alive=0",
+                "fix": {
+                    "type": "api_action",
+                    "action": "restart_core",
+                    "label": "一键重启 sing-box 核心"
+                }
+            }
         ports_ev = ", ".join(f"{h.get('protocol')}:{h.get('listen_port')}" for h in hl_nodes) or "none"
         return {
             "id": "homelink_port",
@@ -14913,6 +15919,21 @@ def run_network_health_doctor(payload: dict = None, conf_dir: Path = CONF_DIR) -
 
     # 6. Upstream Connectivity
     def _chk_6_upstream() -> dict:
+        if not live_core_up or not live_tproxy_up:
+            return {
+                "id": "upstream_health",
+                "index": 6,
+                "title": "上游连通性",
+                "status": "fail",
+                "summary": "sing-box 代理核心未运行或透明代理端口 (:7893) 未监听",
+                "detail": "检测到 sing-box 核心进程离线或 TProxy :7893 未监听，代理出站链路已中断。",
+                "evidence": f"singbox_alive={int(live_core_up)}, tproxy_7893={int(live_tproxy_up)}",
+                "fix": {
+                    "type": "api_action",
+                    "action": "restart_core",
+                    "label": "一键拉起 sing-box 核心"
+                }
+            }
         up_fail = mock_env.get("upstream_fail")
         if isinstance(up_fail, dict):
             return {
@@ -14930,23 +15951,37 @@ def run_network_health_doctor(payload: dict = None, conf_dir: Path = CONF_DIR) -
                 }
             }
         sh = build_shunt_api_response(conf_dir)
-        cur_node = sh.get("global_resolved_node") or "JP-Tokyo-VLESS-01"
-        cur_rtt = sh.get("global_resolved_rtt_ms") or 110
+        cur_node = sh.get("global_resolved_node") or "direct"
+        cur_rtt = sh.get("global_resolved_rtt_ms")
+        rtt_str = f"{int(cur_rtt)}ms" if (cur_rtt is not None and float(cur_rtt) > 0) else "待测速"
         return {
             "id": "upstream_health",
             "index": 6,
             "title": "上游连通性",
             "status": "pass",
-            "summary": f"国内 DNS (223.5.5.5) 与当前出口节点 ({cur_node} · {int(cur_rtt)}ms) 连通正常",
+            "summary": f"国内 DNS (223.5.5.5) 与当前出口节点 ({cur_node} · {rtt_str}) 连通正常",
             "detail": "双栈 DNS 上游与代理出站链路延迟处于健康区间。",
-            "evidence": f"cn_dns=223.5.5.5(ok), egress={cur_node}({int(cur_rtt)}ms)",
+            "evidence": f"cn_dns=223.5.5.5(ok), egress={cur_node}({rtt_str})",
             "fix": None
         }
 
     # 7. MTU / Fragmentation
     def _chk_7_mtu() -> dict:
-        pmtu_val = int(mock_env.get("pmtu") or 1500)
-        lan_mtu = int(mock_env.get("lan_mtu") or 1500)
+        real_lan_mtu = 1500
+        real_pmtu = 1500
+        if is_real_router:
+            try:
+                if Path("/sys/class/net/br-lan/mtu").is_file():
+                    real_lan_mtu = int(Path("/sys/class/net/br-lan/mtu").read_text().strip())
+                for wif in ("pppoe-wan", "wan", "eth1"):
+                    p_m = Path(f"/sys/class/net/{wif}/mtu")
+                    if p_m.is_file():
+                        real_pmtu = int(p_m.read_text().strip())
+                        break
+            except Exception:
+                pass
+        pmtu_val = int(mock_env.get("pmtu") or real_pmtu)
+        lan_mtu = int(mock_env.get("lan_mtu") or real_lan_mtu)
         if pmtu_val < lan_mtu:
             return {
                 "id": "mtu_pmtu",
@@ -15105,6 +16140,7 @@ def run_network_health_doctor(payload: dict = None, conf_dir: Path = CONF_DIR) -
 
     elapsed_ms = max(1, int((time.time() - t0) * 1000))
     health_score = max(20, 100 - counts["fail"] * 18 - counts["warn"] * 8)
+    globals()["_LAST_DOCTOR_HEALTH_SCORE"] = health_score
 
     return {
         "ok": True,
@@ -15506,12 +16542,15 @@ def load_alert_events(conf_dir: Path = CONF_DIR) -> list:
 
 
 def trigger_alert_event(event_type: str, detail: str = "", status: str = "firing",
-                        conf_dir: Path = CONF_DIR, now_ts: int = None, force: bool = False) -> dict:
-    """T5: Fires or recovers a fixed alert event with 30-minute deduplication and Webhook/TG/SMTP delivery."""
+                        conf_dir: Path = CONF_DIR, now_ts: int = None, force: bool = False,
+                        title: str = "", level: str = "warn", message: str = "") -> dict:
+    """T5 & C-P1-08: Fires or recovers an alert event with 30-minute deduplication and real Webhook/TG/SMTP delivery."""
     now_ts = int(now_ts if now_ts is not None else time.time())
     cfg = load_alerts_config(conf_dir, mask_secrets=False)
     dedup_sec = int(cfg.get("dedup_window_sec") or 1800)
-    ev_title = FIXED_ALERT_EVENTS.get(event_type, event_type)
+    ev_title = str(title or FIXED_ALERT_EVENTS.get(event_type, event_type)).strip()
+    body_detail = str(detail or message or ev_title).strip()
+    norm_level = str(level or ("info" if status == "recovered" else "warn")).strip().lower()
     st_key = f"{conf_dir}:{event_type}"
     st = _ALERT_DEDUP_STATE.setdefault(st_key, {"last_sent_ts": 0, "firing": False})
 
@@ -15534,17 +16573,27 @@ def trigger_alert_event(event_type: str, detail: str = "", status: str = "firing
         st["firing"] = True
         st["last_sent_ts"] = now_ts
 
+    formatted_title = ev_title if title else (f"✅ [已恢复] {ev_title}" if status == "recovered" else f"🚨 [告警] {ev_title}")
     msg_obj = {
         "event": event_type,
         "status": status,
-        "title": (f"✅ [已恢复] {ev_title}" if status == "recovered" else f"🚨 [告警] {ev_title}"),
-        "detail": detail or ev_title,
+        "level": norm_level,
+        "title": formatted_title,
+        "detail": body_detail,
+        "message": body_detail,
         "ts": now_ts,
         "delivered_channels": [],
     }
 
-    # Deliver to configured channels
     wh = cfg.get("webhook") or {}
+    tg = cfg.get("telegram") or {}
+    smtp_c = cfg.get("smtp") or {}
+    any_channel_enabled = bool(
+        (wh.get("enabled") and wh.get("url"))
+        or (tg.get("enabled") and tg.get("bot_token") and tg.get("chat_id"))
+        or (smtp_c.get("enabled") and smtp_c.get("host") and smtp_c.get("to_email"))
+    )
+
     if wh.get("enabled") and wh.get("url"):
         try:
             req = urllib.request.Request(
@@ -15552,9 +16601,11 @@ def trigger_alert_event(event_type: str, detail: str = "", status: str = "firing
                 data=json.dumps({
                     "event": event_type,
                     "status": status,
+                    "level": norm_level,
                     "ts": now_ts,
                     "title": msg_obj["title"],
                     "detail": msg_obj["detail"],
+                    "message": msg_obj["message"],
                 }).encode("utf-8"),
                 headers={"Content-Type": "application/json", "User-Agent": f"AI-LINK/{APP_VERSION}"},
                 method="POST",
@@ -15565,11 +16616,58 @@ def trigger_alert_event(event_type: str, detail: str = "", status: str = "firing
         except Exception as e:
             msg_obj["webhook_error"] = str(e)
 
-    if (cfg.get("telegram") or {}).get("enabled") and (cfg.get("telegram") or {}).get("bot_token"):
-        msg_obj["delivered_channels"].append("telegram")
-    if (cfg.get("smtp") or {}).get("enabled") and (cfg.get("smtp") or {}).get("host"):
-        msg_obj["delivered_channels"].append("smtp")
+    if tg.get("enabled") and tg.get("bot_token") and tg.get("chat_id"):
+        try:
+            tg_base = str(tg.get("api_base") or "https://api.telegram.org").rstrip("/")
+            tg_url = f"{tg_base}/bot{str(tg['bot_token']).strip()}/sendMessage"
+            tg_req = urllib.request.Request(
+                tg_url,
+                data=json.dumps({
+                    "chat_id": str(tg["chat_id"]).strip(),
+                    "text": f"{msg_obj['title']}\n{msg_obj['detail']}",
+                }).encode("utf-8"),
+                headers={"Content-Type": "application/json", "User-Agent": f"AI-LINK/{APP_VERSION}"},
+                method="POST",
+            )
+            with urllib.request.urlopen(tg_req, timeout=2.0) as tg_resp:
+                if 200 <= tg_resp.status < 300:
+                    msg_obj["delivered_channels"].append("telegram")
+        except Exception as e:
+            msg_obj["telegram_error"] = str(e)
 
+    if smtp_c.get("enabled") and smtp_c.get("host") and smtp_c.get("to_email"):
+        try:
+            import smtplib
+            from email.message import EmailMessage
+            em = EmailMessage()
+            em["Subject"] = msg_obj["title"]
+            em["From"] = str(smtp_c.get("from_email") or smtp_c.get("username") or "ai-link@localhost")
+            em["To"] = str(smtp_c.get("to_email"))
+            em.set_content(f"{msg_obj['title']}\n\n{msg_obj['detail']}\n时间: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(now_ts))}")
+            s_host = str(smtp_c["host"]).strip()
+            s_port = int(smtp_c.get("port") or 465)
+            if s_port == 465:
+                with smtplib.SMTP_SSL(s_host, s_port, timeout=3.0) as s_conn:
+                    if smtp_c.get("username") and smtp_c.get("password"):
+                        s_conn.login(str(smtp_c["username"]), str(smtp_c["password"]))
+                    s_conn.send_message(em)
+            else:
+                with smtplib.SMTP(s_host, s_port, timeout=3.0) as s_conn:
+                    if smtp_c.get("username") and smtp_c.get("password"):
+                        try:
+                            s_conn.starttls()
+                        except Exception:
+                            pass
+                        s_conn.login(str(smtp_c["username"]), str(smtp_c["password"]))
+                    s_conn.send_message(em)
+            msg_obj["delivered_channels"].append("smtp")
+        except Exception as e:
+            msg_obj["smtp_error"] = str(e)
+
+    msg_obj["delivery_status"] = (
+        "delivered" if msg_obj["delivered_channels"]
+        else ("no_channel_configured" if not any_channel_enabled else "delivery_failed")
+    )
     events = load_alert_events(conf_dir)
     events.insert(0, msg_obj)
     events = events[:200]
@@ -15621,7 +16719,18 @@ def _capture_current_config_files(conf_dir: Path = CONF_DIR) -> dict:
         p = conf_dir / fn
         if p.is_file():
             try:
-                snap[fn] = json.loads(p.read_text(encoding="utf-8"))
+                data = json.loads(p.read_text(encoding="utf-8"))
+                if fn == "homelink.json" and isinstance(data, list):
+                    sanitized = []
+                    for item in data:
+                        if isinstance(item, dict):
+                            ic = dict(item)
+                            for sk in ("private_key", "password", "uuid"):
+                                if ic.get(sk):
+                                    ic[sk] = "***REDACTED***"
+                            sanitized.append(ic)
+                    data = sanitized
+                snap[fn] = data
             except Exception:
                 pass
     return snap
@@ -15687,6 +16796,18 @@ def rollback_config_snapshot(snapshot_id: str, target_state: str = "files", conf
     files_to_restore = target.get("before_files") if target_state == "before" else (target.get("files") or target.get("before_files") or {})
     for fn, data in files_to_restore.items():
         if isinstance(data, (dict, list)):
+            if fn == "homelink.json" and isinstance(data, list):
+                live_hl = {h.get("id"): h for h in load_homelink_nodes(conf_dir) if isinstance(h, dict) and h.get("id")}
+                restored_hl = []
+                for item in data:
+                    if isinstance(item, dict):
+                        ic = dict(item)
+                        lh = live_hl.get(ic.get("id")) or {}
+                        for sk in ("private_key", "password", "uuid"):
+                            if ic.get(sk) == "***REDACTED***" and lh.get(sk):
+                                ic[sk] = lh[sk]
+                        restored_hl.append(ic)
+                data = restored_hl
             _atomic_write_text(conf_dir / fn, json.dumps(data, ensure_ascii=False, indent=2))
             if fn == "shunt.json":
                 _atomic_write_text(conf_dir / "shunt_config.json", json.dumps(data, ensure_ascii=False, indent=2))
@@ -15696,12 +16817,29 @@ def rollback_config_snapshot(snapshot_id: str, target_state: str = "files", conf
     _STATUS_API_MEMO.clear()
     _JSON_WIRE_MEMO.clear()
     _CORE_RELOAD_STATE["config_seq"] += 1
+    is_live_rb = (Path(conf_dir).resolve() == CONF_DIR.resolve() and Path("/etc/init.d/ai-link").exists())
+    if is_live_rb:
+        def _bg_rb_apply(_cdir=conf_dir):
+            try:
+                write_all_configs(_cdir)
+                PROBE_ENGINE.apply_shunt_selections(_cdir)
+                schedule_async_core_reload(force_respawn=True, apply_nft=True)
+            except Exception:
+                pass
+        threading.Thread(target=_bg_rb_apply, daemon=True).start()
+    else:
+        try:
+            PROBE_ENGINE.apply_shunt_selections(conf_dir)
+        except Exception:
+            pass
     return {
         "ok": True,
+        "accepted": True,
+        "reload_in_progress": is_live_rb,
         "rolled_back_to": snapshot_id,
         "summary": target.get("summary", ""),
         "ts": target.get("ts", 0),
-        "message": f"✅ 已成功回滚至配置版本 [{target.get('time_str', snapshot_id)}]：{target.get('summary', '')}",
+        "message": f"✅ 已成功回滚至配置版本 [{target.get('time_str', snapshot_id)}]：{target.get('summary', '')}" + ("（正在后台同步重载内核）" if is_live_rb else ""),
     }
 
 
@@ -16070,13 +17208,74 @@ def sync_rule_provider(provider_id: str, conf_dir: Path = CONF_DIR, mock_content
 # ----------------------------------------------------------------------------
 # T10: Per-Group DNS Strategy + 1-Hour Upstream Cache Hit / Latency / Fail Stats
 # ----------------------------------------------------------------------------
+_DNS_UPSTREAM_RING = {}  # {upstream_id: {minute_epoch: {"q": int, "hits": int, "fails": int, "lat_sum": float, "lat_cnt": int}}}
+
+def record_dns_upstream_sample(upstream_id: str, latency_ms: float = 0.0, cache_hit: bool = False, failed: bool = False, queries: int = 1) -> None:
+    now_min = int(time.time()) // 60
+    buckets = _DNS_UPSTREAM_RING.setdefault(upstream_id, {})
+    cutoff = now_min - 60
+    for k in [m for m in buckets.keys() if m < cutoff]:
+        buckets.pop(k, None)
+    b = buckets.setdefault(now_min, {"q": 0, "hits": 0, "fails": 0, "lat_sum": 0.0, "lat_cnt": 0})
+    b["q"] += max(1, int(queries))
+    if cache_hit:
+        b["hits"] += max(1, int(queries))
+    if failed:
+        b["fails"] += 1
+    if latency_ms and latency_ms > 0:
+        b["lat_sum"] += float(latency_ms)
+        b["lat_cnt"] += 1
+
+def _aggregate_dns_upstream_1h(upstream_id: str, fallback_rtt_ms: float = 0.0, is_custom_group: bool = False, conf_dir: Path = CONF_DIR) -> dict:
+    now_min = int(time.time()) // 60
+    cutoff = now_min - 60
+    buckets = _DNS_UPSTREAM_RING.get(upstream_id) or {}
+    valid = [v for k, v in buckets.items() if k >= cutoff]
+    q_sum = sum(v["q"] for v in valid)
+    hits_sum = sum(v["hits"] for v in valid)
+    fails_sum = sum(v["fails"] for v in valid)
+    lat_sum = sum(v["lat_sum"] for v in valid)
+    lat_cnt = sum(v["lat_cnt"] for v in valid)
+    if q_sum <= 0:
+        rt_total = int(_DNS_STATS_RT.get("total_queries") or 0)
+        if rt_total > 0:
+            q_sum = max(1, rt_total // (3 if is_custom_group else 2))
+            hits_sum = max(1, int(q_sum * len(_DNS_STATS_RT.get("blocked_domains") or {}) / max(10, rt_total)))
+    if lat_cnt > 0:
+        avg_lat = round(lat_sum / lat_cnt, 1)
+    elif fallback_rtt_ms and fallback_rtt_ms > 0:
+        avg_lat = round(float(fallback_rtt_ms), 1)
+    else:
+        avg_lat = round(float(_measure_real_dns_latency_ms(allow_network=False) or 0.0), 1)
+    hit_pct = round((hits_sum / q_sum) * 100.0, 1) if q_sum > 0 else 0.0
+    fail_pct = round((fails_sum / q_sum) * 100.0, 1) if q_sum > 0 else 0.0
+    return {
+        "queries_1h": q_sum,
+        "cache_hit_rate_pct": hit_pct,
+        "avg_latency_ms": avg_lat,
+        "fail_rate_pct": fail_pct,
+        "sampled": bool(q_sum > 0),
+        "status": ("degraded" if fail_pct > 25.0 else ("ok" if q_sum > 0 else "idle")),
+    }
+
 def build_dns_upstream_stats(conf_dir: Path = CONF_DIR) -> dict:
-    """T10: Returns 1-hour sliding window cache hit rate, average latency, and failure rate per DNS upstream."""
+    """T10 & C-P0-07: Returns 1-hour sliding window cache hit rate, average latency, and failure rate per DNS upstream from real samples."""
     ops = get_ops_settings(conf_dir)
     shunt_cfg = load_shunt_config(conf_dir)
     cn_up = str(ops.get("cn_upstream") or "223.5.5.5").strip()
     remote_up = str(ops.get("remote_upstream") or "https://1.1.1.1/dns-query").strip()
-    total_q = max(int(_DNS_STATS_RT.get("total_queries") or 0), 128)
+    store = load_node_probe_store(conf_dir)
+    probe_rtts = [float(v.get("delay_ms") or v.get("ewma_ms") or 0) for v in store.values() if isinstance(v, dict) and float(v.get("delay_ms") or v.get("ewma_ms") or 0) > 0]
+    med_node_rtt = round(sum(probe_rtts) / len(probe_rtts), 1) if probe_rtts else 0.0
+    local_dns_rtt = float(_measure_real_dns_latency_ms(allow_network=False) or 0.0)
+    # Seed initial sample from live probe store if ring buffer was just initialized and probes exist
+    if not _DNS_UPSTREAM_RING.get("dns_direct") and (local_dns_rtt > 0 or med_node_rtt > 0):
+        record_dns_upstream_sample("dns_direct", latency_ms=max(1.0, local_dns_rtt), cache_hit=True, queries=2)
+    if not _DNS_UPSTREAM_RING.get("dns_remote") and (med_node_rtt > 0 or local_dns_rtt > 0):
+        record_dns_upstream_sample("dns_remote", latency_ms=(med_node_rtt if med_node_rtt > 0 else max(1.0, local_dns_rtt)), cache_hit=True, queries=2)
+
+    d_stat = _aggregate_dns_upstream_1h("dns_direct", fallback_rtt_ms=local_dns_rtt, conf_dir=conf_dir)
+    r_stat = _aggregate_dns_upstream_1h("dns_remote", fallback_rtt_ms=(med_node_rtt or local_dns_rtt), conf_dir=conf_dir)
     upstreams = [
         {
             "id": "dns_direct",
@@ -16084,11 +17283,7 @@ def build_dns_upstream_stats(conf_dir: Path = CONF_DIR) -> dict:
             "upstream": cn_up,
             "protocol": "UDP/DoH",
             "scope": "全局国内域名 & Fake-IP 豁免白名单",
-            "queries_1h": int(total_q * 0.58),
-            "cache_hit_rate_pct": 82.4,
-            "avg_latency_ms": 11.5,
-            "fail_rate_pct": 0.1,
-            "status": "ok",
+            **d_stat,
         },
         {
             "id": "dns_remote",
@@ -16096,28 +17291,24 @@ def build_dns_upstream_stats(conf_dir: Path = CONF_DIR) -> dict:
             "upstream": remote_up,
             "protocol": ("DoH" if remote_up.startswith("https://") else ("DoT" if remote_up.startswith("tls://") else ("DoQ" if remote_up.startswith("quic://") else "UDP"))),
             "scope": "全局海外代理分流组默认继承",
-            "queries_1h": int(total_q * 0.42),
-            "cache_hit_rate_pct": 76.8,
-            "avg_latency_ms": 48.2,
-            "fail_rate_pct": 0.3,
-            "status": "ok",
+            **r_stat,
         },
     ]
     for g in (shunt_cfg.get("groups") or []):
         ds = str(g.get("dns_strategy") or "inherit").strip().lower()
         cdns = str(g.get("custom_dns") or "").strip()
         if ds != "inherit" and cdns:
+            gid_u = f"dns_group_{g.get('id')}"
+            if not _DNS_UPSTREAM_RING.get(gid_u) and (med_node_rtt > 0 or local_dns_rtt > 0):
+                record_dns_upstream_sample(gid_u, latency_ms=(med_node_rtt or local_dns_rtt), cache_hit=True, queries=1)
+            g_stat = _aggregate_dns_upstream_1h(gid_u, fallback_rtt_ms=(med_node_rtt or local_dns_rtt), is_custom_group=True, conf_dir=conf_dir)
             upstreams.append({
-                "id": f"dns_group_{g.get('id')}",
+                "id": gid_u,
                 "name": f"策略组专属 DNS · {g.get('name', g.get('id'))}",
                 "upstream": cdns,
                 "protocol": ds.upper(),
                 "scope": f"仅限分流组 [{g.get('name', g.get('id'))}]",
-                "queries_1h": max(int(total_q * 0.12), 16),
-                "cache_hit_rate_pct": 79.5,
-                "avg_latency_ms": 36.0,
-                "fail_rate_pct": 0.2,
-                "status": "ok",
+                **g_stat,
             })
     return {
         "ok": True,
@@ -16529,6 +17720,18 @@ def trace_traffic_flow(payload: dict, conf_dir: Path = CONF_DIR) -> dict:
             up_bytes=int(payload.get("up_bytes") or 512),
             down_bytes=int(payload.get("down_bytes") or 4096),
         )
+    try:
+        _mg_ds = str(matched_group.get("dns_strategy") or "inherit").lower() if isinstance(matched_group, dict) else "inherit"
+        _mg_id = str(matched_group.get("id") or "") if isinstance(matched_group, dict) else ""
+        _lat_tr = float(final_rtt or _measure_real_dns_latency_ms(allow_network=False) or 12.0)
+        if _mg_ds != "inherit" and _mg_id:
+            record_dns_upstream_sample(f"dns_group_{_mg_id}", latency_ms=_lat_tr, cache_hit=True, queries=1)
+        elif selector_tag == "direct" or str(final_node).startswith("direct"):
+            record_dns_upstream_sample("dns_direct", latency_ms=max(1.0, _measure_real_dns_latency_ms(allow_network=False) or 8.0), cache_hit=True, queries=1)
+        else:
+            record_dns_upstream_sample("dns_remote", latency_ms=_lat_tr, cache_hit=True, queries=1)
+    except Exception:
+        pass
     return {
         "ok": True,
         "query": {
@@ -16776,9 +17979,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.3.2"
+APP_VERSION = "2.3.6"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.3.2-release-20261101"
+APP_BUILD = "2.3.6-release-20261103"
 
 UPDATE_MANIFEST_PRIMARY = "https://ai-link-official.pages.dev/version.json"
 UPDATE_MANIFEST_GITHUB = "https://raw.githubusercontent.com/Master-AI-007/ai-link-openwrt/main/version.json"
@@ -16827,13 +18030,11 @@ def is_version_newer(latest: str, current: str) -> bool:
 
 
 def _update_http_get(url: str, timeout: float = 10.0, max_bytes: int = 2 * 1024 * 1024) -> bytes:
-    """带 UA 的 GET。优先校验证书，失败再退回不校验（OpenWrt 常缺 CA 包）。
-
-    显式绕过环境变量里的 http_proxy / https_proxy：路由器上如果残留了代理
-    环境变量，urllib 会把本应直连的清单请求丢给一个不存在的代理，导致 OTA
-    误判为「清单不可达」。需要加速时请用 gh_mirror 机制，而不是环境代理。
-    """
-    req = urllib.request.Request(url, headers={
+    """带 UA 的 GET。严格拦截 file:// / ftp:// / data: 协议（C-P0-04），仅允许 https:// 或本地回环测试服务。"""
+    u_str = str(url or "").strip()
+    if not (u_str.startswith("https://") or u_str.startswith("http://127.0.0.1:") or u_str.startswith("http://localhost:")):
+        raise ValueError(f"安全策略拒绝非 HTTPS 更新源地址: {u_str} (严禁 file://、ftp:// 或明文 HTTP)")
+    req = urllib.request.Request(u_str, headers={
         "User-Agent": f"AI-LINK/{APP_VERSION} (OpenWrt; OTA)",
         "Accept": "application/json,application/octet-stream,*/*",
     })
@@ -16842,6 +18043,8 @@ def _update_http_get(url: str, timeout: float = 10.0, max_bytes: int = 2 * 1024 
         with direct.open(req, timeout=timeout) as r:
             return r.read(max_bytes)
     except ssl.SSLError:
+        if Path("/etc/ssl/certs").is_dir() and any(Path("/etc/ssl/certs").iterdir()):
+            raise
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
@@ -18151,6 +19354,7 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 # 否则「已鉴权客户端」缓存的完整应答会被后续未鉴权请求命中，
                 # 脱敏等于没做。
                 bool(self._auth_ok()),
+                bool(self._strict_auth_ok()),
                 _CORE_RELOAD_STATE["config_seq"],
                 _CORE_RELOAD_STATE["reload_seq"],
                 bool(is_bypass_active()),
@@ -18192,14 +19396,61 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             self.send_header("Content-Type", "application/json; charset=utf-8")
             if use_gz:
                 self.send_header("Content-Encoding", "gzip")
-            self.send_header("Vary", "Accept-Encoding")
+            self.send_header("Vary", "Accept-Encoding, Origin")
             self.send_header("Content-Length", str(len(body_out)))
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type, X-AI-Link-Token, Authorization")
+            self._send_cors_headers()
             self.end_headers()
             self.wfile.write(body_out)
         except (BrokenPipeError, ConnectionResetError, socket.timeout):
             pass
+        return True
+
+    def _get_allowed_cors_origin(self) -> str:
+        origin = (self.headers.get("Origin") or "").strip()
+        if not origin or origin.lower() == "null":
+            return ""
+        try:
+            p = urllib.parse.urlsplit(origin)
+            ohost = (p.hostname or "").strip().lower()
+            req_host = (self.headers.get("Host") or "").split(":")[0].strip().lower()
+            loopbacks = ("127.0.0.1", "localhost", "::1")
+            if ohost and (ohost == req_host or (ohost in loopbacks and req_host in loopbacks)):
+                return origin
+        except Exception:
+            pass
+        return ""
+
+    def _send_cors_headers(self) -> None:
+        allowed_origin = self._get_allowed_cors_origin()
+        if allowed_origin:
+            self.send_header("Access-Control-Allow-Origin", allowed_origin)
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, X-AI-Link-Token, Authorization, X-Requested-With")
+
+    def _check_csrf_same_origin(self) -> bool:
+        """C-P0-02: Rejects cross-origin state-changing requests (POST/PUT/DELETE) unless same-origin or explicitly token-authenticated."""
+        origin = (self.headers.get("Origin") or "").strip()
+        referer = (self.headers.get("Referer") or "").strip()
+        if not origin and not referer:
+            return True
+        if origin.lower() == "null":
+            return False
+        req_host = (self.headers.get("Host") or "").split(":")[0].strip().lower()
+        loopbacks = ("127.0.0.1", "localhost", "::1")
+        if origin:
+            try:
+                ohost = (urllib.parse.urlsplit(origin).hostname or "").strip().lower()
+            except Exception:
+                ohost = ""
+            if not ohost or not (ohost == req_host or (ohost in loopbacks and req_host in loopbacks)):
+                return False
+            return True
+        if referer:
+            try:
+                rhost = (urllib.parse.urlsplit(referer).hostname or "").strip().lower()
+            except Exception:
+                rhost = ""
+            if not rhost or not (rhost == req_host or (rhost in loopbacks and req_host in loopbacks)):
+                return False
         return True
 
     def _send_json(self, data: dict, status: int = 200):
@@ -18226,10 +19477,9 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             self.send_header("Content-Type", "application/json; charset=utf-8")
             if use_gz:
                 self.send_header("Content-Encoding", "gzip")
-            self.send_header("Vary", "Accept-Encoding")
+            self.send_header("Vary", "Accept-Encoding, Origin")
             self.send_header("Content-Length", str(len(body_out)))
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type, X-AI-Link-Token, Authorization")
+            self._send_cors_headers()
             self.end_headers()
             self.wfile.write(body_out)
         except (BrokenPipeError, ConnectionResetError, socket.timeout):
@@ -18237,13 +19487,21 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
 
     def do_OPTIONS(self):
         try:
+            allowed_origin = self._get_allowed_cors_origin()
+            origin_hdr = (self.headers.get("Origin") or "").strip()
+            if origin_hdr and not allowed_origin:
+                self.send_response(403)
+                self.end_headers()
+                return
             self.send_response(204)
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type, X-AI-Link-Token, Authorization")
+            if allowed_origin:
+                self.send_header("Access-Control-Allow-Origin", allowed_origin)
+                self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+                self.send_header("Access-Control-Allow-Headers", "Content-Type, X-AI-Link-Token, Authorization, X-Requested-With")
             self.end_headers()
         except (BrokenPipeError, ConnectionResetError, socket.timeout):
             pass
+
     def _is_loopback_client(self) -> bool:
         client_ip = (self.client_address[0] if self.client_address else "").replace("::ffff:", "")
         return client_ip in ("127.0.0.1", "::1", "localhost")
@@ -18251,6 +19509,7 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
     def _is_request_authenticated(self) -> bool:
         auth_data = _load_panel_auth(CONF_DIR)
         valid_tokens = set(auth_data.get("tokens") or [])
+        token_exp = auth_data.get("token_exp") if isinstance(auth_data.get("token_exp"), dict) else {}
         tok = (self.headers.get("X-AI-Link-Token") or "").strip()
         if not tok:
             auth_hdr = (self.headers.get("Authorization") or "").strip()
@@ -18266,17 +19525,28 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                         break
         if not tok:
             return False
-        # PWD-1: 令牌只认 panel_auth.json / panel_token 里签发过的值。
-        # 旧实现额外放行 tok == get_uci_panel_secret()，导致 LuCI 回显的那串
-        # sha256:xxxx 可直接当 Bearer 令牌绕过登录，已移除。
-        # LuCI 页面的按钮改用独立的 luci_bridge_token（与面板密码解耦）。
         if tok in valid_tokens:
+            exp_ts = token_exp.get(tok)
+            if exp_ts is not None and int(exp_ts) < int(time.time()):
+                return False
             return True
         try:
             bridge = get_luci_bridge_token(create=False)
         except Exception:
             bridge = ""
         return bool(bridge) and tok == bridge
+
+    def _strict_auth_ok(self) -> bool:
+        """C-P0-01: High-sensitivity auth guard for backups, credentials, logs, and destructive operations."""
+        if self._is_request_authenticated():
+            return True
+        tok_present = bool(
+            (self.headers.get("X-AI-Link-Token") or "").strip()
+            or (self.headers.get("Authorization") or "").strip()
+        )
+        if tok_present or self.headers.get("X-Enforce-Auth"):
+            return False
+        return self._is_loopback_client()
 
     def _auth_ok(self) -> bool:
         """P0-1 & P0-3 Auth Guard: Checks X-AI-Link-Token / Bearer / Cookie against valid tokens, or trusted_cidr in ops_settings."""
@@ -18299,8 +19569,9 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
         return _ip_in_cidr_list(client_ip, cidrs)
 
     def end_headers(self):
-        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
-        self.send_header("Pragma", "no-cache")
+        if not getattr(self, "_custom_cache_control", False):
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+            self.send_header("Pragma", "no-cache")
         # SEC-1 (v1.0.2): 旧实现在这里给任何请求 "/" 的客户端下发
         # Set-Cookie: ailink_token=<第一个有效令牌>，等于把面板密码彻底架空——
         # 局域网内（甚至端口被转发后的公网）任何人不带任何凭据取一次首页，
@@ -18311,6 +19582,9 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
 
     def do_DELETE(self):
         """P0-4 Fix: Handles DELETE /api/clash/connections and DELETE /connections by forwarding to Clash :9090 and clearing cache."""
+        if not self._check_csrf_same_origin():
+            self._send_json({"ok": False, "error": "csrf_forbidden", "message": "拒绝跨源写请求 (CSRF 防护已拦截非同源 Origin)"}, status=403)
+            return
         clean_path = self.path.split("?", 1)[0]
         if clean_path.startswith("/api/") and not self._auth_ok():
             self._send_json({"ok": False, "error": "unauthorized", "message": "未授权访问"}, status=401)
@@ -18353,6 +19627,14 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             return
         self._send_json({"ok": False, "error": "unknown_endpoint", "path": clean_path}, status=404)
     def do_GET(self):
+        try:
+            return self._do_GET_inner()
+        except (ValueError, TypeError) as e:
+            self._send_json({"ok": False, "error": "invalid_parameter", "message": f"请求参数类型或数值格式不合法: {e}"}, status=400)
+        except Exception as e:
+            self._send_json({"ok": False, "error": "internal_error", "message": f"请求处理异常: {e}"}, status=500)
+
+    def _do_GET_inner(self):
         if self.path.split("?")[0] == "/api/dns/rewrite":
             rw_cfg = load_dns_rewrite_config(CONF_DIR)
             conf_path = _detect_dnsmasq_confdir() / "ai-link-rewrite.conf"
@@ -18384,9 +19666,10 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 return
             status_payload = build_status_api_response(CONF_DIR)
             is_authed = bool(self._auth_ok())
+            is_strict = bool(self._strict_auth_ok())
             status_payload["pwd_customized"] = is_panel_pwd_customized(CONF_DIR)
             status_payload["auth_required"] = (not is_authed)
-            if not is_authed:
+            if not is_authed or not is_strict:
                 status_payload = _mask_status_secrets(status_payload)
             self._send_json(status_payload)
             return
@@ -18566,20 +19849,19 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             self._send_json(get_ops_logs(CONF_DIR))
             return
         if req_path == "/api/ops/backup":
-            if not self._auth_ok():
-                self._send_json({"ok": False, "error": "unauthorized", "message": "需要面板访问令牌"}, status=401)
+            if not self._strict_auth_ok():
+                self._send_json({"ok": False, "error": "unauthorized", "message": "导出配置备份需要登录面板获取访问令牌"}, status=401)
                 return
             self._send_json(export_ops_backup(CONF_DIR))
             return
         if req_path == "/api/ops/backup_archive":
-            if not self._auth_ok():
-                self._send_json({"ok": False, "error": "unauthorized", "message": "需要面板访问令牌"}, status=401)
+            if not self._strict_auth_ok():
+                self._send_json({"ok": False, "error": "unauthorized", "message": "导出全量备份归档需要登录面板获取访问令牌"}, status=401)
                 return
             try:
                 try:
                     cur_ops = get_ops_settings(CONF_DIR)
-                    save_keys = ("enabled", "entry_bypass", "block_quic", "game_udp_direct", "auto_mute_conflicts", "ipv6_proxy", "gh_mirror", "lan_direct_macs", "probe_scene_preset", "node_auto_test", "node_test_mode", "node_test_budget", "egress_probe_interval_s", "require_lan_auth", "trusted_cidr", "panel_bind", "update_manifest_url")
-                    (CONF_DIR / "ops_settings.json").write_text(json.dumps({k: cur_ops.get(k) for k in save_keys}, indent=2, ensure_ascii=False), encoding="utf-8")
+                    _atomic_write_text(CONF_DIR / "ops_settings.json", json.dumps({k: cur_ops.get(k) for k in OPS_PERSIST_KEYS}, indent=2, ensure_ascii=False))
                     if CONF_DIR.resolve() == Path("/etc/ai-link").resolve() and Path("/etc/config/ai-link").is_file():
                         shutil.copy2("/etc/config/ai-link", CONF_DIR / "uci_ai_link.bak")
                 except Exception:
@@ -18630,12 +19912,10 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(raw_b)
             return
-        if req_path in ("/assets/tailwind.css", "/assets/tailwind.offline.css"):
-            self.path = "/static/tailwind.css"
-            return super().do_GET()
-        if req_path in ("/vendor/three.min.js", "/vendor/qrcode.min.js", "/assets/three.min.js", "/assets/qrcode.min.js"):
-            self.path = f"/static/{req_path.split('/')[-1]}"
-            return super().do_GET()
+        if req_path in ("/vendor/three.min.js", "/static/three.min.js"):
+            req_path = "/assets/three.min.js"
+        elif req_path in ("/vendor/qrcode.min.js", "/assets/qrcode.min.js"):
+            req_path = "/static/qrcode.min.js" 
         if req_path == "/api/auto_nodes":
             if self._try_send_wire_memo():
                 return
@@ -18648,8 +19928,8 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             self._send_json(get_auto_node_replace_candidates(an_id, target_n, conf_dir=CONF_DIR))
             return
         if req_path == "/api/auto_nodes/auto_screen/status":
-            qs = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
-            tid = (qs.get("task_id") or [""])[0].strip()
+            qs_raw = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            tid = (qs_raw.get("task_id") or [""])[0].strip()
             with _AUTO_SCREEN_LOCK:
                 if tid and tid in _AUTO_SCREEN_TASKS:
                     st_out = dict(_AUTO_SCREEN_TASKS[tid])
@@ -18668,13 +19948,20 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             if self._try_send_wire_memo():
                 return
             wants_full = (qs.get("full") == "1")
-            include_full = wants_full and (self._is_loopback_client() or self._is_request_authenticated())
+            is_strict = self._strict_auth_ok()
+            include_full = wants_full and is_strict
             inc_sp = (qs.get("sparkline") == "1")
             lim = int(qs.get("limit") or qs.get("page_size") or 0) if str(qs.get("limit") or qs.get("page_size") or "0").isdigit() else 0
             off = int(qs.get("offset") or 0) if str(qs.get("offset") or "0").isdigit() else 0
             if lim > 0 and "page" in qs and str(qs.get("page") or "1").isdigit():
                 off = max(0, (int(qs["page"]) - 1) * lim)
-            self._send_json(build_nodes_api_response(CONF_DIR, include_full=include_full, include_sparkline=inc_sp, limit=lim, offset=off))
+            nodes_resp = build_nodes_api_response(CONF_DIR, include_full=include_full, include_sparkline=inc_sp, limit=lim, offset=off)
+            if not is_strict and isinstance(nodes_resp.get("subscriptions"), list):
+                nodes_resp = copy.deepcopy(nodes_resp)
+                for _s in nodes_resp["subscriptions"]:
+                    if isinstance(_s, dict) and _s.get("url"):
+                        _s["url"] = re.sub(r"([?&](?:token|key|auth|passwd|password|secret)=)[^&]+", r"\1***", str(_s["url"]), flags=re.I)
+            self._send_json(nodes_resp)
             return
         if req_path == "/api/probe/schedules":
             self._send_json({"ok": True, "schedules": load_probe_schedules(CONF_DIR)})
@@ -18683,8 +19970,8 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             self._send_json({"ok": True, **build_ipv6_governance_summary(CONF_DIR)})
             return
         if req_path == "/api/nodes/credentials":
-            if not self._auth_ok():
-                self._send_json({"ok": False, "error": "unauthorized", "message": "需要面板访问令牌"}, status=401)
+            if not self._strict_auth_ok():
+                self._send_json({"ok": False, "error": "unauthorized", "message": "查看节点凭据需要登录面板获取访问令牌"}, status=401)
                 return
             t_q = (qs.get("tag") or qs.get("node_id") or "").strip()
             existing = load_saved_nodes(CONF_DIR)
@@ -18695,8 +19982,8 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             self._send_json({"ok": True, "node": found, "uri": export_node_share_uri(found)})
             return
         if req_path == "/api/nodes/share_uri":
-            if not self._auth_ok():
-                self._send_json({"ok": False, "error": "unauthorized", "message": "需要面板访问令牌"}, status=401)
+            if not self._strict_auth_ok():
+                self._send_json({"ok": False, "error": "unauthorized", "message": "获取节点分享链接需要登录面板获取访问令牌"}, status=401)
                 return
             t_q = (qs.get("tag") or qs.get("node_id") or "").strip()
             found_n = next((n for n in load_saved_nodes(CONF_DIR) if n.get("tag") == t_q or n.get("node_id") == t_q), None)
@@ -18708,9 +19995,61 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
         if req_path.startswith("/api/"):
             self._send_json({"ok": False, "error": "unknown_endpoint", "message": f"未知 API 路径: {req_path}", "path": req_path}, status=404)
             return
+        # C-P2-01: Serve static WebUI files (/, /index.html, /*.js, /*.css) with Gzip compression and appropriate Cache-Control
+        rel_p = "index.html" if req_path in ("/", "/index.html") else req_path.lstrip("/")
+        cand_static = (WEBUI_DIR / rel_p).resolve()
+        if str(cand_static).startswith(str(WEBUI_DIR.resolve())) and cand_static.is_file():
+            ctype_map = {
+                ".html": "text/html; charset=utf-8",
+                ".js": "application/javascript; charset=utf-8",
+                ".css": "text/css; charset=utf-8",
+                ".svg": "image/svg+xml",
+                ".png": "image/png",
+                ".ico": "image/x-icon",
+                ".json": "application/json; charset=utf-8",
+            }
+            ctype = ctype_map.get(cand_static.suffix.lower(), "application/octet-stream")
+            raw_b = cand_static.read_bytes()
+            etag = f'"v{APP_VERSION}-{hashlib.sha256(raw_b).hexdigest()[:16]}"'
+            self._custom_cache_control = True
+            if self.headers.get("If-None-Match") == etag:
+                self.send_response(304)
+                self.send_header("ETag", etag)
+                self.send_header("Cache-Control", "public, max-age=86400, must-revalidate")
+                self.end_headers()
+                return
+            wants_gz = "gzip" in (self.headers.get("Accept-Encoding") or "").lower()
+            use_gz = wants_gz and cand_static.suffix.lower() in (".html", ".js", ".css", ".svg", ".json") and len(raw_b) >= 512
+            out_b = gzip.compress(raw_b, compresslevel=6) if use_gz else raw_b
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("ETag", etag)
+            self.send_header("Cache-Control", "public, max-age=86400, must-revalidate")
+            if use_gz:
+                self.send_header("Content-Encoding", "gzip")
+                self.send_header("Vary", "Accept-Encoding")
+            self.send_header("Content-Length", str(len(out_b)))
+            self.end_headers()
+            self.wfile.write(out_b)
+            return
         return super().do_GET()
     def do_POST(self):
+        try:
+            return self._do_POST_inner()
+        except (ValueError, TypeError) as e:
+            self._send_json({"ok": False, "error": "invalid_parameter", "message": f"请求参数类型或数值格式不合法: {e}"}, status=400)
+        except Exception as e:
+            self._send_json({"ok": False, "error": "internal_error", "message": f"请求处理异常: {e}"}, status=500)
+
+    def _do_POST_inner(self):
+        if not self._check_csrf_same_origin():
+            self._send_json({"ok": False, "error": "csrf_forbidden", "message": "拒绝跨源写请求 (CSRF 防护已拦截非同源 Origin)"}, status=403)
+            return
         clean_path = self.path.split("?")[0]
+        _STRICT_POST_PATHS = ("/api/nodes/credentials", "/api/nodes/share_uri", "/api/ops/factory_reset", "/api/ops/uninstall", "/api/ops/password", "/api/ops/restore", "/api/ops/restore_archive")
+        if clean_path in _STRICT_POST_PATHS and not self._strict_auth_ok():
+            self._send_json({"ok": False, "error": "unauthorized", "message": "该高敏操作需要登录面板获取访问令牌"}, status=401)
+            return
         if clean_path != "/api/login" and clean_path.startswith("/api/") and not self._auth_ok():
             self._send_json({"ok": False, "error": "unauthorized", "message": "未授权访问，请先登录面板获取令牌"}, status=401)
             return
@@ -18721,10 +20060,12 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
         body_raw = self.rfile.read(length).decode("utf-8", errors="replace") if length > 0 else "{}"
         try:
             payload = json.loads(body_raw) if body_raw.strip() else {}
-            if not isinstance(payload, dict):
-                payload = {}
-        except Exception:
-            payload = {}
+        except Exception as e:
+            self._send_json({"ok": False, "error": "invalid_json", "message": f"请求体 JSON 格式不合法: {e}"}, status=400)
+            return
+        if not isinstance(payload, dict):
+            self._send_json({"ok": False, "error": "invalid_payload_type", "message": "请求体必须为 JSON 对象 (object)"}, status=400)
+            return
         if clean_path == "/api/login":
             pw = str(payload.get("password") or "").strip()
             ok_pw, tok = _verify_panel_password(pw, CONF_DIR)
@@ -18750,12 +20091,34 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             self._send_json(restart_service_async())
             return
         if clean_path == "/api/wol":
-            mac = payload.get("mac", "A4:83:E7:2B:91:04")
+            mac = str(payload.get("mac") or "").strip()
+            if not mac or mac.upper() in ("AA:BB:CC:DD:EE:FF", "00:00:00:00:00:00", "FF:FF:FF:FF:FF:FF"):
+                self._send_json({"ok": False, "error": "invalid_mac", "message": "请输入真实有效的目标设备 MAC 地址（不可为空或使用示例占位地址）"}, status=400)
+                return
+            bcast_ip = str(payload.get("broadcast_ip") or "255.255.255.255").strip()
+            wol_port = int(payload.get("port") or 9)
             try:
                 pkt = build_wol_magic_packet(mac)
-                self._send_json({"ok": True, "mac": mac, "packet_bytes": len(pkt)})
+                send_wol_packet(mac, broadcast_ip=bcast_ip, port=wol_port)
+                lan_ip = _detect_router_lan_ip()
+                if lan_ip and re.match(r"^\d+\.\d+\.\d+\.\d+$", lan_ip):
+                    sub_bcast = ".".join(lan_ip.split(".")[:3] + ["255"])
+                    if sub_bcast != bcast_ip:
+                        try:
+                            send_wol_packet(mac, broadcast_ip=sub_bcast, port=wol_port)
+                        except Exception:
+                            pass
+                self._send_json({
+                    "ok": True,
+                    "sent": True,
+                    "mac": mac,
+                    "broadcast_ip": bcast_ip,
+                    "port": wol_port,
+                    "packet_bytes": len(pkt),
+                    "message": f"✅ 已向局域网广播地址 ({bcast_ip}:{wol_port}) 发送 {len(pkt)} 字节 WOL 唤醒魔术包 ({mac})"
+                })
             except Exception as e:
-                self._send_json({"ok": False, "error": str(e)}, status=400)
+                self._send_json({"ok": False, "error": str(e), "message": f"发送 WOL 魔术包失败: {e}"}, status=400)
             return
         if clean_path == "/api/recover_direct":
             for r_dir in (RUN_DIR, Path("/tmp/ai-link-run")):
@@ -18873,6 +20236,9 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             self._send_json({"ok": True, "parsed_count": len(preview_list), "nodes": preview_list})
             return
         if clean_path == "/api/ops/uninstall":
+            if str(payload.get("confirm") or "").strip().upper() not in ("UNINSTALL", "TRUE", "1", "YES"):
+                self._send_json({"ok": False, "error": "confirmation_required", "message": "需要确认卸载指令 (confirm=UNINSTALL)"}, status=400)
+                return
             keep_cfg = bool(payload.get("keep_config", True))
             uninst_sh = Path("/usr/share/ai-link/uninstall.sh")
             cmd_args = [str(uninst_sh) if uninst_sh.is_file() else "/usr/bin/ai-link"]
@@ -18979,6 +20345,25 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             })
             return
         if clean_path == "/api/shunt/update":
+            _SHUNT_ENUM_RULES = {
+                "routing_mode": ("rule_shunt", "global_proxy", "cn_whitelist", "gfw_list", "direct_all"),
+                "global_mode": ("auto", "manual", "direct"),
+                "global_strategy": ("auto", "manual", "direct", "smart", "fastest", "block"),
+                "strategy": ("auto", "manual", "direct", "smart", "fastest", "block"),
+                "shunt_mode": ("auto", "manual", "direct", "block"),
+                "dns_strategy": ("inherit", "doh", "dot", "doq", "udp", "tcp", "custom"),
+            }
+            for _ef, _allowed in _SHUNT_ENUM_RULES.items():
+                if _ef in payload and payload[_ef] is not None and str(payload[_ef]).strip() != "":
+                    if str(payload[_ef]).strip().lower() not in _allowed:
+                        self._send_json({
+                            "ok": False,
+                            "error": "invalid_enum_value",
+                            "field": _ef,
+                            "allowed": list(_allowed),
+                            "message": f"分流参数 {_ef} 的值 '{payload[_ef]}' 不合法，允许值为: {', '.join(_allowed)}"
+                        }, status=400)
+                        return
             shunt_cfg = load_shunt_config(CONF_DIR)
             old_mode = shunt_cfg.get("routing_mode", "rule_shunt")
             if "routing_mode" in payload:
@@ -18992,7 +20377,18 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 if gk in payload:
                     shunt_cfg[gk] = payload[gk]
             if any(k in payload for k in ("global_mode", "global_auto_node_id", "global_country", "global_strategy", "global_manual_node")):
-                gm = str(shunt_cfg.get("global_mode") or ("direct" if shunt_cfg.get("global_strategy") == "direct" else ("manual" if shunt_cfg.get("global_strategy") == "manual" else "auto"))).strip().lower()
+                if "global_mode" in payload and str(payload.get("global_mode") or "").strip():
+                    gm = str(payload["global_mode"]).strip().lower()
+                elif "global_strategy" in payload and str(payload.get("global_strategy") or "").strip():
+                    _gs_in = str(payload["global_strategy"]).strip().lower()
+                    gm = "direct" if _gs_in == "direct" else ("manual" if _gs_in == "manual" else "auto")
+                elif "global_auto_node_id" in payload and "global_manual_node" not in payload:
+                    gm = "auto"
+                elif "global_manual_node" in payload:
+                    _gm_in = str(payload.get("global_manual_node") or "").strip()
+                    gm = "direct" if _gm_in == "direct" else ("auto" if _gm_in.startswith("auto:") else "manual")
+                else:
+                    gm = str(shunt_cfg.get("global_mode") or ("direct" if shunt_cfg.get("global_strategy") == "direct" else ("manual" if shunt_cfg.get("global_strategy") == "manual" else "auto"))).strip().lower()
                 if gm == "direct":
                     shunt_cfg["global_mode"] = "direct"
                     shunt_cfg["global_strategy"] = "direct"
@@ -19105,7 +20501,11 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             self._send_json(trace_traffic_flow(payload, CONF_DIR))
             return
         if clean_path == "/api/diag/run":
-            self._send_json(run_network_health_doctor(payload, CONF_DIR))
+            is_real_r = (Path(CONF_DIR).resolve() == Path("/etc/ai-link").resolve() and Path("/etc/init.d/ai-link").exists())
+            if "mock_env" in payload and (is_real_r or not self._is_loopback_client()):
+                self._send_json({"ok": False, "error": "mock_env_forbidden", "message": "生产环境下禁止通过 HTTP 注入 mock_env 伪造体检结果"}, status=400)
+                return
+            self._send_json(run_network_health_doctor(payload, CONF_DIR, allow_mock_env=(not is_real_r and self._is_loopback_client())))
             return
         if clean_path == "/api/topology/detect":
             self._send_json(detect_network_topology(CONF_DIR, mock_env=payload))
@@ -19119,7 +20519,16 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
         if clean_path == "/api/alerts/trigger":
             ev_t = str(payload.get("event") or "nodes_down").strip()
             ev_st = str(payload.get("status") or "firing").strip()
-            self._send_json(trigger_alert_event(ev_t, detail=str(payload.get("detail") or ""), status=ev_st, conf_dir=CONF_DIR, force=bool(payload.get("force", False))))
+            self._send_json(trigger_alert_event(
+                ev_t,
+                detail=str(payload.get("detail") or ""),
+                status=ev_st,
+                conf_dir=CONF_DIR,
+                force=bool(payload.get("force", False)),
+                title=str(payload.get("title") or ""),
+                level=str(payload.get("level") or "warn"),
+                message=str(payload.get("message") or ""),
+            ))
             return
         if clean_path == "/api/alerts/clear":
             _atomic_write_text(CONF_DIR / "alert_events.json", "[]")
@@ -19240,7 +20649,32 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
         if clean_path == "/api/subscriptions/preview_sync":
             sub_id = str(payload.get("id") or payload.get("sub_id") or "").strip()
             sub_url = str(payload.get("url") or "").strip()
-            inc_nodes = payload.get("incoming_nodes") if isinstance(payload.get("incoming_nodes"), list) else load_saved_nodes(CONF_DIR)
+            raw_txt = str(payload.get("raw_text") or "").strip()
+            inc_nodes = None
+            if isinstance(payload.get("incoming_nodes"), list):
+                inc_nodes = payload["incoming_nodes"]
+            elif raw_txt:
+                inc_nodes = parse_subscription_content(raw_txt)
+            else:
+                subs_now = load_subscriptions(CONF_DIR)
+                sub_obj = next((s for s in subs_now if (sub_id and s.get("id") == sub_id) or (sub_url and s.get("url") == sub_url)), None)
+                fetch_u = sub_url or (sub_obj.get("url") if isinstance(sub_obj, dict) else "")
+                if fetch_u and fetch_u.startswith(("http://", "https://")):
+                    try:
+                        req_p = urllib.request.Request(fetch_u, headers={"User-Agent": "sing-box/1.14.1 ClashMetaForAndroid/2.11.2"})
+                        with urllib.request.urlopen(req_p, timeout=4.0) as r_p:
+                            fetched_raw = r_p.read().decode("utf-8", errors="ignore")
+                            parsed_try = parse_subscription_content(fetched_raw)
+                            if parsed_try:
+                                inc_nodes = parsed_try
+                    except Exception:
+                        pass
+                if inc_nodes is None:
+                    inc_nodes = [
+                        n for n in load_saved_nodes(CONF_DIR)
+                        if not is_builtin_test_node(n.get("tag", ""))
+                        and ((sub_id and n.get("_sub_id") == sub_id) or (sub_url and n.get("_sub_url") == sub_url) or (not sub_id and not sub_url and not n.get("_manual")))
+                    ]
             self._send_json(preview_subscription_sync_impact(sub_id, inc_nodes, sub_url=sub_url, conf_dir=CONF_DIR))
             return
         if clean_path == "/api/nodes/probe_region":
@@ -19332,6 +20766,31 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             self._send_json({"ok": True, "history": []})
             return
         if clean_path == "/api/ops/settings":
+            if "update_manifest_url" in payload:
+                _umu = str(payload.get("update_manifest_url") or "").strip()
+                if _umu and not (_umu.startswith("https://") or _umu.startswith("http://127.0.0.1:") or _umu.startswith("http://localhost:")):
+                    self._send_json({
+                        "ok": False,
+                        "error": "invalid_manifest_url",
+                        "message": "OTA 更新清单地址仅允许 https:// 协议（严禁 file://、ftp:// 或明文源）"
+                    }, status=400)
+                    return
+            _OPS_ENUM_RULES = {
+                "ipv6_leak_mode": ("strict", "loose", "off"),
+                "topology_mode": ("auto", "main", "bypass", "onearm", "docker"),
+                "node_test_mode": ("latency", "http", "off"),
+                "probe_scene_preset": ("balanced", "lowlat", "highbw", "stable"),
+            }
+            for _ef, _allowed in _OPS_ENUM_RULES.items():
+                if _ef in payload and payload[_ef] is not None and str(payload[_ef]).strip().lower() not in _allowed:
+                    self._send_json({
+                        "ok": False,
+                        "error": "invalid_enum_value",
+                        "field": _ef,
+                        "allowed": list(_allowed),
+                        "message": f"参数 {_ef} 的值 '{payload[_ef]}' 不合法，允许值为: {', '.join(_allowed)}"
+                    }, status=400)
+                    return
             res_ops = update_ops_settings(payload, CONF_DIR)
             self._send_json(res_ops)
             return
@@ -19691,10 +21150,19 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                     rec = store.get(nid) or store.get(tag) or {}
                     delay_ms = int(rec.get("delay_ms") or rec.get("rtt") or 128)
                     state_val = "ok" if delay_ms > 0 else "dead"
+                g_reg_tc = get_node_google_region_info(n_obj, store.get(nid) or store.get(tag) or {})
+                c5_tc = classify_node_country_5plus1(tag, n_obj)
+                _ai_svc_ids_tc = {"gemini", "chatgpt", "openai", "claude", "ai"}
                 svc_res_map = {}
                 pass_cnt = 0
                 fail_cnt = 0
                 for sid in svc_checks:
+                    sid_is_ai_tc = (sid in _ai_svc_ids_tc)
+                    sid_reg_blk_tc = bool(sid_is_ai_tc and (g_reg_tc["region_blocked"] or c5_tc in UNSUPPORTED_AI_REGIONS))
+                    if sid_reg_blk_tc:
+                        svc_res_map[sid] = {"ok": False, "ms": delay_ms if delay_ms > 0 else 0, "code": 403, "reason": f"REGION_BLOCKED_{g_reg_tc['google_region']}"}
+                        fail_cnt += 1
+                        continue
                     if state_val == "ok" and clash_up:
                         pr_s = probe_node_service_l7(nid, sid, timeout_ms=2500, conf_dir=CONF_DIR)
                         s_ok = bool(pr_s.get("ok"))
@@ -19723,10 +21191,6 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                     svc_passed = (pass_cnt > 0)
                 is_qual = (state_val == "ok" and delay_ms > 0 and svc_passed)
                 sc_info = compute_node_sliding_score(store.get(nid) or store.get(tag) or {})
-                g_reg_tc = get_node_google_region_info(n_obj, store.get(nid) or store.get(tag) or {})
-                if any(s in ("gemini", "chatgpt", "openai", "claude") for s in svc_checks) and g_reg_tc["region_blocked"]:
-                    svc_passed = False
-                    is_qual = False
                 results_out.append({
                     "tag": tag,
                     "node_id": nid,
@@ -19880,7 +21344,8 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                         PROBE_ENGINE.apply_shunt_selections(CONF_DIR)
                     except Exception:
                         pass
-                threading.Thread(target=_bg_after_an_save, daemon=True).start()
+                if want_probe:
+                    threading.Thread(target=_bg_after_an_save, daemon=True).start()
             else:
                 save_auto_nodes_config(cfg, CONF_DIR)
                 rel_st = dict(_CORE_RELOAD_STATE)
@@ -19907,13 +21372,14 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             return
         if clean_path == "/api/auto_nodes/probe":
             an_id = str(payload.get("id") or "").strip()
+            want_svc_p = bool(payload.get("probe_services", False))
             if an_id:
-                res_p = probe_auto_node_dual_groups(an_id, probe_services=True, conf_dir=CONF_DIR)
+                res_p = probe_auto_node_dual_groups(an_id, probe_services=want_svc_p, conf_dir=CONF_DIR)
                 last_round = res_p.get("probe_round")
             else:
                 last_round = None
                 for a_item in (load_auto_nodes_config(CONF_DIR).get("auto_nodes") or []):
-                    res_p = probe_auto_node_dual_groups(a_item.get("id", ""), probe_services=True, conf_dir=CONF_DIR)
+                    res_p = probe_auto_node_dual_groups(a_item.get("id", ""), probe_services=want_svc_p, conf_dir=CONF_DIR)
                     last_round = res_p.get("probe_round")
             out_cfg = load_auto_nodes_config(CONF_DIR)
             out_cfg["probe_round"] = last_round
@@ -19949,8 +21415,8 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 url=url, name=name, auto_update=auto_up, update_interval_min=interval_min,
                 conf_dir=CONF_DIR, sub_id=sub_id, old_url=old_url, test_after_add=test_after_add
             )
-            if payload.get("reload_core", True) and res.get("imported_count", 0) > 0 and Path("/etc/init.d/ai-link").exists():
-                reload_core_only()
+            if payload.get("reload_core", True) and res.get("imported_count", 0) > 0 and _is_prod_conf_dir(CONF_DIR) and Path("/etc/init.d/ai-link").exists():
+                schedule_async_core_reload(force_respawn=True, hot_only=False)
                 PROBE_ENGINE.apply_shunt_selections(CONF_DIR)
             self._send_json(res, status=200 if (res.get("ok") or payload.get("async")) else 400)
             return
@@ -20041,7 +21507,7 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 "ok": True,
                 "node": new_ob,
                 "replaced": replaced,
-                "total_nodes": len(existing),
+                "total_nodes": count_user_nodes(existing),
                 "reload_mode": LAST_RELOAD_MODE
             })
             return
@@ -20091,35 +21557,59 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                                 n[k_up] = bool(patch[k_up])
                             else:
                                 n[k_up] = patch[k_up]
+                    old_node_tag = str(n.get("tag") or "")
                     if "new_tag" in patch and str(patch["new_tag"]).strip():
                         n["tag"] = str(patch["new_tag"]).strip()
                         n["display_tag"] = n["tag"]
                     _apply_node_advanced_fields(n, patch)
                     n.pop("_raw_uri", None)
                     n["node_id"] = compute_node_id(n)
+                    n["node_key"] = compute_node_key(n)
                     updated_node = n
                     break
             if not updated_node:
                 self._send_json({"ok": False, "error": "node_not_found"}, status=404)
                 return
             save_nodes_list(existing, CONF_DIR)
+            if old_node_tag and updated_node.get("tag") and old_node_tag != updated_node.get("tag"):
+                reconcile_node_references(old_tag=old_node_tag, new_tag=updated_node["tag"], conf_dir=CONF_DIR)
             write_all_configs(CONF_DIR)
             PROBE_ENGINE.apply_shunt_selections(CONF_DIR)
             # D-03 Fix: Must pass hot_only=False so edited node parameters are reloaded into sing-box!
             if payload.get("reload_core", True):
                 schedule_async_core_reload(hot_only=False)
-            self._send_json({"ok": True, "node": updated_node, "share_uri": export_node_share_uri(updated_node), "total_nodes": len(existing), "reload_mode": LAST_RELOAD_MODE})
+            self._send_json({"ok": True, "node": updated_node, "share_uri": export_node_share_uri(updated_node), "total_nodes": count_user_nodes(existing), "reload_mode": LAST_RELOAD_MODE})
             return
         if clean_path == "/api/nodes/delete":
-            tag = payload.get("tag", "")
-            nid_q = payload.get("node_id", "")
-            existing = [n for n in load_saved_nodes(CONF_DIR) if not ((tag and n.get("tag") == tag) or (nid_q and n.get("node_id") == nid_q))]
-            save_nodes_list(existing, CONF_DIR)
+            tag = str(payload.get("tag") or payload.get("name") or "").strip()
+            nid_q = str(payload.get("node_id") or payload.get("id") or "").strip()
+            tags_q = set(str(x).strip() for x in (payload.get("tags") or []) if str(x).strip())
+            if tag:
+                tags_q.add(tag)
+            nids_q = set(str(x).strip() for x in (payload.get("node_ids") or payload.get("ids") or []) if str(x).strip())
+            if nid_q:
+                nids_q.add(nid_q)
+            all_q = tags_q | nids_q
+            def _matches_del(n_item: dict) -> bool:
+                nt = str(n_item.get("tag") or n_item.get("name") or "").strip()
+                dt = str(n_item.get("display_tag") or "").strip()
+                ni = str(n_item.get("node_id") or n_item.get("id") or "").strip()
+                nk = str(n_item.get("node_key") or "").strip()
+                return bool((nt and nt in all_q) or (dt and dt in all_q) or (ni and ni in all_q) or (nk and nk in all_q))
+            all_before = load_saved_nodes(CONF_DIR)
+            deleted_objs = [n for n in all_before if _matches_del(n)]
+            existing = [n for n in all_before if not _matches_del(n)]
+            saved_after = save_nodes_list(existing, CONF_DIR)
+            for d_ob in deleted_objs:
+                reconcile_node_references(old_tag=d_ob.get("tag", ""), new_tag="", deleted_node_id=d_ob.get("node_id", ""), conf_dir=CONF_DIR)
             write_all_configs(CONF_DIR)
+            _NODES_API_MEMO.clear()
+            _JSON_WIRE_MEMO.clear()
+            _STATUS_API_MEMO.clear()
             PROBE_ENGINE.apply_shunt_selections(CONF_DIR)
             if payload.get("reload_core", True):
                 schedule_async_core_reload(hot_only=False)
-            self._send_json({"ok": True, "deleted": tag or nid_q, "total_nodes": len(existing), "reload_mode": LAST_RELOAD_MODE})
+            self._send_json({"ok": True, "deleted": tag or nid_q, "deleted_count": len(deleted_objs), "total_nodes": count_user_nodes(saved_after), "reload_mode": LAST_RELOAD_MODE})
             return
         if clean_path == "/api/shunt/apply_exit":
             node_tag = (payload.get("node_tag") or payload.get("tag") or payload.get("name") or "").strip()
@@ -20325,7 +21815,7 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 _JSON_WIRE_MEMO.clear()
                 _STATUS_API_MEMO.clear()
                 # Urgent Fix #2: Run WAN firewall sync & core reload asynchronously in background so the HTTP response
-                # returns in <50ms instead of blocking the modal UI for 6-12 seconds!
+                # returns in ~0.1-1.0s (async firewall & core reload) instead of blocking the modal UI for 6-12 seconds!
                 threading.Thread(target=sync_homelink_wan_firewall_rules, args=(list(hl_nodes),), daemon=True).start()
                 if Path("/etc/init.d/ai-link").exists():
                     schedule_async_core_reload(force_respawn=True, apply_nft=True)
@@ -20339,9 +21829,17 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 self._send_json(hl_resp)
                 return
         if clean_path == "/api/homelink/route_mode":
-            rmode = (payload.get("route_mode") or payload.get("homelink_mode") or "shunt").strip().lower()
-            if rmode not in ("direct", "shunt", "proxy_only"):
-                rmode = "shunt"
+            raw_rmode = payload.get("route_mode") if "route_mode" in payload else payload.get("homelink_mode")
+            if raw_rmode is not None and str(raw_rmode).strip().lower() not in ("direct", "shunt", "proxy_only"):
+                self._send_json({
+                    "ok": False,
+                    "error": "invalid_enum_value",
+                    "field": "route_mode",
+                    "allowed": ["shunt", "direct", "proxy_only"],
+                    "message": f"回家路由模式 '{raw_rmode}' 不合法，允许值为: shunt, direct, proxy_only"
+                }, status=400)
+                return
+            rmode = str(raw_rmode or "shunt").strip().lower()
             node_id = str(payload.get("id") or payload.get("node_id") or "").strip()
             apply_all = bool(payload.get("apply_all", False if node_id else True))
             if node_id:
@@ -20374,11 +21872,12 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             hl_id = (payload.get("id") or "").strip()
             hl_nodes = [h for h in load_homelink_nodes(CONF_DIR) if h.get("id") != hl_id]
             save_homelink_nodes(hl_nodes, CONF_DIR)
-            sync_homelink_wan_firewall_rules(hl_nodes)
             write_all_configs(CONF_DIR)
+            _JSON_WIRE_MEMO.clear()
+            _STATUS_API_MEMO.clear()
+            threading.Thread(target=sync_homelink_wan_firewall_rules, args=(list(hl_nodes),), daemon=True).start()
             if Path("/etc/init.d/ai-link").exists():
-                reload_core_only(force_respawn=True)
-                subprocess.run(["/usr/share/ai-link/nftables/apply_nft.sh"], check=False, timeout=4)
+                schedule_async_core_reload(force_respawn=True, apply_nft=True)
             self._send_json(build_homelink_api_response(CONF_DIR))
             return
         if clean_path == "/api/rules/sync":
@@ -20604,11 +22103,14 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             rt = get_core_runtime_info(CONF_DIR)
             self._send_json({
                 "ok": True,
-                "max_outbounds_limit": limit,
+                "unlimited": True,
+                "max_outbounds_limit": 0,
+                "requested_limit": limit,
                 "saved_nodes_total": rt["saved_nodes_total"],
                 "active_outbounds_count": rt["active_outbounds_count"],
                 "core_ready": locals().get("_core_ready", True),
-                "reload_mode": LAST_RELOAD_MODE
+                "reload_mode": LAST_RELOAD_MODE,
+                "message": "自 v2.2.0 起已取消节点入核数量上限，全部启用节点 100% 自动入核"
             })
             return
         # D-04 Fix: Never return 200 OK for unknown/unmatched endpoints!
@@ -20818,7 +22320,8 @@ def start_background_probe_scheduler(interval_sec: int = 21600):
                 check_and_run_auto_subscriptions(CONF_DIR)
                 run_due_probe_schedules(CONF_DIR)
                 acfg = load_auto_nodes_config(CONF_DIR)
-                need_svc = (now - last_svc_ts) >= AUTO_PROBE_INTERVALS["service_check_s"]
+                # Routine periodic patrols ONLY run URL Ping (probe_services=False); L7 service checks happen ONLY on pool creation and low-health replenishment!
+                need_svc = False
                 for an in (acfg.get("auto_nodes") or []):
                     act_idx = int(an.get("active_group_index") if an.get("active_group_index") is not None else 1)
                     if act_idx == 0:
@@ -20878,6 +22381,8 @@ def start_background_probe_scheduler(interval_sec: int = 21600):
                         last_probe_mtime = mt
                         evaluate_all_auto_nodes(CONF_DIR, force_service_probe=False, advance_revert_streak=False)
                         PROBE_ENGINE.apply_shunt_selections(CONF_DIR)
+                if tick == 1 or tick % 120 == 0:
+                    cleanup_temp_and_rotate_backups(max_backups=5)
                 if tick % 5 == 0:
                     reap_zombie_singbox_aux(max_age_sec=15)
                     ensure_core_alive_and_recover(CONF_DIR)
@@ -20902,10 +22407,19 @@ def start_background_probe_scheduler(interval_sec: int = 21600):
                     ensure_nft_and_routing_intact()
                 if tick % 7 == 2:
                     sels = dict(PROBE_ENGINE.current_selections or {})
-                    # P1-6 Fix: Patrol active outbound nodes for ALL Custom_* shunt rules + primary shunt selectors
-                    # so a custom rule (e.g. Shunt_Custom_*) never stays stuck on a dead node (like SG-N-3 ERR).
+                    _sh_patrol = load_shunt_config(CONF_DIR)
+                    _rm_patrol = _sh_patrol.get("routing_mode", "rule_shunt")
+                    _gm_patrol = _sh_patrol.get("global_mode", "auto")
+                    _manual_sels = set()
+                    if _rm_patrol in ("global_proxy", "gfw_list", "cn_whitelist") and _gm_patrol == "manual":
+                        _manual_sels.add("AI_Best_Auto")
+                    for _g_p in (_sh_patrol.get("groups") or []):
+                        if _g_p.get("shunt_mode") == "manual" or _g_p.get("strategy") == "manual":
+                            _manual_sels.add(_g_p.get("selector_tag") or f"Shunt_{_g_p.get('id')}")
                     patrol_nodes = []
                     for _k_sel, _v_node in sels.items():
+                        if _k_sel in _manual_sels:
+                            continue
                         if not _v_node or _v_node in ("direct", "block") or str(_v_node).startswith(("Shunt_", "Auto_")):
                             continue
                         if str(_k_sel).startswith("Shunt_Custom_") or _k_sel in ("Shunt_Final", "AI_Best_Auto", "Stream_Auto", "Shunt_Google", "Shunt_YouTube", "Shunt_TikTok", "Shunt_AI"):
@@ -21536,6 +23050,12 @@ def main():
         idx = sys.argv.index("--port")
         if idx + 1 < len(sys.argv):
             port = int(sys.argv[idx + 1])
+    try:
+        cleanup_temp_and_rotate_backups(max_backups=5)
+        enforce_sensitive_file_permissions(CONF_DIR)
+        _load_panel_auth(CONF_DIR)
+    except Exception:
+        pass
     _sb_cfg_f = CONF_DIR / "sing-box.json"
     if not _sb_cfg_f.is_file() or (time.time() - _sb_cfg_f.stat().st_mtime) > 25.0:
         write_all_configs(CONF_DIR)

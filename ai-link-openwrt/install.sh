@@ -1,6 +1,6 @@
 #!/bin/sh
 # ==============================================================================
-# AI-LINK v2.3.2 (luci-app-ai-link v2.3.2-r8) Universal Cross-Platform Installer
+# AI-LINK v2.3.4 (luci-app-ai-link v2.3.4) Universal Cross-Platform Installer
 # Supports:
 #   - Architectures : x86_64 (amd64), aarch64 (arm64), armv7l (armhf), mipsel, riscv64
 #   - Package Mgrs  : OPKG (OpenWrt <=23.05) & APK (OpenWrt 24.10+ / ImmortalWrt 25.x+)
@@ -12,7 +12,7 @@
 set -e
 export PYTHONDONTWRITEBYTECODE="1"
 
-VERSION="2.3.2"
+VERSION="2.3.6"
 UPGRADE_MODE=0
 for arg in "$@"; do
 	case "$arg" in
@@ -105,6 +105,7 @@ check_and_install_deps() {
 
 	MISSING_PKGS=""
 	command -v python3 >/dev/null 2>&1 || MISSING_PKGS="$MISSING_PKGS python3"
+	python3 -c "import yaml" >/dev/null 2>&1 || MISSING_PKGS="$MISSING_PKGS python3-yaml"
 	command -v nft >/dev/null 2>&1 || MISSING_PKGS="$MISSING_PKGS nftables"
 	command -v ip >/dev/null 2>&1 || MISSING_PKGS="$MISSING_PKGS ip-full"
 	command -v openssl >/dev/null 2>&1 || MISSING_PKGS="$MISSING_PKGS openssl-util"
@@ -199,7 +200,8 @@ if [ "$PKG_MGR" = "opkg" ] && [ -n "$IPK_FILE" ] && [ -f "$IPK_FILE" ]; then
 	AILINK_INSTALLING=1 opkg install --force-reinstall "$IPK_FILE" >/dev/null 2>&1 || true
 fi
 
-rm -f /usr/share/ai-link/webui/assets /usr/share/ai-link/webui/vendor 2>/dev/null || true
+rm -rf /usr/share/ai-link/webui 2>/dev/null || true
+mkdir -p /usr/share/ai-link/webui 2>/dev/null || true
 cp -rf "$SCRIPT_DIR/root/"* /
 if [ "$HAD_UCI_CFG" -eq 1 ] && [ -f /tmp/.ai-link-uci.preserve ]; then
 	cp -f /tmp/.ai-link-uci.preserve /etc/config/ai-link 2>/dev/null || true
@@ -210,7 +212,7 @@ if [ -f "$SCRIPT_DIR/uninstall.sh" ]; then
 	chmod +x /usr/share/ai-link/uninstall.sh 2>/dev/null || true
 fi
 rm -rf /usr/share/ai-link/__pycache__ 2>/dev/null || true
-ln -snf /usr/share/ai-link/webui/static/tailwind.css /usr/share/ai-link/webui/static/tailwind.offline.css 2>/dev/null || true
+rm -f /usr/share/ai-link/webui/static/tailwind.css /usr/share/ai-link/webui/static/tailwind.offline.css /usr/share/ai-link/webui/static/holo3d.js /usr/share/ai-link/webui/static/three.min.js 2>/dev/null || true
 if [ ! -d /usr/share/ai-link/webui/assets ]; then
 	ln -snf /usr/share/ai-link/webui/static /usr/share/ai-link/webui/assets 2>/dev/null || true
 fi
@@ -300,6 +302,7 @@ uci commit ai-link 2>/dev/null || true
 # If ops_settings.json already exists on router, keep its mtime newer than /etc/config/ai-link so user's ops_settings are preserved
 if [ -f /etc/ai-link/ops_settings.json ]; then
 	touch /etc/ai-link/ops_settings.json 2>/dev/null || true
+	chmod 600 /etc/ai-link/ops_settings.json 2>/dev/null || true
 fi
 
 # ------------------------------------------------------------------------------
@@ -318,7 +321,12 @@ echo "[5/6] 正在初始化安全证书、智能双栈 DNS 分流规则与内核
 # [6/6] 启动服务并执行安装后全链路自检（含 P1-3 内核进程与端口真实健康断言）
 # ------------------------------------------------------------------------------
 echo "[6/6] 正在清理旧版进程缓存、刷新 LuCI 视图并启动服务..."
-rm -rf /tmp/luci-indexcache* /tmp/luci-modulecache/* /var/run/ai-link/probe.lock /usr/share/ai-link/__pycache__ 2>/dev/null || true
+rm -rf /tmp/ai-link-cache /tmp/ai-link-export-* /tmp/ai-link-upload-* /tmp/ai-link-arc-extract-* /tmp/ai-link-shunt-test-* /tmp/ailink-*-e2e-* /var/run/ai-link/ephemeral_probe_* /tmp/luci-indexcache* /tmp/luci-modulecache/* /var/run/ai-link/probe.lock /usr/share/ai-link/__pycache__ /usr/share/ai-link/webui/vendor 2>/dev/null || true
+chmod 600 /etc/ai-link/ops_settings.json /etc/ai-link/panel_auth.json /etc/ai-link/panel_token /etc/ai-link/initial_password 2>/dev/null || true
+find /usr/share/ai-link -name "*.bak" -o -name "*before-restore*" 2>/dev/null | xargs rm -f 2>/dev/null || true
+if [ -d /root/ai-link-final-backup ]; then
+	ls -1t /root/ai-link-final-backup/*.tgz 2>/dev/null | grep -v '/etc-ai-link.tgz$' | tail -n +5 | while read -r _old_arc; do rm -f "$_old_arc" 2>/dev/null || true; done
+fi
 for old_pid in $(pgrep -f "ai-link-dae[m]on.py" 2>/dev/null); do
 	kill -TERM "$old_pid" 2>/dev/null || true
 done

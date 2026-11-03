@@ -1,3 +1,103 @@
+## [v2.3.6] - 2026-11-03 — 订阅自适应（11 种格式）+ 手动零漂移 + 极简节点池正式版
+
+### 订阅
+
+- 解析器改为 4 层嗅探：JSON（sing-box / v2rayN / SIP008）→ YAML（Clash/Mihomo，含块式、嵌套 flow、锚点）→ Base64 → URI 列表 → INI 段（Surge / Loon / Quantumult X）；
+- 拉取优先 `curl -4`，`--resolve` 单 IP 失败自动去 pin 重试；
+- HTTP 200 但零节点时按正文归类（Token 失效 / 返回网页 / 格式不支持），原始响应写入 `/tmp/ai-link-sub-*.raw`。
+
+### 手动与节点池
+
+- 分流组、非分流模式手动节点不可用时保持固定并提示，不再自动漂移；
+- 新建节点池默认 `ping_only`，服务检测按需开启；
+- 服务检测 `any` 逻辑不再被 AI 地区封锁一票否决；
+- 日常巡检仅 URL Ping，建池与低健康复选才做真实服务访问验证。
+
+### 界面与打包
+
+- 1188px 表格零横向滚动、960px 卡片化；移动端顶栏不再截断；
+- 修复 tar 重复条目（53 条目 / 27 文件 / 0 重复，707,839 B）；
+- 发布门禁新增 tar/ipk 唯一性与体积检查。
+
+## [v2.3.5] - 2026-11-03 (全新极简自动节点池重构与全场景手动/自动模式正交解耦版)
+
+### 🌟 核心架构与功能重构 (Auto Node Pool v2.3.5)
+1. **6步极简目标驱动自动节点池向导 (创建节点池 -> 勾选来源 -> 勾选国家 -> 服务检测 -> 节点数/复选阈值 -> 实时进度条选取)**：
+   - 彻底废弃旧版双组主备两阶段手动勾选与静态成员维护逻辑，全面转向「按需自动筛选 + 定时轻量巡检 + 低健康度自动补齐」的闭环架构。
+   - **多选节点来源 (`scope_sources`)**：支持同时多选多个机场订阅源与手动自定义节点 (`custom`)，卡片实时展示各订阅剩余流量与节点总数，方便按订阅流量配额灵活分配。
+   - **多选国家区域 (`scope_countries`)**：支持同时勾选多个国家（`HK`、`TW`、`JP`、`SG`、`US`、`OTHER` 或 `ALL`），实时联动计算候选可用节点数。
+   - **需求节点数量 (`target_size`: 1~10)** 与 **低健康度自动复选阈值 (`replenish_threshold`: 1~10)** 动态配置。
+   - **异步选取与实时进度条 (`#mdl-an-progress-box`)**：点击「开始自动选取」展示 Apple 风格动画进度条与阶段状态，选取完成后自动选入最快达标节点并生成专用内核出站选择器。
+
+2. **真实目标服务可用性检测与触发两阶段解耦**：
+   - **L7 真实目标访问校验 (`probe_node_service_l7` & `_probe_real_node_http_region`)**：
+     - **Gemini**：实际发送 HTTP/TLS 请求捕获重定向及正文特征，精确识别 `.com.hk`、`.cn`、`/sorry/index` 及地区限制错误文案并予以排除。
+     - **ChatGPT / OpenAI**：校验 `cdn-cgi/trace` `loc=` 落地国家及 `403`、`unsupported_country`、`vpn_detected` 等状态。
+     - **Claude / YouTube / Netflix / TikTok / GitHub / Telegram**：通过真实特征 URL 验证地域支持与内容解锁。
+   - **触发场景严格约束为 2 种**：
+     - **场景 ①**：节点池创建（或手动点击重新选取）时触发；
+     - **场景 ②**：节点池低健康度自动复选时（当日常 URL Ping 或订阅更新导致池内健康可用节点数 `< replenish_threshold` 时）触发；
+     - **日常后台巡检与快速优选**：周期性后台探针与卡片「立即 Ping 优选」按钮仅执行纯 **URL Ping** 测速并平滑切换至延迟最低的健康节点，杜绝日常周期产生高频 L7 业务开销。
+
+3. **全场景去除手动单一节点模式下的自动切换/漂移逻辑**：
+   - **非分流模式 (`cn_whitelist` / `gfw_list` / `global_proxy`)**：当用户选择手动单一节点时，内核 `AI_Best_Auto` 及状态栏严格锁定在用户所选节点（提示 `手动固定 (国家) 节点名`），彻底移除失效时自动切换其他节点或漂移的逻辑。需要自动切换与容灾时，用户可直接切换为「自动节点池」模式。
+   - **分流策略组 (`rule_shunt`)**：手动模式默认严格锁定单节点，自动模式选用自动节点池，实现手动与自动逻辑的完全正交解耦。
+
+## [v2.3.4] - 2026-11-03 (全量验收缺陷 100% 闭环与全场景体验加固版)
+
+### P0 阻断级缺陷修复
+- **修复 `nexus.css` L245/L699 语法断链与 CSS 变量作用域陷阱 (P0-1)**：修复 `--_c-116: rgba(110, 231, 245, var(--alpha);` 缺失右括号及 `.matrix-cell` 多余右括号导致的 CSS 解析器雪崩（修复前仅解析 1 条规则，L245 之后 703 条规则全部失效）；将 `.matrix-cell` 改为 `background: var(--cyan); opacity: var(--alpha, 0.22);`，直接消费单元格内联 `--alpha` 变量。
+- **修复 `[hidden]` 属性被组件 `display` 规则覆盖导致模态框锁屏 (P0-2)**：将 `.modal-backdrop`、`.webgl-fallback`、`.node-tooltip` 改为 `:not([hidden])` 选择器，并在 `nexus.css` 末尾追加高优先级 `[hidden], .hidden, #modal[hidden], #webgl-fallback[hidden], #node-tooltip[hidden], #music-unlock-card[hidden] { display: none; }` 显式保护，确保首屏加载不再误弹空白模态框或 WebGL 降级条。
+
+### 遗留未闭环与新发现问题修复
+- **修复升级路径历史默认密码哈希识别与 v2.3.3 状态自愈 (N-P0-2)**：`_load_panel_auth()` 现已兼容旧版 `sha256("ailink_salt_2026:ai-link-2026")` (`390a3417...`) 并在检测到 v2.3.3 升级链误标的 `pbkdf2_sha256_chain` 时自动回退至 `/etc/ai-link/initial_password` 且重置 `customized: false`、同步 UCI `panel_pwd_customized=0`；`root/usr/bin/ai-link` CLI 与 LuCI `overview.js` 同步读取真实初始密码状态。
+- **修复 `/api/nodes/delete` 返回 `total_nodes` 偏差 1 与缓存未穿透失效 (N-P3-3 / 新发现-4)**：统一使用 `count_user_nodes()` 过滤内置回环测试节点 `SG-Hy2-Loopback-01`，并在 `save_nodes_list()` 与 `_atomic_write_text()` 中即时清理 `_FAST_FILE_CACHE`。
+- **修复覆盖安装残留历史孤儿文件 (新发现-1)**：`install.sh` 及 IPK `preinst` 在升级部署前清理 `/usr/share/ai-link/webui/` 下的 `aster.css`、`aster-ui.js`、`tokens/` 等废弃文件。
+- **统一全仓 7 处版本号/构建号并落地静态资源 Cache-Busting 与 ETag (新发现-2 / 新发现-3)**：全仓版本号统一为 `2.3.4` (`2.3.4-release-20261103`)，`index.html` 静态资源引用注入内容 SHA256 指纹 (`?v=2.3.4-<hash8>`)，守护进程静态文件响应支持 `ETag`、`If-None-Match` (`304 Not Modified`) 与 `Cache-Control: no-cache, must-revalidate`。
+
+### 视觉排版、对比度、触控热区与门禁加固
+- **字号分布优化 (`12px` 占比 `73.4% -> 9.2%`)**：清理 `nexus.js` 与 `index.html` 中 60+ 处内联 `font-size:12px`，将正文与列表字号提升至 `13px~14px`，仅徽章与辅助小字保留 `12px`。
+- **WCAG AA 对比度达标 (`--dim` `3.19:1 -> 7.19:1`)**：将深色主题 `--dim` 提升至 `#8B9BB4`，并全面校准次级暗色文本 Token。
+- **全量交互控件触控热区达标 (`>= 40x40px`)**：移除内联 `min-height:24..35px` 限制，统一按钮、分段控件、工具栏图标与表格操作按钮最小尺寸为 `40x40px`。
+- **前后端数据真实性与 Three.js 显存加固**：清空前端残留硬编码模拟拦截域名（`otheve.beacon.qq.com` 等）并允许后端空数组 `[]` 覆盖；统一 Telegram 分流组为 `Shunt_Outside_CN`；修复 `nexus3d.js` 卫星/连线重建 WebGL 显存泄漏并加入软件渲染自适应帧率节流；`tools/design-lint.js` 新增 `css-parse` 与 `hidden-override` 门禁。
+
+# AI-LINK v2.3.3 (2026-11-02) · Round 3 深度复审闭环与 Apple/Aster 视觉无障碍重构版
+
+### 一、功能与安全审计 19 项全量修复 (`AI-LINK-v2.3.2-复审报告.html`)
+- **[N-P0-1] 移除净网护盾假数据种子 (`adblock_stats.json`)**：彻底删除 `_load_persisted_adblock_stats()` 中当 `blocked_queries == 0` 时写入的 8 个伪造域名（`cpro.baidu.com` 等 64 次拦截 / 509 次查询），真实初始状态归零。
+- **[N-P0-2] 面板鉴权全面升级 `pbkdf2_sha256` (100,000 次迭代) + 设备唯一随机盐与随机初始凭据**：下线硬编码盐值 `ailink_salt_2026` 与默认密码回退后门；首次启动自动生成设备唯一随机初始密码 (`/etc/ai-link/initial_password`, `0600`)，存量 `panel_auth.json` 自动平滑迁移至 `pbkdf2_sha256` + 16 字节随机盐。
+- **[N-P1-1] 离线/断连状态精准区分与零伪造指标**：在 `nexus.js` 中严格区分“面板守护进程不可达 (`state.backendOffline`)”与“sing-box 内核未运行 (`state.coreAlive === false`)”，断连时将 `coreMemMib`、`blockedTotal`、`uptimeStr`、`inTotalText`、`outTotalText` 等全部重置为 `--`，不再弹出误导性的“sing-box 未运行已回退直连”横幅。
+- **[N-P1-2] 修复离线连接池水位 `NaN%` 渲染故障**：增加 `Number.isFinite(connPct)` 与 `Number.isFinite(memPct)` 守卫，离线时渲染 `--` 与 `0%` 宽度进度条。
+- **[N-P1-3] `/api/homelink/delete` 异步化重载 (`<50ms` 响应)**：回家节点删除接口改用后台线程同步防火墙规则并调用 `schedule_async_core_reload(force_respawn=True, apply_nft=True)`，消除 11–18 秒同步阻塞；前端删除按钮增加 `disabled` 与 `删除中...` 防抖状态。
+- **[N-P1-4] IPv6 连通性探测改用真实 TCP 握手 (`SOCK_STREAM`)**：替换原先不发包的 UDP `connect()` 假阳性探测，向 `[2400:3200::1]:53` / `[2402:4e00::]:53` 发起真实 TCP 握手测量 RTT。
+- **[N-P1-5] 修复「连接与设置」页 `/api/ops/logs` 401 弹窗打断**：将 `/api/ops/logs` 鉴权与 `require_lan_auth` 策略对齐 (`_auth_ok()`)，且后台日志轮询不再触发全局登录弹窗。
+- **[N-P2-1 ~ N-P2-6 & N-P3-1 ~ N-P3-6]**：
+  - `max_outbounds_limit == 0` 时规范显示为 `N 个（不设上限）`（消除 `200 / 0`）；
+  - 统一 `/api/status` 与 `/api/diag/run` 的 `health_score` 计算源；
+  - Telegram 服务脉冲映射至真实存在的 `Shunt_Outside_CN` 策略组；
+  - `cleanup_temp_and_rotate_backups()` 接入守护进程启动与周期巡检，自动清理 `/tmp/ai-link-shunt-test-*`、`/tmp/ailink-*-e2e-*`、`/tmp/ailink-upgrade` 与陈旧 `/var/run/ai-link/ephemeral_probe_*`；
+  - 补齐全部 8 个图标按钮的 `aria-label`；
+  - 提升 `--muted` 次级文字色值至 `#8B9BB4`（对比度 `>= 5.1:1`，符合 WCAG AA）；
+  - 删除冗余的 `static/three.min.js`、`static/tailwind.css`、`static/holo3d.js`（安装包体积缩减 ~310 KB）；
+  - 去重 `ai-link-rewrite.conf` 中的 `server=/googleapis.cn/` 等规则；
+  - 修复节点删除接口 `total_nodes` 计数并返回 `deleted_count`；
+  - 壁纸模式 (`WALLPAPER LIVE`) 自动淡出顶栏与底角图例；
+  - `/etc/ai-link/ops_settings.json` 纳入 `0600` 权限保护。
+
+### 二、Apple HIG / Aster 设计语言 29 项前端审美审查闭环 (`AI-LINK-前端审美审查报告.html`)
+- **[P0-1] 移除 `index.html` 中 91KB 重复内联 `<style>`**：`index.html` 体积从 153.8 KB 降至 62 KB，仅外链 `./nexus.css?v=2.3.3`。
+- **[P0-2] 字体栈、字重、字阶与行高全面收敛**：移除未加载的 `Inter` 字体，字重严格收敛至 `{400, 500, 600, 700}`，字阶收敛至 10 级 `{11, 12, 13, 14, 15, 16, 19, 24, 32, 40px}`，`body` 设为 `14px / line-height: 1.57`，彻底消除 `line-height: normal`，并将正文与列表字号提升至 `13px/14px`（`12px` 占比降至 `<15%`）。
+- **[P0-3] 界面 Chrome 零 Emoji 与零 `U+FE0F` 乱码**：将 `index.html`、`nexus.js`、`nexus3d.js` 中全部 300+ 处 Emoji 与 `U+FE0F` 变异选择符替换为 `24×24` 单色线性 SVG 图标或规范文本徽章。
+- **[P0-4] 模态框无障碍契约与焦点陷阱 (`Focus Trap`)**：`#modal` 挂载 `role="dialog" aria-modal="true" aria-labelledby="modal-title"`，支持打开自动聚焦、Tab/Shift+Tab 闭环焦点陷阱、`Escape` 键关闭、关闭后焦点归还触发按钮及背景 `aria-hidden="true"`。
+- **[P1-5 ~ P3-29] Aster `design-lint.js` 14 项门禁零违规通过**：
+  - 合并 4 个 `:root` 块为唯一权威令牌区，清理 7 个废弃变量，消除全部裸色值 (`raw-color = 0`)；
+  - 圆角收敛至 6 档 (`--r-xs` ~ `--r-full`)、间距收敛至 11 级 (`--sp-0` ~ `--sp-10`)、动效时长 `<= 320ms` (`--dur-1` ~ `--dur-4`)、命名层级令牌 (`--z-base` ~ `--z-toast`)、非无障碍区零 `!important`；
+  - 全部交互控件最小点击热区 `>= 40px`，具备完整 6 态（`default / hover / active / focus-visible / disabled / is-loading`）与 `2px solid var(--accent)` 焦点环；
+  - 原生 `<select> option` 适配深色背景，全部数值指标启用 `font-variant-numeric: tabular-nums`；
+  - `nexus3d.js` 在切换离开星图页、标签页隐藏或开启 `prefers-reduced-motion: reduce` 时完全停止 `requestAnimationFrame` 循环（后台帧率 = 0）；
+  - 订阅卡片移除重叠的竖排 "✓ 当前显示" 徽章，顶栏增加三区分割线与“跳至主内容” (`skip-link`)。
+
+
 # AI-LINK OpenWrt 变更日志 (CHANGELOG)
 
 ## [v2.3.2] - 2026-11-01 — 紧急修复版：Play 商店 LAN Wi-Fi 下载更新闭环 + 回家节点新建弹窗零卡顿防重复创建
@@ -16,6 +116,31 @@
    - **后端异步非阻塞化（`<50ms`）+ 3 秒幂等防重 + 一键清理重复节点**：`/api/homelink/quick_create` 与 `/api/homelink/add` 增加 `_HOMELINK_CREATE_LOCK` 与 3 秒幂等去重保护（拦截连点产生的重复请求），并将防火墙同步与内核重载改为后台异步执行（`schedule_async_core_reload`），响应耗时从 `~8000ms` 降至 **`<50ms`**；同时在回家节点页顶部新增 **「🧹 清理重复节点 (`POST /api/homelink/dedup`)」** 按钮，可一键清理此前产生的多余回家节点。
 
 
+### 🛡️ 双源合并审计报告 (Round 1~4) 全量闭环 + Round 5 Apple HIG 视觉与壁纸级 3D 星图重构
+
+3. **[Round 1 — P0 安全边界与配置持久化统一]**
+   - **21 字段 `OPS_PERSIST_KEYS` 读写闭环 (`C-P0-09 & C-P1-04`)**：统一 `update_ops_settings`、`factory_reset_all_configs`、`/api/ops/backup_archive` 与 `restore_ops_backup`，确保 `ipv6_leak_guard`、`ipv6_leak_mode`、`topology_mode`、`tcp_mss_clamp` 100% 完整落盘与恢复。
+   - **高敏接口令牌强鉴权与敏感凭据脱敏 (`C-P0-01 & C-P1-05`)**：新增 `_strict_auth_ok()` 守护 `/api/ops/backup*`、`/api/nodes/credentials`、`/api/nodes/share_uri`、`/api/ops/logs`、`/api/ops/factory_reset`、`/api/ops/uninstall`、`/api/ops/password`、`/api/ops/restore*`；未登录客户端访问 `/api/status` 与 `/api/nodes` 自动脱敏密码/UUID/私钥与订阅 Token；卸载接口要求 `confirm="UNINSTALL"`。
+   - **同源 CORS 与 CSRF 防护 (`C-P0-02`)**：移除 `Access-Control-Allow-Origin: *`，新增 `_check_csrf_same_origin()` 拦截跨源 POST 请求（返回 `HTTP 403 csrf_forbidden`）。
+   - **Clash API 环回绑定与 SSRF/TLS 守卫 (`C-P0-03 & C-P0-04 & C-P1-13 & C-P2-14`)**：`sing-box.json` `clash_api.external_controller` 强制绑定 `127.0.0.1:9090`；订阅与 OTA URL 拦截 `file://`、`ftp://`、`data:` 协议并限制响应体上限 8MB。
+   - **PBKDF2-HMAC-SHA256 密码存储与 0600 权限 (`C-P0-05 & C-P1-12`)**：面板密码升级为 100,000 次迭代 `PBKDF2-HMAC-SHA256` 并支持 7 天令牌过期 (`token_exp`)；敏感配置文件强制 `0600` 权限且 `config_history.json` 自动脱敏。
+
+4. **[Round 2 — P0/P1 假数据清零与真实探针闭环]**
+   - **离线状态真实呈现 (`C-P0-06 & C-P1-18`)**：前端分离 `mock` 与实时状态，当 `/api/status` 不可达时顶栏指标置为 `--` 并拉起离线横幅。
+   - **DNS 上游 60 分钟环形缓冲统计 (`C-P0-07`)**：移除硬编码命中率/延迟假数据，改由 `_DNS_UPSTREAM_RING` 实时聚合真实样本。
+   - **网络健康医生真实系统探针 (`C-P0-08`)**：移除 `or 1` 假阳性兜底，生产环境禁止外部 HTTP `mock_env` 注入，真实校验 `sing-box` PID、`:7874`/`:7893` 监听与 `/sys/class/net/*/mtu`。
+   - **真实 WOL 魔术包与多通道告警 (`C-P1-07 & C-P1-08`)**：`/api/wol` 拒绝全零/占位 MAC 并发送真实 102 字节 UDP 广播魔术包；`trigger_alert_event` 补齐 Telegram Bot API 与 SMTP 投递。
+
+5. **[Round 3 — P1/P2 节点传输层指纹、Gzip 压缩与引用自愈]**
+   - **WebUI 体积精简与 Gzip 压缩 (`C-P1-01 & C-P2-01`)**：剥离 `index.html` 冗余内联脚本，静态资源启用 Gzip 压缩与 `Cache-Control: public, max-age=86400`。
+   - **传输层感知节点指纹 (`C-P1-02`)**：`compute_node_id` 与 `compute_node_key` 纳入 WS `path`/`Host`、gRPC `service_name` 与 TLS `SNI`，彻底杜绝同入口 CDN 节点被误合并。
+   - **节点改名/删除级联自愈与严格参数校验 (`C-P1-21 & C-P1-22 & C-P2-15`)**：新增 `reconcile_node_references` 自动同步分流组与自动节点池引用；非法枚举与畸形 JSON 严格返回 `HTTP 400`。
+
+6. **[Round 4 & Round 5 — Apple HIG 全站视觉交互打磨与壁纸级 3D 星图引擎]**
+   - **壁纸级 3D 星图引擎 (`nexus3d.js`)**：程序化高精度星球大气带与经纬网发光纹理 (`createPlanetTexture`)、多层日冕光晕 (`createCoronaTexture`)、菲涅尔大气散射壳 (`atmoShell`)、双倾角精密星环与脉冲波纹环 (`pulseRing`)、Gargantua 级相对论黑洞吸积盘与引力透镜光弧 (`lensingArch`)、黄道面星盘坐标网格 (`buildEclipticPlane`)、深空星云氛围背景，以及三挡真实速率驱动的体积能量导管与 3 阶彗尾光子流 (`trailSprites`)。
+   - **VisionOS 空间毛玻璃数据铭牌与一键壁纸沉浸模式 (`#wallpaper-toggle` & `#wallpaper-hud`)**：Retina 级 Canvas 2D 空间引线铭牌（带星系主题色侧边灯条与抗遮挡避让）、全景模式智能视口构图（右侧检查器展开时自动微移相机焦点确保四大星系 100% 同屏无遮挡），以及支持快捷键 `W` 的一键「壁纸沉浸模式」。
+   - **无障碍与排版标准 (`C-P1-15 & C-P2-02 & C-P2-03`)**：全站表单控件 100% 具备无障碍标签 (`unlabeledCount = 0`)，全站字号严格 `>= 12px`，全面对标 Apple HIG 玻璃拟态材质与弹簧过渡曲线。
+
 ## [v2.3.1] - 2026-11-01 — 远程规则源删除与400严格参数校验 (P2-1) + GET /api/shunt/rule_blocks (P3-2) + 补丁30/30字节一致 (P3-1) 正式版
 
 ### 🌟 核心修复与体验打磨 (v2.3.1 Highlights)
@@ -31,7 +156,6 @@
 3. **[P3-2 & T6 UI] 补齐 `GET /api/shunt/rule_blocks` + 配置历史回滚双语义按钮**
    - 补齐 `GET /api/shunt/rule_blocks`（支持全局或 `?group_id=...` 按组查询），返回结构化规则块列表；
    - 优化「📜 配置变更历史与回滚」弹窗按钮文案，同时提供 **「⏪ 恢复到此版本（变更后状态）」** 与 **「↩ 撤销此变更（恢复至变更前状态）」**。
-
 
 ## [v2.3.0] - 2026-11-01 — BUG-008 严格锁定持久化闭环 + 方案 A 批次三/四 (T2/T3/T5/T6/T8/T9/T10) 全量正式版
 
@@ -65,7 +189,6 @@
 9. **[P3-1 & P3-2] 补丁与安装包 30/30 文件 100% 字节一致（含 `README.md` LF 统一）+ 单一权威发布包**
    - 统一全部 30 个包内文件（含 `README.md`）为 LF 换行符，`v2.2.0-to-v2.3.0-code.patch` 经 `patch -p1` 实测 **30/30 文件 100% 字节一致（0 差异）**。
 
-
 ## [v2.2.0] - 2026-11-01 — 目标驱动自动节点池 + 取消入核上限 + URL Ping 全链路修复
 
 ### 亮点
@@ -98,7 +221,6 @@
    - **D-2**：从 `site/ai-link-openwrt/` 移除旧版 `luci-app-ai-link_2.0.0-r8_all.ipk`，并在交接包根目录提供重新构建的 `luci-app-ai-link_2.1.1-r8_all.ipk`（`Version: 2.1.1-r8`）。
    - **D-3 & P3**：修复 `test_v102_full_regression.py` 中 `B2-8` 跨平台路径兼容性；补齐 `/api/diag/run` 顶层 `status` 与 `score` 字段；将 `ipv6_leak_guard` 与 `tcp_mss_clamp` 纳入 `ops_settings` 写盘白名单，确保 `fix_all` 后 `#3 ipv6_bypass` 复检闭环为 `pass`。
 
-
 ## [v2.1.0] - 2026-11-01 — 方案 A (Phase 1 止血与契约清理 + Phase 2 核心诊断能力) 全量正式版
 
 ### 🌟 核心修复与新增特性 (v2.1.0 Highlights)
@@ -119,7 +241,6 @@
    - **BUG-003 (P3 · 自动节点池双入池按钮语义区分)**：将 `#modal-autopool` 中的两个入池按钮明确区分为 **「✅ 仅入池检测达标项」** 与 **「➕ 免测直接加入池」**，并附带清晰悬停说明。
    - **BUG-004 (P1 · Google Play 等核心应用防误杀白名单保护)**：内置 `ESSENTIAL_APP_WHITELIST`（涵盖 `clientservices.googleapis.com`、`clouderrorreporting.googleapis.com`、`play.googleapis.com`、`play-fe.googleapis.com`、`android.clients.google.com`、`gvt1~3.com`、`dl.google.com` 等）并在 `#page-dns` 提供「核心应用防误杀保护 (`#toggle-dns-essential-protect`)」独立开关（默认开启），彻底解决开启 DNS 护盾后 Google Play 无法下载更新的问题，同时保持真实广告域名（如 `google-analytics.com`）100% 阻断。
    - **BUG-005 (P3 · 回家节点改端口自动同步名称后缀)**：在 `/api/homelink/update` 修改 `listen_port` 或 `external_port` 时自动同步更新节点名称括号内的 `(:port)` 后缀。
-
 
 ## [v2.0.2] - 2026-10-31 — 自动节点池「6 步往复筛选检测 ➔ 确认入池 ➔ 直接移除无弹窗」深度打磨 · 危险操作确认弹窗全量接线版
 
@@ -195,7 +316,7 @@
 
 * 修订号：缺陷修复与安全补丁，向后兼容
 
-## v1.0.3 · 2026-10-26
+## [v1.0.3] · 2026-10-26
 
 > 主题：**双机实测根因深度修复（10.10.10.7 & 192.168.100.37）· 彻底终结 Sing-box 内核掉线与全网黑洞**
 
@@ -273,7 +394,7 @@
 * **统一版本字段 `status.build_ver` 为 `1.0.3`（P3）**
   `/api/status` 的 `build_ver` 由历史残留值 `2.0.0-r8-v24-nolo` 统一为 `APP_VERSION` (`"1.0.3"`)，全仓 7 处版本标识 100% 对齐为 `1.0.3`。
 
-## v1.0.2 · 2026-10-26
+## [v1.0.2] · 2026-10-26
 
 > 主题：**全量安全加固 + 启动与看门狗可靠性 + `.tgz` 归档上传恢复 + 跨架构兼容与自动化回归**
 
@@ -336,7 +457,7 @@
 
 * **全链路 E2E 与无头浏览器 UI 自动化回归（B3-13 & B3-14）**：新增 `test_v102_full_regression.py`（42 项断言），覆盖真实 HTTP 服务端密码登录/改密/鉴权、`.tgz` 上传恢复及 Headless Chromium 浏览器 UI 渲染与交互验证。
 
-## v1.0.1 · 2026-10-26
+## [v1.0.1] · 2026-10-26
 
 > 主题：**服务总开关 + 在线更新体系 + 面板密码安全修复**
 
@@ -459,7 +580,7 @@
 
 * OTA 版本比较 7 条用例全通过（含 `v` 前缀、预发布版语义）。
 
-## v1.0.0 · 2026-10-25
+## [v1.0.0] · 2026-10-25
 
 > 首个正式版
 

@@ -4,7 +4,7 @@
 
 **NEXUS 全域 3D 智能网关 · 运行在 OpenWrt 上的智能分流系统**
 
-[![version](https://img.shields.io/badge/version-2.3.2-6ee7f5?style=flat-square)](https://github.com/Master-AI-007/ai-link-openwrt/releases/tag/v2.3.2)
+[![version](https://img.shields.io/badge/version-2.3.6-6ee7f5?style=flat-square)](https://github.com/Master-AI-007/ai-link-openwrt/releases/tag/v2.3.6)
 [![platform](https://img.shields.io/badge/OpenWrt-23.05%20%7C%2024.10%20%7C%20ImmortalWrt-a994ff?style=flat-square)](#环境要求)
 [![core](https://img.shields.io/badge/sing--box-1.14.1-54e6b5?style=flat-square)](#技术架构)
 [![license](https://img.shields.io/badge/license-MIT-f9a8d4?style=flat-square)](#许可与免责)
@@ -30,7 +30,7 @@ AI-LINK 是一套面向 OpenWrt 的**智能分流网关**：用 sing-box 单内�
 
 ---
 
-## v2.3.2 新特性（Play 下载闭环 · 回家节点弹窗）
+## v2.3.6 新特性（订阅自适应 · 手动零漂移）
 
 | | 能力 | 说明 |
 |---|---|---|
@@ -42,7 +42,8 @@ AI-LINK 是一套面向 OpenWrt 的**智能分流网关**：用 sing-box 单内�
 | 🏠 | **回家隧道** | Hysteria2 与 VLESS-Reality 双协议，二维码 / 标准链接导入，三种回家路由边界 |
 | 🧩 | **自动池六步流程** | 筛选勾选 → 只测新选 → 两段式加入 → 行内移除 → 往返调整 → 保存，10/10 边界实测通过 |
 | 🧠 | **自动节点池 v2** | 目标驱动：选范围/模式，一键按延迟选最快 10 个；服务语义判定地区；订阅改名无损迁移 |
-| 📱 | **Play 下载闭环** | 移除 dnsmasq `cname=` 黑洞、抑制 HTTPS/SVCB 查询、`@google_play_v4` 强制代理，旁路由下可正常更新 |
+| 📥 | **订阅自适应** | 11 种格式：Clash（块式/嵌套/锚点）、URI、Base64、sing-box、Surge、Loon、SIP008、V2Ray JSON |
+| 🔒 | **手动零漂移** | 手动节点不可用也固定，不再自动换；自动切换统一走节点池 |
 | 🏠 | **回家节点弹窗** | 协议卡即时切换 + 主按钮防重入 + 异步创建 + 3 秒幂等去重 + 一键清理重复节点 |
 | 🩺 | **网络体检** | 8 项并发诊断（DNS 归属 / AAAA / IPv6 绕过 / DDNS / 端口 / 上游 / MTU / 关键应用）+ 一键修复 |
 | 🧭 | **接入向导** | 自动识别主路由/旁路由/单臂/Docker，3 步接入并复检 |
@@ -176,7 +177,10 @@ sing-box 1.14.1（单内核）
 
 | 版本 | 日期 | 主题 |
 |---|---|---|
-| **2.3.2** | 2026-11-01 | 紧急修复：Play 局域网下载闭环 + 回家节点弹窗零卡顿防重复 |
+| **2.3.6** | 2026-11-03 | 订阅自适应（11 格式）+ 手动零漂移 + 极简节点池 + 窄屏卡片化 |
+| 2.3.5 | 2026-11-03 | 极简自动节点池重构 + 手动/自动正交解耦 |
+| 2.3.4 | 2026-11-03 | 全量验收缺陷闭环 + 体验加固 |
+| 2.3.2 | 2026-11-01 | 紧急修复：Play 局域网下载闭环 + 回家节点弹窗零卡顿防重复 |
 | 2.3.1 | 2026-11-01 | 自动节点池 v2 + 方案 A 智能运维（体检/向导/告警/历史/规则块/远程规则/DNS 按组）|
 | 2.3.0 | 2026-11-01 | BUG-008 严格锁定 + 方案 A 批次三/四 |
 | 2.2.0 | 2026-11-01 | 目标驱动自动池 / 取消入核上限 / URL Ping 修复 |
@@ -197,10 +201,10 @@ sing-box 1.14.1（单内核）
 ## 包指纹
 
 ```
-AI-LINK-v2.3.2.tar.gz
-size   992,845 B
-md5    7729b8dcbbe68a8b4e7415533dd67c26
-sha256 956b3aceab130c881025d7e6a31f36e407f3ade664c60223fd36a748752d32d2
+AI-LINK-v2.3.6.tar.gz
+size   707,839 B
+md5    a90b9f50aab299ba5aa12874f0ea6689
+sha256 e62a4a90b443c7d6478a2fac8fa5043c524a0400afad9f4221690ba4368909da
 ```
 
 在线清单：<https://ai-link-official.pages.dev/version.json>

@@ -4,8 +4,8 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-ai-link
-PKG_VERSION:=2.3.2
-PKG_RELEASE:=r8
+PKG_VERSION:=2.3.6
+PKG_RELEASE:=9
 PKG_LICENSE:=GPL-3.0-only
 PKG_MAINTAINER:=AI-LINK Team <dev@ai-link.org>
 PKG_ARCH:=all
@@ -17,7 +17,7 @@ define Package/luci-app-ai-link
   CATEGORY:=LuCI
   SUBMENU:=3. Applications
   TITLE:=AI-LINK Next-Gen Transparent Proxy & Ecosystem Hub
-  DEPENDS:=+firewall4 +ip-full +kmod-nft-tproxy +kmod-nft-socket +kmod-tun +ca-bundle +curl +python3-light
+  DEPENDS:=+firewall4 +ip-full +kmod-nft-tproxy +kmod-nft-socket +kmod-tun +ca-bundle +curl +python3-light +python3-yaml
   PKGARCH:=all
 endef
 

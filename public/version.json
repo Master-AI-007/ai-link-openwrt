@@ -1,18 +1,35 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.3.2",
-  "release_date": "2026-11-01",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.3.2",
+  "latest": "2.3.6",
+  "release_date": "2026-11-03",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.3.6",
   "highlights": [
-    "Play 商店局域网下载闭环：移除 dnsmasq cname 黑洞（.cn 域名不再返回空记录）",
-    "抑制 HTTPS/SVCB 查询：不再把国内 GGC 死 IP 与 h3 提示下发给 Play 下载器",
-    "新增 nft @google_play_v4 集合并置于 @cn_ip4 之前，35 个 Play 域名直达 Shunt_Google",
-    "回家节点新建弹窗：协议卡 0ms 切换 + 主按钮防重入，后端异步化与 3 秒幂等去重",
-    "新增「🧹 清理重复节点」一键去重接口 /api/homelink/dedup",
-    "核心重载自动重启 dnsmasq，避免旧 FakeIP 缓存导致的连接被丢弃"
+    "订阅自适应：11 种格式全解析（Clash 四种写法 / URI / Base64 / sing-box / Surge / Loon / SIP008 / V2Ray）",
+    "订阅拉取：curl -4 优先 + --resolve 失败自动去 pin 重试；200 但非订阅内容可精准报错并留存 .raw",
+    "手动即固定：分流组与非分流模式手动节点不可用时不漂移，需要容灾改用节点池",
+    "节点池：新建默认仅 URL Ping，服务检测按需开启；「任一通过」不再被 AI 地区封锁一票否决",
+    "窄屏布局：1188px 表格零横向滚动，960px 自动切换卡片式",
+    "全生命周期仿真测试补齐，14 套回归在 Windows 与 OpenWrt 上可复现"
   ],
   "changelog": [
+    {
+      "version": "2.3.6",
+      "date": "2026-11-03",
+      "type": "feat",
+      "title": "订阅自适应 + 手动零漂移 + 极简节点池正式版",
+      "items": [
+        "订阅解析：4 层嗅探 + 适配器，支持 Clash 块式/嵌套 flow/锚点、Surge、Loon/Quantumult X、SIP008、V2Ray/v2rayN JSON",
+        "订阅拉取：curl -4 优先，--resolve 单 IP 失败自动去 pin 重试一次",
+        "错误诊断：HTTP 200 但零节点时按正文归类（Token 失效 / 网页 / 格式不支持），原始响应写入 /tmp/ai-link-sub-*.raw",
+        "手动模式：分流组与非分流模式手动节点不可用时保持固定并提示，不再回退备用节点",
+        "节点池：新建默认 ping_only，服务检测需手动开启；any 逻辑不再被 AI 地区封锁一票否决",
+        "节点池：日常巡检仅 URL Ping，建池与低健康复选才触发真实服务检测",
+        "前端：1188px 表格零横向滚动，960px 卡片化；移动端顶栏不再截断",
+        "测试：补齐 full_user_journey_simulation.py，14 套回归 Windows/设备双环境可复现",
+        "打包：修复 tar 重复条目，707,839 B / 0 重复；发布门禁新增 tar/ipk 体积与唯一性检查"
+      ]
+    },
     {
       "version": "2.3.2",
       "date": "2026-11-01",
@@ -134,13 +151,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.3.2/AI-LINK-v2.3.2.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.3.6/AI-LINK-v2.3.6.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.3.2.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.3.6.tar.gz"
       ],
-      "size": 992845,
-      "md5": "7729b8dcbbe68a8b4e7415533dd67c26",
-      "sha256": "956b3aceab130c881025d7e6a31f36e407f3ade664c60223fd36a748752d32d2"
+      "size": 707839,
+      "md5": "a90b9f50aab299ba5aa12874f0ea6689",
+      "sha256": "e62a4a90b443c7d6478a2fac8fa5043c524a0400afad9f4221690ba4368909da"
     }
   }
 }
