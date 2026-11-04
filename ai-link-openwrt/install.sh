@@ -1,6 +1,6 @@
 #!/bin/sh
 # ==============================================================================
-# AI-LINK v2.3.7 (luci-app-ai-link v2.3.7) Universal Cross-Platform Installer
+# AI-LINK v2.4.0 (luci-app-ai-link v2.4.0) Universal Cross-Platform Installer
 # Supports:
 #   - Architectures : x86_64 (amd64), aarch64 (arm64), armv7l (armhf), mipsel, riscv64
 #   - Package Mgrs  : OPKG (OpenWrt <=23.05) & APK (OpenWrt 24.10+ / ImmortalWrt 25.x+)
@@ -12,7 +12,7 @@
 set -e
 export PYTHONDONTWRITEBYTECODE="1"
 
-VERSION="2.3.7"
+VERSION="2.4.0"
 UPGRADE_MODE=0
 for arg in "$@"; do
 	case "$arg" in

@@ -3472,10 +3472,136 @@ small {
 @media (max-width: 1240px) {
   .dns-hero.page-hero {
     flex-wrap: wrap;
+    gap: var(--sp-4);
+    min-height: 0;
   }
   .hero-side-panel {
     width: 100%;
-    align-items: flex-start;
+    align-items: stretch;
+  }
+  .hero-action-grid {
+    width: 100%;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .hero-action-grid .button {
+    width: 100%;
+    justify-content: center;
+  }
+}
+@media (max-width: 980px) {
+  .global-route {
+    white-space: nowrap;
+  }
+  .route-latency {
+    display: none;
+  }
+  .dns-hero.page-hero {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--sp-3);
+    min-height: 0;
+    padding: var(--sp-4);
+  }
+  .tunnel-visual.hero-visual {
+    flex: 0 0 auto;
+    width: 100%;
+    min-width: 0;
+    height: 52px;
+    justify-content: center;
+    gap: var(--sp-2);
+    transform: none;
+  }
+  .tunnel-visual.hero-visual > i {
+    width: 44px;
+    flex: 0 1 56px;
+  }
+  .tunnel-core.hud-hero-orb {
+    width: 48px;
+    height: 48px;
+  }
+  .tunnel-core.hud-hero-orb > svg {
+    width: 22px;
+    height: 22px;
+  }
+  .tunnel-core.hud-hero-orb .shield-ring {
+    inset: -5px;
+  }
+  .tunnel-core.hud-hero-orb .shield-ring.r2 {
+    inset: -10px;
+  }
+  .tunnel-core.hud-hero-orb .shield-ring.r3 {
+    display: none;
+  }
+  .dns-hero.page-hero .shield-copy {
+    flex: 0 0 auto;
+    width: 100%;
+    min-width: 0;
+  }
+  .dns-hero.page-hero .shield-copy > .eyebrow {
+    display: block;
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .hero-title-line {
+    justify-content: space-between;
+    gap: var(--sp-2);
+  }
+  .hero-title-line h3 {
+    font-size: 16px;
+    font-weight: 600;
+  }
+  .dns-hero.page-hero .shield-copy > p {
+    margin: 0 0 var(--sp-2);
+    font-size: 12px;
+  }
+  .dns-hero.page-hero .shield-stats {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--sp-2);
+    margin-top: var(--sp-2);
+    padding-top: var(--sp-2);
+    border-top: 1px solid var(--line);
+  }
+  .dns-hero.page-hero .shield-stats div {
+    min-width: 0;
+  }
+  .dns-hero.page-hero .shield-stats b {
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .dns-hero.page-hero .shield-stats span {
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .dns-hero.page-hero .shield-toggle {
+    min-width: 0;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-2);
+    padding: var(--sp-2) var(--sp-3);
+  }
+  .dns-hero.page-hero .shield-toggle small {
+    display: none;
+  }
+  .hero-action-grid {
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--sp-2);
+  }
+  .hero-action-grid .button {
+    width: 100%;
+    justify-content: center;
+    padding: 0 var(--sp-2);
+    font-size: 12px;
   }
 }
 .hud-help-btn {

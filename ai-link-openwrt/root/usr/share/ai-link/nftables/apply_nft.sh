@@ -101,6 +101,13 @@ if command -v nft >/dev/null 2>&1; then
 		write_nft_status "false" "$NFT_RC" "防火墙规则应用失败 (rc=$NFT_RC): $NFT_ERR"
 		exit $NFT_RC
 	else
+		if nft list chain inet fw4 forward >/dev/null 2>&1; then
+			if ! nft list chain inet fw4 forward 2>/dev/null | grep -q "ailink0"; then
+				nft insert rule inet fw4 forward iifname "ailink0" accept >/dev/null 2>&1 || true
+				nft insert rule inet fw4 forward oifname "ailink0" accept >/dev/null 2>&1 || true
+				nft insert rule inet fw4 input iifname "ailink0" accept >/dev/null 2>&1 || true
+			fi
+		fi
 		logger -t "ai-link" "nftables table inet ai_link mounted from single-source $NFT_FILE."
 		write_nft_status "true" "0" ""
 	fi

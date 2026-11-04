@@ -2540,6 +2540,8 @@ def _respawn_core_only(timeout: float = 45.0) -> bool:
             try:
                 apply_dns_adblock_system(CONF_DIR, force_live_mount=True)
                 restore_resolv_conf_to_local()
+                _ops_rsp = get_ops_settings(CONF_DIR)
+                _sync_tun_policy_routing(_ops_rsp.get("data_plane_mode", "tproxy_redirect"), enable_v6=bool(_ops_rsp.get("ipv6_proxy", False)))
             except Exception:
                 pass
             _invalidate_fast_api_cache()
@@ -4702,6 +4704,8 @@ def _normalize_auto_node_item(an: dict, conf_dir: Path = CONF_DIR, saved_nodes: 
     cur_n_obj = next((x for x in (saved_nodes or []) if x.get("tag") == cur_t), None) or {"tag": cur_t}
     cur_nid = cur_n_obj.get("node_id") or compute_node_id(cur_n_obj) if cur_t else ""
     cur_rec = (store or {}).get(cur_nid) or (store or {}).get(cur_t) or {}
+    if int(item.get("current_delay_ms") or -1) <= 0 and cur_rec.get("state") == "ok" and int(cur_rec.get("delay_ms") or 0) > 0:
+        item["current_delay_ms"] = int(cur_rec["delay_ms"])
     g_reg_i = get_node_google_region_info(cur_n_obj, cur_rec)
     item["current_google_region"] = str(item.get("current_google_region") or g_reg_i["google_region"] or "US")
     if not item.get("selection_explain"):
@@ -7160,7 +7164,7 @@ def resolve_node_for_country_strategy_with_failover(
     if strategy == "auto" or (manual_node and str(manual_node).startswith("auto:")):
         aid = str(manual_node).split("auto:", 1)[1] if str(manual_node).startswith("auto:") else (manual_node or ("auto_ai" if group_id in ("AI", "Google", "GitHub") else "auto_youtube"))
         acfg = auto_cfg if isinstance(auto_cfg, dict) else load_auto_nodes_config(conf_dir)
-        explicit_pool_bound = bool(not is_custom_grp and manual_node and (str(manual_node).startswith("auto:") or str(manual_node).lower().startswith("auto_")))
+        explicit_pool_bound = bool(manual_node and (str(manual_node).startswith("auto:") or str(manual_node).lower().startswith("auto_")))
         an = _match_auto_node_pool(acfg.get("auto_nodes") or [], aid)
         if an is not None:
             an_id_key = str(an.get("id") or an.get("tag") or aid)
@@ -7169,55 +7173,28 @@ def resolve_node_for_country_strategy_with_failover(
             else:
                 cands = get_auto_node_candidate_pool(an, conf_dir=conf_dir, saved_nodes=saved_nodes, subs_list=subs_list, store=store)
                 auto_pools_map[an_id_key] = list(cands)
-            if country and country not in ("ALL", "direct", "block"):
-                cands_country = [x for x in cands if x.get("country") == country or classify_node_region(x["tag"], saved_by_tag.get(x["tag"])) == country]
-                if cands_country or is_custom_grp or not explicit_pool_bound:
-                    cands = cands_country
             ok_cands = [
                 x for x in cands
                 if x["tag"] in selectable_set and tag_state.get(x["tag"]) == "ok" and tag_delay.get(x["tag"], 0.0) > 0
             ]
-            cur_n = an.get("current_node") or ""
+            cur_n = str(an.get("current_node") or "").strip()
             cur_alive = bool(cur_n and cur_n != "direct" and cur_n in selectable_set and tag_state.get(cur_n) == "ok" and tag_delay.get(cur_n, 0.0) > 0)
             if not cur_alive:
                 cur_n = ok_cands[0]["tag"] if ok_cands else ""
-            # Check if cur_n is degraded (failed CDN TLS or is a '地区随机' rotation node while a dedicated faster node exists)
-            cur_cdn_ok = _tag_cdn_ok(cur_n) if cur_n else False
-            cur_is_rand = _is_random_region_node(cur_n) if cur_n else False
-            if (not cur_cdn_ok or cur_is_rand):
-                cur_d_val = tag_delay.get(cur_n, 0.0) or float(an.get("current_delay_ms") or 99999.0)
-                better_in_pool = [
-                    x for x in ok_cands
-                    if x.get("cdn_tls_ok", True) and not x.get("is_random_region", False)
-                    and (not cur_cdn_ok or float(x.get("delay_ms") or 99999.0) <= cur_d_val * 1.28)
-                ]
-                if better_in_pool:
-                    cur_n = better_in_pool[0]["tag"]
-                else:
-                    # Check if a peer Auto-Node card (e.g. '网飞' or 'AI自动') has a verified dedicated ok node with lower RTT
-                    peer_dedicated = []
-                    for peer_an in (acfg.get("auto_nodes") or []):
-                        if not isinstance(peer_an, dict):
-                            continue
-                        p_cur = str(peer_an.get("current_node") or "").strip()
-                        if p_cur and p_cur not in ("direct", "block") and p_cur in selectable_tags and tag_state.get(p_cur) == "ok" and tag_delay.get(p_cur, 0.0) > 0 and _tag_cdn_ok(p_cur) and not _is_random_region_node(p_cur):
-                            p_d = tag_delay.get(p_cur, 0.0)
-                            if p_d > 0 and (not cur_cdn_ok or tag_delay.get(cur_n, 99999.0) <= 0 or p_d < tag_delay.get(cur_n, 99999.0)):
-                                peer_dedicated.append((0 if peer_an.get("mode") == "full" else 1, p_d, p_cur))
-                    if peer_dedicated:
-                        peer_dedicated.sort()
-                        cur_n = peer_dedicated[0][2]
-            if cur_n and cur_n != "direct" and cur_n in selectable_tags and tag_state.get(cur_n) == "ok" and tag_delay.get(cur_n, 0.0) > 0:
-                if explicit_pool_bound or not country or country in ("ALL", "direct", "block") or classify_node_country_5plus1(cur_n, saved_by_tag.get(cur_n)) == country or classify_node_region(cur_n, saved_by_tag.get(cur_n)) == country:
-                    bks = [x["tag"] for x in ok_cands if x["tag"] != cur_n][:2]
-                    if not bks:
-                        bks = [t for t in selectable_tags if t != cur_n and tag_state.get(t) == "ok" and tag_delay.get(t, 0.0) > 0][:2]
-                    return {"selected": cur_n, "backups": bks, "target_verified": True, "no_available_node": False}
+            if cur_n and cur_n != "direct" and cur_n in selectable_set and tag_state.get(cur_n) == "ok" and tag_delay.get(cur_n, 0.0) > 0:
+                an["current_node"] = cur_n
+                an["current_delay_ms"] = int(round(tag_delay.get(cur_n, 0.0)))
+                bks = [x["tag"] for x in ok_cands if x["tag"] != cur_n][:2]
+                if not bks:
+                    bks = [t for t in selectable_tags if t != cur_n and tag_state.get(t) == "ok" and tag_delay.get(t, 0.0) > 0][:2]
+                return {"selected": cur_n, "backups": bks, "target_verified": True, "no_available_node": False}
             if ok_cands:
                 chosen_c = ok_cands[0]["tag"]
+                an["current_node"] = chosen_c
+                an["current_delay_ms"] = int(round(tag_delay.get(chosen_c, 0.0)))
                 bks = [x["tag"] for x in ok_cands[1:3]]
                 return {"selected": chosen_c, "backups": bks, "target_verified": True, "no_available_node": False}
-            if not is_custom_grp and (not country or country in ("ALL", "direct", "block")) and cands:
+            if cands:
                 any_ok_global = any(tag_state.get(t) == "ok" and tag_delay.get(t, 0.0) > 0 for t in selectable_tags)
                 if not any_ok_global:
                     chosen_c = cands[0]["tag"]
@@ -7279,10 +7256,9 @@ def resolve_node_for_country_strategy_with_failover(
     backups = [t for t in target_pool[1:3] if t != chosen]
     return {"selected": chosen, "backups": backups, "target_verified": True, "no_available_node": False}
 
-def resolve_node_for_country_strategy(country: str, strategy: str, manual_node: str,
-                                      candidate_tags: list, delays: dict, scores: dict = None) -> str:
+def resolve_node_for_country_strategy(country: str, strategy: str, manual_node: str, candidate_tags: list, delays: dict, scores: dict = None, group_id: str = "", conf_dir: Path = CONF_DIR) -> str:
     return resolve_node_for_country_strategy_with_failover(
-        country, strategy, manual_node, candidate_tags, delays, scores
+        country, strategy, manual_node, candidate_tags, delays, scores, group_id=group_id, conf_dir=conf_dir
     )["selected"]
 
 DEFAULT_REAL_SUB_URL = ""
@@ -10268,11 +10244,64 @@ def build_dns_telemetry_response(conf_dir: Path = CONF_DIR) -> dict:
     _DNS_TELEM_MEMO[dt_key] = copy.deepcopy(res_obj)
     return res_obj
 
+def _parse_sb_version_tuple(version_str: str) -> tuple:
+    """Parses sing-box version strings like '1.14.1', 'v1.15.0-alpha.2', '1.11.15' into (major, minor, patch) ints."""
+    m = re.search(r"(\d+)\.(\d+)(?:\.(\d+))?", str(version_str or "1.14.1"))
+    if not m:
+        return (1, 14, 1)
+    return (int(m.group(1)), int(m.group(2)), int(m.group(3) or 0))
+
+
+def build_tun_inbound_config(tun_name: str = "ailink0", sb_version: str = None,
+                             tun_stack: str = None, tun_mtu: int = None,
+                             conf_dir: Path = CONF_DIR) -> dict:
+    """Version-Aware sing-box TUN Inbound Adapter (1.11.x ~ 1.14.x ~ 1.15.0+):
+    - Default MTU 1500 (prevents fragmentation on OpenWrt PPPoE / bridge LAN interfaces).
+    - auto_route=False & strict_route=False (all routing & CN/Private/LAN bypass controlled by single-source table inet ai_link).
+    - sing-box >= 1.15.0: enables `multi_queue: True` and `dns_mode: "disabled"`, omits deprecated `stack` unless user forced `gvisor`.
+    - sing-box 1.14.x: sets `stack` ("mixed" / "system" / "gvisor") and `dns_mode: "disabled"`.
+    - sing-box < 1.14.0: sets `stack` ("mixed" / "system" / "gvisor") and omits `dns_mode` / `multi_queue` for backward compatibility.
+    """
+    ops = get_ops_settings(conf_dir)
+    ver_str = str(sb_version or probe_singbox_binary_capabilities(conf_dir).get("version") or "1.14.1").strip()
+    ver_tuple = _parse_sb_version_tuple(ver_str)
+    stack_val = str(tun_stack or ops.get("tun_stack") or "mixed").strip().lower()
+    if stack_val not in ("mixed", "system", "gvisor", "auto"):
+        stack_val = "mixed"
+    eff_stack = "mixed" if stack_val == "auto" else stack_val
+    try:
+        mtu_val = int(tun_mtu if tun_mtu is not None else (ops.get("tun_mtu") or 1500))
+    except Exception:
+        mtu_val = 1500
+    mtu_val = max(1280, min(9000, mtu_val))
+    tun_in = {
+        "type": "tun",
+        "tag": "tun-in",
+        "interface_name": tun_name,
+        "address": ["172.19.0.1/30", "fdfe:dcba:9876::1/126"],
+        "mtu": mtu_val,
+        "auto_route": False,
+        "strict_route": False,
+    }
+    if ver_tuple >= (1, 15, 0):
+        tun_in["multi_queue"] = True
+        tun_in["dns_mode"] = "disabled"
+        if stack_val == "gvisor":
+            tun_in["stack"] = "gvisor"
+    elif ver_tuple >= (1, 14, 0):
+        tun_in["stack"] = eff_stack
+        tun_in["dns_mode"] = "disabled"
+    else:
+        tun_in["stack"] = eff_stack
+    return tun_in
+
+
 class ConfigGenerator:
     @staticmethod
     def generate_singbox_config(tproxy_port=7893, mixed_port=7890, dns_port=7874, tun_name="ailink0",
                                 homelink_inbounds=True, enable_dns_section=False,
-                                enable_tls_outbounds=False, conf_dir: Path = CONF_DIR) -> dict:
+                                enable_tls_outbounds=False, conf_dir: Path = CONF_DIR,
+                                sb_version: str = None) -> dict:
         inbounds = [
             {
                 "type": "tproxy",
@@ -10375,16 +10404,11 @@ class ConfigGenerator:
                             hy2_inb["obfs"] = {"type": "salamander", "password": str(hl["obfs_password"])}
                         inbounds.append(hy2_inb)
                         homelink_inbound_tags.append(hl_tag)
-        inbounds.append({
-            "type": "tun",
-            "tag": "tun-in",
-            "interface_name": tun_name,
-            "address": ["172.19.0.1/30", "fdfe:dcba:9876::1/126"],
-            "mtu": 9000,
-            "auto_route": False,
-            "strict_route": False,
-            "stack": "mixed"
-        })
+        inbounds.append(build_tun_inbound_config(
+            tun_name=tun_name,
+            sb_version=sb_version,
+            conf_dir=conf_dir,
+        ))
         # Load real user/agent imported nodes from /etc/ai-link/nodes.json (with Top-N pre-filter)
         saved_nodes = load_saved_nodes(conf_dir)
         max_limit = get_max_outbounds_limit(conf_dir)
@@ -10416,12 +10440,15 @@ class ConfigGenerator:
         shunt_selectors = []
         for sg in shunt_cfg.get("groups", []):
             stag = sg.get("selector_tag", f"Shunt_{sg['id']}")
+            _sm_sg, _c_sg, _st_sg, _aid_sg, _man_sg = _normalize_group_shunt_params(sg)
             init_def = resolve_node_for_country_strategy(
-                sg.get("country", "ALL"),
-                sg.get("strategy", "smart"),
-                sg.get("manual_node", ""),
+                _c_sg,
+                _st_sg,
+                _man_sg,
                 shunt_selector_list,
-                persisted_delays
+                persisted_delays,
+                group_id=sg.get("id", ""),
+                conf_dir=conf_dir
             )
             if init_def not in shunt_selector_list:
                 init_def = default_sel
@@ -11383,6 +11410,10 @@ def get_core_runtime_info(conf_dir: Path = CONF_DIR) -> dict:
     return {
         "core": f"sing-box {sb_info['version']}",
         "core_version": sb_info["version"],
+        "core_schema_profile": ("v1.15-multiqueue" if _parse_sb_version_tuple(sb_info["version"]) >= (1, 15, 0) else ("v1.14-dns-disabled" if _parse_sb_version_tuple(sb_info["version"]) >= (1, 14, 0) else "v1.12-legacy")),
+        "data_plane_mode": get_ops_settings(conf_dir).get("data_plane_mode", "tproxy_redirect"),
+        "tun_stack": get_ops_settings(conf_dir).get("tun_stack", "mixed"),
+        "tun_mtu": get_ops_settings(conf_dir).get("tun_mtu", 1500),
         "core_pid": pid,
         "core_single_instance_ok": len(live_pids) <= 1,
         "build_mode": active_mode,
@@ -11521,7 +11552,8 @@ def generate_nft_rules_file(conf_dir: Path = CONF_DIR, run_dir: Path = RUN_DIR,
                             entry_bypass=None, block_quic=None, game_udp_direct=None,
                             ipv6_proxy=None, unblock_enabled=None, unblock_port=None,
                             tproxy_port: int = 7893, mixed_port: int = 7890,
-                            panel_port: int = 9099, dns_port: int = 7874) -> str:
+                            panel_port: int = 9099, dns_port: int = 7874,
+                            data_plane_mode: str = None) -> str:
     """v24-hotfix8 Unified Single-Source nftables Ruleset Generator (/var/run/ai-link/ai-link.nft):
     - Completely removes legacy NetEase Music sets/chains.
     - Fixes P0-1 (`本机出网（不带代理）`):
@@ -11547,7 +11579,11 @@ def generate_nft_rules_file(conf_dir: Path = CONF_DIR, run_dir: Path = RUN_DIR,
     v6 = bool(ops.get("ipv6_proxy", False)) if ipv6_proxy is None else bool(ipv6_proxy)
     bmode_file = conf_dir / "build_mode.txt"
     build_mode = bmode_file.read_text(encoding="utf-8").strip() if bmode_file.is_file() else "upstream-full"
+    dpm = str(data_plane_mode or ops.get("data_plane_mode") or "tproxy_redirect").strip().lower()
+    if dpm not in ("tproxy_redirect", "tproxy_tcp_tun_udp", "tun_full"):
+        dpm = "tproxy_redirect"
     fw_mark = "0x162"
+    tun_mark = "0x163"
     redir_port = 7891
 
     # Collect upstream node IPs
@@ -11730,13 +11766,16 @@ def generate_nft_rules_file(conf_dir: Path = CONF_DIR, run_dir: Path = RUN_DIR,
         "\t\tct mark & 0x02000000 != 0 masquerade",
         "\t}",
         "",
+        f"\t# data_plane_mode: {dpm}",
         "\tchain output_nat {",
         "\t\ttype nat hook output priority dstnat - 5; policy accept;",
         "\t\tmeta mark 0x00000162 accept",
+        "\t\tmeta mark 0x00000163 accept",
         "\t\tmeta mark 0x000000ff accept",
         "\t\tip daddr 127.0.0.0/8 accept",
         "\t\tip6 daddr ::1/128 accept",
         "\t\toifname \"lo\" accept",
+        "\t\toifname \"ailink0\" accept",
         "\t\tfib daddr type { local, broadcast, multicast, anycast } accept",
         "\t\tmeta l4proto tcp socket transparent 1 accept",
         f"\t\t{hl_reply_str}",
@@ -11744,25 +11783,26 @@ def generate_nft_rules_file(conf_dir: Path = CONF_DIR, run_dir: Path = RUN_DIR,
     ]
     if not v6:
         lines.append("\t\tmeta nfproto ipv6 accept")
-    lines.append(f"\t\tip daddr 198.18.0.0/15 meta l4proto tcp redirect to :{redir_port}")
-    if v6:
-        lines.append(f"\t\tip6 daddr fc00::/18 meta l4proto tcp redirect to :{redir_port}")
-    lines += [
-        "\t\tip daddr @reserved_ip4 accept",
-        "\t\tip6 daddr @reserved_ip6 accept",
-        "\t\tip daddr @node_server_v4 accept",
-        f"\t\tip daddr @google_play_v4 meta l4proto tcp redirect to :{redir_port}",
-    ]
-    if eb:
-        lines.append("\t\tip daddr @cn_ip4 accept")
+    if dpm != "tun_full":
+        lines.append(f"\t\tip daddr 198.18.0.0/15 meta l4proto tcp redirect to :{redir_port}")
         if v6:
-            lines.append("\t\tip6 daddr @cn_ip6 accept")
-        lines.append("\t\tip daddr @direct_bypass_v4 accept")
-        lines.append("\t\tip6 daddr @direct_bypass_v6 accept")
-    if v6:
-        lines.append(f"\t\tmeta l4proto tcp redirect to :{redir_port}")
-    else:
-        lines.append(f"\t\tmeta nfproto ipv4 meta l4proto tcp redirect to :{redir_port}")
+            lines.append(f"\t\tip6 daddr fc00::/18 meta l4proto tcp redirect to :{redir_port}")
+        lines += [
+            "\t\tip daddr @reserved_ip4 accept",
+            "\t\tip6 daddr @reserved_ip6 accept",
+            "\t\tip daddr @node_server_v4 accept",
+            f"\t\tip daddr @google_play_v4 meta l4proto tcp redirect to :{redir_port}",
+        ]
+        if eb:
+            lines.append("\t\tip daddr @cn_ip4 accept")
+            if v6:
+                lines.append("\t\tip6 daddr @cn_ip6 accept")
+            lines.append("\t\tip daddr @direct_bypass_v4 accept")
+            lines.append("\t\tip6 daddr @direct_bypass_v6 accept")
+        if v6:
+            lines.append(f"\t\tmeta l4proto tcp redirect to :{redir_port}")
+        else:
+            lines.append(f"\t\tmeta nfproto ipv4 meta l4proto tcp redirect to :{redir_port}")
     lines += [
         "\t}",
         "",
@@ -11771,6 +11811,12 @@ def generate_nft_rules_file(conf_dir: Path = CONF_DIR, run_dir: Path = RUN_DIR,
         "\t\tmeta mark 0x02000000 ct mark set 0x02000000",
         "\t\ttcp flags syn tcp option maxseg size set rt mtu",
     ]
+    if dpm in ("tproxy_tcp_tun_udp", "tun_full"):
+        lines += [
+            "\t\tiifname \"ailink0\" accept",
+            "\t\toifname \"ailink0\" tcp flags syn tcp option maxseg size set rt mtu accept",
+            "\t\toifname \"ailink0\" accept",
+        ]
     v6_leak_guard = bool(ops.get("ipv6_leak_guard", False))
     v6_leak_mode = str(ops.get("ipv6_leak_mode") or ("strict" if v6_leak_guard else "off")).strip().lower()
     if v6_leak_guard and v6_leak_mode in ("strict", "loose") and not v6:
@@ -11791,6 +11837,7 @@ def generate_nft_rules_file(conf_dir: Path = CONF_DIR, run_dir: Path = RUN_DIR,
         "\t\ttype filter hook prerouting priority mangle; policy accept;",
         "\t\tmeta mark 0x000000ff accept",
         "\t\tmeta mark 0x02000000 accept",
+        "\t\tiifname \"ailink0\" accept",
         "\t\tiifname \"lo\" ip daddr 127.0.0.0/8 accept",
         "\t\tiifname \"lo\" ip6 daddr ::1/128 accept",
         f"\t\tip daddr 127.0.0.0/8 meta l4proto {{ tcp, udp }} th dport {tproxy_port} drop",
@@ -11807,8 +11854,17 @@ def generate_nft_rules_file(conf_dir: Path = CONF_DIR, run_dir: Path = RUN_DIR,
     if bq:
         lines.append("\t\tip daddr 198.18.0.0/15 udp dport 443 reject with icmpx type port-unreachable")
         lines.append("\t\tip6 daddr fc00::/18 udp dport 443 reject with icmpx type port-unreachable")
-    lines.append(f"\t\tip daddr 198.18.0.0/15 meta l4proto {{ tcp, udp }} tproxy ip to 127.0.0.1:{tproxy_port} meta mark set {fw_mark} accept")
-    lines.append(f"\t\tip6 daddr fc00::/18 meta l4proto {{ tcp, udp }} tproxy ip6 to [::1]:{tproxy_port} meta mark set {fw_mark} accept")
+    if dpm == "tun_full":
+        lines.append(f"\t\tip daddr 198.18.0.0/15 meta mark set {tun_mark} accept")
+        lines.append(f"\t\tip6 daddr fc00::/18 meta mark set {tun_mark} accept")
+    elif dpm == "tproxy_tcp_tun_udp":
+        lines.append(f"\t\tip daddr 198.18.0.0/15 meta l4proto tcp tproxy ip to 127.0.0.1:{tproxy_port} meta mark set {fw_mark} accept")
+        lines.append(f"\t\tip daddr 198.18.0.0/15 meta l4proto {{ udp, icmp }} meta mark set {tun_mark} accept")
+        lines.append(f"\t\tip6 daddr fc00::/18 meta l4proto tcp tproxy ip6 to [::1]:{tproxy_port} meta mark set {fw_mark} accept")
+        lines.append(f"\t\tip6 daddr fc00::/18 meta l4proto {{ udp, ipv6-icmp }} meta mark set {tun_mark} accept")
+    else:
+        lines.append(f"\t\tip daddr 198.18.0.0/15 meta l4proto {{ tcp, udp }} tproxy ip to 127.0.0.1:{tproxy_port} meta mark set {fw_mark} accept")
+        lines.append(f"\t\tip6 daddr fc00::/18 meta l4proto {{ tcp, udp }} tproxy ip6 to [::1]:{tproxy_port} meta mark set {fw_mark} accept")
     # P1-3 Fix: Accept packets destined to the router's own local IPs (e.g. 10.10.10.77:53 dnsmasq -> 127.0.0.1#7874 sing-box dns-in)
     # BEFORE external Port 53 TProxy hijack so `nslookup domain 10.10.10.77` has zero hairpin loop, while external DNS (`8.8.8.8:53`, `2400:3200::1:53`) is still hijacked!
     lines.append("\t\tfib daddr type { local, broadcast, multicast, anycast } accept")
@@ -11824,8 +11880,14 @@ def generate_nft_rules_file(conf_dir: Path = CONF_DIR, run_dir: Path = RUN_DIR,
         "\t\tip6 daddr @reserved_ip6 accept",
         "\t\tip daddr @node_server_v4 accept",
     ]
-    # Force Google Play / GGC IPs (including 180.163.150.0/23, 114.250.64.0/20, 203.208.32.0/19) into TProxy BEFORE @cn_ip4!
-    lines.append(f"\t\tip daddr @google_play_v4 meta l4proto {{ tcp, udp }} tproxy ip to 127.0.0.1:{tproxy_port} meta mark set {fw_mark} accept")
+    # Force Google Play / GGC IPs (including 180.163.150.0/23, 114.250.64.0/20, 203.208.32.0/19) into TProxy/TUN BEFORE @cn_ip4!
+    if dpm == "tun_full":
+        lines.append(f"\t\tip daddr @google_play_v4 meta l4proto {{ tcp, udp }} meta mark set {tun_mark} accept")
+    elif dpm == "tproxy_tcp_tun_udp":
+        lines.append(f"\t\tip daddr @google_play_v4 meta l4proto tcp tproxy ip to 127.0.0.1:{tproxy_port} meta mark set {fw_mark} accept")
+        lines.append(f"\t\tip daddr @google_play_v4 meta l4proto udp meta mark set {tun_mark} accept")
+    else:
+        lines.append(f"\t\tip daddr @google_play_v4 meta l4proto {{ tcp, udp }} tproxy ip to 127.0.0.1:{tproxy_port} meta mark set {fw_mark} accept")
     if gu:
         lines.append("\t\tip daddr @cn_ip4 meta l4proto udp meta mark set 0x02000000")
         lines.append("\t\tip daddr @cn_ip4 meta l4proto udp ct mark set 0x02000000")
@@ -11853,21 +11915,34 @@ def generate_nft_rules_file(conf_dir: Path = CONF_DIR, run_dir: Path = RUN_DIR,
         lines.append("\t\tip6 daddr @direct_bypass_v6 accept")
     if bq:
         lines.append("\t\tudp dport 443 reject with icmpx type port-unreachable")
-    lines.append(f"\t\tmeta nfproto ipv4 meta l4proto {{ tcp, udp }} tproxy ip to 127.0.0.1:{tproxy_port} meta mark set {fw_mark} accept")
-    if v6:
-        lines.append(f"\t\tmeta nfproto ipv6 meta l4proto {{ tcp, udp }} tproxy ip6 to [::1]:{tproxy_port} meta mark set {fw_mark} accept")
+    if dpm == "tun_full":
+        lines.append(f"\t\tmeta nfproto ipv4 meta l4proto {{ tcp, udp }} meta mark set {tun_mark} accept")
+        if v6:
+            lines.append(f"\t\tmeta nfproto ipv6 meta l4proto {{ tcp, udp }} meta mark set {tun_mark} accept")
+    elif dpm == "tproxy_tcp_tun_udp":
+        lines.append(f"\t\tmeta nfproto ipv4 meta l4proto tcp tproxy ip to 127.0.0.1:{tproxy_port} meta mark set {fw_mark} accept")
+        lines.append(f"\t\tmeta nfproto ipv4 meta l4proto udp meta mark set {tun_mark} accept")
+        if v6:
+            lines.append(f"\t\tmeta nfproto ipv6 meta l4proto tcp tproxy ip6 to [::1]:{tproxy_port} meta mark set {fw_mark} accept")
+            lines.append(f"\t\tmeta nfproto ipv6 meta l4proto udp meta mark set {tun_mark} accept")
+    else:
+        lines.append(f"\t\tmeta nfproto ipv4 meta l4proto {{ tcp, udp }} tproxy ip to 127.0.0.1:{tproxy_port} meta mark set {fw_mark} accept")
+        if v6:
+            lines.append(f"\t\tmeta nfproto ipv6 meta l4proto {{ tcp, udp }} tproxy ip6 to [::1]:{tproxy_port} meta mark set {fw_mark} accept")
     lines += [
         "\t}",
         "",
         "\tchain output_tproxy {",
         "\t\ttype route hook output priority mangle; policy accept;",
         "\t\tmeta mark 0x00000162 accept",
+        "\t\tmeta mark 0x00000163 accept",
         "\t\tmeta mark 0x000000ff ip daddr 198.18.0.0/15 drop",
         "\t\tmeta mark 0x000000ff ip6 daddr fc00::/18 drop",
         "\t\tmeta mark 0x000000ff accept",
         "\t\tip daddr 127.0.0.0/8 accept",
         "\t\tip6 daddr ::1/128 accept",
         "\t\toifname \"lo\" accept",
+        "\t\toifname \"ailink0\" accept",
         "\t\tfib daddr type { local, broadcast, multicast, anycast } accept",
         f"\t\t{hl_reply_str}",
         "\t\tudp dport { 53, 67, 68, 123, 546, 547, 1900, 5353 } accept",
@@ -11879,9 +11954,18 @@ def generate_nft_rules_file(conf_dir: Path = CONF_DIR, run_dir: Path = RUN_DIR,
     ]
     if not v6:
         lines.append("\t\tmeta nfproto ipv6 accept")
-    lines.append(f"\t\tip daddr 198.18.0.0/15 meta l4proto udp meta mark set {fw_mark} accept")
-    if v6:
-        lines.append(f"\t\tip6 daddr fc00::/18 meta l4proto udp meta mark set {fw_mark} accept")
+    if dpm == "tun_full":
+        lines.append(f"\t\tip daddr 198.18.0.0/15 meta mark set {tun_mark} accept")
+        if v6:
+            lines.append(f"\t\tip6 daddr fc00::/18 meta mark set {tun_mark} accept")
+    elif dpm == "tproxy_tcp_tun_udp":
+        lines.append(f"\t\tip daddr 198.18.0.0/15 meta l4proto {{ udp, icmp }} meta mark set {tun_mark} accept")
+        if v6:
+            lines.append(f"\t\tip6 daddr fc00::/18 meta l4proto {{ udp, ipv6-icmp }} meta mark set {tun_mark} accept")
+    else:
+        lines.append(f"\t\tip daddr 198.18.0.0/15 meta l4proto udp meta mark set {fw_mark} accept")
+        if v6:
+            lines.append(f"\t\tip6 daddr fc00::/18 meta l4proto udp meta mark set {fw_mark} accept")
     if gu:
         lines.append("\t\tip daddr @cn_ip4 meta l4proto udp accept")
         if v6:
@@ -11893,10 +11977,21 @@ def generate_nft_rules_file(conf_dir: Path = CONF_DIR, run_dir: Path = RUN_DIR,
             lines.append("\t\tip6 daddr @cn_ip6 accept")
         lines.append("\t\tip daddr @direct_bypass_v4 accept")
         lines.append("\t\tip6 daddr @direct_bypass_v6 accept")
-    if v6:
-        lines.append(f"\t\tmeta l4proto udp meta mark set {fw_mark} accept")
+    if dpm == "tun_full":
+        if v6:
+            lines.append(f"\t\tmeta l4proto {{ tcp, udp }} meta mark set {tun_mark} accept")
+        else:
+            lines.append(f"\t\tmeta nfproto ipv4 meta l4proto {{ tcp, udp }} meta mark set {tun_mark} accept")
+    elif dpm == "tproxy_tcp_tun_udp":
+        if v6:
+            lines.append(f"\t\tmeta l4proto udp meta mark set {tun_mark} accept")
+        else:
+            lines.append(f"\t\tmeta nfproto ipv4 meta l4proto udp meta mark set {tun_mark} accept")
     else:
-        lines.append(f"\t\tmeta nfproto ipv4 meta l4proto udp meta mark set {fw_mark} accept")
+        if v6:
+            lines.append(f"\t\tmeta l4proto udp meta mark set {fw_mark} accept")
+        else:
+            lines.append(f"\t\tmeta nfproto ipv4 meta l4proto udp meta mark set {fw_mark} accept")
     lines += [
         "\t}",
         "}",
@@ -11912,6 +12007,7 @@ def generate_nft_rules_file(conf_dir: Path = CONF_DIR, run_dir: Path = RUN_DIR,
             pass
     if is_live:
         _sync_ipv6_policy_routing(v6)
+        _sync_tun_policy_routing(dpm, enable_v6=v6)
     return nft_text
 
 def _sync_ipv6_policy_routing(enable_v6: bool = False) -> bool:
@@ -11960,6 +12056,55 @@ def _sync_ipv6_policy_routing(enable_v6: bool = False) -> bool:
         subprocess.run(["ip", "-6", "rule", "add", "fwmark", "0x162", "table", "162", "priority", "162"], capture_output=True, timeout=2)
         subprocess.run(["ip", "-6", "route", "replace", "local", "default", "dev", "lo", "table", "162"], capture_output=True, timeout=2)
         subprocess.run(["ip", "-6", "route", "replace", "fc00::/18", "dev", "br-lan", "metric", "2048"], capture_output=True, timeout=2)
+        return True
+    except Exception:
+        return False
+
+
+def _sync_tun_policy_routing(data_plane_mode: str = "tproxy_redirect", enable_v6: bool = False, tun_name: str = "ailink0") -> bool:
+    """Synchronizes policy routing table 163 (`fwmark 0x163 -> default dev ailink0`) for TUN data-plane modes
+    (`tproxy_tcp_tun_udp` and `tun_full`), or tears down table 163 when in `tproxy_redirect` mode."""
+    if not Path("/etc/init.d/ai-link").exists():
+        return False
+    dpm = str(data_plane_mode or "tproxy_redirect").strip().lower()
+    try:
+        for _ in range(4):
+            r = subprocess.run(["ip", "rule", "del", "fwmark", "0x163", "table", "163"], capture_output=True, timeout=2)
+            if r.returncode != 0:
+                break
+        for _ in range(4):
+            r6 = subprocess.run(["ip", "-6", "rule", "del", "fwmark", "0x163", "table", "163"], capture_output=True, timeout=2)
+            if r6.returncode != 0:
+                break
+        subprocess.run(["ip", "route", "flush", "table", "163"], capture_output=True, timeout=2)
+        subprocess.run(["ip", "-6", "route", "flush", "table", "163"], capture_output=True, timeout=2)
+        if dpm not in ("tproxy_tcp_tun_udp", "tun_full"):
+            return True
+        if not _get_live_singbox_pids():
+            return False
+        for _w_tun in range(10):
+            if Path(f"/sys/class/net/{tun_name}").exists():
+                break
+            time.sleep(0.2)
+        if not Path(f"/sys/class/net/{tun_name}").exists():
+            return False
+        subprocess.run(["sysctl", "-w", "net.ipv4.conf.all.rp_filter=0"], capture_output=True, timeout=2)
+        subprocess.run(["sysctl", "-w", "net.ipv4.conf.default.rp_filter=0"], capture_output=True, timeout=2)
+        subprocess.run(["sysctl", "-w", f"net.ipv4.conf.{tun_name}.rp_filter=0"], capture_output=True, timeout=2)
+        subprocess.run(["ip", "link", "set", "dev", tun_name, "up"], capture_output=True, timeout=2)
+        subprocess.run(["ip", "rule", "add", "fwmark", "0x163", "table", "163", "priority", "163"], capture_output=True, timeout=2)
+        subprocess.run(["ip", "route", "replace", "default", "dev", tun_name, "table", "163"], capture_output=True, timeout=2)
+        if enable_v6:
+            subprocess.run(["ip", "-6", "rule", "add", "fwmark", "0x163", "table", "163", "priority", "163"], capture_output=True, timeout=2)
+            subprocess.run(["ip", "-6", "route", "replace", "default", "dev", tun_name, "table", "163"], capture_output=True, timeout=2)
+        try:
+            r_fw4 = subprocess.run(["nft", "list", "chain", "inet", "fw4", "forward"], capture_output=True, text=True, timeout=2)
+            if r_fw4.returncode == 0 and tun_name not in (r_fw4.stdout or ""):
+                subprocess.run(["nft", "insert", "rule", "inet", "fw4", "forward", "iifname", tun_name, "accept"], capture_output=True, timeout=2)
+                subprocess.run(["nft", "insert", "rule", "inet", "fw4", "forward", "oifname", tun_name, "accept"], capture_output=True, timeout=2)
+                subprocess.run(["nft", "insert", "rule", "inet", "fw4", "input", "iifname", tun_name, "accept"], capture_output=True, timeout=2)
+        except Exception:
+            pass
         return True
     except Exception:
         return False
@@ -12299,6 +12444,15 @@ def build_shunt_api_response(conf_dir: Path = CONF_DIR) -> dict:
         g_out["custom_dns"] = str(g.get("custom_dns") or "")
         g_out["rule_blocks"] = list(g.get("rule_blocks") or [])
         if sm == "auto":
+            if matched_an is not None:
+                pool_cur = str(matched_an.get("current_node") or "").strip()
+                if pool_cur and pool_cur != "direct" and (delays_map.get(pool_cur, 0.0) > 0 or not resolved or resolved == "direct"):
+                    resolved = pool_cur
+                    rtt_ms = delays_map.get(pool_cur, -1.0) or float(matched_an.get("current_delay_ms") or -1.0)
+                elif resolved and resolved != "direct":
+                    matched_an["current_node"] = resolved
+                if rtt_ms > 0:
+                    matched_an["current_delay_ms"] = int(round(rtt_ms))
             an_name = matched_an.get("name", aid) if matched_an else (auto_map.get(aid, {}).get("name") or aid)
             g_out["auto_node_name"] = an_name
             g_out["configured_label"] = f"🤖 自动: {an_name}"
@@ -15198,6 +15352,7 @@ OPS_PERSIST_KEYS = (
     "probe_scene_preset", "node_auto_test", "node_test_mode",
     "node_test_budget", "egress_probe_interval_s",
     "require_lan_auth", "trusted_cidr", "panel_bind", "update_manifest_url",
+    "data_plane_mode", "tun_stack", "tun_mtu",
 )
 
 def sync_uci_to_ops_settings(conf_dir: Path = CONF_DIR) -> dict:
@@ -15221,6 +15376,12 @@ def sync_uci_to_ops_settings(conf_dir: Path = CONF_DIR) -> dict:
     saved["require_lan_auth"] = _uci_get_bool("global.require_lan_auth", saved.get("require_lan_auth", False))
     saved["gh_mirror"] = _uci_get_str("global.gh_mirror", saved.get("gh_mirror", "https://gh-proxy.com/"))
     saved["update_manifest_url"] = _uci_get_str("global.update_manifest_url", "")
+    uci_dpm = _uci_get_str("global.data_plane_mode", "").strip().lower()
+    if uci_dpm in ("tproxy_redirect", "tproxy_tcp_tun_udp", "tun_full"):
+        saved["data_plane_mode"] = uci_dpm
+    uci_ts = _uci_get_str("global.tun_stack", "").strip().lower()
+    if uci_ts in ("mixed", "system", "gvisor", "auto"):
+        saved["tun_stack"] = uci_ts
     uci_mob = _uci_get_str("global.max_outbounds", "")
     if uci_mob.isdigit() and int(uci_mob) >= 10:
         try:
@@ -15308,9 +15469,22 @@ def get_ops_settings(conf_dir: Path = CONF_DIR) -> dict:
     trusted_cidr = str(saved.get("trusted_cidr") or ("127.0.0.1/32, ::1/128" if require_lan_auth else "127.0.0.1/32, ::1/128, 192.168.0.0/16, 10.0.0.0/8, 172.16.0.0/12, 100.64.0.0/10")).strip()
     panel_bind = str(saved.get("panel_bind") or "0.0.0.0").strip()
     update_manifest_url = str(saved.get("update_manifest_url") or (_uci_get_str("global.update_manifest_url", "") if is_live else "")).strip()
+    data_plane_mode = str(saved.get("data_plane_mode") or (_uci_get_str("global.data_plane_mode", "tproxy_redirect") if is_live else "tproxy_redirect")).strip().lower()
+    if data_plane_mode not in ("tproxy_redirect", "tproxy_tcp_tun_udp", "tun_full"):
+        data_plane_mode = "tproxy_redirect"
+    tun_stack = str(saved.get("tun_stack") or (_uci_get_str("global.tun_stack", "mixed") if is_live else "mixed")).strip().lower()
+    if tun_stack not in ("mixed", "system", "gvisor", "auto"):
+        tun_stack = "mixed"
+    try:
+        tun_mtu = max(1280, min(9000, int(saved.get("tun_mtu", 1500))))
+    except Exception:
+        tun_mtu = 1500
     _ops_res = {
         "ok": True,
         "enabled": bool(enabled and not is_bypass_active()),
+        "data_plane_mode": data_plane_mode,
+        "tun_stack": tun_stack,
+        "tun_mtu": tun_mtu,
         "require_lan_auth": require_lan_auth,
         "pwd_customized": is_panel_pwd_customized(conf_dir),
         "trusted_cidr": trusted_cidr,
@@ -15471,9 +15645,25 @@ def _update_ops_settings_locked(payload: dict, conf_dir: Path = CONF_DIR) -> dic
                 if re.match(r"^([0-9a-f]{2}:){5}[0-9a-f]{2}$", ms) and ms not in norm_macs:
                     norm_macs.append(ms)
         cur["lan_direct_macs"] = norm_macs
+    if "data_plane_mode" in payload:
+        dpm_in = str(payload["data_plane_mode"] or "").strip().lower()
+        if dpm_in not in ("tproxy_redirect", "tproxy_tcp_tun_udp", "tun_full"):
+            raise ValueError(f"data_plane_mode 值不合法 ({dpm_in!r})，仅支持 tproxy_redirect / tproxy_tcp_tun_udp / tun_full")
+        cur["data_plane_mode"] = dpm_in
+    if "tun_stack" in payload:
+        ts_in = str(payload["tun_stack"] or "").strip().lower()
+        if ts_in not in ("mixed", "system", "gvisor", "auto"):
+            raise ValueError(f"tun_stack 值不合法 ({ts_in!r})，仅支持 mixed / system / gvisor / auto")
+        cur["tun_stack"] = ts_in
+    if "tun_mtu" in payload:
+        try:
+            cur["tun_mtu"] = max(1280, min(9000, int(payload["tun_mtu"])))
+        except Exception:
+            raise ValueError(f"tun_mtu 必须为 1280~9000 之间的整数")
     _only_node_test = any(k in payload for k in ("node_auto_test", "node_test_mode", "node_test_budget", "probe_scene_preset", "require_lan_auth", "trusted_cidr", "panel_bind", "update_manifest_url")) and not any(
         k in payload for k in ("enabled", "entry_bypass", "block_quic", "game_udp_direct",
-                               "auto_mute_conflicts", "ipv6_proxy", "gh_mirror", "lan_direct_macs"))
+                               "auto_mute_conflicts", "ipv6_proxy", "gh_mirror", "lan_direct_macs",
+                               "data_plane_mode", "tun_stack", "tun_mtu"))
     if "topology_mode" in payload:
         cur["topology_mode"] = str(payload["topology_mode"] or "auto").strip().lower()
     if "ipv6_leak_mode" in payload:
@@ -15517,6 +15707,8 @@ def _update_ops_settings_locked(payload: dict, conf_dir: Path = CONF_DIR) -> dic
             for k in ("enabled", "entry_bypass", "block_quic", "game_udp_direct", "auto_mute_conflicts", "ipv6_proxy", "require_lan_auth"):
                 subprocess.run(["uci", "set", f"ai-link.global.{k}={'1' if cur.get(k) else '0'}"], check=False, timeout=2)
             subprocess.run(["uci", "set", f"ai-link.global.gh_mirror={cur['gh_mirror']}"], check=False, timeout=2)
+            subprocess.run(["uci", "set", f"ai-link.global.data_plane_mode={cur.get('data_plane_mode', 'tproxy_redirect')}"], check=False, timeout=2)
+            subprocess.run(["uci", "set", f"ai-link.global.tun_stack={cur.get('tun_stack', 'mixed')}"], check=False, timeout=2)
             if cur.get("update_manifest_url"):
                 subprocess.run(["uci", "set", f"ai-link.global.update_manifest_url={cur['update_manifest_url']}"], check=False, timeout=2)
             else:
@@ -15564,8 +15756,12 @@ def _update_ops_settings_locked(payload: dict, conf_dir: Path = CONF_DIR) -> dic
                 "--entry-bypass", "1" if cur["entry_bypass"] else "0",
                 "--block-quic", "1" if cur["block_quic"] else "0",
                 "--game-udp-direct", "1" if cur["game_udp_direct"] else "0",
-                "--ipv6-proxy", "1" if cur["ipv6_proxy"] else "0"
+                "--ipv6-proxy", "1" if cur["ipv6_proxy"] else "0",
+                "--data-plane-mode", str(cur.get("data_plane_mode") or "tproxy_redirect"),
             ], check=False, timeout=20)
+            _sync_tun_policy_routing(cur.get("data_plane_mode", "tproxy_redirect"), enable_v6=bool(cur.get("ipv6_proxy", False)))
+            if any(k in payload for k in ("tun_stack", "tun_mtu")):
+                schedule_async_core_reload(force_respawn=True, apply_nft=True)
     elif is_live and not cur["enabled"]:
         try:
             subprocess.run(["nft", "delete", "table", "inet", "ai_link"], capture_output=True, timeout=3)
@@ -17964,8 +18160,16 @@ def trace_traffic_flow(payload: dict, conf_dir: Path = CONF_DIR) -> dict:
             final_node = "direct (被「国内流量不进内核」强制直连)"
     else:
         enters_kernel = True
-        stage1_badge = "✅ 进入 sing-box 透明代理内核 (TProxy :7893)"
-        stage1_detail = f"流量通过 nftables prerouting_tproxy (fwmark 0x162) 送入 sing-box 内核 (:{7893}) 进行 SNI 嗅探与规则分流。"
+        _dpm_tr = str(ops.get("data_plane_mode") or "tproxy_redirect").strip().lower()
+        if _dpm_tr == "tun_full":
+            stage1_badge = "✅ 进入 sing-box 虚拟网卡内核 (TUN ailink0 · fwmark 0x163)"
+            stage1_detail = f"当前为「全量 TUN 虚拟网卡模式 (tun_full)」，{proto_l4.upper()} 流量在 nftables 打标 0x163 后经策略路由表 163 注入虚拟网卡 ailink0 进入 sing-box 内核。"
+        elif _dpm_tr == "tproxy_tcp_tun_udp" and proto_l4 == "udp":
+            stage1_badge = "✅ 进入 sing-box 游戏混合 TUN 通道 (UDP -> ailink0 · fwmark 0x163)"
+            stage1_detail = "当前为「TCP TProxy + UDP TUN 混合模式 (tproxy_tcp_tun_udp)」，海外 UDP 流量打标 0x163 经由虚拟网卡 ailink0 进入内核（Full-Cone NAT 联机加速）。"
+        else:
+            stage1_badge = "✅ 进入 sing-box 透明代理内核 (TProxy :7893)"
+            stage1_detail = f"流量通过 nftables prerouting_tproxy (fwmark 0x162) 送入 sing-box 内核 (:{7893}) 进行 SNI 嗅探与规则分流。"
     # Stage 2 DNS summary
     if is_ip:
         if is_fake_ip:
@@ -18032,6 +18236,8 @@ def trace_traffic_flow(payload: dict, conf_dir: Path = CONF_DIR) -> dict:
             "enters_kernel": enters_kernel,
             "badge": stage1_badge,
             "detail": stage1_detail,
+            "data_plane_mode": str(ops.get("data_plane_mode") or "tproxy_redirect"),
+            "tun_stack": str(ops.get("tun_stack") or "mixed"),
             "entry_bypass_enabled": bool(ops.get("entry_bypass")),
             "game_udp_direct_enabled": bool(ops.get("game_udp_direct")),
             "block_quic_enabled": bool(ops.get("block_quic")),
@@ -18261,9 +18467,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.3.7"
+APP_VERSION = "2.4.0"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.3.7-release-20261104"
+APP_BUILD = "2.4.0-release-20261104"
 
 UPDATE_MANIFEST_PRIMARY = "https://ai-link-official.pages.dev/version.json"
 UPDATE_MANIFEST_GITHUB = "https://raw.githubusercontent.com/Master-AI-007/ai-link-openwrt/main/version.json"
@@ -18453,6 +18659,308 @@ def check_plugin_update(conf_dir: Path = CONF_DIR, force: bool = False) -> dict:
     _UPDATE_CHECK_MEMO["ts"] = now
     _UPDATE_CHECK_MEMO["data"] = dict(res)
     return res
+
+
+# ==============================================================================
+# sing-box 官方内核版本检测、Schema 兼容评估与沙箱安全热升级 (v2.4.0+)
+# ==============================================================================
+SINGBOX_GITHUB_RELEASES_API = "https://api.github.com/repos/SagerNet/sing-box/releases/latest"
+_CORE_UPDATE_MEMO = {"ts": 0.0, "data": None}
+
+
+def detect_router_arch_and_libc() -> dict:
+    """Detects router CPU architecture (`amd64`, `arm64`, `armv7`, `mipsle`, `riscv64`) and libc (`musl` vs `glibc`)
+    to match official SagerNet/sing-box release tarballs."""
+    import platform
+    raw_machine = (platform.machine() or "x86_64").strip().lower()
+    is_musl = _is_musl_system()
+    if raw_machine in ("x86_64", "amd64"):
+        sb_arch = "amd64"
+    elif raw_machine in ("aarch64", "arm64") or raw_machine.startswith("armv8"):
+        sb_arch = "arm64"
+    elif raw_machine.startswith("armv7") or raw_machine in ("armhf", "arm"):
+        sb_arch = "armv7"
+    elif raw_machine in ("mipsel", "mipsle"):
+        sb_arch = "mipsle"
+    elif raw_machine == "mips":
+        sb_arch = "mips"
+    elif raw_machine == "riscv64":
+        sb_arch = "riscv64"
+    else:
+        sb_arch = "amd64"
+    libc_type = "musl" if is_musl else "glibc"
+    preferred_suffix = f"linux-{sb_arch}-musl" if is_musl else f"linux-{sb_arch}"
+    fallback_suffix = f"linux-{sb_arch}"
+    return {
+        "raw_machine": raw_machine,
+        "sb_arch": sb_arch,
+        "libc": libc_type,
+        "is_musl": is_musl,
+        "preferred_suffix": preferred_suffix,
+        "fallback_suffix": fallback_suffix,
+    }
+
+
+def check_singbox_core_update(conf_dir: Path = CONF_DIR, force: bool = False, mock_release: dict = None) -> dict:
+    """Checks official SagerNet/sing-box latest release, matches router CPU/libc asset, and reports Schema Adapter compatibility."""
+    now = time.time()
+    sb_caps = probe_singbox_binary_capabilities(conf_dir)
+    cur_ver = str(sb_caps.get("version") or "1.14.1").strip().lstrip("vV")
+    arch_info = detect_router_arch_and_libc()
+    ops = get_ops_settings(conf_dir)
+    gh_mirror = str(ops.get("gh_mirror") or "").strip().rstrip("/")
+
+    if mock_release is None and not force and _CORE_UPDATE_MEMO.get("data") and (now - _CORE_UPDATE_MEMO["ts"]) < 300:
+        cached = dict(_CORE_UPDATE_MEMO["data"])
+        cached["current_version"] = cur_ver
+        cached["cached"] = True
+        return cached
+
+    rel_obj = None
+    source_used = "mock" if isinstance(mock_release, dict) else SINGBOX_GITHUB_RELEASES_API
+    fetch_error = ""
+    if isinstance(mock_release, dict):
+        rel_obj = mock_release
+    else:
+        cand_urls = [SINGBOX_GITHUB_RELEASES_API]
+        if gh_mirror:
+            cand_urls.insert(0, f"{gh_mirror}/{SINGBOX_GITHUB_RELEASES_API}")
+        for u in cand_urls:
+            try:
+                raw = _update_http_get(u, timeout=6.0)
+                parsed = json.loads(raw.decode("utf-8", "replace"))
+                if isinstance(parsed, dict) and (parsed.get("tag_name") or parsed.get("name")):
+                    rel_obj = parsed
+                    source_used = u
+                    break
+            except Exception as e:
+                fetch_error = f"{type(e).__name__}: {e}"
+
+    if not isinstance(rel_obj, dict):
+        rec_ver = "1.14.4"
+        ver_t = _parse_sb_version_tuple(cur_ver)
+        res = {
+            "ok": True,
+            "offline_fallback": True,
+            "current_version": cur_ver,
+            "latest_version": rec_ver if is_version_newer(rec_ver, cur_ver) else cur_ver,
+            "has_update": is_version_newer(rec_ver, cur_ver),
+            "arch": arch_info,
+            "schema_profile": ("v1.15-multiqueue" if ver_t >= (1, 15, 0) else ("v1.14-dns-disabled" if ver_t >= (1, 14, 0) else "v1.12-legacy")),
+            "schema_compat_range": "sing-box 1.11.x ~ 1.14.x ~ 1.15.x+ (AI-LINK 动态 Schema 适配器已就绪)",
+            "asset_name": f"sing-box-{rec_ver}-{arch_info['preferred_suffix']}.tar.gz",
+            "download_url": f"https://github.com/SagerNet/sing-box/releases/download/v{rec_ver}/sing-box-{rec_ver}-{arch_info['preferred_suffix']}.tar.gz",
+            "mirror_download_url": (f"{gh_mirror}/https://github.com/SagerNet/sing-box/releases/download/v{rec_ver}/sing-box-{rec_ver}-{arch_info['preferred_suffix']}.tar.gz" if gh_mirror else ""),
+            "notes": "官方推荐稳定版 (内置预检防变砖保护：自动匹配架构 -> sing-box.new check 预检 -> 备份 sing-box.bak -> 失败自动回滚)",
+            "fetch_warning": fetch_error,
+            "checked_at": int(now),
+        }
+        return res
+
+    raw_tag = str(rel_obj.get("tag_name") or rel_obj.get("name") or cur_ver).strip()
+    latest_ver = raw_tag.lstrip("vV")
+    assets = rel_obj.get("assets") if isinstance(rel_obj.get("assets"), list) else []
+    pref_suf = f"{arch_info['preferred_suffix']}.tar.gz"
+    fall_suf = f"{arch_info['fallback_suffix']}.tar.gz"
+    matched_asset = None
+    for a in assets:
+        aname = str(a.get("name") or "")
+        if aname.endswith(pref_suf):
+            matched_asset = a
+            break
+    if not matched_asset:
+        for a in assets:
+            aname = str(a.get("name") or "")
+            if aname.endswith(fall_suf):
+                matched_asset = a
+                break
+    dl_url = str((matched_asset or {}).get("browser_download_url") or f"https://github.com/SagerNet/sing-box/releases/download/v{latest_ver}/sing-box-{latest_ver}-{arch_info['preferred_suffix']}.tar.gz")
+    asset_name = str((matched_asset or {}).get("name") or os.path.basename(dl_url))
+    sha256_digest = str((matched_asset or {}).get("digest") or "").replace("sha256:", "").strip().lower()
+    target_t = _parse_sb_version_tuple(latest_ver)
+    res = {
+        "ok": True,
+        "offline_fallback": False,
+        "current_version": cur_ver,
+        "latest_version": latest_ver,
+        "has_update": is_version_newer(latest_ver, cur_ver),
+        "arch": arch_info,
+        "schema_profile": ("v1.15-multiqueue" if target_t >= (1, 15, 0) else ("v1.14-dns-disabled" if target_t >= (1, 14, 0) else "v1.12-legacy")),
+        "schema_compat_range": "sing-box 1.11.x ~ 1.14.x ~ 1.15.x+ (AI-LINK 动态 Schema 适配器已就绪)",
+        "asset_name": asset_name,
+        "asset_size": int((matched_asset or {}).get("size") or 0),
+        "sha256": sha256_digest,
+        "download_url": dl_url,
+        "mirror_download_url": (f"{gh_mirror}/{dl_url}" if (gh_mirror and "github.com" in dl_url and not dl_url.startswith(gh_mirror)) else dl_url),
+        "notes": str(rel_obj.get("body") or "")[:600],
+        "source": source_used,
+        "checked_at": int(now),
+    }
+    if mock_release is None:
+        _CORE_UPDATE_MEMO["ts"] = now
+        _CORE_UPDATE_MEMO["data"] = dict(res)
+    return res
+
+
+def upgrade_singbox_core(payload: dict = None, conf_dir: Path = CONF_DIR) -> dict:
+    """5-Stage Atomic sing-box Kernel Hot-Updater with Pre-Flight `check -c` & Automatic Rollback."""
+    payload = payload if isinstance(payload, dict) else {}
+    conf_dir = Path(conf_dir)
+    conf_dir.mkdir(parents=True, exist_ok=True)
+    is_live = (conf_dir.resolve() == CONF_DIR.resolve() and Path("/etc/init.d/ai-link").exists())
+    target_bin = Path(payload.get("target_binary_path") or (resolve_singbox_binary() if is_live else (conf_dir / "bin/sing-box")) or "/usr/bin/sing-box")
+    target_bin.parent.mkdir(parents=True, exist_ok=True)
+    stage_dir = (RUN_DIR if is_live else conf_dir) / "core_upgrade"
+    stage_dir.mkdir(parents=True, exist_ok=True)
+    new_bin = stage_dir / "sing-box.new"
+    bak_bin = target_bin.parent / "sing-box.bak"
+
+    staged_src = str(payload.get("staged_binary_path") or "").strip()
+    try:
+        if staged_src:
+            src_p = Path(staged_src)
+            if not src_p.is_file():
+                return {"ok": False, "stage": "download", "error": "staged_binary_not_found", "message": f"未找到预置内核文件: {staged_src}"}
+            new_bin.write_bytes(src_p.read_bytes())
+            new_bin.chmod(0o755)
+        else:
+            chk_info = check_singbox_core_update(conf_dir, force=False)
+            dl_candidates = []
+            if payload.get("download_url"):
+                dl_candidates.append(str(payload["download_url"]).strip())
+            if chk_info.get("mirror_download_url"):
+                dl_candidates.append(chk_info["mirror_download_url"])
+            if chk_info.get("download_url") and chk_info["download_url"] not in dl_candidates:
+                dl_candidates.append(chk_info["download_url"])
+            raw_bytes = None
+            last_dl_err = ""
+            for u in dl_candidates:
+                if not u:
+                    continue
+                try:
+                    raw_bytes = _update_http_get(u, timeout=25.0, max_bytes=60 * 1024 * 1024)
+                    if raw_bytes and len(raw_bytes) > 1024:
+                        break
+                except Exception as e:
+                    last_dl_err = str(e)
+            if not raw_bytes:
+                return {"ok": False, "stage": "download", "error": "core_download_failed", "message": f"无法下载新内核归档包: {last_dl_err or '网络不可达'}"}
+            exp_sha = str(payload.get("sha256") or chk_info.get("sha256") or "").strip().lower()
+            if exp_sha:
+                actual_sha = hashlib.sha256(raw_bytes).hexdigest().lower()
+                if actual_sha != exp_sha:
+                    return {"ok": False, "stage": "verify_hash", "error": "sha256_mismatch", "message": f"内核包 SHA256 校验失败 (期望 {exp_sha[:12]}..., 实际 {actual_sha[:12]}...)"}
+            tgz_tmp = stage_dir / "sing-box-pkg.tar.gz"
+            tgz_tmp.write_bytes(raw_bytes)
+            extracted = False
+            with tarfile.open(tgz_tmp, "r:gz") as tf:
+                for member in tf.getmembers():
+                    if member.isfile() and os.path.basename(member.name) == "sing-box":
+                        fobj = tf.extractfile(member)
+                        if fobj:
+                            new_bin.write_bytes(fobj.read())
+                            new_bin.chmod(0o755)
+                            extracted = True
+                            break
+            if not extracted:
+                return {"ok": False, "stage": "extract", "error": "binary_not_in_archive", "message": "归档包内未找到 sing-box 可执行文件"}
+    except Exception as e:
+        return {"ok": False, "stage": "prepare", "error": "stage_failed", "message": f"准备新内核失败: {e}"}
+
+    try:
+        v_proc = subprocess.run([str(new_bin), "version"], capture_output=True, text=True, timeout=10)
+        v_out = (v_proc.stdout or "") + (v_proc.stderr or "")
+        if v_proc.returncode != 0 or not v_out.strip():
+            new_bin.unlink(missing_ok=True)
+            return {
+                "ok": False,
+                "stage": "version_probe",
+                "rolled_back": True,
+                "error": "binary_exec_failed",
+                "message": f"新内核无法在当前架构运行 (rc={v_proc.returncode}): {v_out.strip()[:200]}",
+            }
+        m_ver = re.search(r"sing-box version\s+([^\s\n]+)", v_out)
+        new_ver = m_ver.group(1).strip() if m_ver else str(payload.get("target_version") or "1.14.4")
+    except Exception as e:
+        new_bin.unlink(missing_ok=True)
+        return {"ok": False, "stage": "version_probe", "rolled_back": True, "error": "binary_exec_exception", "message": f"新内核执行异常: {e}"}
+
+    cand_cfg = ConfigGenerator.generate_singbox_config(
+        enable_dns_section=True,
+        enable_tls_outbounds=True,
+        conf_dir=conf_dir,
+        sb_version=new_ver,
+    )
+    cand_json_path = stage_dir / "sing-box.json.candidate"
+    _atomic_write_text(cand_json_path, json.dumps(cand_cfg, indent=2, ensure_ascii=False))
+    chk_proc = subprocess.run([str(new_bin), "check", "-c", str(cand_json_path), "-D", str(conf_dir)], capture_output=True, text=True, timeout=12)
+    if chk_proc.returncode != 0:
+        err_detail = ((chk_proc.stderr or "") + (chk_proc.stdout or "")).strip()
+        new_bin.unlink(missing_ok=True)
+        return {
+            "ok": False,
+            "stage": "precheck",
+            "rolled_back": True,
+            "target_version": new_ver,
+            "error": "config_precheck_failed",
+            "detail": err_detail[:360],
+            "message": f"🛡️ 沙箱预检拦截：新内核 v{new_ver} 配置自检未通过 ({err_detail[:160]})，已中止替换并保持原内核稳定运行！",
+        }
+
+    old_ver = probe_singbox_binary_capabilities(conf_dir).get("version", "1.14.1")
+    had_old_bin = target_bin.is_file()
+    if had_old_bin:
+        try:
+            shutil.copy2(target_bin, bak_bin)
+            bak_bin.chmod(0o755)
+        except Exception:
+            pass
+    try:
+        _atomic_install_binary(target_bin, new_bin.read_bytes())
+        new_bin.unlink(missing_ok=True)
+        _atomic_write_text(conf_dir / "sing-box.json", json.dumps(cand_cfg, indent=2, ensure_ascii=False))
+        _SB_CAP_CACHE["val"] = None
+        _SB_CAP_CACHE["ts"] = 0.0
+    except Exception as e:
+        if had_old_bin and bak_bin.is_file():
+            try:
+                _atomic_install_binary(target_bin, bak_bin.read_bytes())
+            except Exception:
+                pass
+        return {"ok": False, "stage": "install", "rolled_back": True, "error": "atomic_swap_failed", "message": f"替换内核二进制失败，已自动回滚: {e}"}
+
+    if is_live:
+        ok_restart = _respawn_core_only(timeout=20.0)
+        if not ok_restart and had_old_bin and bak_bin.is_file():
+            try:
+                _atomic_install_binary(target_bin, bak_bin.read_bytes())
+                _SB_CAP_CACHE["val"] = None
+                write_all_configs(conf_dir)
+                _respawn_core_only(timeout=20.0)
+            except Exception:
+                pass
+            return {
+                "ok": False,
+                "stage": "healthcheck",
+                "rolled_back": True,
+                "error": "core_respawn_failed_rolled_back",
+                "message": f"⚠️ 新内核 v{new_ver} 启动后端口未就绪，已自动从 sing-box.bak 回滚至 v{old_ver} 并恢复网络！",
+            }
+        ensure_nft_and_routing_intact()
+
+    ver_t = _parse_sb_version_tuple(new_ver)
+    schema_prof = "v1.15-multiqueue" if ver_t >= (1, 15, 0) else ("v1.14-dns-disabled" if ver_t >= (1, 14, 0) else "v1.12-legacy")
+    append_ops_event_log("INFO", f"sing-box 内核已安全热升级: v{old_ver} -> v{new_ver} ({schema_prof})")
+    return {
+        "ok": True,
+        "previous_version": old_ver,
+        "current_version": new_ver,
+        "schema_profile": schema_prof,
+        "backup_path": str(bak_bin) if bak_bin.is_file() else "",
+        "binary_path": str(target_bin),
+        "rolled_back": False,
+        "message": f"✅ sing-box 内核已成功热升级至 v{new_ver}（Schema 适配档位: {schema_prof}，原内核已备份至 {bak_bin.name}）",
+    }
 
 
 def _read_version_file() -> str:
@@ -19994,6 +20502,10 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             force = str(qs.get("force", "0")).lower() in ("1", "true", "yes")
             self._send_json(check_plugin_update(CONF_DIR, force=force))
             return
+        if req_path == "/api/ops/core_update/check":
+            force = str(qs.get("force", "0")).lower() in ("1", "true", "yes")
+            self._send_json(check_singbox_core_update(CONF_DIR, force=force))
+            return
         if req_path == "/api/system/update/status":
             self._send_json({"ok": True, "current": APP_VERSION, "progress": read_update_progress()})
             return
@@ -20401,6 +20913,14 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             force = bool(payload.get("force")) or str(payload.get("force", "")).lower() in ("1", "true", "yes")
             res = start_plugin_update(CONF_DIR, force=force)
             self._send_json(res, status=(200 if res.get("ok") else 409))
+            return
+        if clean_path == "/api/ops/core_update/check":
+            force = bool(payload.get("force")) or str(payload.get("force", "")).lower() in ("1", "true", "yes")
+            self._send_json(check_singbox_core_update(CONF_DIR, force=force))
+            return
+        if clean_path == "/api/ops/core_update/apply":
+            res = upgrade_singbox_core(payload, CONF_DIR)
+            self._send_json(res, status=(200 if res.get("ok") else 400))
             return
         if clean_path == "/api/system/update/ack":
             self._send_json(acknowledge_update_result())
@@ -22540,6 +23060,16 @@ def _teardown_blackhole_nft_and_routing() -> bool:
             r_del6 = subprocess.run(["ip", "-6", "rule", "del", "fwmark", "0x162", "table", "162"], capture_output=True, timeout=2)
             if r_del6.returncode != 0:
                 break
+        for _ in range(4):
+            if subprocess.run(["ip", "rule", "del", "fwmark", "0x163", "table", "163"], capture_output=True, timeout=2).returncode != 0:
+                break
+            removed = True
+        for _ in range(4):
+            if subprocess.run(["ip", "-6", "rule", "del", "fwmark", "0x163", "table", "163"], capture_output=True, timeout=2).returncode != 0:
+                break
+            removed = True
+        subprocess.run(["ip", "route", "flush", "table", "163"], capture_output=True, timeout=2)
+        subprocess.run(["ip", "-6", "route", "flush", "table", "163"], capture_output=True, timeout=2)
         if rollback_dnsmasq_and_resolv(CONF_DIR):
             removed = True
         if removed:
@@ -22571,9 +23101,18 @@ def ensure_nft_and_routing_intact() -> bool:
             return False
         chk_nft = subprocess.run(["nft", "list", "table", "inet", "ai_link"], capture_output=True, text=True, timeout=3)
         chk_rule = subprocess.run(["ip", "rule", "show"], capture_output=True, text=True, timeout=3)
+        _ops_wd = get_ops_settings(CONF_DIR)
+        _dpm_wd = str(_ops_wd.get("data_plane_mode") or "tproxy_redirect").strip().lower()
         nft_ok = (chk_nft.returncode == 0 and "prerouting_tproxy" in (chk_nft.stdout or ""))
         rule_ok = (chk_rule.returncode == 0 and ("0x162" in (chk_rule.stdout or "") or "162" in (chk_rule.stdout or "")))
-        if not nft_ok or not rule_ok:
+        tun_ok = True
+        if _dpm_wd in ("tproxy_tcp_tun_udp", "tun_full"):
+            chk_t163 = subprocess.run(["ip", "route", "show", "table", "163"], capture_output=True, text=True, timeout=2)
+            tun_ok = (
+                ("0x163" in (chk_rule.stdout or "") or "163" in (chk_rule.stdout or ""))
+                and (chk_t163.returncode == 0 and "ailink0" in (chk_t163.stdout or ""))
+            )
+        if not nft_ok or not rule_ok or not tun_ok:
             subprocess.run(["logger", "-t", "ai-link", f"Self-Healing Watchdog: TProxy port :{tproxy_port} verified listening; re-applying missing nftables/policy routing..."], capture_output=True, timeout=2)
             append_ops_event_log("WARN", f"看门狗自愈: TProxy 端口 :{tproxy_port} 已恢复监听，正在重新挂载 nftables 与策略路由")
             if not rule_ok:
@@ -22583,6 +23122,8 @@ def ensure_nft_and_routing_intact() -> bool:
                 subprocess.run(["ip", "route", "add", "local", "default", "dev", "lo", "table", "162"], capture_output=True, timeout=2)
             if not nft_ok and Path("/usr/share/ai-link/nftables/apply_nft.sh").is_file():
                 subprocess.run(["/bin/sh", "/usr/share/ai-link/nftables/apply_nft.sh"], capture_output=True, timeout=8)
+            _ops_wd = get_ops_settings(CONF_DIR)
+            _sync_tun_policy_routing(_ops_wd.get("data_plane_mode", "tproxy_redirect"), enable_v6=bool(_ops_wd.get("ipv6_proxy", False)))
             apply_dns_adblock_system(CONF_DIR, force_live_mount=True)
             restore_resolv_conf_to_local()
             return False
@@ -22870,6 +23411,7 @@ def main():
             mixed_port=int(_flag_val("--mixed-port", 7890) or 7890),
             panel_port=int(_flag_val("--panel-port", 9099) or 9099),
             dns_port=int(_flag_val("--dns-port", 7874) or 7874),
+            data_plane_mode=_flag_val("--data-plane-mode"),
         )
         return 0
     if "--apply-dns-upstream" in sys.argv:
@@ -23060,13 +23602,17 @@ def main():
             "nid_jp_r": {"state": "ok", "delay_ms": 214, "probe_ts": int(time.time()), "svc": {}},
             "nid_sg_v": {"state": "ok", "delay_ms": 150, "probe_ts": int(time.time()), "svc": {}}
         }
-        for _gid_t, _man_t in (("Google", "auto:auto_ai"), ("TikTok", "auto:auto_1792666580386"), ("YouTube", "auto:auto_1792666580386")):
+        for _gid_t, _man_t, _exp_n in (
+            ("Google", "auto:auto_ai", "VIP1-VL12-新加坡"),
+            ("TikTok", "auto:auto_1792666580386", "地区随机 | 日本 JP | NRT | 57.182.103.115:443"),
+            ("YouTube", "auto:auto_1792666580386", "地区随机 | 日本 JP | NRT | 57.182.103.115:443"),
+        ):
             _r_t = resolve_node_for_country_strategy_with_failover(
                 "ALL", "auto", _man_t, ["地区随机 | 日本 JP | NRT | 57.182.103.115:443", "VIP1-VL12-新加坡", "direct"],
                 {"地区随机 | 日本 JP | NRT | 57.182.103.115:443": 214.0, "VIP1-VL12-新加坡": 150.0},
                 group_id=_gid_t, saved_nodes=_mock_sn, subs_list=[], store=_mock_st, auto_cfg=_mock_an_cfg
             )
-            assert _r_t["selected"] == "VIP1-VL12-新加坡", f"Expected {_gid_t} to select dedicated node VIP1-VL12-新加坡, got {_r_t}"
+            assert _r_t["selected"] == _exp_n, f"Expected {_gid_t} bound to {_man_t} to select pool node {_exp_n}, got {_r_t}"
         # Contract tests for 6-Layer Audit (P0-1, P0-2, P1-1..P1-5, P2-1..P2-6)
         # 1) P0-1: AdBlock parser normalization & seed preservation
         _raw_adblock = "\n".join([

@@ -112,6 +112,32 @@ setup_tun_and_routing() {
 		ip -6 rule add fwmark $FWMARK table $TABLE_ID priority 162 2>/dev/null || true
 		ip -6 route add local default dev lo table $TABLE_ID 2>/dev/null || true
 	fi
+
+	local dpm
+	config_get dpm 'global' 'data_plane_mode' 'tproxy_redirect'
+	while ip rule del fwmark 0x163 table 163 2>/dev/null; do :; done
+	while ip -6 rule del fwmark 0x163 table 163 2>/dev/null; do :; done
+	ip route flush table 163 2>/dev/null || true
+	ip -6 route flush table 163 2>/dev/null || true
+	if [ "$dpm" = "tproxy_tcp_tun_udp" ] || [ "$dpm" = "tun_full" ]; then
+		local _tw=0
+		while [ $_tw -lt 10 ] && [ ! -d /sys/class/net/ailink0 ]; do
+			sleep 1
+			_tw=$((_tw + 1))
+		done
+		if [ -d /sys/class/net/ailink0 ]; then
+			sysctl -w net.ipv4.conf.all.rp_filter=0 >/dev/null 2>&1 || true
+			sysctl -w net.ipv4.conf.default.rp_filter=0 >/dev/null 2>&1 || true
+			sysctl -w net.ipv4.conf.ailink0.rp_filter=0 >/dev/null 2>&1 || true
+			ip link set dev ailink0 up 2>/dev/null || true
+			ip rule add fwmark 0x163 table 163 priority 163 2>/dev/null || true
+			ip route replace default dev ailink0 table 163 2>/dev/null || true
+			if [ "$ipv6_proxy" -eq 1 ]; then
+				ip -6 rule add fwmark 0x163 table 163 priority 163 2>/dev/null || true
+				ip -6 route replace default dev ailink0 table 163 2>/dev/null || true
+			fi
+		fi
+	fi
 }
 
 cleanup_routing_and_nft() {
@@ -119,6 +145,10 @@ cleanup_routing_and_nft() {
 	nft delete table ip ai_link 2>/dev/null || true
 	while ip rule del fwmark $FWMARK table $TABLE_ID 2>/dev/null; do :; done
 	while ip -6 rule del fwmark $FWMARK table $TABLE_ID 2>/dev/null; do :; done
+	while ip rule del fwmark 0x163 table 163 2>/dev/null; do :; done
+	while ip -6 rule del fwmark 0x163 table 163 2>/dev/null; do :; done
+	ip route flush table 163 2>/dev/null || true
+	ip -6 route flush table 163 2>/dev/null || true
 	while ip rule del pref 8999 2>/dev/null; do :; done
 	while ip -6 rule del pref 8999 2>/dev/null; do :; done
 	ip route flush table $TABLE_ID 2>/dev/null || true

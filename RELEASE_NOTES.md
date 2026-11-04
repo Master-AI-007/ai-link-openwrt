@@ -1,32 +1,31 @@
-# AI-LINK v2.3.7
+# AI-LINK v2.4.0
 
 > OpenWrt 智能分流网关 · sing-box 单内核 · 15 组分流 · 自动节点池 · 订阅自适应
-> 发布日期：2026-11-04 ｜ 适用：OpenWrt 23.05 / 24.10 / ImmortalWrt / LEDE（`fw4` + `nftables`）
+> 发布日期：2026-11-05 ｜ 适用：OpenWrt 23.05 / 24.10 / ImmortalWrt / LEDE（`fw4` + `nftables`）
 
 ---
 
-## 这一版：六个页面，一条横幅；两个 P0，一并收掉
+## 这一版：三模数据面，自己选
 
-### 🖼 全站统一单横幅 Hero
+### 🧭 受控三模
 
-概览、分流、回家、护盾、节点、设置六页全部改成同构单横幅：
+| 模式 | 适用 | 行为 |
+|---|---|---|
+| `tproxy_redirect`（默认）| 绝大多数旁路由 / 主路由 | LAN 海外 TCP/UDP 走 TProxy :7893，本机 TCP 走 Redirect :7891 |
+| `tproxy_tcp_tun_udp` | 游戏 / 需要完整 UDP 与 ICMP | TCP 仍走 TProxy，海外 UDP 与 Fake-IP ICMP 打标注入 `ailink0` |
+| `tun_full` | 全量接管 | 海外 TCP/UDP/ICMP 全走 TUN；大陆 IP 与国服游戏端口顶层直通 |
 
-- 左侧光子轨道 + 中心发光主核（与导航图标 1:1）；
-- 中间主标题 + `?` 战术指南 + 3 项实时 KPI；
-- 右侧控制区（各页操作按钮）；
-- 旧的独立 `.content-head` 全部移除，**零双顶栏叠加**。
+切换即时生效，可在「设置与诊断 → 数据面」里选；切回默认不需要重装。
 
-### 🛡 P0 修复
+### 📱 移动端与平板 Hero
 
-- **P0-1**：`apply_nft.sh` 改为三级加锁（`flock -x -n` → util-linux `-w` → BusyBox 轮询 → mkdir 自旋），BusyBox 不再因 `-w` 不支持而静默跳过 `table inet ai_link` 挂载；
-- **P0-2**：每日测速配额达到上限时改为「跳过并保留原健康状态」（`QUOTA_SKIPPED_PRESERVE`），不再把全部节点写成 `dead`、不再清空节点池把分流降级直连。
+- 430px / 375px：文案区满宽、3 项指标单排、操作按钮两列铺满、零横向溢出；
+- 768px：顶栏 `.global-route` 单行不折行，横幅高度收敛；
+- 桌面端仍是六页统一单横幅。
 
-### 🧩 细节
+### ⚙️ 内核安全热升级
 
-- 探测缓存纳入 `node_probe.json` 签名，`/api/status` 与 `/api/auto_nodes` 的可用计数同源；
-- 顶栏连接数可点击跳到实时连接表；
-- `--mint` 对齐 `#38e0b2`；修复离线概览重复告警条与护盾页 `NaN`；
-- 订阅自适应（11 格式）与「手动即固定」延续 v2.3.6。
+升级 sing-box 内核时不再中断现有分流与回家隧道。
 
 ---
 
@@ -38,7 +37,7 @@ ai-link update --apply
 curl -fsSL https://ai-link-official.pages.dev/upgrade.sh | sh
 ```
 
-支持从 2.0.x / 2.1.x / 2.2.x / 2.3.x 直升，配置、节点、订阅、节点池全部保留，失败自动回滚。
+支持从 2.0.x / 2.1.x / 2.2.x / 2.3.x / 2.4.x 直升，配置、节点、订阅、节点池全部保留，失败自动回滚。
 
 ---
 
@@ -53,7 +52,7 @@ curl -fsSL https://ai-link-official.pages.dev/upgrade.sh | sh
 ## 包指纹
 
 ```
-AI-LINK-v2.3.7.tar.gz   724,101 B
-md5     8b1e6187e0c800ac53f0da522de34e3f
-sha256  87fbef7b5568dcb72dec8ce19f655b6a53a688dfef7ac87a3e88fa2dc4622bfc
+AI-LINK-v2.4.0.tar.gz   736,184 B
+md5     15928d926ac2202bc42a3bbabd654d13
+sha256  87dabb0e2a38cdcdcbef3059f90d15f85579ee59186b2fc3b64ea36bdcf9b3a9
 ```

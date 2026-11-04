@@ -4,7 +4,7 @@
 
 **NEXUS 全域 3D 智能网关 · 运行在 OpenWrt 上的智能分流系统**
 
-[![version](https://img.shields.io/badge/version-2.3.7-6ee7f5?style=flat-square)](https://github.com/Master-AI-007/ai-link-openwrt/releases/tag/v2.3.7)
+[![version](https://img.shields.io/badge/version-2.4.0-6ee7f5?style=flat-square)](https://github.com/Master-AI-007/ai-link-openwrt/releases/tag/v2.4.0)
 [![platform](https://img.shields.io/badge/OpenWrt-23.05%20%7C%2024.10%20%7C%20ImmortalWrt-a994ff?style=flat-square)](#环境要求)
 [![core](https://img.shields.io/badge/sing--box-1.14.1-54e6b5?style=flat-square)](#技术架构)
 [![license](https://img.shields.io/badge/license-MIT-f9a8d4?style=flat-square)](#许可与免责)
@@ -30,7 +30,7 @@ AI-LINK 是一套面向 OpenWrt 的**智能分流网关**：用 sing-box 单内�
 
 ---
 
-## v2.3.7 新特性（统一 Hero · P0 修复）
+## v2.4.0 新特性（三模数据面 · 移动端自适应）
 
 | | 能力 | 说明 |
 |---|---|---|
@@ -42,7 +42,9 @@ AI-LINK 是一套面向 OpenWrt 的**智能分流网关**：用 sing-box 单内�
 | 🏠 | **回家隧道** | Hysteria2 与 VLESS-Reality 双协议，二维码 / 标准链接导入，三种回家路由边界 |
 | 🧩 | **自动池六步流程** | 筛选勾选 → 只测新选 → 两段式加入 → 行内移除 → 往返调整 → 保存，10/10 边界实测通过 |
 | 🧠 | **自动节点池 v2** | 目标驱动：选范围/模式，一键按延迟选最快 10 个；服务语义判定地区；订阅改名无损迁移 |
-| 🖼 | **统一单横幅 Hero** | 6 大功能页同构：光子轨道 + 发光主核 + 实时 KPI + 右侧操作区，零双顶栏 |
+| 🧭 | **受控三模数据面** | tproxy_redirect（默认）/ tproxy_tcp_tun_udp（游戏混合）/ tun_full（全量 TUN），一键切换 |
+| 📱 | **移动端 Hero 自适应** | 430 / 375 / 768 视口零横向溢出，指标单排、按钮两列铺满 |
+| 🖼 | **统一单横幅 Hero** | 6 大功能页同构：光子轨道 + 发光主核 + 实时 KPI + 右侧操作区 |
 | 📥 | **订阅自适应** | 11 种格式：Clash（块式/嵌套/锚点）、URI、Base64、sing-box、Surge、Loon、SIP008、V2Ray JSON |
 | 🔒 | **手动零漂移** | 手动节点不可用也固定，不再自动换；自动切换统一走节点池 |
 | 🏠 | **回家节点弹窗** | 协议卡即时切换 + 主按钮防重入 + 异步创建 + 3 秒幂等去重 + 一键清理重复节点 |
@@ -178,7 +180,8 @@ sing-box 1.14.1（单内核）
 
 | 版本 | 日期 | 主题 |
 |---|---|---|
-| **2.3.7** | 2026-11-04 | 统一单横幅 Hero + P0-1 flock / P0-2 配额保态 + 版本 9 处对齐 |
+| **2.4.0** | 2026-11-05 | 受控三模 TUN 数据面 + 移动端 Hero 自适应 + 内核安全热升级 |
+| 2.3.7 | 2026-11-04 | 统一单横幅 Hero + P0-1 flock / P0-2 配额保态 + 版本 9 处对齐 |
 | 2.3.6 | 2026-11-03 | 订阅自适应（11 格式）+ 手动零漂移 + 极简节点池 + 窄屏卡片化 |
 | 2.3.5 | 2026-11-03 | 极简自动节点池重构 + 手动/自动正交解耦 |
 | 2.3.4 | 2026-11-03 | 全量验收缺陷闭环 + 体验加固 |
@@ -203,10 +206,10 @@ sing-box 1.14.1（单内核）
 ## 包指纹
 
 ```
-AI-LINK-v2.3.7.tar.gz
-size   724,101 B
-md5    8b1e6187e0c800ac53f0da522de34e3f
-sha256 87fbef7b5568dcb72dec8ce19f655b6a53a688dfef7ac87a3e88fa2dc4622bfc
+AI-LINK-v2.4.0.tar.gz
+size   736,184 B
+md5    15928d926ac2202bc42a3bbabd654d13
+sha256 87dabb0e2a38cdcdcbef3059f90d15f85579ee59186b2fc3b64ea36bdcf9b3a9
 ```
 
 在线清单：<https://ai-link-official.pages.dev/version.json>

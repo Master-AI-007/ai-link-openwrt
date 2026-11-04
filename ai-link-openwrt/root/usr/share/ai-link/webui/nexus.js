@@ -70,17 +70,17 @@
     groups: [
       { id: 'AI', name: 'AI 智能助手', subtitle: 'OpenAI / Claude / Gemini / Copilot / Cursor', shunt_mode: 'auto', auto_node_id: 'auto_ai', auto_node_name: 'AI 自动池', country: 'US', resolved_node: '新加坡 06', rtt: null, domains: ['openai.com', 'anthropic.com', 'claude.ai', 'gemini.google.com', 'cursor.sh'], is_custom: false },
       { id: 'YouTube', name: 'YouTube 视频', subtitle: 'YouTube 4K/8K 视频流与 googlevideo CDN', shunt_mode: 'auto', auto_node_id: 'auto_youtube', auto_node_name: '视频自动池', country: 'JP', resolved_node: '日本 07', rtt: null, domains: ['youtube.com', 'googlevideo.com', 'ytimg.com', 'youtu.be'], is_custom: false },
-      { id: 'TikTok', name: 'TikTok 国际版', subtitle: '短视频与国际直播 CDN 专线', shunt_mode: 'auto', auto_node_id: 'auto_youtube', auto_node_name: '视频自动池', country: 'SG', resolved_node: '新加坡 08', rtt: null, domains: ['tiktok.com', 'tiktokv.com', 'tiktokcdn.com', 'musical.ly'], is_custom: false },
+      { id: 'TikTok', name: 'TikTok 国际版', subtitle: '短视频与国际直播 CDN 专线', shunt_mode: 'auto', auto_node_id: 'auto_youtube', auto_node_name: '视频自动池', country: 'SG', resolved_node: '日本 07', rtt: null, domains: ['tiktok.com', 'tiktokv.com', 'tiktokcdn.com', 'musical.ly'], is_custom: false },
       { id: 'Netflix', name: 'Netflix 流媒体', subtitle: '奈飞 / Disney+ / 国际流媒体解锁', shunt_mode: 'auto', auto_node_id: 'auto_netflix', auto_node_name: '流媒体自动池', country: 'HK', resolved_node: '香港 N3', rtt: null, domains: ['netflix.com', 'nflxvideo.net', 'disneyplus.com', 'hbo.com'], is_custom: false },
       { id: 'Google', name: 'Google 全生态', subtitle: '搜索 / Play 商店更新 CDN / FCM 推送', shunt_mode: 'auto', auto_node_id: 'auto_ai', auto_node_name: 'AI 自动池', country: 'SG', resolved_node: '新加坡 06', rtt: null, domains: ['google.com', 'googleapis.com', 'gstatic.com', 'gvt1.com', 'dl.google.com'], is_custom: false },
-      { id: 'GitHub', name: 'GitHub 开发者', subtitle: '代码仓库 / Release 资产 / 容器镜像', shunt_mode: 'auto', auto_node_id: 'auto_ai', auto_node_name: 'AI 自动池', country: 'JP', resolved_node: '日本 07', rtt: null, domains: ['github.com', 'githubusercontent.com', 'githubassets.com', 'ghcr.io'], is_custom: false },
-      { id: 'Social', name: 'Telegram 与社交', subtitle: 'Telegram / X (Twitter) / Discord / WhatsApp', shunt_mode: 'auto', auto_node_id: 'auto_youtube', auto_node_name: '视频自动池', country: 'SG', resolved_node: '新加坡 06', rtt: null, domains: ['telegram.org', 't.me', 'twitter.com', 'x.com', 'discord.com'], is_custom: false },
+      { id: 'GitHub', name: 'GitHub 开发者', subtitle: '代码仓库 / Release 资产 / 容器镜像', shunt_mode: 'auto', auto_node_id: 'auto_ai', auto_node_name: 'AI 自动池', country: 'JP', resolved_node: '新加坡 06', rtt: null, domains: ['github.com', 'githubusercontent.com', 'githubassets.com', 'ghcr.io'], is_custom: false },
+      { id: 'Social', name: 'Telegram 与社交', subtitle: 'Telegram / X (Twitter) / Discord / WhatsApp', shunt_mode: 'auto', auto_node_id: 'auto_youtube', auto_node_name: '视频自动池', country: 'SG', resolved_node: '日本 07', rtt: null, domains: ['telegram.org', 't.me', 'twitter.com', 'x.com', 'discord.com'], is_custom: false },
       { id: 'Microsoft', name: 'Microsoft 微软生态', subtitle: 'Office 365 / OneDrive / Windows 更新', shunt_mode: 'direct', auto_node_id: 'auto_youtube', auto_node_name: '直连模式', country: 'direct', resolved_node: 'direct', rtt: 0, domains: ['microsoft.com', 'office.com', 'live.com', 'windowsupdate.com'], is_custom: false },
       { id: 'Apple', name: 'Apple 苹果服务', subtitle: 'App Store / iCloud / TestFlight 分发', shunt_mode: 'direct', auto_node_id: 'auto_youtube', auto_node_name: '直连模式', country: 'direct', resolved_node: 'direct', rtt: 0, domains: ['apple.com', 'icloud.com', 'mzstatic.com', 'cdn-apple.com'], is_custom: false },
-      { id: 'Games', name: '游戏平台与联机', subtitle: 'Steam / Epic / PlayStation / Xbox', shunt_mode: 'auto', auto_node_id: 'auto_youtube', auto_node_name: '视频自动池', country: 'HK', resolved_node: '香港 N3', rtt: null, domains: ['steampowered.com', 'steamcommunity.com', 'epicgames.com'], is_custom: false },
-      { id: 'Outside_CN', name: '海外其他流量', subtitle: '未命中专项规则的非大陆流量统管', shunt_mode: 'auto', auto_node_id: 'auto_youtube', auto_node_name: '视频自动池', country: 'SG', resolved_node: '新加坡 06', rtt: null, domains: ['geolocation-!cn'], is_custom: false },
+      { id: 'Games', name: '游戏平台与联机', subtitle: 'Steam / Epic / PlayStation / Xbox', shunt_mode: 'auto', auto_node_id: 'auto_youtube', auto_node_name: '视频自动池', country: 'HK', resolved_node: '日本 07', rtt: null, domains: ['steampowered.com', 'steamcommunity.com', 'epicgames.com'], is_custom: false },
+      { id: 'Outside_CN', name: '海外其他流量', subtitle: '未命中专项规则的非大陆流量统管', shunt_mode: 'auto', auto_node_id: 'auto_youtube', auto_node_name: '视频自动池', country: 'SG', resolved_node: '日本 07', rtt: null, domains: ['geolocation-!cn'], is_custom: false },
       { id: 'Domestic_CN', name: '国内直连白名单', subtitle: '大陆域名 / 抖音快手直播 CDN / 国内 IP 直通', shunt_mode: 'direct', auto_node_id: '', auto_node_name: '直连', country: 'direct', resolved_node: 'direct', rtt: 0, domains: ['douyincdn.com', 'bilibili.com', 'baidu.com', 'qq.com', 'taobao.com', 'geosite:cn'], is_custom: false, locked_order: true },
-      { id: 'Final_Fallback', name: '最终兜底回退', subtitle: 'Final Fallback 漏网流量安全兜底', shunt_mode: 'auto', auto_node_id: 'auto_youtube', auto_node_name: '视频自动池', country: 'SG', resolved_node: '新加坡 06', rtt: null, domains: ['final-fallback'], is_custom: false, locked_bottom: true, locked_order: true }
+      { id: 'Final_Fallback', name: '最终兜底回退', subtitle: 'Final Fallback 漏网流量安全兜底', shunt_mode: 'auto', auto_node_id: 'auto_youtube', auto_node_name: '视频自动池', country: 'SG', resolved_node: '日本 07', rtt: null, domains: ['final-fallback'], is_custom: false, locked_bottom: true, locked_order: true }
     ],
     autoPools: [
       { id: 'auto_ai', tag: 'Auto_AI', name: 'AI 专线自动池', mode: 'full', pool_mode: 'service_check', service_check_enabled: true, service_checks: ['gemini', 'chatgpt'], scope_sources: ['ALL'], scope_countries: ['US', 'JP', 'SG'], target_size: 5, replenish_threshold: 2, healthy_count: 5, active_group_index: 1, current_node: '新加坡 06', current_delay_ms: null, groups: [{ index: 1, name: '节点池成员', node_tags: ['新加坡 06', '日本 07'] }] },
@@ -133,7 +133,7 @@
       { id: 'sched_default', name: '每日全量 URL Ping 巡检', region: 'ALL', interval_min: 360, enabled: true, check_ipv6: false }
     ],
     logs: [
-      '[INFO] AI-LINK NEXUS daemon v2.3.7 started on 0.0.0.0:9099',
+      '[INFO] AI-LINK NEXUS daemon v2.4.0 started on 0.0.0.0:9099',
       '[INFO] sing-box 1.14.1 core process verified alive (ports :7890, :7893, :7874 ready)',
       '[INFO] NFTables table inet ai_link synchronized via --generate-nft single source of truth',
       '[INFO] Dual-group Auto Node Pools (Auto_AI, Auto_YouTube, Auto_Netflix) initialized',
@@ -978,21 +978,30 @@
     const gl = $('#group-list');
     if (gl) {
       gl.innerHTML = mock.groups.map((g, i) => {
-        const isDir = g.shunt_mode === 'direct' || g.resolved_node === 'direct';
+        const boundPool = (!g.shunt_mode || g.shunt_mode === 'auto')
+          ? (mock.autoPools || []).find(p => p.id === g.auto_node_id || p.tag === g.auto_node_id || p.name === g.auto_node_name)
+          : null;
+        const effResolvedNode = (boundPool && boundPool.current_node && boundPool.current_node !== 'direct')
+          ? boundPool.current_node
+          : g.resolved_node;
+        const effRtt = (boundPool && boundPool.current_delay_ms != null && Number(boundPool.current_delay_ms) > 0)
+          ? Number(boundPool.current_delay_ms)
+          : g.rtt;
+        const isDir = g.shunt_mode === 'direct' || effResolvedNode === 'direct';
         const isManual = g.shunt_mode === 'manual';
         const hasManualDrift = false;
         const driftText = '';
         const modeBadge = isDir
           ? '直连模式'
           : (isManual
-              ? ('手动固定 · ' + (g.manual_node || g.resolved_node || g.country || 'JP'))
-              : ('节点池 · ' + (g.auto_node_name || '自动节点池')));
-        const autoFallbackDirect = !isDir && !isManual && (g.no_available_node || g.resolved_node === 'direct');
+              ? ('手动固定 · ' + (g.manual_node || effResolvedNode || g.country || 'JP'))
+              : ('节点池 · ' + ((boundPool && boundPool.name) || g.auto_node_name || '自动节点池')));
+        const autoFallbackDirect = !isDir && !isManual && (g.no_available_node || effResolvedNode === 'direct');
         const outNode = isDir
           ? 'DIRECT 宽带直连'
           : (isManual
-              ? (g.manual_node || g.resolved_node || '已固定单节点')
-              : (autoFallbackDirect ? '池内节点不可达 · 直连保护' : (g.resolved_node || '节点池优选就绪')));
+              ? (g.manual_node || effResolvedNode || '已固定单节点')
+              : (autoFallbackDirect ? '池内节点不可达 · 直连保护' : (effResolvedNode || '节点池优选就绪')));
         const rulesArr = []
           .concat(g.domains || [])
           .concat((g.domain_keywords || []).map(k => 'keyword:' + k))
@@ -1019,7 +1028,7 @@
             '<div style="min-width:0;cursor:pointer" data-group="' + i + '"><b style="display:block;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(g.name) + (g.is_custom ? ' <span class="version-chip" style="padding:2px 6px;">自定义</span>' : '') + '</b><small style="display:block;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(g.subtitle) + ' (' + ruleCnt + ' 项)</small></div>' +
             '<div style="cursor:pointer;min-width:0" data-group="' + i + '"><span class="status-pill" style="max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(modeBadge) + '</span></div>' +
             '<div class="mono" style="color:' + ((hasManualDrift || g.strict_locked_dead || autoFallbackDirect) ? 'var(--amber)' : 'var(--text-2)') + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer" data-group="' + i + '" title="' + esc(driftText || outNode) + '">' + esc(outNode) + '</div>' +
-            '<div style="text-align:right">' + formatLatencyBadge(g.rtt, isDir ? 'direct' : (g.strict_locked_dead ? 'dead' : 'ok'), isDir) + '</div>' +
+            '<div style="text-align:right">' + formatLatencyBadge(effRtt, isDir ? 'direct' : (g.strict_locked_dead ? 'dead' : 'ok'), isDir) + '</div>' +
             '<div class="button-row" style="justify-content:flex-end;gap:var(--sp-2)">' +
               '<button class="button ghost compact" style="min-width:72px;padding:0 10px;" data-action="verify-group" data-gid="' + esc(g.id) + '" title="真连接探测当前组出口并触发故障防抖切换">校验</button>' +
               '<button class="button secondary compact" style="min-width:88px;padding:0 12px;" data-group="' + i + '">策略编排</button>' +
@@ -1783,6 +1792,20 @@
       if (ops.gh_mirror != null) state.ghMirror = String(ops.gh_mirror);
       if (ops.update_manifest_url != null) state.updateManifestUrl = String(ops.update_manifest_url);
       if (ops.panel_bind != null) state.panelBind = String(ops.panel_bind);
+      if (ops.data_plane_mode) state.dataPlaneMode = String(ops.data_plane_mode);
+      if (ops.tun_stack) state.tunStack = String(ops.tun_stack);
+      if (ops.tun_mtu != null) state.tunMtu = Number(ops.tun_mtu) || 1500;
+    }
+    const selDpm = $('#sel-ops-data-plane-mode');
+    if (selDpm && state.dataPlaneMode) selDpm.value = state.dataPlaneMode;
+    const selTs = $('#sel-ops-tun-stack');
+    if (selTs && state.tunStack) selTs.value = state.tunStack;
+    const coreSubEl = $('#sys-core-sub');
+    if (coreSubEl) {
+      const dpmLabel = state.dataPlaneMode === 'tun_full'
+        ? '全量 TUN 虚拟网卡 (ailink0)'
+        : (state.dataPlaneMode === 'tproxy_tcp_tun_udp' ? 'TCP TProxy + UDP TUN 游戏混合' : 'TProxy + Redirect 零拷贝');
+      coreSubEl.textContent = 'AI-LINK v2.4.0 · ' + dpmLabel;
     }
     setSwitchState($('#toggle-require-lan-auth'), state.authEnabled);
     setSwitchState($('#toggle-ops-entry-bypass'), state.entryBypass);
@@ -2886,7 +2909,12 @@
                 })(),
                 current_delay_ms: (() => {
                   if (a.current_delay_ms != null && Number(a.current_delay_ms) > 0) return Math.round(Number(a.current_delay_ms));
-                  const boundGrp = Array.isArray(sh.groups) ? sh.groups.find(g => g.auto_node_id === a.id && (g.shunt_mode === 'auto' || g.mode === 'auto') && g.resolved_node && g.resolved_node !== 'direct') : null;
+                  const curClean = a.current_node ? cleanNodeDisplayName(a.current_node) : '';
+                  if (curClean && curClean !== 'direct') {
+                    const matchedN = (mock.nodes || []).find(n => (n.tag || n.name) === a.current_node || cleanNodeDisplayName(n.tag || n.name) === curClean);
+                    if (matchedN && Number(matchedN.rtt) > 0) return Math.round(Number(matchedN.rtt));
+                  }
+                  const boundGrp = Array.isArray(sh.groups) ? sh.groups.find(g => g.auto_node_id === a.id && (g.shunt_mode === 'auto' || g.mode === 'auto') && g.resolved_node && (!a.current_node || cleanNodeDisplayName(g.resolved_node) === curClean)) : null;
                   const bMs = boundGrp ? (boundGrp.resolved_rtt_ms != null ? boundGrp.resolved_rtt_ms : boundGrp.delay_ms) : null;
                   if (bMs != null && Number(bMs) > 0) return Math.round(Number(bMs));
                   return null;
@@ -2901,18 +2929,24 @@
           }
           if (Array.isArray(sh.groups)) {
             mock.groups = sh.groups.map(g => {
-              const rawMs = g.resolved_rtt_ms != null ? g.resolved_rtt_ms : g.delay_ms;
+              const gMode = g.shunt_mode || g.mode || 'auto';
+              const gAid = g.auto_node_id || 'auto_youtube';
+              const boundP = gMode === 'auto' ? (mock.autoPools || []).find(p => p.id === gAid || p.tag === gAid || p.name === g.auto_node_name) : null;
+              const rawMs = (boundP && boundP.current_delay_ms > 0) ? boundP.current_delay_ms : (g.resolved_rtt_ms != null ? g.resolved_rtt_ms : g.delay_ms);
               const validMs = (rawMs != null && Number(rawMs) > 0) ? Math.round(Number(rawMs)) : null;
+              const resolvedN = (boundP && boundP.current_node && boundP.current_node !== 'direct')
+                ? boundP.current_node
+                : (g.resolved_node || g.manual_node || 'direct');
               return {
                 id: g.id,
                 name: g.title || g.name || g.id,
                 subtitle: g.subtitle || g.desc || '精细分流策略组',
-                shunt_mode: g.shunt_mode || g.mode || 'auto',
-                auto_node_id: g.auto_node_id || 'auto_youtube',
-                auto_node_name: g.auto_node_name || '自动节点池',
+                shunt_mode: gMode,
+                auto_node_id: (boundP && boundP.id) || gAid,
+                auto_node_name: (boundP && boundP.name) || g.auto_node_name || '自动节点池',
                 country: g.country || 'JP',
                 manual_node: g.manual_node || '',
-                resolved_node: g.resolved_node || g.manual_node || 'direct',
+                resolved_node: resolvedN,
                 strict_lock: Boolean(g.strict_lock),
                 manual_drifted: Boolean(g.manual_drifted),
                 strict_locked_dead: Boolean(g.strict_locked_dead),
@@ -4942,7 +4976,7 @@
         openModal(
           'OTA 在线升级状态与确认',
           '<div class="detail-grid">' +
-            '<div><span>当前运行版本</span><b class="mono">v' + esc((res && res.current) || (state.rawStatus && state.rawStatus.version) || '2.3.7') + '</b></div>' +
+            '<div><span>当前运行版本</span><b class="mono">v' + esc((res && res.current) || (state.rawStatus && state.rawStatus.version) || '2.4.0') + '</b></div>' +
             '<div><span>升级阶段</span><b>' + esc(prog.stage || 'idle (就绪)') + '</b></div>' +
             '<div><span>进度百分比</span><b>' + esc((prog.percent != null ? prog.percent : 100) + '%') + '</b></div>' +
             '<div><span>状态说明</span><b>' + esc(prog.message || '当前无进行中的升级任务') + '</b></div>' +
@@ -6108,10 +6142,52 @@
           if (applyBtn) applyBtn.classList.remove('hidden');
           toast('发现新版本 v' + res.latest + '，可点击「立即升级」');
         } else {
-          const curVer = (res && res.current) || (state.rawStatus && state.rawStatus.version) || '2.3.7';
+          const curVer = (res && res.current) || (state.rawStatus && state.rawStatus.version) || '2.4.0';
           if (subEl) subEl.textContent = '当前已是最新版本 (v' + curVer + ' · 已校验云端清单)';
           toast('当前已是最新版本 (v' + curVer + ')');
         }
+        break;
+      }
+      case 'check-core-update': {
+        if (el) el.setAttribute('aria-busy', 'true');
+        toast('正在检测 sing-box 内核版本与硬件架构适配...');
+        const cRes = await callRouterApi('/api/ops/core_update/check?force=1', 'GET');
+        if (el) el.setAttribute('aria-busy', 'false');
+        const cSub = $('#core-ota-sub');
+        const curV = (cRes && cRes.current_version) || '1.14.1';
+        const latV = (cRes && cRes.latest_version) || curV;
+        const archObj = (cRes && cRes.arch) || {};
+        const schemaProf = (cRes && cRes.schema_profile) || 'v1.14-dns-disabled';
+        if (cSub) {
+          cSub.textContent = cRes && cRes.has_update
+            ? ('发现新内核 v' + latV + ' · 架构 ' + (archObj.preferred_suffix || 'linux-musl') + ' · Schema: ' + schemaProf)
+            : ('当前内核 v' + curV + ' 已就绪 · 架构 ' + (archObj.preferred_suffix || 'linux-musl') + ' · Schema: ' + schemaProf);
+        }
+        openModal(
+          'sing-box 代理内核版本检测与安全热升级',
+          '<div class="modal-form">' +
+            '<div class="kv-list">' +
+              '<div><span>当前运行内核版本</span><b class="mono">sing-box v' + esc(curV) + '</b></div>' +
+              '<div><span>官方最新稳定版本</span><b class="mono" style="color:var(--cyan)">sing-box v' + esc(latV) + (cRes && cRes.has_update ? ' (可升级)' : ' (已是最新)') + '</b></div>' +
+              '<div><span>路由器架构与 C 库识别</span><b class="mono">' + esc((archObj.raw_machine || 'x86_64') + ' · ' + (archObj.libc || 'musl') + ' (' + (archObj.preferred_suffix || 'linux-amd64-musl') + ')') + '</b></div>' +
+              '<div><span>AI-LINK 动态 Schema 档位</span><b class="mono">' + esc(schemaProf) + ' (兼容 1.11 ~ 1.15+)</b></div>' +
+              '<div><span>匹配官方安装包</span><b class="mono">' + esc((cRes && cRes.asset_name) || ('sing-box-' + latV + '.tar.gz')) + '</b></div>' +
+            '</div>' +
+            '<p class="muted" style="margin-top:10px;line-height:1.5">安全热升级保护机制：下载匹配架构内核后，先在沙箱内执行 <code>sing-box.new check -c</code> 预检新配置合法性；仅当预检 100% 通过后才备份 <code>sing-box.bak</code> 并原子替换，任何异常自动回滚原内核，彻底杜绝升核断网。</p>' +
+          '</div>',
+          'SING-BOX KERNEL UPDATER',
+          async () => {
+            toast('正在执行 5 步沙箱预检与 sing-box 内核热升级...');
+            const upRes = await callRouterApi('/api/ops/core_update/apply', 'POST', {});
+            closeModal();
+            if (upRes && upRes.ok) {
+              toast(upRes.message || ('sing-box 内核已成功升级至 v' + (upRes.current_version || latV)));
+              await syncBackendStatus(false, true);
+            } else {
+              toast((upRes && upRes.message) || '内核热升级未执行（已保持原内核稳定运行）', 'warn');
+            }
+          }
+        );
         break;
       }
       case 'apply-update': {
@@ -6873,6 +6949,35 @@
     if (logSearchEl) logSearchEl.addEventListener('input', event => {
       state.logSearch = event.target.value;
       renderLogsViewer();
+    });
+    const dpmSelect = $('#sel-ops-data-plane-mode');
+    if (dpmSelect) dpmSelect.addEventListener('change', async event => {
+      const nextMode = event.target.value || 'tproxy_redirect';
+      const labelMap = {
+        tproxy_redirect: 'TProxy + Redirect 零拷贝模式',
+        tproxy_tcp_tun_udp: 'TCP TProxy + UDP TUN 游戏混合模式',
+        tun_full: '全量 TUN 虚拟网卡模式 (ailink0)'
+      };
+      toast('正在切换数据面模式至「' + (labelMap[nextMode] || nextMode) + '」...');
+      const res = await callRouterApi('/api/ops/settings', 'POST', { data_plane_mode: nextMode });
+      if (res && res.ok !== false) {
+        renderOpsSettings({ data_plane_mode: nextMode });
+        toast('已切换至「' + (labelMap[nextMode] || nextMode) + '」，nftables 与策略路由表已同步生效');
+      } else {
+        toast('切换数据面模式失败', 'warn');
+      }
+    });
+    const tunStackSelect = $('#sel-ops-tun-stack');
+    if (tunStackSelect) tunStackSelect.addEventListener('change', async event => {
+      const nextStack = event.target.value || 'mixed';
+      toast('正在切换 TUN 协议栈至 ' + nextStack + '...');
+      const res = await callRouterApi('/api/ops/settings', 'POST', { tun_stack: nextStack });
+      if (res && res.ok !== false) {
+        renderOpsSettings({ tun_stack: nextStack });
+        toast('TUN 虚拟网卡协议栈已更新为 ' + nextStack);
+      } else {
+        toast('切换 TUN 协议栈失败', 'warn');
+      }
     });
     window.addEventListener('keydown', event => { if (event.key === 'Escape') closeModal(); });
   }

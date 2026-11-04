@@ -1,18 +1,30 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.3.7",
-  "release_date": "2026-11-04",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.3.7",
+  "latest": "2.4.0",
+  "release_date": "2026-11-05",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.4.0",
   "highlights": [
-    "全站 6 个功能页统一为单横幅 Hero：左侧光子轨道 + 中心发光主核 + 实时 KPI + 右侧控制区，零双顶栏",
-    "版本号 9 处对齐 2.3.7（含 Makefile、ai-link CLI、LuCI 兜底与静态资源内容哈希）",
-    "P0-1：apply_nft.sh 三级 flock 兼容（BusyBox / util-linux），透明代理表挂载不再静默跳过",
-    "P0-2：每日测速配额超限改为跳过保态，不再把节点写死 dead、不再清空自动池",
-    "P2：node_probe.json 纳入缓存签名、顶栏连接数可点击跳转、--mint 对齐 #38e0b2、修复 NaN 与重复告警",
-    "订阅自适应（11 格式）与手动零漂移延续"
+    "受控三模数据面：tproxy_redirect（默认）/ tproxy_tcp_tun_udp（游戏混合）/ tun_full（全量 TUN），可随时切换",
+    "移动端与平板 Hero 深度自适应：430 / 375 / 768 视口零横向溢出，指标单排、按钮等宽",
+    "sing-box 内核安全热升级：升级内核不中断现有分流与回家隧道",
+    "版本号 9 处对齐 2.4.0（含 Makefile、AI-LINK CLI、LuCI 兜底与静态资源内容哈希）",
+    "延续：六页统一单横幅 Hero、订阅 11 格式、手动零漂移、P0 flock 与配额保态"
   ],
   "changelog": [
+    {
+      "version": "2.4.0",
+      "date": "2026-11-05",
+      "type": "feat",
+      "title": "受控三模 TUN 数据面 + 移动端 Hero 自适应 + 内核热升级",
+      "items": [
+        "新增数据面模式：tproxy_redirect（默认）/ tproxy_tcp_tun_udp（游戏混合）/ tun_full（全量 TUN）",
+        "tun_full 下海外 TCP/UDP/ICMP 全走 ailink0，大陆 IP 与国服游戏端口顶层直通，output_nat 自动关闭 7891 重定向",
+        "移动端（430/375）与平板（768）Hero 重构：文案满宽、指标单排、按钮两列铺满、顶栏单行",
+        "sing-box 内核安全热升级",
+        "版本锚点 9 处对齐 2.4.0"
+      ]
+    },
     {
       "version": "2.3.7",
       "date": "2026-11-04",
@@ -166,13 +178,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.3.7/AI-LINK-v2.3.7.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.4.0/AI-LINK-v2.4.0.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.3.7.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.4.0.tar.gz"
       ],
-      "size": 724101,
-      "md5": "8b1e6187e0c800ac53f0da522de34e3f",
-      "sha256": "87fbef7b5568dcb72dec8ce19f655b6a53a688dfef7ac87a3e88fa2dc4622bfc"
+      "size": 736184,
+      "md5": "15928d926ac2202bc42a3bbabd654d13",
+      "sha256": "87dabb0e2a38cdcdcbef3059f90d15f85579ee59186b2fc3b64ea36bdcf9b3a9"
     }
   }
 }
