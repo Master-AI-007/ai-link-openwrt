@@ -22,7 +22,8 @@
         "tun_full 下海外 TCP/UDP/ICMP 全走 ailink0，大陆 IP 与国服游戏端口顶层直通，output_nat 自动关闭 7891 重定向",
         "移动端（430/375）与平板（768）Hero 重构：文案满宽、指标单排、按钮两列铺满、顶栏单行",
         "sing-box 内核安全热升级",
-        "版本锚点 9 处对齐 2.4.0"
+        "版本锚点 9 处对齐 2.4.0",
+        "热修：自动节点池 `···` 菜单不再被卡片边框裁切或被相邻卡片压盖（向上弹出 + 层级提权 + 3 秒轮询保持）"
       ]
     },
     {
@@ -182,9 +183,9 @@
       "mirrors": [
         "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.4.0.tar.gz"
       ],
-      "size": 736184,
-      "md5": "15928d926ac2202bc42a3bbabd654d13",
-      "sha256": "87dabb0e2a38cdcdcbef3059f90d15f85579ee59186b2fc3b64ea36bdcf9b3a9"
+      "size": 736433,
+      "md5": "49ddda78354d07246b3f090a9d5254cf",
+      "sha256": "3d7fa651aa6da738875d970c9504500fca0c2f34cdba1bbe9ced6dfda1079874"
     }
   }
 }

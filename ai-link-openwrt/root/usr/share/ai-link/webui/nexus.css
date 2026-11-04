@@ -3819,15 +3819,24 @@ small {
 .hud-pool-foot > .button {
   flex: 1;
 }
+.glass-card:has(#auto-pools),
+#auto-pools.auto-pool-grid {
+  overflow: visible;
+}
+.auto-pool.hud-pool-card.menu-open,
+.auto-pool.hud-pool-card:has(.pool-more-menu:not(.hidden)) {
+  z-index: var(--z-modal);
+}
 .pool-more-wrap {
   position: relative;
 }
 .pool-more-menu {
   position: absolute;
   right: 0;
-  top: calc(100% + 4px);
+  bottom: calc(100% + var(--sp-1));
+  top: auto;
   z-index: var(--z-modal);
-  min-width: 148px;
+  min-width: 152px;
   display: flex;
   flex-direction: column;
   gap: var(--sp-1);

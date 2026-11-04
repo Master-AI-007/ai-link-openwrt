@@ -1095,7 +1095,8 @@
           ? '<span class="lat-badge direct">直连 WAN</span>'
           : (curMs != null && curMs > 0 ? formatLatencyBadge(curMs, 'ok', false) : '<span class="lat-badge pending">--</span>');
         const tipDetail = '节点池：' + p.name + '\n来源范围：' + srcLabel + '\n国家区域：' + ctryLabel + '\n检测策略：' + svcTag + '\n复选阈值：健康低于 ' + repThresh + ' 个自动补齐';
-        return '<div class="auto-pool hud-pool-card ' + cardStateCls + '" title="' + esc(tipDetail) + '">' +
+        const isMenuOpen = state.openPoolMenuIdx != null && Number(state.openPoolMenuIdx) === idx;
+        return '<div class="auto-pool hud-pool-card ' + cardStateCls + (isMenuOpen ? ' menu-open' : '') + '" title="' + esc(tipDetail) + '">' +
           '<div class="hud-pool-top">' +
             '<div class="hud-pool-title">' +
               '<i class="status-dot ' + dotCls + '"></i>' +
@@ -1112,7 +1113,7 @@
             '<button type="button" class="button secondary compact" data-action="probe-auto-pool" data-pool-id="' + esc(p.id) + '">立即优选</button>' +
             '<div class="pool-more-wrap">' +
               '<button type="button" class="button ghost compact" style="min-width:40px;padding:0 10px" data-action="toggle-pool-menu" data-pool-idx="' + idx + '" title="更多节点池操作" aria-label="更多节点池操作">···</button>' +
-              '<div class="pool-more-menu hidden" id="pool-more-menu-' + idx + '">' +
+              '<div class="pool-more-menu' + (isMenuOpen ? '' : ' hidden') + '" id="pool-more-menu-' + idx + '">' +
                 '<button type="button" class="button ghost compact" data-action="rescreen-auto-pool" data-pool-idx="' + idx + '">重新自动选取</button>' +
                 '<button type="button" class="button ghost compact" data-auto-pool="' + idx + '">配置节点池</button>' +
                 (!['auto_ai', 'auto_youtube', 'auto_netflix'].includes(p.id)
@@ -6677,16 +6678,25 @@
       const poolMenuBtn = event.target.closest('[data-action="toggle-pool-menu"]');
       if (poolMenuBtn) {
         event.stopPropagation();
-        const pIdx = poolMenuBtn.dataset.poolIdx;
+        const pIdx = Number(poolMenuBtn.dataset.poolIdx);
         const targetMenu = $('#pool-more-menu-' + pIdx);
-        $$('.pool-more-menu').forEach(m => {
-          if (m !== targetMenu) m.classList.add('hidden');
-        });
-        if (targetMenu) targetMenu.classList.toggle('hidden');
+        const willOpen = targetMenu ? targetMenu.classList.contains('hidden') : false;
+        $$('.pool-more-menu').forEach(m => m.classList.add('hidden'));
+        $$('.auto-pool.hud-pool-card').forEach(c => c.classList.remove('menu-open'));
+        if (targetMenu && willOpen) {
+          targetMenu.classList.remove('hidden');
+          const parentCard = targetMenu.closest('.auto-pool.hud-pool-card');
+          if (parentCard) parentCard.classList.add('menu-open');
+          state.openPoolMenuIdx = pIdx;
+        } else {
+          state.openPoolMenuIdx = null;
+        }
         return;
       }
-      if (!event.target.closest('.pool-more-wrap')) {
+      if (!event.target.closest('.pool-more-wrap') || event.target.closest('.pool-more-menu button')) {
+        state.openPoolMenuIdx = null;
         $$('.pool-more-menu').forEach(m => m.classList.add('hidden'));
+        $$('.auto-pool.hud-pool-card').forEach(c => c.classList.remove('menu-open'));
       }
 
       const poolHelpBtn = event.target.closest('[data-action="show-pool-help"]');

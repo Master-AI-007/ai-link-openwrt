@@ -45,7 +45,7 @@
     <time>2026-11-05</time>
   </div>
   <p style="margin:2px 0 6px;color:var(--dim)">正式发布</p>
-<ul><li><b>受控三模透明代理数据面 (<code>tproxy_redirect</code> / <code>tproxy_tcp_tun_udp</code> / <code>tun_full</code>)</b>：新增零拷贝 TProxy、游戏混合 TUN（TCP TProxy + UDP <code>ailink0</code> Full-Cone NAT）与全量 TUN 虚拟网卡三档无缝切换，自动联动策略路由表 <code>163</code>、<code>fw4</code> 转发放行与防断网黑洞看门狗。</li><li><b><code>sing-box</code> 版本感知 Schema 适配器 (<code>1.11 ~ 1.15+</code>) 与 5 步沙箱安全热升级</b>：根据内核版本自动适配 <code>multi_queue</code>、<code>dns_mode: disabled</code> 与 <code>stack</code>，内置架构识别、<code>sing-box.new check -c</code> 预检、<code>sing-box.bak</code> 备份与失败自动回滚。</li><li><b>全站 6 页分页头移动端与平板自适应重构</b>：修复 <code>375px ~ 980px</code> 视口下 <code>.dns-hero.page-hero</code> 挤压变形与超高问题，移动端统一收敛为紧凑纵向流式 HUD 卡片与 3 列同排指标。</li><li><b>自动节点池与分流列表 1:1 严格同源</b>：修复自动池首选节点与绑定分流策略组出口节点/延迟显示不一致问题。</li></ul>
+<ul><li><b>受控三模透明代理数据面 (<code>tproxy_redirect</code> / <code>tproxy_tcp_tun_udp</code> / <code>tun_full</code>)</b>：新增零拷贝 TProxy、游戏混合 TUN（TCP TProxy + UDP <code>ailink0</code> Full-Cone NAT）与全量 TUN 虚拟网卡三档无缝切换，自动联动策略路由表 <code>163</code>、<code>fw4</code> 转发放行与防断网黑洞看门狗。</li><li><b><code>sing-box</code> 版本感知 Schema 适配器 (<code>1.11 ~ 1.15+</code>) 与 5 步沙箱安全热升级</b>：根据内核版本自动适配 <code>multi_queue</code>、<code>dns_mode: disabled</code> 与 <code>stack</code>，内置架构识别、<code>sing-box.new check -c</code> 预检、<code>sing-box.bak</code> 备份与失败自动回滚。</li><li><b>全站 6 页分页头移动端与平板自适应重构</b>：修复 <code>375px ~ 980px</code> 视口下 <code>.dns-hero.page-hero</code> 挤压变形与超高问题，移动端统一收敛为紧凑纵向流式 HUD 卡片与 3 列同排指标。</li><li><b>自动节点池与分流列表 1:1 严格同源</b>：修复自动池首选节点与绑定分流策略组出口节点/延迟显示不一致问题。</li><li>热修：自动节点池 <code>···</code> 菜单不再被卡片边框裁切/相邻卡片压盖（上弹 + 层级提权 + 3 秒轮询保持）</li></ul>
 </article>
 <article class="log-item">
   <div class="log-top">
