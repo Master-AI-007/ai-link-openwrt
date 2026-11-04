@@ -439,7 +439,7 @@
         emissive: 0xf472b6,
         accent: 0xfbcfe8,
         cssColor: '#f9a8d4',
-        label: '国内直连 · 5 目标'
+        label: '宽带直连 · 5 目标'
       });
       this.centers.global = this.createCenter({
         id: 'global',
@@ -454,7 +454,7 @@
         emissive: 0x7656dd,
         accent: 0xa994ff,
         cssColor: '#a994ff',
-        label: '海外代理 · 6 目标'
+        label: '智能分流 · 6 目标'
       });
       this.centers.blackhole = this.createBlackhole();
     }
@@ -549,7 +549,7 @@
         color: 0xf2a558,
         accent: 0xff6d45,
         cssColor: '#f7bd68',
-        label: '黑洞拦截 · 守护中'
+        label: '双层护盾 · 守护中'
       };
       const group = new THREE.Group();
       group.position.fromArray(data.position);
@@ -1530,7 +1530,9 @@
         const isCluster = item.cluster;
         const title = data.short || data.name;
         const gearSuffix = (!isCluster && data.speedGearLabel) ? (' · ' + data.speedGearLabel) : '';
-        const meta = isCluster ? (data.label || data.subtitle) : ((data.meta || (data.rtt != null ? data.rtt + ' ms' : '活跃')) + gearSuffix);
+        const rawClusterMeta = String(data.label || data.subtitle || '');
+        const cleanClusterMeta = rawClusterMeta.startsWith(title) ? (rawClusterMeta.slice(title.length).replace(/^[\s·•|-]+/, '') || data.subtitle || rawClusterMeta) : rawClusterMeta;
+        const meta = isCluster ? cleanClusterMeta : ((data.meta || (data.rtt != null ? data.rtt + ' ms' : '活跃')) + gearSuffix);
         ctx.font = (isCluster ? '600 11.5px ' : '500 10px ') + '-apple-system, "SF Pro Text", "PingFang SC", sans-serif';
         const titleWidth = ctx.measureText(title).width;
         ctx.font = '500 9.5px -apple-system, "SF Pro Text", "PingFang SC", sans-serif';

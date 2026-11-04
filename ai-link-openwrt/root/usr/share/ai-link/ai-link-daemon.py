@@ -475,7 +475,7 @@ class NodeURIParser:
             if ep_k in seen_ep:
                 continue
             seen_ep.add(ep_k)
-            base_tag = str(ob["tag"]).strip()
+            base_tag = re.sub(r"\s*\|\s*(?:None|null|undefined)\b", "", str(ob["tag"])).strip(" |") or str(ob["tag"]).strip()
             tag = base_tag
             sfx = 2
             while tag in used_tags or tag in reserved:
@@ -2061,6 +2061,10 @@ def merge_nodes(sub_id: str, incoming_nodes: list, sub_url: str = "", replace_su
                 new_t = new_map_k.get(nk, "")
                 if old_t and new_t and old_t != new_t:
                     reconcile_node_references(old_tag=old_t, new_tag=new_t, conf_dir=conf_dir)
+            # P2-16 Fix: Purge orphan probe records whenever saved nodes list is updated
+            if (conf_dir / "node_probe.json").is_file():
+                cur_ps = load_node_probe_store(conf_dir)
+                save_node_probe_store(cur_ps, conf_dir, strict_gc=True)
         except Exception:
             pass
         return saved_out
@@ -2077,7 +2081,7 @@ def clash_api_request(path: str, method: str = "GET", payload: dict = None, time
         return (0, {"error": "clash_api_not_listening"})
     url = f"{CONTROLLER_API}{path}"
     data = json.dumps(payload).encode("utf-8") if payload is not None else None
-    headers = {"Content-Type": "application/json"} if data is not None else {}
+    headers = {"Content-Type": "application/json", "Connection": "close"} if data is not None else {"Connection": "close"}
     req = urllib.request.Request(url, data=data, method=method, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -2324,7 +2328,7 @@ def _ensure_async_reload_worker():
                     if Path("/etc/init.d/ai-link").exists():
                         ok_rel = reload_core_only(timeout=25.0, force_respawn=do_respawn)
                         if do_nft and Path("/usr/share/ai-link/nftables/apply_nft.sh").exists():
-                            subprocess.run(["/usr/share/ai-link/nftables/apply_nft.sh"], check=False, timeout=5)
+                            subprocess.run(["/usr/share/ai-link/nftables/apply_nft.sh"], check=False, timeout=20)
                     PROBE_ENGINE.apply_shunt_selections(CONF_DIR)
                     PROBE_ENGINE.save_persisted_selections(RUN_DIR, record_history=False)
                 except Exception:
@@ -2386,7 +2390,7 @@ def schedule_async_core_reload(force_respawn: bool = False, apply_nft: bool = Fa
     if apply_nft and hot_only and has_initd and Path("/usr/share/ai-link/nftables/apply_nft.sh").exists():
         if _is_local_port_listening(int(_uci_get_str("global.tproxy_port", "7893") or 7893)):
             try:
-                subprocess.run(["/usr/share/ai-link/nftables/apply_nft.sh"], check=False, timeout=5)
+                subprocess.run(["/usr/share/ai-link/nftables/apply_nft.sh"], check=False, timeout=20)
             except Exception:
                 pass
     with _CORE_RELOAD_COND:
@@ -2442,7 +2446,7 @@ def reload_core_only(timeout: float = 45.0, force_respawn: bool = False, explici
             if ok_r and Path("/usr/share/ai-link/nftables/apply_nft.sh").exists():
                 if _is_local_port_listening(int(_uci_get_str("global.tproxy_port", "7893") or 7893)):
                     try:
-                        subprocess.run(["/usr/share/ai-link/nftables/apply_nft.sh"], check=False, timeout=5)
+                        subprocess.run(["/usr/share/ai-link/nftables/apply_nft.sh"], check=False, timeout=20)
                     except Exception:
                         pass
             _invalidate_sys_cache()
@@ -2592,26 +2596,58 @@ PRESET_SERVICE_CHECKS = [
 def _node_test_quota_path() -> Path:
     return RUN_DIR / "node_test_quota.json"
 
-def _node_test_used() -> int:
+def _node_test_used(conf_dir: Path = None) -> int:
     p = _node_test_quota_path()
     today = time.strftime("%Y-%m-%d")
     if p.is_file():
         try:
             d = json.loads(p.read_text(encoding="utf-8"))
             if d.get("date") == today:
-                return int(d.get("used", 0))
+                used_val = int(d.get("used", 0))
+                # P0-2 Upgrade Migration Guard: If legacy quota counter accumulated >= 500 before v236_r10 skip-semantics,
+                # automatically reset it to 0 once on upgrade so existing devices never lock out probing on upgrade day.
+                if not d.get("v236_r10_migrated") and used_val >= 500:
+                    try:
+                        _atomic_write_text(p, json.dumps({"date": today, "used": 0, "v236_r10_migrated": True}))
+                    except Exception:
+                        pass
+                    return 0
+                return used_val
         except Exception:
             pass
     return 0
 
-def _node_test_spend(n: int = 1) -> int:
+def _is_node_test_budget_exceeded(conf_dir: Path = None) -> bool:
+    try:
+        cdir = conf_dir if conf_dir is not None else CONF_DIR
+        ops_f = Path(cdir) / "ops_settings.json"
+        budget = 3000
+        if ops_f.is_file():
+            d = json.loads(ops_f.read_text(encoding="utf-8"))
+            budget = int(d.get("node_test_budget", 3000))
+        if budget <= 0:
+            return False
+        return _node_test_used(cdir) >= budget
+    except Exception:
+        return False
+
+def _node_test_spend(n: int = 1, force: bool = False, conf_dir: Path = None) -> int:
     p = _node_test_quota_path()
     today = time.strftime("%Y-%m-%d")
     with _SUB_LOCK:
-        used = _node_test_used() + int(n)
+        cdir = conf_dir if conf_dir is not None else CONF_DIR
+        cur_used = _node_test_used(cdir)
+        try:
+            ops_f = Path(cdir) / "ops_settings.json"
+            budget = int(json.loads(ops_f.read_text(encoding="utf-8")).get("node_test_budget", 3000)) if ops_f.is_file() else 3000
+        except Exception:
+            budget = 3000
+        if not force and budget > 0 and cur_used >= budget:
+            return cur_used
+        used = cur_used + int(n)
         try:
             RUN_DIR.mkdir(parents=True, exist_ok=True)
-            _atomic_write_text(p, json.dumps({"date": today, "used": used}))
+            _atomic_write_text(p, json.dumps({"date": today, "used": used, "v236_r10_migrated": True}))
         except Exception:
             pass
         return used
@@ -2847,12 +2883,26 @@ def load_node_probe_store(conf_dir: Path = CONF_DIR) -> dict:
                 if isinstance(data, dict):
                     _migrated_dirty = False
                     for _rec_v in data.values():
-                        if isinstance(_rec_v, dict) and isinstance(_rec_v.get("svc"), dict):
+                        if not isinstance(_rec_v, dict):
+                            continue
+                        if str(_rec_v.get("fail_reason") or "") == "daily_test_budget_exceeded":
+                            _rec_v["fail_reason"] = ""
+                            _rec_v["consecutive_fail"] = 0
+                            _rec_v["quarantine_until"] = 0
+                            _ewma_d = float(_rec_v.get("delay_ewma_ms") or 0)
+                            if _ewma_d > 0:
+                                _rec_v["state"] = "ok"
+                                _rec_v["delay_ms"] = int(round(_ewma_d))
+                            else:
+                                _rec_v["state"] = "untested"
+                                _rec_v["delay_ms"] = -1
+                            _migrated_dirty = True
+                        if isinstance(_rec_v.get("svc"), dict):
                             for _sk in list(_rec_v["svc"].keys()):
                                 _sv_e = _rec_v["svc"].get(_sk)
                                 if isinstance(_sv_e, dict) and _sv_e.get("ok") is False:
                                     _rsn = str(_sv_e.get("reason") or "")
-                                    if "HTTP_204_NOT_IN_" in _rsn:
+                                    if "HTTP_204_NOT_IN_" in _rsn or _rsn == "daily_test_budget_exceeded":
                                         _rec_v["svc"].pop(_sk, None)
                                         _migrated_dirty = True
                     if _migrated_dirty:
@@ -2915,9 +2965,45 @@ def load_node_probe_store(conf_dir: Path = CONF_DIR) -> dict:
                 return boot_store
     return {}
 
-def save_node_probe_store(store: dict, conf_dir: Path = CONF_DIR) -> dict:
+def _gc_orphan_probe_dict(store: dict, conf_dir: Path = CONF_DIR, strict: bool = False) -> dict:
+    if not isinstance(store, dict) or not store:
+        return store or {}
+    nodes_file = Path(conf_dir) / "nodes.json"
+    if not nodes_file.is_file():
+        return store
+    try:
+        saved = json.loads(nodes_file.read_text(encoding="utf-8"))
+        if not isinstance(saved, list) or not saved:
+            return store
+        if not strict and len(store) <= len(saved) + 8:
+            return store
+        valid_ids = set()
+        valid_tags = set()
+        for n in saved:
+            if isinstance(n, dict):
+                t = str(n.get("tag") or "").strip()
+                nid = str(n.get("node_id") or "").strip() or compute_node_id(n)
+                nkey = str(n.get("node_key") or "").strip()
+                if t:
+                    valid_tags.add(t)
+                if nid:
+                    valid_ids.add(nid)
+                if nkey:
+                    valid_ids.add(nkey)
+        cleaned = {}
+        for k, v in store.items():
+            if k in valid_ids or k in valid_tags:
+                cleaned[k] = v
+            elif isinstance(v, dict) and (v.get("node_id") in valid_ids or v.get("tag") in valid_tags):
+                cleaned[k] = v
+        return cleaned
+    except Exception:
+        return store
+
+def save_node_probe_store(store: dict, conf_dir: Path = CONF_DIR, strict_gc: bool = False) -> dict:
     with _SUB_LOCK:
-        raw = json.dumps(store or {}, indent=2, ensure_ascii=False)
+        store = _gc_orphan_probe_dict(store or {}, conf_dir, strict=strict_gc)
+        raw = json.dumps(store, indent=2, ensure_ascii=False)
         try:
             conf_dir.mkdir(parents=True, exist_ok=True)
             _atomic_write_text(conf_dir / "node_probe.json", raw)
@@ -2932,10 +3018,14 @@ def save_node_probe_store(store: dict, conf_dir: Path = CONF_DIR) -> dict:
         with _FAST_CACHE_LOCK:
             _FAST_FILE_CACHE.pop(("probe_store", str(conf_dir / "node_probe.json")), None)
             _FAST_FILE_CACHE.pop(("probe_store", str(RUN_DIR / "node_probe.json")), None)
-        try:
-            _EFF_PROBE_MEMO.clear()
-        except Exception:
-            pass
+            _FAST_FILE_CACHE.pop(("auto_nodes_cfg", str(conf_dir)), None)
+        for _m_name in ("_EFF_PROBE_MEMO", "_AUTO_NODES_API_MEMO", "_SHUNT_API_MEMO", "_NODES_API_MEMO", "_STATUS_API_MEMO", "_JSON_WIRE_MEMO"):
+            _m = globals().get(_m_name)
+            if isinstance(_m, dict):
+                try:
+                    _m.clear()
+                except Exception:
+                    pass
         return store
 
 def compute_node_sliding_score(rec: dict, svc_checks: list = None) -> dict:
@@ -3324,7 +3414,21 @@ def clash_test_delay(node_name: str, test_url: str = DEFAULT_URL_PING_TARGET, ti
       http://cp.cloudflare.com/generate_204 before declaring the node unreachable."""
     if not node_name or node_name in ("direct", "block"):
         return {"ok": False, "delay": -1, "http_status": 0, "status_known": False, "error": "invalid_node"}
-    _node_test_spend(1)
+    if not force and _is_node_test_budget_exceeded(conf_dir):
+        store_q = load_node_probe_store(conf_dir)
+        rec_q = store_q.get(node_name)
+        if not isinstance(rec_q, dict):
+            rec_q = next((v for v in store_q.values() if isinstance(v, dict) and v.get("tag") == node_name), None)
+        if not isinstance(rec_q, dict):
+            for _sn_q in load_saved_nodes(conf_dir):
+                if _sn_q.get("tag") == node_name or _sn_q.get("node_id") == node_name:
+                    _nid_q = _sn_q.get("node_id") or compute_node_id(_sn_q)
+                    rec_q = store_q.get(_nid_q)
+                    break
+        if isinstance(rec_q, dict) and int(rec_q.get("delay_ms") or -1) > 0 and rec_q.get("state") == "ok":
+            return {"ok": True, "delay": int(rec_q["delay_ms"]), "http_status": 204, "status_known": True, "reason": "quota_cached", "quota_capped": True, "skipped": True}
+        return {"ok": False, "delay": -1, "http_status": 0, "status_known": False, "error": "daily_test_budget_exceeded", "quota_capped": True, "skipped": True}
+    _node_test_spend(1, force=force, conf_dir=conf_dir)
     enc = urllib.parse.quote(node_name, safe="")
     primary_url = test_url or DEFAULT_URL_PING_TARGET
     q_url = urllib.parse.quote(primary_url, safe="")
@@ -3420,7 +3524,11 @@ def _build_node_probe_record(prev: dict, node_obj: dict, ok_final: bool, d_ms: i
         quarantine_until = max(quarantine_until, now_ts + 600)
     elif c_ok >= 2 and now_ts >= quarantine_until:
         quarantine_until = 0
+    if ok_final and delay_out > 0 and quarantine_until > now_ts:
+        quarantine_until = 0
     out_rec = {
+        "tag": str((node_obj or {}).get("tag") or prev.get("tag") or ""),
+        "node_id": str((node_obj or {}).get("node_id") or prev.get("node_id") or ""),
         "state": "ok" if ok_final else "dead",
         "delay_ms": delay_out,
         "delay_ewma_ms": delay_ewma,
@@ -3470,12 +3578,38 @@ def url_ping_single_node(node_or_tag, target_url: str = DEFAULT_URL_PING_TARGET,
         ok_p, reason = verify_url_ping_payload(http_st, body_s, mock_result.get("headers") or {})
         ok_final = bool(mock_result.get("ok", True) and ok_p and int(mock_result.get("delay_ms", 120)) > 0)
         d_ms = int(mock_result.get("delay_ms", 120)) if ok_final else -1
+        quota_skipped = False
     else:
         res = clash_test_delay(tag, test_url=target_url, timeout_ms=timeout_ms, conf_dir=conf_dir)
+        quota_skipped = bool(res.get("quota_capped") or res.get("skipped") or res.get("error") == "daily_test_budget_exceeded")
         ok_final = bool(res.get("ok") and int(res.get("delay") or 0) > 0)
         d_ms = int(res["delay"]) if ok_final else -1
         http_st = int(res.get("http_status") or (204 if ok_final else 0))
         reason = "" if ok_final else str(res.get("error") or "url_ping_failed")
+    if isinstance(mock_result, dict):
+        quota_skipped = False
+    if quota_skipped:
+        # P0-2 Fix: Quota-capped probe MUST use "skip" semantics and NEVER mark a node as "dead"!
+        store_cur = load_node_probe_store(conf_dir)
+        prev_q = store_cur.get(nid) if isinstance(store_cur.get(nid), dict) else (store_cur.get(tag) if isinstance(store_cur.get(tag), dict) else {})
+        prev_st = str(prev_q.get("state") or "untested")
+        if prev_st not in ("ok", "dead", "untested") or str(prev_q.get("fail_reason") or "") == "daily_test_budget_exceeded":
+            prev_st = "ok" if int(prev_q.get("delay_ms") or -1) > 0 else "untested"
+        prev_d = int(prev_q.get("delay_ms") or -1) if prev_st == "ok" else -1
+        return {
+            "ok": prev_st == "ok",
+            "node_id": nid,
+            "tag": tag,
+            "state": prev_st,
+            "delay_ms": prev_d,
+            "probe_ts": int(prev_q.get("probe_ts") or now_ts),
+            "probe_kind": "url_ping",
+            "http_status": int(prev_q.get("http_status") or (204 if prev_st == "ok" else 0)),
+            "fail_reason": "",
+            "quota_capped": True,
+            "skipped": True,
+            "_node_obj": node_obj,
+        }
     if not persist:
         return {
             "ok": ok_final,
@@ -3507,6 +3641,10 @@ def _persist_batch_probe_chunk(raw_chunk_results: list, conf_dir: Path = CONF_DI
         for item in raw_chunk_results:
             nid = item["node_id"]
             tag = item["tag"]
+            if item.get("quota_capped") or item.get("skipped") or item.get("fail_reason") == "daily_test_budget_exceeded":
+                prev = store.get(nid) if isinstance(store.get(nid), dict) else {}
+                finalized[nid] = {"ok": bool(item.get("ok")), "node_id": nid, "tag": tag, "quota_capped": True, "skipped": True, **prev}
+                continue
             node_obj = item.get("_node_obj") or {"node_id": nid, "tag": tag}
             prev = store.get(nid) if isinstance(store.get(nid), dict) else {}
             rec = _build_node_probe_record(
@@ -3933,6 +4071,11 @@ def probe_node_service_l7(node_or_id, service_id: str, custom_url: str = "", tim
                 res = {"ok": True, "delay": int(rec_prev.get("delay_ms") if int(rec_prev.get("delay_ms") or 0) > 0 else 110), "http_status": int(real_reg_res.get("status_code") or 200), "status_known": False}
             else:
                 res = clash_test_delay(tag, test_url=probe_url, timeout_ms=timeout_ms, conf_dir=conf_dir)
+        if res.get("quota_capped") or res.get("skipped") or res.get("error") == "daily_test_budget_exceeded":
+            prev_svc_e = (rec_prev.get("svc") or {}).get(svc_key) if isinstance(rec_prev.get("svc"), dict) else None
+            if isinstance(prev_svc_e, dict) and prev_svc_e.get("reason") != "daily_test_budget_exceeded":
+                return {"ok": bool(prev_svc_e.get("ok", True)), "node_id": nid, "tag": tag, "service": svc_key, "quota_capped": True, "skipped": True, **prev_svc_e}
+            return {"ok": True, "node_id": nid, "tag": tag, "service": svc_key, "status": 200, "reason": "QUOTA_SKIPPED_PRESERVE", "quota_capped": True, "skipped": True}
         if res.get("ok") and int(res.get("delay") or 0) > 0:
             st_code = int(res.get("http_status") or 200)
             if st_code == 429:
@@ -3957,6 +4100,11 @@ def probe_node_service_l7(node_or_id, service_id: str, custom_url: str = "", tim
                 else:
                     ok_svc = True
                     reason = "L7_DELAY_OK"
+        elif res.get("quota_capped") or res.get("skipped") or res.get("error") == "daily_test_budget_exceeded":
+            prev_svc_e = (rec_prev.get("svc") or {}).get(svc_key) if isinstance(rec_prev.get("svc"), dict) else None
+            if isinstance(prev_svc_e, dict) and prev_svc_e.get("reason") != "daily_test_budget_exceeded":
+                return {"ok": bool(prev_svc_e.get("ok", True)), "node_id": nid, "tag": tag, "service": svc_key, "quota_capped": True, "skipped": True, **prev_svc_e}
+            return {"ok": True, "node_id": nid, "tag": tag, "service": svc_key, "status": 204, "reason": "QUOTA_SKIPPED_PRESERVE", "quota_capped": True, "skipped": True}
         else:
             st_code = int(res.get("http_status") or 502)
             ok_svc = False
@@ -4255,7 +4403,7 @@ def normalize_auto_node_groups(an: dict, saved_nodes: list = None, subs_list: li
     if not norm_groups:
         norm_groups = [{"index": 1, "name": "主力", "node_ids": [], "node_tags": []}]
     # Only seed default unconfigured pools if requested and no explicit nodes were configured
-    if auto_seed_if_empty and not has_any_in_groups and not flat_refs and an.get("pool_mode", "top_n") == "top_n":
+    if auto_seed_if_empty and not has_any_in_groups and not flat_refs and not an.get("allow_empty_groups"):
         if subs_list is None:
             subs_list = load_subscriptions(conf_dir)
         if store is None:
@@ -4516,7 +4664,7 @@ def _normalize_auto_node_item(an: dict, conf_dir: Path = CONF_DIR, saved_nodes: 
         subs_list = load_subscriptions(conf_dir)
     if store is None:
         store = load_node_probe_store(conf_dir)
-    item["groups"] = normalize_auto_node_groups(item, saved_nodes=saved_nodes, subs_list=subs_list, store=store, conf_dir=conf_dir, auto_seed_if_empty=False)
+    item["groups"] = normalize_auto_node_groups(item, saved_nodes=saved_nodes, subs_list=subs_list, store=store, conf_dir=conf_dir, auto_seed_if_empty=(not item.get("allow_empty_groups")))
     item.setdefault("active_group_index", 1)
     item.setdefault("last_working_group_index", 1)
     item.setdefault("primary_recover_streak", 0)
@@ -5615,9 +5763,9 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
     cur_tag = str(an.get("current_node") or "")
     cur_nid = str(an.get("current_node_id") or "")
     # Case: No group has any qualified `ok` node
-    if cand_group_idx == 0 and is_full:
-        # D-01 Safety Guard (NOLO failover-availability.mjs): If L7 service check rejected all nodes,
-        # never deadlock to 'direct' when reachable (state=='ok', delay_ms>0) nodes exist in the pool!
+    if cand_group_idx == 0:
+        # D-01 Safety Guard: If L7 service check or temporary cooldown rejected all nodes,
+        # never deadlock to 'direct' when reachable (state=='ok', delay_ms>0, not region_blocked) nodes exist in the pool!
         for g in groups:
             g_reach = [
                 m for m in (g.get("members") or [])
@@ -5626,23 +5774,34 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
             if g_reach:
                 g_reach.sort(key=lambda x: (x["delay_ms"], x["tag"]))
                 qualified_by_group[g["index"]] = g_reach
+                g["ok_count"] = len(g_reach)
+                for _mr in g_reach:
+                    if _mr["tag"] not in all_ok_tags:
+                        all_ok_tags.append(_mr["tag"])
                 cand_group_idx = g["index"]
                 an["l7_degraded_fallback"] = True
                 break
+        if all_ok_tags:
+            an["pool_reachable_count"] = len(all_ok_tags)
+            an["pool_candidate_tags"] = all_ok_tags
     if cand_group_idx == 0:
         # If no group has an `ok` node yet, pick the highest-priority group that still has `pending` selectable nodes awaiting probe
         for g in groups:
             if pending_by_group.get(g["index"]):
                 p0 = pending_by_group[g["index"]][0]
+                pend_list = pending_by_group[g["index"]]
                 an["active_group_index"] = g["index"]
                 an["last_working_group_index"] = g["index"]
                 an["current_node"] = p0["tag"]
                 an["current_node_id"] = p0["node_id"]
                 an["current_delay_ms"] = -1
+                an["pool_reachable_count"] = len(pend_list)
                 an["all_groups_dead_alert"] = False
                 an["alert_message"] = ""
-                an["verified_nodes"] = []
+                an["verified_nodes"] = [x["tag"] for x in pend_list]
                 an["last_check_ts"] = now_sec
+                all_pool_m = [m for grp in groups for m in (grp.get("members") or [])]
+                an["selection_explain"] = f"候选 {len(pend_list)}/{max(1, len(all_pool_m))} 待测就绪 · 当前首选 {p0['tag']}"
                 return an
         # Part 1 §1.3 & §1.8 Case 5: All 5 groups dead -> fallback to `direct` + explicit alert!
         if cur_group_idx > 0:
@@ -5655,8 +5814,11 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
         an["current_node"] = "direct"
         an["current_node_id"] = "direct"
         an["current_delay_ms"] = -1
+        an["pool_reachable_count"] = 0
         an["verified_nodes"] = []
         an["last_check_ts"] = now_sec
+        all_pool_m = [m for grp in groups for m in (grp.get("members") or [])]
+        an["selection_explain"] = f"候选 0/{max(1, len(all_pool_m))} 达标 · 池内全部节点不可达，已自动回退直连 (direct)"
         if cur_tag and cur_tag != "direct":
             an["last_switch_ts"] = now_sec
             record_switch_event(an.get("name") or an.get("tag") or "AutoPool", cur_tag, "direct", reason="5组全挂回退direct", rtt_ms=0)
@@ -6060,8 +6222,10 @@ def clash_get_connections_summary(conf_dir: Path = CONF_DIR) -> dict:
         if not isinstance(c, dict):
             continue
         meta = c.get("metadata") or {}
-        host = meta.get("host") or meta.get("destinationIP") or "-"
-        port = meta.get("destinationPort") or ""
+        host = str(meta.get("host") or meta.get("destinationIP") or "-").strip()
+        port = str(meta.get("destinationPort") or "").strip()
+        if port and re.search(r":\d+$", host):
+            port = ""
         src_ip = (meta.get("sourceIP") or "").strip()
         inb_raw = str(meta.get("inboundName") or meta.get("inbound") or meta.get("inboundTag") or meta.get("type") or "").strip()
         inb_tag = inb_raw.split("/")[-1] if "/" in inb_raw else inb_raw
@@ -11930,6 +12094,17 @@ def get_system_telemetry(conf_dir: Path = CONF_DIR) -> dict:
         kernel = un.release
     except Exception:
         pass
+    conntrack_max = 65536
+    conntrack_count = 0
+    try:
+        ct_m_f = Path("/proc/sys/net/netfilter/nf_conntrack_max")
+        if ct_m_f.is_file():
+            conntrack_max = max(1024, int(ct_m_f.read_text().strip() or "65536"))
+        ct_c_f = Path("/proc/sys/net/netfilter/nf_conntrack_count")
+        if ct_c_f.is_file():
+            conntrack_count = max(0, int(ct_c_f.read_text().strip() or "0"))
+    except Exception:
+        pass
     return {
         "cpu_load_pct": cpu_pct,
         "loadavg_1m": round(load_1m, 2),
@@ -11937,6 +12112,8 @@ def get_system_telemetry(conf_dir: Path = CONF_DIR) -> dict:
         "mem_used_mb": mem_used_mb,
         "mem_total_mb": mem_total_mb,
         "mem_pct": mem_pct,
+        "conntrack_max": conntrack_max,
+        "conntrack_count": conntrack_count,
         "uptime_sec": uptime_sec,
         "uptime_str": uptime_str,
         "arch": arch,
@@ -12237,7 +12414,12 @@ def _conf_file_mtimes_sig(conf_dir: Path, filenames: tuple) -> tuple:
     for fn in filenames:
         try:
             f = conf_dir / fn
-            res.append(f.stat().st_mtime_ns if f.is_file() else 0)
+            mt = f.stat().st_mtime_ns if f.is_file() else 0
+            if fn == "node_probe.json":
+                rf = RUN_DIR / "node_probe.json"
+                if rf.is_file():
+                    mt = max(mt, rf.stat().st_mtime_ns)
+            res.append(mt)
         except Exception:
             res.append(0)
     return tuple(res)
@@ -12842,7 +13024,18 @@ def _detect_router_lan_ip() -> str:
             return ip
     except Exception:
         pass
-    return "10.10.10.77"
+    try:
+        addr_out = subprocess.check_output(["ip", "-4", "addr", "show"], text=True, timeout=1.2)
+        m_br = re.search(r"inet\s+(\d+\.\d+\.\d+\.\d+)/\d+.*\b(br-lan|eth0|lan)\b", addr_out)
+        if m_br:
+            return m_br.group(1)
+        for m_any in re.finditer(r"inet\s+(\d+\.\d+\.\d+\.\d+)/\d+", addr_out):
+            cand_ip = m_any.group(1)
+            if not cand_ip.startswith("127.") and not cand_ip.startswith("198.18."):
+                return cand_ip
+    except Exception:
+        pass
+    return "127.0.0.1"
 
 def _get_or_create_initial_secret(conf_dir: Path = CONF_DIR) -> str:
     """N-P0-2 Fix: Generates and persists a per-device random initial credential (0600 permissions)
@@ -13714,28 +13907,47 @@ def get_ops_diagnostics(conf_dir: Path = CONF_DIR) -> dict:
         "last_reload_mode": LAST_RELOAD_MODE
     }
 
-def get_ops_logs(conf_dir: Path = CONF_DIR) -> dict:
-    log_lines = []
-    log_file = Path("/var/log/ai-link.log")
-    if log_file.is_file():
+def append_ops_event_log(level: str, msg: str) -> None:
+    line = f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] [{level.upper()}] {msg}"
+    for lp in (Path("/var/log/ai-link.log"), RUN_DIR / "ai-link-events.log"):
         try:
-            log_lines.extend(log_file.read_text(encoding="utf-8", errors="ignore").splitlines()[-50:])
+            lp.parent.mkdir(parents=True, exist_ok=True)
+            with lp.open("a", encoding="utf-8") as f:
+                f.write(line + "\n")
         except Exception:
             pass
+
+def get_ops_logs(conf_dir: Path = CONF_DIR) -> dict:
+    log_lines = []
+    for log_file in (Path("/var/log/ai-link.log"), RUN_DIR / "ai-link-events.log"):
+        if log_file.is_file():
+            try:
+                log_lines.extend(log_file.read_text(encoding="utf-8", errors="ignore").splitlines()[-150:])
+            except Exception:
+                pass
     try:
-        r = subprocess.run(["logread", "-e", "ai-link|sing-box"], capture_output=True, text=True, timeout=2)
+        r = subprocess.run(["logread", "-e", "ai-link|sing-box|nft"], capture_output=True, text=True, timeout=2)
         if r.returncode == 0 and r.stdout:
-            log_lines.extend(r.stdout.strip().splitlines()[-50:])
+            log_lines.extend(r.stdout.strip().splitlines()[-150:])
     except Exception:
         pass
-    if not log_lines:
-        log_lines = [
-            f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] AI-LINK v2.0.0-r1 daemon active (reload_mode={LAST_RELOAD_MODE})",
-            f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Probe alive: {PROBE_ENGINE.last_alive_count}/{PROBE_ENGINE.last_total_count} ({PROBE_ENGINE.last_availability_pct}%)"
+    deduped = []
+    seen = set()
+    for ln in log_lines:
+        s = ln.strip()
+        if s and s not in seen:
+            seen.add(s)
+            deduped.append(s)
+    if not deduped:
+        deduped = [
+            f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] [INFO] AI-LINK v{APP_VERSION} 守护进程运行正常 (reload_mode={LAST_RELOAD_MODE})",
+            f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] [INFO] 节点健康巡检在线: {PROBE_ENGINE.last_alive_count}/{PROBE_ENGINE.last_total_count} ({PROBE_ENGINE.last_availability_pct}%)"
         ]
     return {
         "ok": True,
-        "logs": log_lines[-80:]
+        "total": len(deduped[-200:]),
+        "capacity": 200,
+        "logs": deduped[-200:]
     }
 
 def export_ops_backup(conf_dir: Path = CONF_DIR) -> dict:
@@ -15141,23 +15353,89 @@ def update_ops_settings(payload: dict, conf_dir: Path = CONF_DIR) -> dict:
     with _OPS_SETTINGS_LOCK:
         return _update_ops_settings_locked(payload, conf_dir)
 
+def _parse_strict_bool(val, field_name: str) -> bool:
+    if isinstance(val, bool):
+        return val
+    if isinstance(val, int) and val in (0, 1):
+        return bool(val)
+    if isinstance(val, str):
+        v_low = val.strip().lower()
+        if v_low in ("true", "1"):
+            return True
+        if v_low in ("false", "0"):
+            return False
+    raise ValueError(f"布尔开关字段 {field_name} 值不合法 ({val!r})，必须为 true 或 false")
+
+
+def _validate_and_normalize_trusted_cidr(raw_val) -> str:
+    import ipaddress
+    if not isinstance(raw_val, str):
+        raise ValueError("trusted_cidr 必须为逗号分隔的 CIDR 网段字符串")
+    s = raw_val.strip()
+    if len(s) > 1024:
+        raise ValueError("trusted_cidr 长度超出上限 (最多 1024 字符)")
+    tokens = [t.strip() for t in re.split(r"[,;\s]+", s) if t.strip()]
+    if not tokens:
+        raise ValueError("trusted_cidr 不能为空，至少需包含本机回环 127.0.0.1/32")
+    normalized = []
+    for idx, tok in enumerate(tokens, start=1):
+        try:
+            net = ipaddress.ip_network(tok, strict=False)
+            n_str = str(net)
+            if n_str not in normalized:
+                normalized.append(n_str)
+        except Exception:
+            raise ValueError(f"trusted_cidr 第 {idx} 条网段格式不合法: '{tok}'")
+    return ", ".join(normalized)
+
+
+def _validate_panel_bind_addr(raw_val) -> str:
+    import ipaddress
+    if not isinstance(raw_val, str):
+        raise ValueError("panel_bind 必须为合法 IP 字符串")
+    s = raw_val.strip() or "0.0.0.0"
+    if len(s) > 64:
+        raise ValueError("panel_bind 长度不合法")
+    if s in ("0.0.0.0", "::", "127.0.0.1", "::1", "localhost"):
+        return s
+    try:
+        ipaddress.ip_address(s)
+        return s
+    except Exception:
+        raise ValueError(f"panel_bind 监听地址格式不合法: '{s}'（仅支持 0.0.0.0、127.0.0.1 或本机有效 IP）")
+
+
+def _validate_http_url_optional(raw_val, field_name: str) -> str:
+    if raw_val is None:
+        return ""
+    if not isinstance(raw_val, str):
+        raise ValueError(f"{field_name} 必须为 URL 字符串")
+    s = raw_val.strip()
+    if not s:
+        return ""
+    if len(s) > 512 or any(ch.isspace() for ch in s):
+        raise ValueError(f"{field_name} URL 格式或长度不合法")
+    sp = urllib.parse.urlsplit(s)
+    if sp.scheme not in ("http", "https") or not sp.hostname:
+        raise ValueError(f"{field_name} 必须为以 http:// 或 https:// 开头的有效 URL")
+    return s
+
+
 def _update_ops_settings_locked(payload: dict, conf_dir: Path = CONF_DIR) -> dict:
     cur = get_ops_settings(conf_dir)
     for k in ("enabled", "entry_bypass", "block_quic", "game_udp_direct", "auto_mute_conflicts", "ipv6_proxy", "ipv6_leak_guard", "tcp_mss_clamp", "require_lan_auth"):
         if k in payload:
-            cur[k] = bool(payload[k])
+            cur[k] = _parse_strict_bool(payload[k], k)
     if "trusted_cidr" in payload:
-        cur["trusted_cidr"] = str(payload["trusted_cidr"] or "127.0.0.1/32, ::1/128").strip()
-    elif "require_lan_auth" in payload:
-        cur["trusted_cidr"] = "127.0.0.1/32, ::1/128" if cur.get("require_lan_auth") else "127.0.0.1/32, ::1/128, 192.168.0.0/16, 10.0.0.0/8, 172.16.0.0/12, 100.64.0.0/10"
+        cur["trusted_cidr"] = _validate_and_normalize_trusted_cidr(payload["trusted_cidr"])
     if "panel_bind" in payload:
-        cur["panel_bind"] = str(payload["panel_bind"] or "0.0.0.0").strip()
+        cur["panel_bind"] = _validate_panel_bind_addr(payload["panel_bind"])
     if "gh_mirror" in payload:
-        cur["gh_mirror"] = str(payload["gh_mirror"] or "").strip()
+        cur["gh_mirror"] = _validate_http_url_optional(payload["gh_mirror"], "gh_mirror")
     if "update_manifest_url" in payload:
-        cur["update_manifest_url"] = str(payload["update_manifest_url"] or "").strip()
+        cur["update_manifest_url"] = _validate_http_url_optional(payload["update_manifest_url"], "update_manifest_url")
     if "node_auto_test" in payload:
-        cur["node_auto_test"] = bool(payload["node_auto_test"])
+        cur["node_auto_test"] = _parse_strict_bool(payload["node_auto_test"], "node_auto_test")
     if "node_test_mode" in payload:
         m = str(payload["node_test_mode"] or "latency").lower()
         cur["node_test_mode"] = m if m in ("latency", "http", "off") else "latency"
@@ -15287,7 +15565,7 @@ def _update_ops_settings_locked(payload: dict, conf_dir: Path = CONF_DIR) -> dic
                 "--block-quic", "1" if cur["block_quic"] else "0",
                 "--game-udp-direct", "1" if cur["game_udp_direct"] else "0",
                 "--ipv6-proxy", "1" if cur["ipv6_proxy"] else "0"
-            ], check=False, timeout=5)
+            ], check=False, timeout=20)
     elif is_live and not cur["enabled"]:
         try:
             subprocess.run(["nft", "delete", "table", "inet", "ai_link"], capture_output=True, timeout=3)
@@ -15673,6 +15951,7 @@ def run_network_health_doctor(payload: dict = None, conf_dir: Path = CONF_DIR, a
                 }
             }
         q_cnt = mock_env.get("client_dns_queries_10m")
+        is_cumulative_scope = (q_cnt is None)
         if q_cnt is None:
             if is_real_router:
                 q_cnt = int(_DNS_STATS_RT.get("total_queries") or 0)
@@ -15684,15 +15963,16 @@ def run_network_health_doctor(payload: dict = None, conf_dir: Path = CONF_DIR, a
                         q_cnt = 0
             else:
                 q_cnt = int(_DNS_STATS_RT.get("total_queries") or 12)
+        ev_key = "lan_dns_queries_since_start" if is_cumulative_scope else "lan_dns_queries_10m"
         if int(q_cnt) <= 0:
             return {
                 "id": "client_dns",
                 "index": 1,
                 "title": "客户端 DNS 归属",
                 "status": "warn",
-                "summary": f"最近 10 分钟没有客户端向本机查询 DNS，手机的 DNS 很可能指向主路由。可在主路由 DHCP 里把 DNS 改为 {lan_ip}，或手机手动设置。",
-                "detail": f"检测到局域网存在活跃流量，但最近 10 分钟到达本机 :53/:7874 的客户端 DNS 查询数为 0。在旁路由场景下，若主路由 DHCP 下发的 DNS 不是 {lan_ip}，手机将无法获取 Fake-IP 并导致海外应用连接异常。",
-                "evidence": f"lan_dns_queries_10m=0, router_lan_ip={lan_ip}",
+                "summary": f"自服务启动以来尚未收到客户端向本机查询 DNS，手机的 DNS 很可能指向主路由。可在主路由 DHCP 里把 DNS 改为 {lan_ip}，或手机手动设置。",
+                "detail": f"检测到局域网存在活跃流量，但到达本机 :53/:7874 的客户端 DNS 查询数为 0。在旁路由场景下，若主路由 DHCP 下发的 DNS 不是 {lan_ip}，手机将无法获取 Fake-IP 并导致海外应用连接异常。",
+                "evidence": f"{ev_key}=0, router_lan_ip={lan_ip}",
                 "fix": {
                     "type": "copy_guide",
                     "action": "copy_dhcp_dns_guide",
@@ -15705,9 +15985,9 @@ def run_network_health_doctor(payload: dict = None, conf_dir: Path = CONF_DIR, a
             "index": 1,
             "title": "客户端 DNS 归属",
             "status": "pass",
-            "summary": f"局域网终端已正常向本机 ({lan_ip}) 发起 DNS 解析",
+            "summary": f"局域网终端已正常向本机 ({lan_ip}) 发起 DNS 解析（累计 {q_cnt:,} 次查询）" if is_cumulative_scope else f"局域网终端已正常向本机 ({lan_ip}) 发起 DNS 解析",
             "detail": "本机 :53 / :7874 防污染 DNS 正在正常接收并响应局域网设备的域名查询。",
-            "evidence": f"lan_dns_queries_10m={q_cnt}, router_lan_ip={lan_ip}",
+            "evidence": f"{ev_key}={q_cnt}, router_lan_ip={lan_ip}",
             "fix": None
         }
 
@@ -16317,7 +16597,7 @@ def detect_network_topology(conf_dir: Path = CONF_DIR, mock_env: dict = None) ->
         except Exception:
             pass
         if not lan_ip:
-            lan_ip = "10.10.10.77"
+            lan_ip = _detect_router_lan_ip()
         if dhcp_active is None:
             dhcp_ignore = _uci_get_str("dhcp.lan.ignore", "")
             dhcp_active = (dhcp_ignore != "1") and any(
@@ -16332,8 +16612,10 @@ def detect_network_topology(conf_dir: Path = CONF_DIR, mock_env: dict = None) ->
             except Exception:
                 iface_count = 2
 
-    lan_ip = lan_ip or "10.10.10.77"
-    gateway_ip = gateway_ip or "10.10.10.1"
+    lan_ip = lan_ip or _detect_router_lan_ip()
+    if not gateway_ip:
+        parts_ip = lan_ip.split(".")
+        gateway_ip = f"{parts_ip[0]}.{parts_ip[1]}.{parts_ip[2]}.1" if len(parts_ip) == 4 and lan_ip != "127.0.0.1" else "192.168.1.1"
     default_if = default_if or "br-lan"
     dhcp_active = bool(dhcp_active)
     wan_has_public_ip = bool(wan_has_public_ip)
@@ -17869,8 +18151,8 @@ def run_full_network_matrix_test(conf_dir: Path = CONF_DIR) -> dict:
         },
         {
             "id": "M09_PRIVATE_LAN_IP",
-            "title": "路由器管理后台防自锁 (10.10.10.77:80)",
-            "target": "10.10.10.77:80",
+            "title": f"路由器管理后台防自锁 ({_detect_router_lan_ip() if _detect_router_lan_ip() != '127.0.0.1' else '192.168.1.1'}:80)",
+            "target": f"{_detect_router_lan_ip() if _detect_router_lan_ip() != '127.0.0.1' else '192.168.1.1'}:80",
             "protocol": "tcp",
             "check": lambda r: r["enters_kernel"] is False and r["stage4_outbound"]["is_direct"] is True
         },
@@ -17979,9 +18261,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.3.6"
+APP_VERSION = "2.3.7"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.3.6-release-20261103"
+APP_BUILD = "2.3.7-release-20261104"
 
 UPDATE_MANIFEST_PRIMARY = "https://ai-link-official.pages.dev/version.json"
 UPDATE_MANIFEST_GITHUB = "https://raw.githubusercontent.com/Master-AI-007/ai-link-openwrt/main/version.json"
@@ -18674,6 +18956,23 @@ def _probe_real_proxy_egress(active_node: str, force_now: bool = False, allow_ne
             on_egress_fail(active_node, conf_dir=CONF_DIR)
     return {"ok": ok_eg, "checked_ts": int(now), "delay_ms": d_ms, "error": err_s}
 
+def _read_nft_apply_status() -> dict:
+    for r_d in (RUN_DIR, Path("/var/run/ai-link"), Path("/tmp/ai-link")):
+        sf = r_d / "nft_apply_status.json"
+        if sf.is_file():
+            try:
+                d = json.loads(sf.read_text(encoding="utf-8"))
+                if isinstance(d, dict):
+                    return {
+                        "last_apply_ok": bool(d.get("ok", True)),
+                        "last_apply_at": int(d.get("ts") or 0),
+                        "last_apply_rc": int(d.get("rc") or 0),
+                        "last_apply_error": str(d.get("error") or ""),
+                    }
+            except Exception:
+                pass
+    return {"last_apply_ok": True, "last_apply_at": 0, "last_apply_rc": 0, "last_apply_error": ""}
+
 def build_routing_health(conf_dir: Path = CONF_DIR) -> dict:
     """Spec §1.4 & §6 #7: Single `state` enum (single unified state enum), and `nodes_alive` counts ONLY `selectable` nodes wit"""
     sh_cfg = load_shunt_config(conf_dir)
@@ -18705,9 +19004,10 @@ def build_routing_health(conf_dir: Path = CONF_DIR) -> dict:
         or "direct"
     )
     eg_probe = _probe_real_proxy_egress(active_node, allow_network=False) if _is_local_port_listening(9090) and active_node not in ("direct", "block") else {"ok": ok_alive > 0, "delay_ms": get_node_real_delay(active_node, store=store, conf_dir=conf_dir), "error": "no_active_proxy"}
+    nft_st = _read_nft_apply_status()
     if eg_probe["ok"] and ok_alive > 0:
-        return {"state": "proxy", "label": "✅ 代理中", "active_node": active_node, "nodes_alive": ok_alive, "nodes_total": selectable_total, "real_egress_ok": True, "egress_delay_ms": eg_probe["delay_ms"], "backend_diversity": b_div, "hint": f"当前出口 {active_node} URL ping 正常"}
-    return {"state": "proxy_degraded", "label": "⚠️ 隧道异常 · 待验证或不可达", "active_node": active_node, "nodes_alive": ok_alive, "nodes_total": selectable_total, "real_egress_ok": False, "backend_diversity": b_div, "hint": "请执行 URL ping 真连接检测或检查机场订阅状态"}
+        return {"state": "proxy", "label": "✅ 代理中", "active_node": active_node, "nodes_alive": ok_alive, "nodes_total": selectable_total, "real_egress_ok": True, "egress_delay_ms": eg_probe["delay_ms"], "backend_diversity": b_div, "hint": f"当前出口 {active_node} URL ping 正常", **nft_st}
+    return {"state": "proxy_degraded", "label": "⚠️ 隧道异常 · 待验证或不可达", "active_node": active_node, "nodes_alive": ok_alive, "nodes_total": selectable_total, "real_egress_ok": False, "backend_diversity": b_div, "hint": "请执行 URL ping 真连接检测或检查机场订阅状态", **nft_st}
 
 def run_fail_open_check_once(conf_dir: Path = CONF_DIR, force_trigger: bool = False) -> dict:
     FAIL_OPEN_STATE["last_check_ts"] = int(time.time())
@@ -18834,7 +19134,8 @@ def _h3_probe_one(url, use_proxy, timeout=4.0):
             port = sp.port or (443 if sp.scheme == "https" else 80)
             t0 = time.time()
             args = [
-                "curl", "-4", "-s", "-o", "/dev/null", "-k",
+                "curl", "-4", "-s", "-o", "/dev/null", "-k", "--no-keepalive",
+                "-H", "Connection: close",
                 "--connect-timeout", "2", "--max-time", str(max(2, int(timeout))),
                 "-A", "ai-link-health/1.0", "-w", "%{http_code}"
             ]
@@ -19635,16 +19936,21 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             self._send_json({"ok": False, "error": "internal_error", "message": f"请求处理异常: {e}"}, status=500)
 
     def _do_GET_inner(self):
-        if self.path.split("?")[0] == "/api/dns/rewrite":
+        parsed_url = urllib.parse.urlsplit(self.path)
+        req_path = parsed_url.path
+        qs = dict(urllib.parse.parse_qsl(parsed_url.query))
+        # P1-02 Fix: Unified GET authentication gate for all /api/* endpoints when require_lan_auth is enabled
+        _PUBLIC_GET_API_PATHS = ("/api/status", "/api/system/version", "/api/login")
+        if req_path.startswith("/api/") and req_path not in _PUBLIC_GET_API_PATHS and not self._auth_ok():
+            self._send_json({"ok": False, "error": "unauthorized", "message": "未授权访问，请先登录面板获取访问令牌"}, status=401)
+            return
+        if req_path == "/api/dns/rewrite":
             rw_cfg = load_dns_rewrite_config(CONF_DIR)
             conf_path = _detect_dnsmasq_confdir() / "ai-link-rewrite.conf"
             rw_cfg["applied"] = conf_path.is_file()
             rw_cfg["applied_path"] = str(conf_path)
             self._send_json(rw_cfg)
             return
-        parsed_url = urllib.parse.urlsplit(self.path)
-        req_path = parsed_url.path
-        qs = dict(urllib.parse.parse_qsl(parsed_url.query))
         if req_path == "/api/overview/telemetry":
             self._send_json(get_overview_live_telemetry(CONF_DIR))
             return
@@ -19995,44 +20301,56 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
         if req_path.startswith("/api/"):
             self._send_json({"ok": False, "error": "unknown_endpoint", "message": f"未知 API 路径: {req_path}", "path": req_path}, status=404)
             return
-        # C-P2-01: Serve static WebUI files (/, /index.html, /*.js, /*.css) with Gzip compression and appropriate Cache-Control
-        rel_p = "index.html" if req_path in ("/", "/index.html") else req_path.lstrip("/")
-        cand_static = (WEBUI_DIR / rel_p).resolve()
-        if str(cand_static).startswith(str(WEBUI_DIR.resolve())) and cand_static.is_file():
-            ctype_map = {
-                ".html": "text/html; charset=utf-8",
-                ".js": "application/javascript; charset=utf-8",
-                ".css": "text/css; charset=utf-8",
-                ".svg": "image/svg+xml",
-                ".png": "image/png",
-                ".ico": "image/x-icon",
-                ".json": "application/json; charset=utf-8",
-            }
-            ctype = ctype_map.get(cand_static.suffix.lower(), "application/octet-stream")
-            raw_b = cand_static.read_bytes()
-            etag = f'"v{APP_VERSION}-{hashlib.sha256(raw_b).hexdigest()[:16]}"'
-            self._custom_cache_control = True
-            if self.headers.get("If-None-Match") == etag:
-                self.send_response(304)
-                self.send_header("ETag", etag)
-                self.send_header("Cache-Control", "public, max-age=86400, must-revalidate")
-                self.end_headers()
-                return
-            wants_gz = "gzip" in (self.headers.get("Accept-Encoding") or "").lower()
-            use_gz = wants_gz and cand_static.suffix.lower() in (".html", ".js", ".css", ".svg", ".json") and len(raw_b) >= 512
-            out_b = gzip.compress(raw_b, compresslevel=6) if use_gz else raw_b
-            self.send_response(200)
-            self.send_header("Content-Type", ctype)
-            self.send_header("ETag", etag)
-            self.send_header("Cache-Control", "public, max-age=86400, must-revalidate")
-            if use_gz:
-                self.send_header("Content-Encoding", "gzip")
-                self.send_header("Vary", "Accept-Encoding")
-            self.send_header("Content-Length", str(len(out_b)))
-            self.end_headers()
-            self.wfile.write(out_b)
+        # C-P2-01 & P2-22: Serve static WebUI files (/, /index.html, /*.js, /*.css) with Gzip compression, ETag, and HEAD parity
+        if self._serve_webui_static(req_path, head_only=False):
             return
         return super().do_GET()
+
+    def _serve_webui_static(self, req_path: str, head_only: bool = False) -> bool:
+        rel_p = "index.html" if req_path in ("/", "/index.html") else req_path.lstrip("/")
+        cand_static = (WEBUI_DIR / rel_p).resolve()
+        if not (str(cand_static).startswith(str(WEBUI_DIR.resolve())) and cand_static.is_file()):
+            return False
+        ctype_map = {
+            ".html": "text/html; charset=utf-8",
+            ".js": "application/javascript; charset=utf-8",
+            ".css": "text/css; charset=utf-8",
+            ".svg": "image/svg+xml",
+            ".png": "image/png",
+            ".ico": "image/x-icon",
+            ".json": "application/json; charset=utf-8",
+        }
+        ctype = ctype_map.get(cand_static.suffix.lower(), "application/octet-stream")
+        raw_b = cand_static.read_bytes()
+        etag = f'"v{APP_VERSION}-{hashlib.sha256(raw_b).hexdigest()[:16]}"'
+        self._custom_cache_control = True
+        if self.headers.get("If-None-Match") == etag:
+            self.send_response(304)
+            self.send_header("ETag", etag)
+            self.send_header("Cache-Control", "public, max-age=86400, must-revalidate")
+            self.end_headers()
+            return True
+        wants_gz = "gzip" in (self.headers.get("Accept-Encoding") or "").lower()
+        use_gz = wants_gz and cand_static.suffix.lower() in (".html", ".js", ".css", ".svg", ".json") and len(raw_b) >= 512
+        out_b = gzip.compress(raw_b, compresslevel=6) if use_gz else raw_b
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("ETag", etag)
+        self.send_header("Cache-Control", "public, max-age=86400, must-revalidate")
+        if use_gz:
+            self.send_header("Content-Encoding", "gzip")
+            self.send_header("Vary", "Accept-Encoding")
+        self.send_header("Content-Length", str(len(out_b)))
+        self.end_headers()
+        if not head_only:
+            self.wfile.write(out_b)
+        return True
+
+    def do_HEAD(self):
+        parsed_url = urllib.parse.urlsplit(self.path)
+        if self._serve_webui_static(parsed_url.path, head_only=True):
+            return
+        return super().do_HEAD()
     def do_POST(self):
         try:
             return self._do_POST_inner()
@@ -20828,7 +21146,7 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 if Path("/etc/init.d/ai-link").exists():
                     core_ok = reload_core_only(timeout=25.0, force_respawn=True, explicit_restart=True)
                     if core_ok and _is_local_port_listening(int(_uci_get_str("global.tproxy_port", "7893") or 7893)):
-                        subprocess.run(["/usr/share/ai-link/nftables/apply_nft.sh"], check=False, timeout=5)
+                        subprocess.run(["/usr/share/ai-link/nftables/apply_nft.sh"], check=False, timeout=20)
                 PROBE_ENGINE.apply_shunt_selections(CONF_DIR)
                 _invalidate_sys_cache()
                 _invalidate_fast_api_cache()
@@ -22257,6 +22575,7 @@ def ensure_nft_and_routing_intact() -> bool:
         rule_ok = (chk_rule.returncode == 0 and ("0x162" in (chk_rule.stdout or "") or "162" in (chk_rule.stdout or "")))
         if not nft_ok or not rule_ok:
             subprocess.run(["logger", "-t", "ai-link", f"Self-Healing Watchdog: TProxy port :{tproxy_port} verified listening; re-applying missing nftables/policy routing..."], capture_output=True, timeout=2)
+            append_ops_event_log("WARN", f"看门狗自愈: TProxy 端口 :{tproxy_port} 已恢复监听，正在重新挂载 nftables 与策略路由")
             if not rule_ok:
                 subprocess.run(["ip", "rule", "del", "fwmark", "0x162", "table", "162"], capture_output=True, timeout=2)
                 subprocess.run(["ip", "route", "flush", "table", "162"], capture_output=True, timeout=2)

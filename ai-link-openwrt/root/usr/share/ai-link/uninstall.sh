@@ -41,16 +41,20 @@ for arg in "$@"; do
 done
 
 if [ "$ASSUME_YES" != "1" ] && [ -t 0 ] && [ "${AILINK_UNINSTALL_INTERNAL:-0}" != "1" ]; then
-	printf "⚠️ 确认彻底卸载 AI-LINK 吗？配置将自动备份至 /root/ai-link-final-backup/etc-ai-link.tgz [Y/n] (3秒无输入默认继续，输入 n 取消): "
+	printf "⚠️ 确认彻底卸载 AI-LINK 吗？配置将自动备份至 /root/ai-link-final-backup/etc-ai-link.tgz [y/N] (3秒无输入默认取消，输入 y 确认): "
 	if read -t 3 -r ans; then
 		case "$ans" in
-			n|N|no|NO)
+			y|Y|yes|YES)
+				;;
+			*)
 				echo "已取消卸载。"
 				exit 0
 				;;
 		esac
 	else
 		echo ""
+		echo "已取消卸载（等待确认超时）。如需免交互卸载请追加 -y 参数。"
+		exit 0
 	fi
 fi
 

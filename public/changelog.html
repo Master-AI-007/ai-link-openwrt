@@ -40,17 +40,21 @@
   </div>
 <article class="log-item latest">
   <div class="log-top">
-    <h2>v2.3.6</h2>
+    <h2>v2.3.7</h2>
     <span class="tag c">最新</span>
-    <time>2026-11-03</time>
+    <time>2026-11-04</time>
   </div>
-  <p style="margin:2px 0 6px;color:var(--dim)">订阅自适应（11 种格式）+ 手动零漂移 + 极简节点池正式版</p>
-<h3>订阅</h3>
-<ul><li>解析器改为 4 层嗅探：JSON（sing-box / v2rayN / SIP008）→ YAML（Clash/Mihomo，含块式、嵌套 flow、锚点）→ Base64 → URI 列表 → INI 段（Surge / Loon / Quantumult X）；</li><li>拉取优先 <code>curl -4</code>，<code>--resolve</code> 单 IP 失败自动去 pin 重试；</li><li>HTTP 200 但零节点时按正文归类（Token 失效 / 返回网页 / 格式不支持），原始响应写入 <code>/tmp/ai-link-sub-*.raw</code>。</li></ul>
-<h3>手动与节点池</h3>
-<ul><li>分流组、非分流模式手动节点不可用时保持固定并提示，不再自动漂移；</li><li>新建节点池默认 <code>ping_only</code>，服务检测按需开启；</li><li>服务检测 <code>any</code> 逻辑不再被 AI 地区封锁一票否决；</li><li>日常巡检仅 URL Ping，建池与低健康复选才做真实服务访问验证。</li></ul>
-<h3>界面与打包</h3>
-<ul><li>1188px 表格零横向滚动、960px 卡片化；移动端顶栏不再截断；</li><li>修复 tar 重复条目（53 条目 / 27 文件 / 0 重复，707,839 B）；</li><li>发布门禁新增 tar/ipk 唯一性与体积检查。</li></ul>
+  <p style="margin:2px 0 6px;color:var(--dim)">正式发布</p>
+<ul><li><b>全站 6 大功能页统一「护盾/回家同构单横幅 Hero」</b>：移除概览、分流、回家、护盾、节点、设置 6 页顶部多余的第二层 <code>.content-head</code> 顶栏，全部统一为每页顶部唯一的 <code>.dns-hero.page-hero.glass-card</code>（含径向发光背景、与左侧导航 1:1 统一的发光图标与双层脉冲环、流动光子轨道、3 项实时指标与右侧控制区）。</li><li><b>BusyBox <code>flock</code> 兼容与透明代理挂载保护 (P0-1)</b>：<code>apply_nft.sh</code> 采用 4 级兼容锁并确保加锁超时严格 <code>exit 1</code>，<code>install.sh</code> 验活确保 <code>table inet ai_link</code> 100% 挂载。</li><li><b>每日测速配额超限跳过保态与自动自愈 (P0-2)</b>：达到日配额上限时跳过探测并 100% 保留节点既有健康态，升级时自动重置旧版未持久化的异常累计计数并自愈历史受污染探测记录。</li><li><b>探测缓存实时同源与细节打磨 (P2-1~P2-3 / P3)</b>：<code>node_probe.json</code> 纳入 <code>_conf_file_mtimes_sig</code> 确保全接口 <code>pool_reachable_count</code> 实时同源；修复离线态概览页重复告警横幅与护盾页 <code>NaN</code> 显示。</li></ul>
+</article>
+<article class="log-item">
+  <div class="log-top">
+    <h2>v2.3.6</h2>
+    <span class="tag">历史</span>
+    <time>2026-11-04</time>
+  </div>
+  <p style="margin:2px 0 6px;color:var(--dim)">r10 实机验收闭环</p>
+<ul><li><b>[P0-1 修复 · BusyBox <code>flock</code> 三级降级锁与 <code>install.sh</code> 严格断言]</b>：修复 <code>apply_nft.sh</code> 在 BusyBox <code>flock</code>（仅支持 <code>[-sxun]</code>，不支持 <code>-w</code>）下报 <code>unrecognized option: w</code> 并静默 <code>exit 0</code> 导致 <code>table inet ai_link</code> 未挂载的问题；升级为 <code>flock -x -n</code> 立即获取 ➔ <code>flock -x -w 18</code> ➔ BusyBox <code>flock -x -n</code> 轮询等待 ➔ <code>mkdir</code> 自旋锁三级降级，且加锁失败严格返回 <code>exit 1</code>；<code>install.sh</code> 在 <code>table inet ai_link</code> 未挂载时自动重试一次，仍失败则立即 <code>exit 1</code> 中止安装。</li><li><b>[P0-2 修复 · 测速配额闸门“跳过保态”语义与存量升级自动配额迁移]</b>：修复触发每日测速配额上限 (<code>quota_capped: True</code>) 时被探测引擎误判为 <code>state: &quot;dead&quot;</code> 导致全节点不可达与分流组回落 <code>direct</code> 的问题；超配额时严格执行 <code>skipped: True</code> 跳过语义，保留节点在 <code>node_probe.json</code> 中的上一次已知健康状态，并在升级首次启动时自动清零旧版累积的超额计数与自愈历史误判记录。</li><li><b>[P2-1 修复 · 自动节点池健康数与内核 Selector 单一真值同源]</b>：修复 <code>_conf_file_mtimes_sig</code> 对 <code>/var/run/ai-link/node_probe.json</code> 的缓存签名感知与 <code>save_node_probe_store</code> 缓存失效逻辑，并在 D-01 降级保护与前端渲染层同步 <code>pool_reachable_count</code>、<code>current_node</code> 与 <code>selection_explain</code>。</li><li><b>[P2-2 说明 · 实时活跃代理连接表位置与顶栏快捷跳转]</b>：实时活跃代理连接表（<code>#connections-tbody</code>，支持按局域网设备 IP 筛选与多维搜索）统一收纳于「<b>设置与诊断 (Settings) ➔ 06 / LIVE ACTIVE CONNECTIONS</b>」；同时支持点击顶栏「<b>活跃连接</b>」数字一键跳转并平滑滚动定位。</li><li><b>[P2-3 &amp; P3 修复]</b>：<code>:root</code> 中 <code>--mint</code> 精确对齐为 <code>#38e0b2</code>，并清除 <code>nexus.js</code> 中 <code>mock.groups</code> / <code>mock.autoPools</code> 的全部 <code>142</code> / <code>156</code> 种子初始值（统一设为 <code>null</code>）。</li></ul>
 </article>
 <article class="log-item">
   <div class="log-top">
@@ -147,21 +151,6 @@
   <p style="margin:2px 0 6px;color:var(--dim)">自动节点池「6 步往复筛选检测 ➔ 确认入池 ➔ 直接移除无弹窗」深度打磨 · 危险操作确认弹窗全量接线版</p>
 <h3>🌟 核心修复与交互重构 (v2.0.2 Highlights)</h3>
 <ul><li><b>自动节点池「6 步往复筛选、增量检测、确认入池与直接移除」全流程闭环 (<code>#modal-autopool</code>)</b></li><li><b>Step 1 — 筛选器自由勾选新候选节点（1~10 个）</b>：通过「订阅源 → 国家/地区胶囊 → 关键词」找到节点并任意勾选 1~10 个新候选节点；已加入节点池的节点仅显示绿色 <b>「✓ 已添加」</b> 标识（复选框禁用且不置 <code>checked</code>），与新勾选的待测节点完全区分。</li><li><b>Step 2 — 增量检测（仅对新勾选节点进行检测，已入池节点不重复检测）</b>：点击 <b>「⚡ 仅测已勾选 Ping」</b> 或 <b>「🧪 检测已勾选 (Ping+服务)」</b> 时，严格只将当前新勾选的候选节点 (<code>stagedSet</code>) 发送至 <code>/api/auto_nodes/test_candidates</code> 进行检测，已添加进节点池 (<code>g1Set</code> / <code>g2Set</code>) 的节点绝不重复检测。</li><li><b>Step 3 — 确认加入节点池（支持「仅加检测通过」或「免测/已勾选直接入池」）</b>：</li><li>点击 <b>「✅ 将检测通过加入池 (<code>#btn-an-add-passed</code>)」</b>：仅将当前新勾选且检测通过 (<code>qualified === true</code>) 的节点加入当前分组节点池，自动丢弃未通过节点的勾选；</li><li>点击 <b>「➕ 将已勾选加入池 (<code>#btn-an-add-to-pool</code>)」</b>：可将不想测试的已勾选节点（或已检测节点）直接确认加入当前分组节点池，加入后自动清空筛选器本轮勾选以便继续下一轮挑选。</li><li><b>Step 4 — 已入池列表单点「🗑️ 移除」直接删除（彻底修复误弹「分流策略组编排 · Copilot 与 Edge 服务」弹窗的 Bug）</b>：</li><li><b>根因定位</b>：原先下方列表的「🗑️ 移除」按钮带有 <code>data-group=&quot;1&quot;</code> 属性，点击事件冒泡至 <code>document</code> 后命中了分流页面的 <code>event.target.closest(&#x27;[data-group]&#x27;)</code> 监听器（<code>mock.groups[1]</code> 即为 <code>Copilot 与 Edge 服务</code>），导致误弹出分流组编排弹窗覆盖了节点池弹窗；</li><li><b>彻底修复</b>：将移除按钮属性改为 <code>data-pool-group</code>、在 <code>#an-builder-root</code> 内调用 <code>ev.stopPropagation()</code> 阻断冒泡，并在 <code>document</code> 级 <code>[data-group]</code> 监听器增加 <code>!event.target.closest(&#x27;#modal&#x27;)</code> 守卫。现在点击 <b>「🗑️ 移除」</b> 直接将该节点从列表移除（同时上方筛选器内该节点立即恢复可勾选状态），<b>绝不弹出任何弹窗</b>。</li><li><b>Step 5 &amp; 6 — 多轮往复增删检测直至满意保存</b>：只要当前分组未满 10 个，可随时继续通过筛选器勾选新节点 → 仅对新选中节点检测 → 确认加入节点池 → 在下方列表直接移除不满意的节点，往复循环直至配置满意后点击底部固定栏的 <b>「确定保存节点池」</b>。</li><li><b><code>VERIFY-v2.0.1-install.md</code> 实测反馈 P0/P2/P3 全量闭环</b></li><li><b>P0（12 项危险删除与批量覆盖操作接入 <code>confirmModal</code> + 状态快照「↩ 撤销」）</b>：<code>恢复默认规则库</code>、<code>删除自定义分流组</code>、<code>全部海外组走智能自动池</code> 等 12 项高危/批量操作点击必先弹确认窗（点取消 0 API 调用、零副作用），确认执行后支持「↩ 撤销」。</li><li><b>P2（<code>aria-busy</code> 完整生命周期保持）</b>：回家节点路由切换下拉框跨重绘保持 <code>aria-busy=&quot;true&quot;</code> 直至请求与状态刷新完成，常态为 <code>&quot;false&quot;</code> 永不为 <code>null</code>。</li><li><b>P3（「☑️ 勾选筛选前10优」严格补足到 10）</b>：点击后严格按 <code>10 - targetSet.size</code> 补足新候选节点，勾选总数恒为 <code>10</code>。</li></ul>
-<p>---</p>
-</article>
-<article class="log-item">
-  <div class="log-top">
-    <h2>v2.0.0</h2>
-    <span class="tag">历史</span>
-    <time>2026-10-27</time>
-  </div>
-  <p style="margin:2px 0 6px;color:var(--dim)">NEXUS 全域 3D 正式版 · 全量检查更新包</p>
-<h3>🎨 四项实机定制化视觉与交互升级</h3>
-<ul><li><b>国内直连母星 (<code>cn</code>) 切换为淡粉色 (<code>#f9a8d4</code> / <code>0xf9a8d4</code>)，与内核中枢青色鲜明区分</b></li><li>解决实测反馈中「内核中枢母星 (<code>core</code>, <code>#28b8d4</code> / <code>#6ee7f5</code>) 与国内直连母星 (<code>cn</code>, 旧色 <code>#1fc699</code>) 在 WebGL 光晕与色调映射下颜色过于接近」的问题。</li><li>将 <code>国内直连</code> 母星球体材质、自发光 (<code>0xf472b6</code>)、环绕轨道环 (<code>0xfbcfe8</code>)、下属国内目标卫星、主干连线 (<code>core_cn</code>)、2D 投影标签与右侧检查器指标全面升级为<b>淡粉色 (<code>#f9a8d4</code>)</b>，在深空背景下与青色内核、紫色海外代理、琥珀黑洞形成四色高对比度视觉体系。</li><li><b>「⚡ 流量激增」按钮 (<code>#surge-toggle</code>) 升级为真实连接的 3D 表达</b></li><li>打开「⚡ 流量激增」按钮不再是简单的动画倍速，而是实时拉取 <code>/api/clash/connections</code> 与 <code>/api/overview/galaxy</code> 的真实并发连接数据，在 3D 星图中构建<b>跨星系端到端真实连接 3D 轨迹弧 (<code>CatmullRomCurve3</code>)</b>：从 <code>内核中枢 (core)</code> 周围的具体局域网/回家终端卫星出发 </li></ul>
-<p>→ 经由 <code>内核中枢</code> 母星分流 </p>
-<p>→ 飞向 <code>国内直连 (淡粉)</code>、<code>海外代理 (紫/青)</code> 或 <code>黑洞拦截 (琥珀)</code> 母星 </p>
-<p>→ 精准落入对应的真实访问目标卫星（如 <code>WeChat</code>、<code>Bilibili</code>、<code>ChatGPT</code>、<code>YouTube</code> 等）。</p>
-<ul><li>3D 视口顶部同步呈现全息 HUD 实时横幅：<code>⚡ 真实连接 3D 表达已激活 · 实时映射 N 条跨星系轨迹 (M 并发连接) · 挡位: 高[X] / 中[Y] / 低[Z]</code>。</li><li><b>连线上的流动光球支持「高 / 中 / 低」三个速度挡位，按真实连接数与吞吐速率动态驱动</b></li><li>新增三挡流速引擎 <code>NexusScene.computeSpeedGear(rateBps, conns)</code>：</li><li><b>高挡 (<code>high</code> · 高速)</b>：当链路真实速率 <code>&gt;= 200 KB/s</code> 或并发连接 <code>&gt;= 12</code> 时触发，光球流速 <code>0.56</code>、体积缩放 <code>1.36x</code>、全密度脉冲；</li><li><b>中挡 (<code>med</code> · 中速)</b>：当链路真实速率在 <code>15 KB/s ~ 200 KB/s</code> 或并发连接 <code>3 ~ 11</code> 时触发，光球流速 <code>0.26</code>、体积缩放 <code>1.04x</code>；</li><li><b>低挡 (<code>low</code> · 低速)</b>：当链路真实速率 <code>&lt; 15 KB/s</code> 且并发连接 <code>&lt; 3</code> 时触发，光球流速 <code>0.095</code>、体积缩放 <code>0.78x</code>。</li><li>同时作用于四大星系主干连线 (<code>core_global</code>、<code>core_cn</code>、<code>core_blackhole</code>、<code>cn_global</code>)、各星系卫星径向连线 (<code>tetherPackets</code>) 以及流量激增模式下的 3D 真实连接轨迹弧，并在 3D 连线中段实时渲染 <code>流速:高/中/低 · N连</code> 胶囊标签。</li><li><b>概览页 (<code>#page-overview</code>) 底部三个标签卡片可点击查看具体信息 + 修复终端头像重复显示 <code>10</code> 问题</b></li><li>将概览页底部三张核心洞察卡片（<code>01 / DEVICES · 局域网终端设备</code>、<code>02 / OUTBOUNDS · 入核出站节点</code>、<code>03 / DESTINATIONS · 热门访问目标</code>）及卡片内的终端头像圆圈、目标域名芯片全部升级为可点击交互组件（带 <code>查看明细 ↗</code> 徽章与悬浮高亮）。</li><li>修复 <code>01 / DEVICES</code> 卡片终端头像在 <code>10.10.10.x</code> 网段下截取前两位导致全部显示 <code>10</code> 的问题，改为智能提取 IPv4 末段（如 <code>.224</code>、<code>.77</code>、<code>.10</code>）或主机名缩写。</li><li>点击任意一张卡片即弹出 NEXUS 宽幅详情模态框，内置 4 宫格汇总指标、分类筛选芯片、实时搜索框、高中低流速挡位徽章以及一键操作（<code>🔍 查看连接</code>、<code>⚡ 真测速</code>、<code>🚀 设为出口</code>、<code>🔍 4阶透视</code>）。</li></ul>
 </article>
 <article class="log-item">
   <div class="log-top">

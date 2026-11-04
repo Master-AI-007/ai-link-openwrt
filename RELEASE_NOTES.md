@@ -1,45 +1,32 @@
-# AI-LINK v2.3.6
+# AI-LINK v2.3.7
 
 > OpenWrt 智能分流网关 · sing-box 单内核 · 15 组分流 · 自动节点池 · 订阅自适应
-> 发布日期：2026-11-03 ｜ 适用：OpenWrt 23.05 / 24.10 / ImmortalWrt / LEDE（`fw4` + `nftables`）
+> 发布日期：2026-11-04 ｜ 适用：OpenWrt 23.05 / 24.10 / ImmortalWrt / LEDE（`fw4` + `nftables`）
 
 ---
 
-## 这一版的重点：订阅不再挑格式，手动不再偷偷换节点
+## 这一版：六个页面，一条横幅；两个 P0，一并收掉
 
-### 📥 订阅自适应（11 种格式）
+### 🖼 全站统一单横幅 Hero
 
-| 格式 | 支持 |
-|---|---|
-| Clash / Mihomo YAML | 单行 flow、多行块式、嵌套 flow、锚点与 merge |
-| 明文 URI 列表 | vless / vmess / ss / trojan / hysteria2 / tuic / anytls |
-| Base64 订阅 | 标准 / URL-safe / 无填充 |
-| sing-box JSON | `outbounds[]` |
-| Surge / Loon / Quantumult X | `[Proxy]` INI 段 |
-| SIP008 | Shadowsocks JSON |
-| V2Ray / v2rayN JSON | `outbounds[].settings.vnext` |
+概览、分流、回家、护盾、节点、设置六页全部改成同构单横幅：
 
-配套修复：
+- 左侧光子轨道 + 中心发光主核（与导航图标 1:1）；
+- 中间主标题 + `?` 战术指南 + 3 项实时 KPI；
+- 右侧控制区（各页操作按钮）；
+- 旧的独立 `.content-head` 全部移除，**零双顶栏叠加**。
 
-- **拉取**：`curl -4` 优先；`--resolve` 绑定的 IP 不通时自动去掉 pin 重试；
-- **诊断**：HTTP 200 但没解析出节点时，会区分「Token 失效」「返回网页」「格式不支持」，并把原文写入 `/tmp/ai-link-sub-*.raw`。
+### 🛡 P0 修复
 
-### 🖐️ 手动即固定
+- **P0-1**：`apply_nft.sh` 改为三级加锁（`flock -x -n` → util-linux `-w` → BusyBox 轮询 → mkdir 自旋），BusyBox 不再因 `-w` 不支持而静默跳过 `table inet ai_link` 挂载；
+- **P0-2**：每日测速配额达到上限时改为「跳过并保留原健康状态」（`QUOTA_SKIPPED_PRESERVE`），不再把全部节点写成 `dead`、不再清空节点池把分流降级直连。
 
-- 分流组、非分流模式（白名单 / GFW / 全局）中手动选定的节点**不可用也保持固定**并给出提示；
-- 需要自动容灾的场景，请改用自动节点池；
-- 节点池新建默认「仅 URL Ping」，服务检测按需开启；「任一通过」不再被 AI 地区封锁一票否决。
+### 🧩 细节
 
-### 🧩 极简节点池（延续 2.3.5）
-
-创建 → 勾订阅来源（含自定义）→ 勾地区 → 是否服务检测 → 勾服务 → 数量 1-10 → 低健康复选阈值 → 开始自动选取（进度条）。
-日常只做 URL Ping 切换；建池与低水位复选才做真实服务访问验证。
-
-### 🖥 窄屏与设计
-
-- 1188px 下节点表格零横向滚动，操作列完整可见；
-- 960px 以下自动切换卡片式列表；
-- 移动端顶栏不再把「精细规则分流」截断。
+- 探测缓存纳入 `node_probe.json` 签名，`/api/status` 与 `/api/auto_nodes` 的可用计数同源；
+- 顶栏连接数可点击跳到实时连接表；
+- `--mint` 对齐 `#38e0b2`；修复离线概览重复告警条与护盾页 `NaN`；
+- 订阅自适应（11 格式）与「手动即固定」延续 v2.3.6。
 
 ---
 
@@ -51,22 +38,22 @@ ai-link update --apply
 curl -fsSL https://ai-link-official.pages.dev/upgrade.sh | sh
 ```
 
-支持从 2.0.x / 2.1.x / 2.2.x / 2.3.x 直升，配置、节点、订阅与节点池全部保留，失败自动回滚。
+支持从 2.0.x / 2.1.x / 2.2.x / 2.3.x 直升，配置、节点、订阅、节点池全部保留，失败自动回滚。
 
 ---
 
 ## 已知限制
 
-- 订阅是网页/HTML 或 Token 失效时无法解析，请更新链接；
-- 594 节点规模下 `quick_create` 首次约 1 秒（亚秒~一秒级）；
-- 面板默认信任局域网，公网暴露请开启强制登录并修改密码。
+- 订阅为网页/HTML 或 Token 失效时无法解析，需要更新链接；
+- 594 节点规模下 `quick_create` 首次约 1 秒；
+- 面板默认信任局域网，公网暴露请开启强制登录。
 
 ---
 
 ## 包指纹
 
 ```
-AI-LINK-v2.3.6.tar.gz   707,839 B
-md5     a90b9f50aab299ba5aa12874f0ea6689
-sha256  e62a4a90b443c7d6478a2fac8fa5043c524a0400afad9f4221690ba4368909da
+AI-LINK-v2.3.7.tar.gz   724,101 B
+md5     8b1e6187e0c800ac53f0da522de34e3f
+sha256  87fbef7b5568dcb72dec8ce19f655b6a53a688dfef7ac87a3e88fa2dc4622bfc
 ```

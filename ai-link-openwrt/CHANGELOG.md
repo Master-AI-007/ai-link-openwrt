@@ -1,3 +1,18 @@
+## v2.3.7 (正式发布 · 2026-11-04)
+
+- **全站 6 大功能页统一「护盾/回家同构单横幅 Hero」**：移除概览、分流、回家、护盾、节点、设置 6 页顶部多余的第二层 `.content-head` 顶栏，全部统一为每页顶部唯一的 `.dns-hero.page-hero.glass-card`（含径向发光背景、与左侧导航 1:1 统一的发光图标与双层脉冲环、流动光子轨道、3 项实时指标与右侧控制区）。
+- **BusyBox `flock` 兼容与透明代理挂载保护 (P0-1)**：`apply_nft.sh` 采用 4 级兼容锁并确保加锁超时严格 `exit 1`，`install.sh` 验活确保 `table inet ai_link` 100% 挂载。
+- **每日测速配额超限跳过保态与自动自愈 (P0-2)**：达到日配额上限时跳过探测并 100% 保留节点既有健康态，升级时自动重置旧版未持久化的异常累计计数并自愈历史受污染探测记录。
+- **探测缓存实时同源与细节打磨 (P2-1~P2-3 / P3)**：`node_probe.json` 纳入 `_conf_file_mtimes_sig` 确保全接口 `pool_reachable_count` 实时同源；修复离线态概览页重复告警横幅与护盾页 `NaN` 显示。
+
+## v2.3.6 (r10 实机验收闭环 · 2026-11-04)
+
+- **[P0-1 修复 · BusyBox `flock` 三级降级锁与 `install.sh` 严格断言]**：修复 `apply_nft.sh` 在 BusyBox `flock`（仅支持 `[-sxun]`，不支持 `-w`）下报 `unrecognized option: w` 并静默 `exit 0` 导致 `table inet ai_link` 未挂载的问题；升级为 `flock -x -n` 立即获取 ➔ `flock -x -w 18` ➔ BusyBox `flock -x -n` 轮询等待 ➔ `mkdir` 自旋锁三级降级，且加锁失败严格返回 `exit 1`；`install.sh` 在 `table inet ai_link` 未挂载时自动重试一次，仍失败则立即 `exit 1` 中止安装。
+- **[P0-2 修复 · 测速配额闸门“跳过保态”语义与存量升级自动配额迁移]**：修复触发每日测速配额上限 (`quota_capped: True`) 时被探测引擎误判为 `state: "dead"` 导致全节点不可达与分流组回落 `direct` 的问题；超配额时严格执行 `skipped: True` 跳过语义，保留节点在 `node_probe.json` 中的上一次已知健康状态，并在升级首次启动时自动清零旧版累积的超额计数与自愈历史误判记录。
+- **[P2-1 修复 · 自动节点池健康数与内核 Selector 单一真值同源]**：修复 `_conf_file_mtimes_sig` 对 `/var/run/ai-link/node_probe.json` 的缓存签名感知与 `save_node_probe_store` 缓存失效逻辑，并在 D-01 降级保护与前端渲染层同步 `pool_reachable_count`、`current_node` 与 `selection_explain`。
+- **[P2-2 说明 · 实时活跃代理连接表位置与顶栏快捷跳转]**：实时活跃代理连接表（`#connections-tbody`，支持按局域网设备 IP 筛选与多维搜索）统一收纳于「**设置与诊断 (Settings) ➔ 06 / LIVE ACTIVE CONNECTIONS**」；同时支持点击顶栏「**活跃连接**」数字一键跳转并平滑滚动定位。
+- **[P2-3 & P3 修复]**：`:root` 中 `--mint` 精确对齐为 `#38e0b2`，并清除 `nexus.js` 中 `mock.groups` / `mock.autoPools` 的全部 `142` / `156` 种子初始值（统一设为 `null`）。
+
 ## [v2.3.5] - 2026-11-03 (全新极简自动节点池重构与全场景手动/自动模式正交解耦版)
 
 ### 🌟 核心架构与功能重构 (Auto Node Pool v2.3.5)

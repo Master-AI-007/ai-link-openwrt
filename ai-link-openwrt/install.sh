@@ -1,6 +1,6 @@
 #!/bin/sh
 # ==============================================================================
-# AI-LINK v2.3.4 (luci-app-ai-link v2.3.4) Universal Cross-Platform Installer
+# AI-LINK v2.3.7 (luci-app-ai-link v2.3.7) Universal Cross-Platform Installer
 # Supports:
 #   - Architectures : x86_64 (amd64), aarch64 (arm64), armv7l (armhf), mipsel, riscv64
 #   - Package Mgrs  : OPKG (OpenWrt <=23.05) & APK (OpenWrt 24.10+ / ImmortalWrt 25.x+)
@@ -12,7 +12,7 @@
 set -e
 export PYTHONDONTWRITEBYTECODE="1"
 
-VERSION="2.3.6"
+VERSION="2.3.7"
 UPGRADE_MODE=0
 for arg in "$@"; do
 	case "$arg" in
@@ -200,6 +200,8 @@ if [ "$PKG_MGR" = "opkg" ] && [ -n "$IPK_FILE" ] && [ -f "$IPK_FILE" ]; then
 	AILINK_INSTALLING=1 opkg install --force-reinstall "$IPK_FILE" >/dev/null 2>&1 || true
 fi
 
+rm -f /usr/share/ai-link/*.bak* /usr/share/ai-link/*.py.bak* 2>/dev/null || true
+rm -rf /usr/share/ai-link/__pycache__ 2>/dev/null || true
 rm -rf /usr/share/ai-link/webui 2>/dev/null || true
 mkdir -p /usr/share/ai-link/webui 2>/dev/null || true
 cp -rf "$SCRIPT_DIR/root/"* /
@@ -382,10 +384,13 @@ else
 fi
 
 if command -v nft >/dev/null 2>&1; then
+	if ! nft list table inet ai_link >/dev/null 2>&1; then
+		/usr/share/ai-link/nftables/apply_nft.sh || true
+	fi
 	if nft list table inet ai_link >/dev/null 2>&1; then
 		echo "  -> ✓ nftables 透明代理表 (table inet ai_link) 已成功挂载并校验通过！"
-	elif command -v sing-box >/dev/null 2>&1; then
-		echo "  -> ❌ 告警: table inet ai_link 未挂载，请检查 nftables 模块！" >&2
+	elif command -v sing-box >/dev/null 2>&1 && [ "${AILINK_ALLOW_NO_NFT:-0}" != "1" ]; then
+		echo "  -> ❌ 错误: table inet ai_link 未挂载，透明代理规则未生效，安装中止！" >&2
 		exit 1
 	fi
 fi

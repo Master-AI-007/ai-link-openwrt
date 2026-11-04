@@ -1,18 +1,33 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.3.6",
-  "release_date": "2026-11-03",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.3.6",
+  "latest": "2.3.7",
+  "release_date": "2026-11-04",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.3.7",
   "highlights": [
-    "订阅自适应：11 种格式全解析（Clash 四种写法 / URI / Base64 / sing-box / Surge / Loon / SIP008 / V2Ray）",
-    "订阅拉取：curl -4 优先 + --resolve 失败自动去 pin 重试；200 但非订阅内容可精准报错并留存 .raw",
-    "手动即固定：分流组与非分流模式手动节点不可用时不漂移，需要容灾改用节点池",
-    "节点池：新建默认仅 URL Ping，服务检测按需开启；「任一通过」不再被 AI 地区封锁一票否决",
-    "窄屏布局：1188px 表格零横向滚动，960px 自动切换卡片式",
-    "全生命周期仿真测试补齐，14 套回归在 Windows 与 OpenWrt 上可复现"
+    "全站 6 个功能页统一为单横幅 Hero：左侧光子轨道 + 中心发光主核 + 实时 KPI + 右侧控制区，零双顶栏",
+    "版本号 9 处对齐 2.3.7（含 Makefile、ai-link CLI、LuCI 兜底与静态资源内容哈希）",
+    "P0-1：apply_nft.sh 三级 flock 兼容（BusyBox / util-linux），透明代理表挂载不再静默跳过",
+    "P0-2：每日测速配额超限改为跳过保态，不再把节点写死 dead、不再清空自动池",
+    "P2：node_probe.json 纳入缓存签名、顶栏连接数可点击跳转、--mint 对齐 #38e0b2、修复 NaN 与重复告警",
+    "订阅自适应（11 格式）与手动零漂移延续"
   ],
   "changelog": [
+    {
+      "version": "2.3.7",
+      "date": "2026-11-04",
+      "type": "feat",
+      "title": "统一单横幅 Hero + P0 修复 + 版本号全量对齐",
+      "items": [
+        "6 大功能页统一 Hero：概览 / 分流 / 回家 / 护盾 / 节点 / 设置，legacy content-head 清零",
+        "版本锚点 9 处对齐 2.3.7（daemon/build/version/install/uci/Makefile/CLI/徽章/LuCI）",
+        "P0-1 apply_nft.sh 三级 flock 兼容，挂载失败不再静默 exit 0",
+        "P0-2 测速配额超限跳过保态，保留历史健康状态并自愈污染记录",
+        "P2-1 node_probe.json 纳入 _conf_file_mtimes_sig，全接口 pool_reachable_count 同源",
+        "P2-2 顶栏连接数点击跳转实时活跃连接表",
+        "P2-3 --mint 对齐 #38e0b2，修复离线态重复告警与护盾页 NaN"
+      ]
+    },
     {
       "version": "2.3.6",
       "date": "2026-11-03",
@@ -151,13 +166,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.3.6/AI-LINK-v2.3.6.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.3.7/AI-LINK-v2.3.7.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.3.6.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.3.7.tar.gz"
       ],
-      "size": 707839,
-      "md5": "a90b9f50aab299ba5aa12874f0ea6689",
-      "sha256": "e62a4a90b443c7d6478a2fac8fa5043c524a0400afad9f4221690ba4368909da"
+      "size": 724101,
+      "md5": "8b1e6187e0c800ac53f0da522de34e3f",
+      "sha256": "87fbef7b5568dcb72dec8ce19f655b6a53a688dfef7ac87a3e88fa2dc4622bfc"
     }
   }
 }

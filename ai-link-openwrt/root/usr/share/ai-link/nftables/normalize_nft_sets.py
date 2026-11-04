@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Collapse nested/overlapping CIDRs in nft interval sets.
+"""Collapse nested/overlapping CIDRs in nft interval sets atomically.
 
 nftables rejects a set whose elements overlap (e.g. 240.0.0.0/4 together with
 255.255.255.255/32, or 59.108.0.0/14 together with 59.111.0.0/16, or single-line
@@ -8,6 +8,7 @@ node_server_v4 elements) with "Error: conflicting intervals specified".
 Usage: normalize_nft_sets.py /var/run/ai-link/ai-link.nft
 """
 import ipaddress
+import os
 import re
 import sys
 
@@ -31,10 +32,19 @@ def collapse_block(match):
 
 
 def main(path):
-    src = open(path, encoding="utf-8").read()
+    with open(path, encoding="utf-8") as f:
+        src = f.read()
     new = PATTERN.sub(collapse_block, src)
     if new != src:
-        open(path, "w", encoding="utf-8").write(new)
+        tmp_path = f"{path}.norm.{os.getpid()}.tmp"
+        with open(tmp_path, "w", encoding="utf-8", newline="\n") as tf:
+            tf.write(new)
+            tf.flush()
+            try:
+                os.fsync(tf.fileno())
+            except OSError:
+                pass
+        os.replace(tmp_path, path)
     print("prefixes: %d -> %d" % (src.count("/"), new.count("/")))
 
 
