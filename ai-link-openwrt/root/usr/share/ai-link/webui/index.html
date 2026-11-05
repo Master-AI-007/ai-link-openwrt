@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="color-scheme" content="dark">
   <title>AI-LINK NEXUS · 全域 3D 智能网关指挥舱</title>
-  <link rel="icon" type="image/svg+xml" href="./favicon.svg?v=2.4.0-f3fb8f26">
-  <link rel="alternate icon" href="./favicon.ico?v=2.4.0-15b56d6f">
-  <link rel="apple-touch-icon" href="./apple-touch-icon.png?v=2.4.0-2eb24c6c">
-  <link rel="stylesheet" href="./nexus.css?v=2.4.0-89325bdb">
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg?v=2.4.1-8b1d6b14">
+  <link rel="alternate icon" href="./favicon.ico?v=2.4.1-218c306e">
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png?v=2.4.1-89c068d7">
+  <link rel="stylesheet" href="./nexus.css?v=2.4.1-4644a6cf">
 </head>
 <body>
   <a class="skip-link" href="#main-stage">跳至主内容</a>
@@ -74,7 +74,7 @@
     <div class="workspace">
       <header class="topbar">
         <div class="page-heading">
-          <span class="eyebrow">AI-LINK / NEXUS 3D · <span class="version-chip">v2.4.0</span></span>
+          <span class="eyebrow">AI-LINK / NEXUS 3D · <span class="version-chip">v2.4.1</span></span>
           <h1 id="page-title">全域星图</h1>
         </div>
         <div class="global-route" style="cursor:pointer" data-page-link="shunt" title="点击进入分流与出口编排">
@@ -255,9 +255,15 @@
               <div class="chart-legend"><span><i class="cyan"></i>下行流量</span><span><i class="violet"></i>上行流量</span><b id="overview-month-total">本月累计 6.58 GB</b></div>
             </article>
             <article class="glass-card sonar-card">
-              <div class="card-head"><div><span>应用体验 (点击雷达星点立即探测)</span><h3>全球核心应用延迟声呐</h3></div><b class="live-label">LIVE</b></div>
+              <div class="card-head">
+                <div><span>应用体验 (点击星点单测 · 支持自定义探测目标)</span><h3>全球核心应用延迟声呐</h3></div>
+                <div class="sonar-head-actions">
+                  <button type="button" class="button ghost compact" id="btn-sonar-probe-all" data-action="sonar-probe-all">全部实测</button>
+                  <button type="button" class="button secondary compact" id="btn-sonar-custom" data-action="open-sonar-config">自定义目标</button>
+                </div>
+              </div>
               <div class="sonar-stage" id="sonar-stage"><div class="sonar-rings"></div><div class="sonar-sweep"></div><div class="sonar-center">AI-LINK</div></div>
-              <div class="sonar-foot-hint" id="sonar-foot-hint">点击圆形声呐中任意核心应用星点，实时探测对应分流组真实延迟</div>
+              <div class="sonar-foot-hint" id="sonar-foot-hint">点击星点实时探测对应分流组延迟 · 断网或节点不可达时实时告警</div>
             </article>
           </div>
 
@@ -708,8 +714,14 @@
             <article class="glass-card system-card">
               <span class="card-index">01 / CORE LIFECYCLE</span>
               <div class="system-title">
-                <div><h3 id="sys-core-title">sing-box 1.14.1</h3><p id="sys-core-sub">AI-LINK v2.4.0 · 单一真相源架构</p></div>
-                <span class="status-pill" id="settings-proxy-status-pill">运行正常</span>
+                <div><h3 id="sys-core-title">sing-box 1.14.1</h3><p id="sys-core-sub">AI-LINK v2.4.1 · 单一真相源架构</p></div>
+                <div class="core-head-right">
+                  <span class="status-pill" id="settings-proxy-status-pill">运行正常</span>
+                  <button class="button secondary compact" id="btn-check-core-update" data-action="check-core-update">检查内核更新</button>
+                </div>
+              </div>
+              <div class="core-ota-inline-row">
+                <span id="core-ota-sub">支持 1.11 ~ 1.15+ Schema 动态适配 · 沙箱 check 预检与失败回滚</span>
               </div>
               <div class="system-specs">
                 <div><span>固件系统</span><b id="sys-spec-os">ImmortalWrt / OpenWrt</b></div>
@@ -732,7 +744,7 @@
               <div class="update-row">
                 <div><b>AI-LINK 插件版本</b><span id="ota-sub">当前已是最新版本 (支持断点恢复与自动回滚)</span></div>
                 <div class="button-row">
-                  <span class="version-chip">v2.4.0</span>
+                  <span class="version-chip">v2.4.1</span>
                   <button class="button secondary compact" data-action="check-update">检查更新</button>
                   <button class="button ghost compact" data-action="ota-status">升级状态</button>
                   <button id="btn-ota-apply" class="button primary compact hidden" data-action="apply-update">立即升级</button>
@@ -741,10 +753,6 @@
               <div class="update-row">
                 <div><b>机场订阅与节点库</b><span>一键拉取全部已启用订阅源并更新入核池</span></div>
                 <button class="button ghost compact" data-action="sync">同步订阅</button>
-              </div>
-              <div class="update-row">
-                <div><b>sing-box 代理内核 (Schema 自适应)</b><span id="core-ota-sub">支持 1.11 ~ 1.15+ 动态适配 · 沙箱 check 预检与失败回滚</span></div>
-                <button class="button secondary compact" data-action="check-core-update">检查内核更新</button>
               </div>
               <div class="update-row">
                 <div><b>Sing-box 分流规则集 (.srs)</b><span>11 组官方与自定义编译规则集</span></div>
@@ -791,8 +799,8 @@
                     <button id="toggle-ops-entry-bypass" aria-label="国内流量不进内核开关" class="switch on" role="switch" aria-checked="true" data-action="entry-bypass-toggle"><i></i></button>
                   </div>
                   <div class="setting-line">
-                    <div><b>IPv6 透明代理接管 (ipv6_proxy)</b><span>开启后海外 IPv6 流量同步进入 TProxy 策略路由</span></div>
-                    <div class="button-row" style="align-items:center"><button class="button ghost compact" style="padding:0 8px;" data-action="ipv6-status-modal">状态明细</button><button id="toggle-ipv6-proxy" aria-label="IPv6双栈透明代理开关" class="switch" role="switch" aria-checked="false" data-action="ipv6-proxy-toggle"><i></i></button></div>
+                    <div><b>IPv6 透明代理接管 (ipv6_proxy) <button type="button" class="button ghost compact ipv6-detail-inline-btn" data-action="ipv6-status-modal">状态明细</button></b><span>开启后海外 IPv6 流量同步进入 TProxy 策略路由</span></div>
+                    <button id="toggle-ipv6-proxy" aria-label="IPv6双栈透明代理开关" class="switch" role="switch" aria-checked="false" data-action="ipv6-proxy-toggle"><i></i></button>
                   </div>
                   <div class="setting-line">
                     <div><b>透明代理数据面模式 (Data Plane)</b><span>按需切换零拷贝 TProxy、游戏混合 TUN 或全量 TUN 虚拟网卡</span></div>
@@ -910,10 +918,10 @@
     </div>
   </div>
 
-  <script src="./static/qrcode.min.js?v=2.4.0-18ae399f"></script>
-  <script src="./assets/three.min.js?v=2.4.0-9274bbce"></script>
-  <script src="./nexus3d.js?v=2.4.0-a0a0cf41"></script>
-  <script src="./nexus.js?v=2.4.0-5c0488ae"></script>
+  <script src="./static/qrcode.min.js?v=2.4.1-6e6189e2"></script>
+  <script src="./assets/three.min.js?v=2.4.1-eb854986"></script>
+  <script src="./nexus3d.js?v=2.4.1-c2a8a250"></script>
+  <script src="./nexus.js?v=2.4.1-668428cf"></script>
 <!-- NEXUS-UI-CONTRACT: sub-health-box | 仅入池检测达标项 | 免测直接加入池 | delete-custom-group | sub-card-custom | 手动添加节点 | btn-an-auto-screen | btn-an-mode-ping | btn-an-mode-svc | 同步时间: -->
 </body>
 </html>

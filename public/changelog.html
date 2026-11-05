@@ -40,12 +40,22 @@
   </div>
 <article class="log-item latest">
   <div class="log-top">
-    <h2>v2.4.0</h2>
+    <h2>v2.4.1</h2>
     <span class="tag c">最新</span>
     <time>2026-11-05</time>
   </div>
+  <p style="margin:2px 0 6px;color:var(--dim)"></p>
+<h3>新增与优化 (Added &amp; Improved)</h3>
+<ul><li><b>节点列表名称统一智能提取（<code>订阅名丨国家名</code>）</b>：严格根据节点<b>原始名称</b>（<code>raw_name</code> / <code>tag</code>，而非 Google 地区探测结果）提取中文国家/地区名（如 <code>地区随机 | 德国 DE | FRA | 82.117.245.166:443</code> ➔ <code>订阅名丨德国</code>），无关键词可识别时统一显示为 <code>订阅名丨其他国家</code>；底层 API 与内核选路保留原始 <code>tag</code> 100% 兼容。</li><li><b>地区与协议徽章统一格式与去色（<code>（协议）Google地区：xx</code>）</b>：节点列表及节点池弹窗统一仅渲染 <code>（协议）Google地区：xx</code>（如 <code>（HYSTERIA2）Google地区：SG</code>、<code>（VLESS）Google地区：HK</code>），移除重复前缀并取消对香港（<code>HK</code>）等地区的黄/红特殊改色。</li><li><b>订阅卡片防出框与同步可视化进度条弹窗</b>：修复 <code>.sub-health-box</code> 文本与胶囊溢出问题；点击「立即同步 / 同步全部 / 保存并同步」统一弹出实时进度条与逐订阅状态明细，同步成功后立即刷新卡片「同步时间」并清除旧「失败」残留。</li><li><b>测速配额自适应与防假死、概览声呐可自定义目标与断网清零、设置页内核更新与开关对齐</b>：完整包含 v2.4.0 全部架构升级与事故根因修复。</li></ul>
+</article>
+<article class="log-item">
+  <div class="log-top">
+    <h2>v2.4.0</h2>
+    <span class="tag">历史</span>
+    <time>2026-11-05</time>
+  </div>
   <p style="margin:2px 0 6px;color:var(--dim)">正式发布</p>
-<ul><li><b>受控三模透明代理数据面 (<code>tproxy_redirect</code> / <code>tproxy_tcp_tun_udp</code> / <code>tun_full</code>)</b>：新增零拷贝 TProxy、游戏混合 TUN（TCP TProxy + UDP <code>ailink0</code> Full-Cone NAT）与全量 TUN 虚拟网卡三档无缝切换，自动联动策略路由表 <code>163</code>、<code>fw4</code> 转发放行与防断网黑洞看门狗。</li><li><b><code>sing-box</code> 版本感知 Schema 适配器 (<code>1.11 ~ 1.15+</code>) 与 5 步沙箱安全热升级</b>：根据内核版本自动适配 <code>multi_queue</code>、<code>dns_mode: disabled</code> 与 <code>stack</code>，内置架构识别、<code>sing-box.new check -c</code> 预检、<code>sing-box.bak</code> 备份与失败自动回滚。</li><li><b>全站 6 页分页头移动端与平板自适应重构</b>：修复 <code>375px ~ 980px</code> 视口下 <code>.dns-hero.page-hero</code> 挤压变形与超高问题，移动端统一收敛为紧凑纵向流式 HUD 卡片与 3 列同排指标。</li><li><b>自动节点池与分流列表 1:1 严格同源</b>：修复自动池首选节点与绑定分流策略组出口节点/延迟显示不一致问题。</li><li>热修：自动节点池 <code>···</code> 菜单不再被卡片边框裁切/相邻卡片压盖（上弹 + 层级提权 + 3 秒轮询保持）</li></ul>
+<ul><li><b>受控三模透明代理数据面 (<code>tproxy_redirect</code> / <code>tproxy_tcp_tun_udp</code> / <code>tun_full</code>)</b>：新增零拷贝 TProxy、游戏混合 TUN（TCP TProxy + UDP <code>ailink0</code> Full-Cone NAT）与全量 TUN 虚拟网卡三档无缝切换，自动联动策略路由表 <code>163</code>、<code>fw4</code> 转发放行与防断网黑洞看门狗。</li><li><b><code>sing-box</code> 版本感知 Schema 适配器 (<code>1.11 ~ 1.15+</code>) 与 5 步沙箱安全热升级</b>：根据内核版本自动适配 <code>multi_queue</code>、<code>dns_mode: disabled</code> 与 <code>stack</code>，内置架构识别、<code>sing-box.new check -c</code> 预检、<code>sing-box.bak</code> 备份与失败自动回滚。</li><li><b>全站 6 页分页头移动端与平板自适应重构</b>：修复 <code>375px ~ 980px</code> 视口下 <code>.dns-hero.page-hero</code> 挤压变形与超高问题，移动端统一收敛为紧凑纵向流式 HUD 卡片与 3 列同排指标。</li><li><b>自动节点池与分流列表 1:1 严格同源</b>：修复自动池首选节点与绑定分流策略组出口节点/延迟显示不一致问题。</li></ul>
 </article>
 <article class="log-item">
   <div class="log-top">

@@ -2598,6 +2598,29 @@ PRESET_SERVICE_CHECKS = [
 def _node_test_quota_path() -> Path:
     return RUN_DIR / "node_test_quota.json"
 
+def _get_effective_node_test_budget(conf_dir: Path = None) -> int:
+    try:
+        cdir = conf_dir if conf_dir is not None else CONF_DIR
+        ops_f = Path(cdir) / "ops_settings.json"
+        budget = 3000
+        if ops_f.is_file():
+            d = json.loads(ops_f.read_text(encoding="utf-8"))
+            budget = int(d.get("node_test_budget", 3000))
+        if budget <= 0:
+            return 0
+        # v2.4.0 Adaptive Budget: When using default 3000 budget on large node libraries (>50 nodes),
+        # automatically scale daily budget to max(30000, node_count * 40) so 500+ node libraries never lock out probing.
+        if budget == 3000:
+            try:
+                node_cnt = len(load_saved_nodes(cdir))
+                if node_cnt > 50:
+                    return max(30000, node_cnt * 40)
+            except Exception:
+                pass
+        return budget
+    except Exception:
+        return 30000
+
 def _node_test_used(conf_dir: Path = None) -> int:
     p = _node_test_quota_path()
     today = time.strftime("%Y-%m-%d")
@@ -2610,10 +2633,18 @@ def _node_test_used(conf_dir: Path = None) -> int:
                 # automatically reset it to 0 once on upgrade so existing devices never lock out probing on upgrade day.
                 if not d.get("v236_r10_migrated") and used_val >= 500:
                     try:
-                        _atomic_write_text(p, json.dumps({"date": today, "used": 0, "v236_r10_migrated": True}))
+                        _atomic_write_text(p, json.dumps({"date": today, "used": 0, "v236_r10_migrated": True, "v240_budget_migrated": True}))
                     except Exception:
                         pass
                     return 0
+                cdir = conf_dir if conf_dir is not None else CONF_DIR
+                if not d.get("v240_budget_migrated") and 2500 <= used_val < 90000:
+                    try:
+                        if len(load_saved_nodes(cdir)) > 50:
+                            _atomic_write_text(p, json.dumps({"date": today, "used": 0, "v236_r10_migrated": True, "v240_budget_migrated": True}))
+                            return 0
+                    except Exception:
+                        pass
                 return used_val
         except Exception:
             pass
@@ -2622,11 +2653,7 @@ def _node_test_used(conf_dir: Path = None) -> int:
 def _is_node_test_budget_exceeded(conf_dir: Path = None) -> bool:
     try:
         cdir = conf_dir if conf_dir is not None else CONF_DIR
-        ops_f = Path(cdir) / "ops_settings.json"
-        budget = 3000
-        if ops_f.is_file():
-            d = json.loads(ops_f.read_text(encoding="utf-8"))
-            budget = int(d.get("node_test_budget", 3000))
+        budget = _get_effective_node_test_budget(cdir)
         if budget <= 0:
             return False
         return _node_test_used(cdir) >= budget
@@ -2639,17 +2666,13 @@ def _node_test_spend(n: int = 1, force: bool = False, conf_dir: Path = None) -> 
     with _SUB_LOCK:
         cdir = conf_dir if conf_dir is not None else CONF_DIR
         cur_used = _node_test_used(cdir)
-        try:
-            ops_f = Path(cdir) / "ops_settings.json"
-            budget = int(json.loads(ops_f.read_text(encoding="utf-8")).get("node_test_budget", 3000)) if ops_f.is_file() else 3000
-        except Exception:
-            budget = 3000
+        budget = _get_effective_node_test_budget(cdir)
         if not force and budget > 0 and cur_used >= budget:
             return cur_used
         used = cur_used + int(n)
         try:
             RUN_DIR.mkdir(parents=True, exist_ok=True)
-            _atomic_write_text(p, json.dumps({"date": today, "used": used, "v236_r10_migrated": True}))
+            _atomic_write_text(p, json.dumps({"date": today, "used": used, "v236_r10_migrated": True, "v240_budget_migrated": True}))
         except Exception:
             pass
         return used
@@ -3155,15 +3178,18 @@ def get_node_effective_probe(node_or_id, store: dict = None, now_ts: int = None,
         _EFF_PROBE_MEMO.clear()
     svc_map = rec.get("svc") if isinstance(rec.get("svc"), dict) else {}
     rel_str = format_probe_relative_time(probe_ts, now_ts)
-    # v2.2.0 P2-1 Fix: Distinguish 'untested' (未测速, probe_ts <= 0) from 'dead' (不可达, tested and failed) and 'ok' (可用)
-    if probe_ts <= 0:
+    # v2.4.0 Fix (incident-2026-11-05): Distinguish 'untested' (probe_ts <= 0), 'ok' (fresh or stale snapshot), and 'dead' (actually failed probe).
+    # NEVER flip an 'ok' node to 'dead' merely because PROBE_SNAPSHOT_TTL_SEC elapsed without a new probe!
+    is_stale = False
+    if probe_ts <= 0 or raw_state in ("untested", "pending"):
         eff_state = "untested"
         eff_delay = -1
         ui_badge = "⏳ 未测速"
-    elif (now_ts - probe_ts) <= PROBE_SNAPSHOT_TTL_SEC and raw_state == "ok" and raw_delay > 0:
+    elif raw_state == "ok" and raw_delay > 0:
         eff_state = "ok"
         eff_delay = raw_delay
-        ui_badge = f"✓ 可用 · {eff_delay}ms · {rel_str}"
+        is_stale = bool((now_ts - probe_ts) > PROBE_SNAPSHOT_TTL_SEC)
+        ui_badge = f"✓ 可用(待复测) · {eff_delay}ms · {rel_str}" if is_stale else f"✓ 可用 · {eff_delay}ms · {rel_str}"
     else:
         eff_state = "dead"
         eff_delay = -1
@@ -3172,6 +3198,7 @@ def get_node_effective_probe(node_or_id, store: dict = None, now_ts: int = None,
     res_obj = {
         "node_id": nid,
         "state": eff_state,
+        "stale": is_stale,
         "delay_ms": eff_delay,
         "probe_ts": probe_ts,
         "probe_rel_str": rel_str,
@@ -3555,7 +3582,7 @@ def _build_node_probe_record(prev: dict, node_obj: dict, ok_final: bool, d_ms: i
     return out_rec
 
 def url_ping_single_node(node_or_tag, target_url: str = DEFAULT_URL_PING_TARGET, timeout_ms: int = 3000,
-                         conf_dir: Path = CONF_DIR, mock_result: dict = None, persist: bool = True) -> dict:
+                         conf_dir: Path = CONF_DIR, mock_result: dict = None, persist: bool = True, force: bool = False) -> dict:
     """Spec §1.1–1.4: Executes 1 single URL ping for 1 node (no retry amplification!). When persist=False (batch mode),
     skips per-node disk fsync under _SUB_LOCK so :9099 panel requests never stall (P1-1 Fix)."""
     node_obj = None
@@ -3582,7 +3609,7 @@ def url_ping_single_node(node_or_tag, target_url: str = DEFAULT_URL_PING_TARGET,
         d_ms = int(mock_result.get("delay_ms", 120)) if ok_final else -1
         quota_skipped = False
     else:
-        res = clash_test_delay(tag, test_url=target_url, timeout_ms=timeout_ms, conf_dir=conf_dir)
+        res = clash_test_delay(tag, test_url=target_url, timeout_ms=timeout_ms, force=force, conf_dir=conf_dir)
         quota_skipped = bool(res.get("quota_capped") or res.get("skipped") or res.get("error") == "daily_test_budget_exceeded")
         ok_final = bool(res.get("ok") and int(res.get("delay") or 0) > 0)
         d_ms = int(res["delay"]) if ok_final else -1
@@ -3664,7 +3691,7 @@ def _persist_batch_probe_chunk(raw_chunk_results: list, conf_dir: Path = CONF_DI
 
 def url_ping_batch_nodes(tags_or_ids: list = None, sub_id: str = "", sub_url: str = "", source: str = "",
                          region: str = "", timeout_ms: int = 5000, concurrency: int = 10,
-                         conf_dir: Path = CONF_DIR) -> dict:
+                         conf_dir: Path = CONF_DIR, force: bool = False) -> dict:
     """Spec §1.1–1.2 + P1-1/P1-2 Fix: Concurrently tests URL ping in non-blocking chunks of 25 with 1 disk write per chunk
     and unconditional DELETE /connections cleanup so :9099 panel never stalls and Clash connections never bloat."""
     subs_list = load_subscriptions(conf_dir)
@@ -3710,8 +3737,8 @@ def url_ping_batch_nodes(tags_or_ids: list = None, sub_id: str = "", sub_url: st
                 "http_status": 204 if er.get("ok") else 502,
                 "body": "" if er.get("ok") else str(er.get("error") or "timeout"),
             }
-            return url_ping_single_node(nd, timeout_ms=timeout_ms, conf_dir=conf_dir, mock_result=m_res, persist=False)
-        return url_ping_single_node(nd, timeout_ms=timeout_ms, conf_dir=conf_dir, persist=False)
+            return url_ping_single_node(nd, timeout_ms=timeout_ms, conf_dir=conf_dir, mock_result=m_res, persist=False, force=force)
+        return url_ping_single_node(nd, timeout_ms=timeout_ms, conf_dir=conf_dir, persist=False, force=force)
     if targets:
         chunk_sz = 25
         for c_start in range(0, len(targets), chunk_sz):
@@ -5724,15 +5751,17 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
             g_members.append(m_item)
             if nid not in quality_map:
                 quality_map[nid] = m_item
+            m_item["stale"] = bool(ev.get("stale", False))
             if is_qual_ok:
                 g_qual.append(m_item)
                 if t not in all_ok_tags:
                     all_ok_tags.append(t)
-            elif ev["selectable"] and ev["state"] == "pending" and svc_passed:
+            elif ev["state"] in ("pending", "untested") and not node_region_blocked and not in_quarantine and bool(ev.get("visible", True)):
                 g_pend.append(m_item)
         g_qual.sort(key=lambda x: (
             0 if x.get("cdn_tls_ok", True) else 1,
             0 if x.get("svc_verified", True) else 1,
+            1 if x.get("stale", False) else 0,
             x.get("eff_rank_ms", x["delay_ms"]),
             1 if x.get("is_random_region", False) else 0,
             x["delay_ms"],
@@ -6514,7 +6543,7 @@ class AIProbeEngine:
     def run_probe_and_switch_cycle(self, conf_dir: Path = CONF_DIR, run_dir: Path = RUN_DIR, force: bool = False, force_manual: bool = False, **kwargs) -> dict:
         self.probe_running = True
         try:
-            res = url_ping_batch_nodes(conf_dir=conf_dir)
+            res = url_ping_batch_nodes(conf_dir=conf_dir, force=bool(force or force_manual))
             self.last_probe_ts = int(time.time())
             self.load_persisted_selections(run_dir, conf_dir)
             self.probe_history.append({"ts": self.last_probe_ts, "alive": self.last_alive_count, "total": self.last_total_count})
@@ -7305,6 +7334,10 @@ def save_subscriptions(subs: list, conf_dir: Path = CONF_DIR):
     with _SUB_LOCK:
         conf_dir.mkdir(parents=True, exist_ok=True)
         _atomic_write_text(conf_dir / "subscriptions.json", json.dumps(subs, indent=2, ensure_ascii=False))
+    try:
+        _invalidate_fast_api_cache()
+    except Exception:
+        pass
 
 def set_subscription_enabled(sub_id: str = "", sub_url: str = "", enabled: bool = True,
                              conf_dir: Path = CONF_DIR) -> dict:
@@ -7594,12 +7627,13 @@ def fetch_and_sync_subscription(url: str = "", name: str = "机场订阅",
     """Spec §7 #5 & P0-2 Fix: Never auto-injects a hardcoded third-party subscription when URL is empty."""
     url = str(url or "").strip()
     name = str(name or "机场订阅").strip()
-    if not url and sub_id:
+    if (not url or "***" in url) and (sub_id or name or old_url):
         for _ex_s in load_subscriptions(conf_dir):
-            if _ex_s.get("id") == sub_id and _ex_s.get("url"):
-                url = str(_ex_s["url"]).strip()
-                name = str(_ex_s.get("name") or name).strip()
-                break
+            if (sub_id and _ex_s.get("id") == sub_id) or (old_url and "***" not in old_url and _ex_s.get("url") == old_url) or (name and _ex_s.get("name") == name):
+                if _ex_s.get("url") and "***" not in str(_ex_s.get("url")):
+                    url = str(_ex_s["url"]).strip()
+                    name = str(_ex_s.get("name") or name).strip()
+                    break
     if not url:
         return {
             "ok": False,
@@ -7641,6 +7675,8 @@ def fetch_and_sync_subscription(url: str = "", name: str = "机场订阅",
             subs.append(target_sub)
         else:
             sub_id = target_sub.get("id") or sub_id or f"sub_{now_ts}"
+            if "***" in url and target_sub.get("url") and "***" not in str(target_sub.get("url")):
+                url = str(target_sub["url"]).strip()
             target_sub.update({"id": sub_id, "name": name or target_sub.get("name", "订阅源"), "url": url, "status": "syncing", "last_error": ""})
         save_subscriptions(subs, conf_dir)
     parsed_obs = []
@@ -7767,14 +7803,14 @@ def fetch_and_sync_subscription(url: str = "", name: str = "机场订阅",
         if test_after_add:
             # P2-7 & P2-8 Fix: For subscriptions up to 60 nodes, run URL ping BEFORE write_all_configs so new nodes are immediately scored & mounted
             if len(parsed_obs) <= 60:
-                delay_res = url_ping_batch_nodes(sub_id=sub_id, sub_url=url, concurrency=6, conf_dir=conf_dir)
+                delay_res = url_ping_batch_nodes(sub_id=sub_id, sub_url=url, concurrency=6, conf_dir=conf_dir, force=True)
                 write_all_configs(conf_dir)
             else:
                 write_all_configs(conf_dir)
                 def _bg_sub_initial_ping(_sid=sub_id, _surl=url, _cdir=conf_dir):
                     SUB_SYNC_STATE["running"] = True
                     try:
-                        url_ping_batch_nodes(sub_id=_sid, sub_url=_surl, concurrency=6, conf_dir=_cdir)
+                        url_ping_batch_nodes(sub_id=_sid, sub_url=_surl, concurrency=6, conf_dir=_cdir, force=True)
                         write_all_configs(_cdir)
                         if Path("/etc/init.d/ai-link").exists():
                             schedule_async_core_reload(hot_only=False)
@@ -7787,11 +7823,16 @@ def fetch_and_sync_subscription(url: str = "", name: str = "机场订阅",
         else:
             write_all_configs(conf_dir)
         _trigger_async_health_reprobe()
+        _invalidate_fast_api_cache()
+        try:
+            _subs_out = build_nodes_api_response(conf_dir).get("subscriptions") or load_subscriptions(conf_dir)
+        except Exception:
+            _subs_out = load_subscriptions(conf_dir)
         return {
-            "ok": True, "id": sub_id, "fetch_source": "direct_https:curl",
+            "ok": True, "id": sub_id, "name": name, "fetch_source": "direct_https:curl",
             "imported_count": len(parsed_obs), "total_nodes": len(merged),
             "userinfo": sub_userinfo, "delay_test": delay_res,
-            "subscriptions": load_subscriptions(conf_dir)
+            "subscriptions": _subs_out
         }
     _fail_ts = int(time.time())
     _fail_time_str = time.strftime("%Y-%m-%d %H:%M", time.localtime(_fail_ts))
@@ -7813,10 +7854,15 @@ def fetch_and_sync_subscription(url: str = "", name: str = "机场订阅",
                     s["updated"] = f"{_fail_time_str} 失败 ({s['last_error'][:32]})"
                     break
         save_subscriptions(subs, conf_dir)
+    _invalidate_fast_api_cache()
+    try:
+        _subs_out_f = build_nodes_api_response(conf_dir).get("subscriptions") or load_subscriptions(conf_dir)
+    except Exception:
+        _subs_out_f = load_subscriptions(conf_dir)
     return {
-        "ok": False, "id": sub_id, "fetch_source": "failed",
+        "ok": False, "id": sub_id, "name": name, "fetch_source": "failed",
         "imported_count": 0, "error": last_error_code, "message": last_error or "订阅拉取失败",
-        "subscriptions": load_subscriptions(conf_dir)
+        "subscriptions": _subs_out_f
     }
 
 _fetch_sub_once = fetch_and_sync_subscription
@@ -7901,7 +7947,7 @@ def import_subscription_text(payload: dict, conf_dir: Path = CONF_DIR) -> dict:
     if payload.get("reload_core", True) and Path("/etc/init.d/ai-link").exists():
         reload_core_only()
         PROBE_ENGINE.apply_shunt_selections(conf_dir)
-    delay_res = url_ping_batch_nodes(sub_id=sub_id, sub_url=sub_url, conf_dir=conf_dir) if test_after_add else None
+    delay_res = url_ping_batch_nodes(sub_id=sub_id, sub_url=sub_url, conf_dir=conf_dir, force=True) if test_after_add else None
     return {
         "ok": True, "id": sub_id, "fetch_source": "paste_import",
         "imported_count": len(parsed_obs), "filtered_info_count": filtered_info_cnt,
@@ -11106,8 +11152,10 @@ def _is_musl_system() -> bool:
 _SB_CAP_CACHE = {"ts": 0.0, "key": "", "val": None}
 
 def probe_singbox_binary_capabilities(conf_dir: Path = CONF_DIR) -> dict:
-    """缓存版：sing-box 二进制能力在运行期不变，避免每次 /api/status 都执行 sing-box version（musl 冷执行数秒）。"""
-    _k = str(conf_dir)
+    """缓存版：以二进制路径 + mtime/size 指纹作为缓存键，升核或替换二进制后立即自动刷新版本。"""
+    sb_bin_p = resolve_singbox_binary() or shutil.which("sing-box") or "/usr/bin/sing-box"
+    _bin_sig = _get_file_sig(Path(sb_bin_p)) if sb_bin_p else (0, 0)
+    _k = (str(conf_dir), str(sb_bin_p), _bin_sig)
     _now = time.time()
     _c = _SB_CAP_CACHE
     if _c["val"] is not None and _c["key"] == _k and (_now - _c["ts"]) < 600:
@@ -13013,6 +13061,10 @@ def build_status_api_response(conf_dir: Path = CONF_DIR) -> dict:
         cached["as_of_ts"] = int(time.time())
         cached["config_seq"] = _CORE_RELOAD_STATE["config_seq"]
         cached["reload_seq"] = _CORE_RELOAD_STATE["reload_seq"]
+        cap_now = probe_singbox_binary_capabilities(conf_dir)
+        if cap_now.get("version"):
+            cached["core_version"] = cap_now["version"]
+            cached["core"] = f"sing-box {cap_now['version']}"
         live_dns_tel = build_dns_telemetry_response(conf_dir)
         cached["dns_telemetry"] = live_dns_tel
         cached["shield_status"] = live_dns_tel.get("shield_status", {})
@@ -14849,58 +14901,244 @@ def _is_valid_lan_client_ip(ip_str, lan_ip: str = "") -> bool:
         pass
     return bool(ip.is_private)
 
+DEFAULT_SONAR_TARGETS = [
+    {"id": "openai", "name": "ChatGPT", "selector": "Shunt_AI", "fallback_selector": "AI_Best_Auto", "url": "https://chat.openai.com/cdn-cgi/trace", "icon": "AI", "color": "#64D2FF"},
+    {"id": "gemini", "name": "Gemini", "selector": "Shunt_AI", "fallback_selector": "AI_Best_Auto", "url": "https://gemini.google.com", "icon": "GM", "color": "#64D2FF"},
+    {"id": "youtube", "name": "YouTube", "selector": "Shunt_YouTube", "fallback_selector": "Stream_Auto", "url": "https://www.youtube.com/generate_204", "icon": "YT", "color": "#64D2FF"},
+    {"id": "github", "name": "GitHub", "selector": "Shunt_GitHub", "fallback_selector": "AI_Best_Auto", "url": "https://api.github.com/zen", "icon": "GH", "color": "#64D2FF"},
+    {"id": "netflix", "name": "Netflix", "selector": "Shunt_Netflix", "fallback_selector": "Stream_Auto", "url": "https://www.netflix.com/title/80018499", "icon": "NF", "color": "#64D2FF"},
+    {"id": "tiktok", "name": "TikTok", "selector": "Shunt_TikTok", "fallback_selector": "Stream_Auto", "url": "https://www.tiktok.com/favicon.ico", "icon": "TK", "color": "#64D2FF"},
+    {"id": "telegram", "name": "Telegram", "selector": "Shunt_Outside_CN", "fallback_selector": "AI_Best_Auto", "url": "https://core.telegram.org/", "icon": "TG", "color": "#64D2FF"},
+    {"id": "bilibili", "name": "B站直连", "selector": "Shunt_Domestic_CN", "fallback_selector": "direct", "url": "https://www.bilibili.com", "icon": "CN", "color": "#30D158"},
+]
+
+def load_sonar_targets(conf_dir: Path = CONF_DIR) -> list:
+    p = Path(conf_dir) / "sonar_targets.json"
+    if p.is_file():
+        try:
+            raw = json.loads(p.read_text(encoding="utf-8"))
+            items = raw.get("targets") if isinstance(raw, dict) else raw
+            if isinstance(items, list) and items:
+                out = []
+                for idx, item in enumerate(items[:8]):
+                    if not isinstance(item, dict):
+                        continue
+                    name = str(item.get("name") or "").strip()[:24]
+                    url = str(item.get("url") or "").strip()
+                    if not name:
+                        continue
+                    if not url:
+                        url = DEFAULT_URL_PING_TARGET
+                    elif not url.startswith(("http://", "https://")):
+                        url = "https://" + url
+                    sid = re.sub(r"[^0-9A-Za-z_-]", "_", str(item.get("id") or f"custom_{idx}").strip().lower()) or f"custom_{idx}"
+                    sel = str(item.get("selector") or "Shunt_AI").strip()
+                    is_dir = sel in ("direct", "Shunt_Domestic_CN")
+                    out.append({
+                        "id": sid,
+                        "name": name,
+                        "selector": sel,
+                        "fallback_selector": str(item.get("fallback_selector") or ("direct" if is_dir else "AI_Best_Auto")),
+                        "url": url,
+                        "icon": str(item.get("icon") or name[:2].upper()),
+                        "color": str(item.get("color") or ("#30D158" if is_dir else "#64D2FF")),
+                    })
+                if out:
+                    return out
+        except Exception:
+            pass
+    return [dict(x) for x in DEFAULT_SONAR_TARGETS]
+
+def save_sonar_targets(targets: list, conf_dir: Path = CONF_DIR, reset: bool = False) -> list:
+    cdir = Path(conf_dir)
+    cdir.mkdir(parents=True, exist_ok=True)
+    p = cdir / "sonar_targets.json"
+    if reset or not targets:
+        p.unlink(missing_ok=True)
+        _invalidate_fast_api_cache()
+        return [dict(x) for x in DEFAULT_SONAR_TARGETS]
+    cleaned = []
+    seen_ids = set()
+    for idx, item in enumerate(targets[:8]):
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "").strip()[:24]
+        url = str(item.get("url") or "").strip()
+        if not name:
+            continue
+        if not url:
+            url = DEFAULT_URL_PING_TARGET
+        elif not url.startswith(("http://", "https://")):
+            url = "https://" + url
+        sid = re.sub(r"[^0-9A-Za-z_-]", "_", str(item.get("id") or name.lower() or f"target_{idx}").strip().lower())
+        if not sid or sid in seen_ids:
+            sid = f"target_{idx + 1}"
+        seen_ids.add(sid)
+        sel = str(item.get("selector") or "Shunt_AI").strip()
+        is_dir = sel in ("direct", "Shunt_Domestic_CN")
+        cleaned.append({
+            "id": sid,
+            "name": name,
+            "selector": sel,
+            "fallback_selector": str(item.get("fallback_selector") or ("direct" if is_dir else "AI_Best_Auto")),
+            "url": url,
+            "icon": str(item.get("icon") or name[:2].upper()),
+            "color": str(item.get("color") or ("#30D158" if is_dir else "#64D2FF")),
+        })
+    if not cleaned:
+        cleaned = [dict(x) for x in DEFAULT_SONAR_TARGETS]
+    _atomic_write_text(p, json.dumps({"targets": cleaned, "updated_ts": int(time.time())}, ensure_ascii=False, indent=2))
+    _invalidate_fast_api_cache()
+    return cleaned
+
+def _probe_direct_url_rtt(url: str, timeout_ms: int = 3000) -> dict:
+    t0 = time.time()
+    t_sec = max(1.0, min(6.0, float(timeout_ms or 3000) / 1000.0))
+    try:
+        ctx = ssl._create_unverified_context()
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.request.HTTPSHandler(context=ctx))
+        req = urllib.request.Request(url, headers={"User-Agent": "AI-LINK-Sonar/2.4.1"}, method="GET")
+        with opener.open(req, timeout=t_sec) as resp:
+            _ = resp.read(64)
+            ms = max(1, int(round((time.time() - t0) * 1000.0)))
+            return {"ok": True, "delay": ms, "http_status": getattr(resp, "status", 200)}
+    except urllib.error.HTTPError as he:
+        if 200 <= int(he.code or 0) < 500:
+            ms = max(1, int(round((time.time() - t0) * 1000.0)))
+            return {"ok": True, "delay": ms, "http_status": int(he.code)}
+        return {"ok": False, "delay": -1, "error": f"http_{he.code}"}
+    except Exception as e:
+        return {"ok": False, "delay": -1, "error": str(e)}
+
+def probe_sonar_targets(target_id: str = "", conf_dir: Path = CONF_DIR, timeout_ms: int = 3500, simulate_offline: bool = False) -> dict:
+    targets = load_sonar_targets(conf_dir)
+    if target_id:
+        tid_l = target_id.strip().lower()
+        targets = [t for t in targets if t["id"].lower() == tid_l or t["name"].lower() == tid_l]
+    sels = PROBE_ENGINE.current_selections or {}
+    now_t = time.time()
+    results = {}
+    def _probe_one(t_obj: dict):
+        sid = t_obj["id"]
+        if simulate_offline:
+            _H3_APP_MS[sid] = -1
+            _H3_APP_TS[sid] = now_t
+            return sid, {"id": sid, "name": t_obj["name"], "ok": False, "delay": -1, "state": "dead", "error": "network_offline"}
+        sel = t_obj.get("selector") or "Shunt_AI"
+        fb_sel = t_obj.get("fallback_selector") or ""
+        node_t = sels.get(sel) or (sels.get(fb_sel) if fb_sel else "") or ("direct" if sel in ("direct", "Shunt_Domestic_CN") else "")
+        t_url = t_obj.get("url") or DEFAULT_URL_PING_TARGET
+        if sel in ("direct", "Shunt_Domestic_CN") or node_t == "direct":
+            r = _probe_direct_url_rtt(t_url, timeout_ms=timeout_ms)
+        else:
+            r = clash_test_delay(sel, test_url=t_url, timeout_ms=timeout_ms, force=True, conf_dir=conf_dir)
+            if not r.get("ok") and node_t and node_t not in ("direct", "block") and node_t != sel:
+                r2 = clash_test_delay(node_t, test_url=t_url, timeout_ms=timeout_ms, force=True, conf_dir=conf_dir)
+                if r2.get("ok") and int(r2.get("delay") or 0) > 0:
+                    r = r2
+        if r.get("ok") and int(r.get("delay") or 0) > 0:
+            d_ms = int(r["delay"])
+            _H3_APP_MS[sid] = d_ms
+            _H3_APP_TS[sid] = now_t
+            return sid, {"id": sid, "name": t_obj["name"], "ok": True, "delay": d_ms, "state": "ok" if d_ms < 600 else "suspect", "node": node_t or sel}
+        _H3_APP_MS[sid] = -1
+        _H3_APP_TS[sid] = now_t
+        return sid, {"id": sid, "name": t_obj["name"], "ok": False, "delay": -1, "state": "dead", "node": node_t or sel, "error": str(r.get("error") or "unreachable")}
+    if targets:
+        with ThreadPoolExecutor(max_workers=min(8, len(targets))) as ex:
+            for sid, r_item in ex.map(_probe_one, targets):
+                results[sid] = r_item
+    _invalidate_fast_api_cache()
+    return {"ok": True, "results": results, "pulse_services": get_overview_live_telemetry(conf_dir).get("pulse_services", [])}
+
 def get_overview_live_telemetry(conf_dir: Path = CONF_DIR) -> dict:
     """Builds the complete real-time payload for the Overview page & 3D Holographic Topology."""
     ledger = sample_live_overview_telemetry(conf_dir)
     sync_selections_from_clash(conf_dir)
     sels = PROBE_ENGINE.current_selections or {}
     delays = PROBE_ENGINE.last_delays or {}
-    def _svc_rtt(selector_tag: str, fallback_sel: str = "") -> tuple:
-        node_t = sels.get(selector_tag) or (sels.get(fallback_sel) if fallback_sel else "") or ""
-        if not node_t:
-            return 0, "unknown"
-        if node_t == "direct":
-            return 12, "direct"
-        rtt = int(round(float(delays.get(node_t) or (PROBE_ENGINE.node_stats.get(node_t) or {}).get("last_rtt_ms") or 0)))
-        return rtt, node_t
-    oa_ms, oa_node = _svc_rtt("Shunt_AI", "AI_Best_Auto")
-    gm_ms, gm_node = _svc_rtt("Shunt_AI", "AI_Best_Auto")
-    yt_ms, yt_node = _svc_rtt("Shunt_YouTube", "Stream_Auto")
-    gh_ms, gh_node = _svc_rtt("Shunt_GitHub", "AI_Best_Auto")
-    nf_ms, nf_node = _svc_rtt("Shunt_Netflix", "Stream_Auto")
-    tk_ms, tk_node = _svc_rtt("Shunt_TikTok", "Stream_Auto")
-    tg_ms, tg_node = _svc_rtt("Shunt_Outside_CN", "AI_Best_Auto")
-    bl_ms, bl_node = _svc_rtt("Shunt_Domestic_CN", "direct")
-    if int(_H3_APP_MS.get("openai") or 0) > 0:
-        oa_ms = int(_H3_APP_MS["openai"])
-    if int(_H3_APP_MS.get("gemini") or 0) > 0:
-        gm_ms = int(_H3_APP_MS["gemini"])
-    if int(_H3_APP_MS.get("youtube") or 0) > 0:
-        yt_ms = int(_H3_APP_MS["youtube"])
-    if int(_H3_APP_MS.get("github") or 0) > 0:
-        gh_ms = int(_H3_APP_MS["github"])
-    if int(_H3_APP_MS.get("netflix") or 0) > 0:
-        nf_ms = int(_H3_APP_MS["netflix"])
-    if int(_H3_APP_MS.get("tiktok") or 0) > 0:
-        tk_ms = int(_H3_APP_MS["tiktok"])
-    if int(_H3_APP_MS.get("telegram") or 0) > 0:
-        tg_ms = int(_H3_APP_MS["telegram"])
-    if int(_H3_APP_MS.get("bilibili") or 0) > 0:
-        bl_ms = int(_H3_APP_MS["bilibili"])
-    for sid, ms_v in (("openai", oa_ms), ("gemini", gm_ms), ("youtube", yt_ms), ("github", gh_ms), ("netflix", nf_ms), ("tiktok", tk_ms), ("telegram", tg_ms), ("bilibili", bl_ms)):
-        if ms_v > 0:
-            _OVERVIEW_RT["service_bars"].setdefault(sid, [0] * 28).append(min(95, max(10, int(ms_v / 4))))
+    store = load_node_probe_store(conf_dir)
+    now_ts = time.time()
+    is_live_router = (Path(conf_dir).resolve() == CONF_DIR.resolve() and Path("/etc/init.d/ai-link").exists())
+    core_up = _is_local_port_listening(9090) if is_live_router else True
+    ht_map = (_HEALTH_CACHE.get("targets") or {}) if isinstance(_HEALTH_CACHE, dict) else {}
+    wan_all_down = bool(ht_map and all(isinstance(v, dict) and v.get("ok") is False for v in ht_map.values()))
+    dom_ht = ht_map.get("domestic") if isinstance(ht_map.get("domestic"), dict) else {}
+
+    def _eval_sonar_target(t_obj: dict) -> dict:
+        sid = t_obj["id"]
+        sel = t_obj.get("selector") or "Shunt_AI"
+        fb_sel = t_obj.get("fallback_selector") or ""
+        node_t = sels.get(sel) or (sels.get(fb_sel) if fb_sel else "") or ("direct" if sel in ("direct", "Shunt_Domestic_CN") else "")
+        explicit_ms = _H3_APP_MS.get(sid)
+        explicit_ts = float(_H3_APP_TS.get(sid) or 0.0)
+        explicit_fresh = (explicit_ts > 0 and (now_ts - explicit_ts) <= 300.0)
+
+        ms_val = 0
+        state_val = "pending"
+        if wan_all_down:
+            ms_val = 0
+            state_val = "dead"
+        elif explicit_fresh and explicit_ms is not None and int(explicit_ms) < 0:
+            ms_val = 0
+            state_val = "dead"
+        elif explicit_fresh and explicit_ms is not None and int(explicit_ms) > 0:
+            ms_val = int(explicit_ms)
+            state_val = "ok" if ms_val < 600 else "suspect"
+        elif sel in ("direct", "Shunt_Domestic_CN") or node_t == "direct":
+            node_t = "direct"
+            if dom_ht.get("ok") is False:
+                ms_val = 0
+                state_val = "dead"
+            elif dom_ht.get("ok") is True and int(dom_ht.get("ms") or 0) > 0:
+                ms_val = int(dom_ht["ms"])
+                state_val = "ok" if ms_val < 600 else "suspect"
+            else:
+                ms_val = 0
+                state_val = "pending"
+        else:
+            if not core_up or not node_t or node_t == "block":
+                ms_val = 0
+                state_val = "dead" if not core_up else "pending"
+            else:
+                p_info = get_node_effective_probe(node_t, store=store, now_ts=int(now_ts), conf_dir=conf_dir)
+                if p_info.get("state") == "dead":
+                    ms_val = 0
+                    state_val = "dead"
+                elif p_info.get("state") == "ok" and int(p_info.get("delay_ms") or 0) > 0:
+                    ms_val = int(p_info["delay_ms"])
+                    state_val = "ok" if ms_val < 600 else "suspect"
+                else:
+                    rtt_mem = int(round(float(delays.get(node_t) or (PROBE_ENGINE.node_stats.get(node_t) or {}).get("last_rtt_ms") or 0)))
+                    if rtt_mem > 0 and p_info.get("state") != "dead":
+                        ms_val = rtt_mem
+                        state_val = "ok" if ms_val < 600 else "suspect"
+                    else:
+                        ms_val = 0
+                        state_val = "pending"
+
+        if ms_val > 0:
+            _OVERVIEW_RT["service_bars"].setdefault(sid, [0] * 28).append(min(95, max(10, int(ms_val / 4))))
             _OVERVIEW_RT["service_bars"][sid] = _OVERVIEW_RT["service_bars"][sid][-28:]
-    pulse_services = [
-        {"id": "openai", "name": "ChatGPT", "selector": "Shunt_AI", "node": oa_node, "ms": oa_ms, "state": "ok" if 0 < oa_ms < 600 else ("suspect" if oa_ms >= 600 else "unknown"), "color": "#64D2FF", "icon": "AI", "bars": _OVERVIEW_RT["service_bars"]["openai"]},
-        {"id": "gemini", "name": "Gemini", "selector": "Shunt_AI", "node": gm_node, "ms": gm_ms, "state": "ok" if 0 < gm_ms < 600 else ("suspect" if gm_ms >= 600 else "unknown"), "color": "#64D2FF", "icon": "GM", "bars": _OVERVIEW_RT["service_bars"]["gemini"]},
-        {"id": "youtube", "name": "YouTube", "selector": "Shunt_YouTube", "node": yt_node, "ms": yt_ms, "state": "ok" if 0 < yt_ms < 600 else ("suspect" if yt_ms >= 600 else "unknown"), "color": "#64D2FF", "icon": "YT", "bars": _OVERVIEW_RT["service_bars"]["youtube"]},
-        {"id": "github", "name": "GitHub", "selector": "Shunt_GitHub", "node": gh_node, "ms": gh_ms, "state": "ok" if 0 < gh_ms < 600 else ("suspect" if gh_ms >= 600 else "unknown"), "color": "#64D2FF", "icon": "GH", "bars": _OVERVIEW_RT["service_bars"]["github"]},
-        {"id": "netflix", "name": "Netflix", "selector": "Shunt_Netflix", "node": nf_node, "ms": nf_ms, "state": "ok" if 0 < nf_ms < 600 else ("suspect" if nf_ms >= 600 else "unknown"), "color": "#64D2FF", "icon": "NF", "bars": _OVERVIEW_RT["service_bars"]["netflix"]},
-        {"id": "tiktok", "name": "TikTok", "selector": "Shunt_TikTok", "node": tk_node, "ms": tk_ms, "state": "ok" if 0 < tk_ms < 600 else ("suspect" if tk_ms >= 600 else "unknown"), "color": "#64D2FF", "icon": "TK", "bars": _OVERVIEW_RT["service_bars"]["tiktok"]},
-        {"id": "telegram", "name": "Telegram", "selector": "Shunt_Outside_CN", "node": tg_node, "ms": tg_ms, "state": "ok" if 0 < tg_ms < 600 else ("suspect" if tg_ms >= 600 else "unknown"), "color": "#64D2FF", "icon": "TG", "bars": _OVERVIEW_RT["service_bars"]["telegram"]},
-        {"id": "bilibili", "name": "B站直连", "selector": "Shunt_Domestic_CN", "node": bl_node, "ms": bl_ms, "state": "ok", "color": "#30D158", "icon": "CN", "bars": _OVERVIEW_RT["service_bars"]["bilibili"]},
-    ]
+        else:
+            _OVERVIEW_RT["service_bars"].setdefault(sid, [0] * 28)
+
+        return {
+            "id": sid,
+            "name": t_obj["name"],
+            "selector": sel,
+            "url": t_obj.get("url") or DEFAULT_URL_PING_TARGET,
+            "node": node_t or "unknown",
+            "ms": ms_val,
+            "state": state_val,
+            "color": t_obj.get("color") or ("#30D158" if node_t == "direct" else "#64D2FF"),
+            "icon": t_obj.get("icon") or t_obj["name"][:2].upper(),
+            "bars": _OVERVIEW_RT["service_bars"][sid],
+        }
+
+    sonar_targets = load_sonar_targets(conf_dir)
+    pulse_services = [_eval_sonar_target(t) for t in sonar_targets]
+    yt_ms = next((int(p.get("ms") or 0) for p in pulse_services if p.get("id") == "youtube"), 0) or next((int(p.get("ms") or 0) for p in pulse_services if int(p.get("ms") or 0) > 0), 0)
     # Build device / node / target ranking tables from real ledger
     def _rank_rows(bucket_dict: dict, include_ip: bool = False, lan_ip: str = "") -> list:
         items = []
@@ -18467,9 +18705,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.4.0"
+APP_VERSION = "2.4.1"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.4.0-release-20261104"
+APP_BUILD = "2.4.1-release-20261105"
 
 UPDATE_MANIFEST_PRIMARY = "https://ai-link-official.pages.dev/version.json"
 UPDATE_MANIFEST_GITHUB = "https://raw.githubusercontent.com/Master-AI-007/ai-link-openwrt/main/version.json"
@@ -18921,6 +19159,9 @@ def upgrade_singbox_core(payload: dict = None, conf_dir: Path = CONF_DIR) -> dic
         _atomic_write_text(conf_dir / "sing-box.json", json.dumps(cand_cfg, indent=2, ensure_ascii=False))
         _SB_CAP_CACHE["val"] = None
         _SB_CAP_CACHE["ts"] = 0.0
+        _CORE_UPDATE_MEMO["ts"] = 0.0
+        _CORE_UPDATE_MEMO["data"] = None
+        _invalidate_fast_api_cache()
     except Exception as e:
         if had_old_bin and bak_bin.is_file():
             try:
@@ -20117,38 +20358,6 @@ def build_galaxy_snapshot(conf_dir=CONF_DIR):
 _gol_real = get_overview_live_telemetry
 
 
-def get_overview_live_telemetry(conf_dir=CONF_DIR):
-    d = _gol_real(conf_dir)
-    try:
-        store = load_node_probe_store(conf_dir)
-        now_ts = int(time.time())
-        for svc in (d.get("pulse_services") or []):
-            sid = svc.get("id")
-            node_t = svc.get("node") or "direct"
-            app_v = _H3_APP_MS.get(sid)
-            app_ts = int(_H3_APP_TS.get(sid) or 0)
-            node_d = get_node_real_delay(node_t, store=store, conf_dir=conf_dir) if node_t not in ("direct", "block") else (12 if node_t == "direct" else -1)
-            if app_v is not None and app_v > 0:
-                svc["ms"] = int(app_v)
-                svc["state"] = "ok"
-                svc["as_of_ts"] = app_ts or now_ts
-            elif node_d > 0:
-                svc["ms"] = int(node_d)
-                svc["state"] = "ok"
-                svc["as_of_ts"] = app_ts or now_ts
-            elif app_v is not None and app_v < 0 and _HEALTH_CACHE["ts"] > 0:
-                svc["ms"] = -1
-                svc["state"] = "fail"
-                svc["as_of_ts"] = app_ts or int(_HEALTH_CACHE["ts"])
-            else:
-                svc["ms"] = -1
-                svc["state"] = "pending"
-                svc["as_of_ts"] = 0
-    except Exception:
-        pass
-    return d
-
-
 class AILinkRequestHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(WEBUI_DIR), **kwargs)
@@ -20462,6 +20671,14 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
         if req_path == "/api/overview/telemetry":
             self._send_json(get_overview_live_telemetry(CONF_DIR))
             return
+        if req_path == "/api/overview/sonar_targets":
+            ov_now = get_overview_live_telemetry(CONF_DIR)
+            self._send_json({
+                "ok": True,
+                "targets": load_sonar_targets(CONF_DIR),
+                "pulse_services": ov_now.get("pulse_services", []),
+            })
+            return
         if req_path == "/api/overview/galaxy":
             self._send_json(build_galaxy_snapshot(CONF_DIR))
             return
@@ -20544,10 +20761,10 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             return
         if req_path == "/api/clash/delay":
             node_name = qs.get("name", "direct")
-            test_url = qs.get("url", DEFAULT_DELAY_TEST_URL)
-            timeout_ms = int(qs.get("timeout", "3000"))
             svc_id = qs.get("service_id", "").strip().lower()
-            res_d = clash_test_delay(node_name, test_url=test_url, timeout_ms=timeout_ms, force=True)
+            sonar_t = next((t for t in load_sonar_targets(CONF_DIR) if t["id"].lower() == svc_id), None) if svc_id else None
+            test_url = qs.get("url") or (sonar_t.get("url") if sonar_t else None) or DEFAULT_DELAY_TEST_URL
+            timeout_ms = int(qs.get("timeout", "3000"))
             sel_to_svc = {
                 "Shunt_YouTube": "youtube",
                 "Stream_Auto": "youtube",
@@ -20558,6 +20775,10 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             }
             target_sid = svc_id or sel_to_svc.get(node_name, "")
             now_t = time.time()
+            if node_name in ("direct", "Shunt_Domestic_CN"):
+                res_d = _probe_direct_url_rtt(test_url, timeout_ms=timeout_ms)
+            else:
+                res_d = clash_test_delay(node_name, test_url=test_url, timeout_ms=timeout_ms, force=True, conf_dir=CONF_DIR)
             if res_d.get("ok") and int(res_d.get("delay") or 0) > 0:
                 d_val = int(res_d["delay"])
                 if target_sid:
@@ -20570,14 +20791,20 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 if resolved_n and resolved_n not in ("direct", "block"):
                     PROBE_ENGINE.last_delays[resolved_n] = float(d_val)
             elif target_sid and res_d.get("ok") is False:
-                # Fallback: if Clash selector delay failed because :9090 isn't active or selector name mapped to auto pool, check resolved node
                 resolved_n = PROBE_ENGINE.current_selections.get(node_name) or ""
                 if resolved_n and resolved_n != node_name and resolved_n not in ("direct", "block"):
-                    res_d2 = clash_test_delay(resolved_n, test_url=test_url, timeout_ms=timeout_ms, force=True)
+                    res_d2 = clash_test_delay(resolved_n, test_url=test_url, timeout_ms=timeout_ms, force=True, conf_dir=CONF_DIR)
                     if res_d2.get("ok") and int(res_d2.get("delay") or 0) > 0:
                         res_d = res_d2
                         _H3_APP_MS[target_sid] = int(res_d2["delay"])
                         _H3_APP_TS[target_sid] = now_t
+                    else:
+                        _H3_APP_MS[target_sid] = -1
+                        _H3_APP_TS[target_sid] = now_t
+                else:
+                    _H3_APP_MS[target_sid] = -1
+                    _H3_APP_TS[target_sid] = now_t
+            _invalidate_fast_api_cache()
             res_d["as_of_ts"] = int(now_t)
             res_d["service_id"] = target_sid
             self._send_json(res_d)
@@ -20921,6 +21148,22 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
         if clean_path == "/api/ops/core_update/apply":
             res = upgrade_singbox_core(payload, CONF_DIR)
             self._send_json(res, status=(200 if res.get("ok") else 400))
+            return
+        if clean_path == "/api/overview/sonar_targets":
+            reset_flag = bool(payload.get("reset", False))
+            saved_t = save_sonar_targets(payload.get("targets") or [], CONF_DIR, reset=reset_flag)
+            ov_now = get_overview_live_telemetry(CONF_DIR)
+            self._send_json({
+                "ok": True,
+                "targets": saved_t,
+                "pulse_services": ov_now.get("pulse_services", []),
+            })
+            return
+        if clean_path == "/api/overview/sonar_probe":
+            tid = str(payload.get("id") or payload.get("service_id") or "").strip()
+            tmo = int(payload.get("timeout_ms") or 3500)
+            sim_off = bool(payload.get("simulate_offline", False))
+            self._send_json(probe_sonar_targets(target_id=tid, conf_dir=CONF_DIR, timeout_ms=tmo, simulate_offline=sim_off))
             return
         if clean_path == "/api/system/update/ack":
             self._send_json(acknowledge_update_result())
@@ -21943,7 +22186,8 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 region=str(payload.get("region") or ""),
                 timeout_ms=int(payload.get("timeout_ms") or 3000),
                 concurrency=int(payload.get("concurrency") or 10),
-                conf_dir=CONF_DIR
+                conf_dir=CONF_DIR,
+                force=bool(payload.get("force", True))
             )
             self._send_json(res)
             return
@@ -22267,6 +22511,8 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 self._send_json(res_tog, status=200 if res_tog.get("ok") else 404)
                 return
             new_url = str(payload.get("new_url") or payload.get("url") or "").strip()
+            if "***" in new_url:
+                new_url = "" 
             new_name = str(payload.get("name") or "").strip()
             sync_now = bool(payload.get("sync_now", False))
             test_after_add = bool(payload.get("test_after_add", True))

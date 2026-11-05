@@ -1,17 +1,34 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.4.0",
+  "latest": "2.4.1",
   "release_date": "2026-11-05",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.4.0",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.4.1",
   "highlights": [
-    "受控三模数据面：tproxy_redirect（默认）/ tproxy_tcp_tun_udp（游戏混合）/ tun_full（全量 TUN），可随时切换",
-    "移动端与平板 Hero 深度自适应：430 / 375 / 768 视口零横向溢出，指标单排、按钮等宽",
-    "sing-box 内核安全热升级：升级内核不中断现有分流与回家隧道",
-    "版本号 9 处对齐 2.4.0（含 Makefile、AI-LINK CLI、LuCI 兜底与静态资源内容哈希）",
-    "延续：六页统一单横幅 Hero、订阅 11 格式、手动零漂移、P0 flock 与配额保态"
+    "订阅同步全流程可视化进度条：单条同步 / 同步全部 / 保存并同步 / Diff 确认，实时百分比 + 三阶段提示",
+    "订阅卡片文本出框与同步后状态不刷新修复；脱敏 URL（***）不再写回磁盘",
+    "测速配额与假死雪崩根治：历史 ok 节点跨 6 小时快照仍保持健康态；>50 节点自动扩容到 30,000 次/天；手动测速穿透配额",
+    "总览声呐实时离线感知 + 自定义 8 个探测目标 + 340×340 放大表盘",
+    "节点列表统一显示「（协议）Google地区：xx」与「订阅名丨国家名」，不再按香港特殊改色",
+    "设置页 IPv6 开关像素级右对齐、内核检查入口并入 CORE LIFECYCLE 卡片",
+    "延续：受控三模数据面、六页统一 Hero、11 格式订阅、手动零漂移"
   ],
   "changelog": [
+    {
+      "version": "2.4.1",
+      "date": "2026-11-05",
+      "type": "fix",
+      "title": "订阅同步可视化 + 假死雪崩根治 + 节点命名统一",
+      "items": [
+        "订阅同步进度条弹窗覆盖单条 / 全部 / 保存并同步 / Diff 四个入口",
+        "修复订阅卡片 .sub-health-box 文本出框与同步后状态不刷新；*** URL 不再写回磁盘",
+        "修复 PROBE_SNAPSHOT_TTL_SEC 过期误判 dead；节点库 >50 时测速预算动态扩容至 30,000/天",
+        "手动测速 force_manual 穿透每日预算",
+        "总览声呐离线/死节点实时感知，支持 8 个自定义探测目标与 340px 表盘",
+        "节点列表统一「（协议）Google地区：xx」「订阅名丨国家名」，取消香港特殊改色",
+        "设置页 IPv6 开关右对齐、内核更新入口合并"
+      ]
+    },
     {
       "version": "2.4.0",
       "date": "2026-11-05",
@@ -179,13 +196,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.4.0/AI-LINK-v2.4.0.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.4.1/AI-LINK-v2.4.1.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.4.0.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.4.1.tar.gz"
       ],
-      "size": 736433,
-      "md5": "49ddda78354d07246b3f090a9d5254cf",
-      "sha256": "3d7fa651aa6da738875d970c9504500fca0c2f34cdba1bbe9ced6dfda1079874"
+      "size": 749348,
+      "md5": "2747ecb27f1a97a94e1389e05865e460",
+      "sha256": "1049e3dbbcf6c3726c638c995818c1456c471b9b1b0271e92f3cf29466f04d6b"
     }
   }
 }

@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>AI-LINK v2.4.0 · 三模数据面版</title>
-<meta name="description" content="AI-LINK 是运行在 OpenWrt 上的智能分流网关：sing-box 内核、15 组精细分流、双层 DNS 净网、回家隧道与全域 3D 星图。v2.4.0 三模数据面版。" />
-<meta property="og:title" content="AI-LINK v2.4.0 · 三模数据面版" />
+<title>AI-LINK v2.4.1 · 订阅同步可视化版</title>
+<meta name="description" content="AI-LINK 是运行在 OpenWrt 上的智能分流网关：sing-box 内核、15 组精细分流、双层 DNS 净网、回家隧道与全域 3D 星图。v2.4.1 订阅同步可视化版。" />
+<meta property="og:title" content="AI-LINK v2.4.1 · 订阅同步可视化版" />
 <meta property="og:description" content="sing-box 内核 · 15 组精细分流 · 双层净网 · 回家隧道 · 全域 3D 星图" />
 <meta property="og:image" content="https://ai-link-official.pages.dev/assets/ui_surge.webp" />
 <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
@@ -27,7 +27,7 @@
       </svg>
       <span style="display:block">
         <b>AI-LINK</b>
-        <span>NEXUS · v2.4.0</span>
+        <span>NEXUS · v2.4.1</span>
       </span>
     </a>
     <div class="nav-links">
@@ -47,15 +47,15 @@
   <div class="wrap">
     <div class="hero-top">
       <div>
-        <span class="pill"><i></i> v2.4.0 · 三模数据面版</span>
+        <span class="pill"><i></i> v2.4.1 · 订阅同步可视化版</span>
         <h1>让每一条连接<br /><em>都有轨迹可循</em></h1>
         <p class="lede">AI-LINK 是运行在 OpenWrt 上的智能分流网关：sing-box 单内核、15 组精细分流、双层 DNS 净网、加密回家隧道，以及一张能看见真实流量的全域 3D 星图。</p>
         <div class="hero-cta">
-          <a class="btn primary" href="https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.4.0/AI-LINK-v2.4.0.tar.gz">下载 v2.4.0</a>
+          <a class="btn primary" href="https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.4.1/AI-LINK-v2.4.1.tar.gz">下载 v2.4.1</a>
           <a class="btn" href="#screens">先看界面</a>
         </div>
         <div class="hero-meta">
-          <span>安装包 <b>0.70 MB</b></span>
+          <span>安装包 <b>0.71 MB</b></span>
           <span>MD5 <b class="mono">49ddda78…5254cf</b></span>
           <span>支持 <b>OpenWrt 23.05 / 24.10 / ImmortalWrt</b></span>
         </div>
@@ -140,7 +140,7 @@
       <div>
         <div class="eyebrow">INTERACTION SAFETY</div>
         <h2>看得见的后果，撤得回的操作</h2>
-        <p>v2.4.0 把数据面拆成三种受控模式：默认 TProxy、游戏混合、全量 TUN，随时切换；移动端 Hero 也重新排过。</p>
+        <p>v2.4.1 把订阅同步做成看得见的进度条，顺手根治了节点假死雪崩，还把节点命名统一成「订阅名丨国家名」。</p>
       </div>
     </div>
     <div class="grid-3">
@@ -172,8 +172,8 @@
     <div class="sec-head">
       <div>
         <div class="eyebrow">SUBSCRIPTIONS &amp; CONTROL</div>
-        <h2>三种数据面，按场景自己选</h2>
-        <p>旁路由用默认 TProxy，游戏要 UDP/ICMP 用混合，想全量接管就切 TUN——不用重装，切回也不丢配置。</p>
+        <h2>订阅同步看得见，节点名称看得懂</h2>
+        <p>单条同步 / 全部同步 / 保存并同步 / Diff 确认都有实时进度；节点假死不再雪崩，命名统一到「订阅名丨国家名」。</p>
       </div>
     </div>
     <div class="grid-3">
@@ -184,16 +184,16 @@
         <div class="tags"><span class="tag c">自适应</span><span class="tag m">.raw 快照</span></div>
       </div>
       <div class="card">
-        <div class="ico"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></div>
-        <h3>手动即固定</h3>
-        <p>分流组与非分流模式里手动选定的节点，不可用也保持固定并提示；需要自动容灾的场景统一交给节点池。</p>
-        <div class="tags"><span class="tag p">零漂移</span><span class="tag v">节点池</span></div>
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M4 7h10M4 12h7M4 17h12"/><path d="m17 15 2 2 3-3"/></svg></div>
+        <h3>节点命名统一</h3>
+        <p>列表统一显示「（协议）Google地区：SG」与「订阅名丨国家名」，不再按香港特殊改色，底层 tag 不变、选路照常。</p>
+        <div class="tags"><span class="tag v">统一命名</span><span class="tag m">兼容旧 tag</span></div>
       </div>
       <div class="card">
-        <div class="ico"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/><circle cx="8" cy="7" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="10" cy="17" r="2"/></svg></div>
-        <h3>三模数据面</h3>
-        <p>TProxy 默认、游戏混合（UDP/ICMP 打标进 TUN）、全量 TUN 三种受控模式，设置里一键切换，切回不丢配置。</p>
-        <div class="tags"><span class="tag v">tproxy</span><span class="tag m">tun_full</span></div>
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M4 17V9M10 17V5M16 17v-6M22 17V8"/><path d="M2 21h22"/></svg></div>
+        <h3>订阅同步进度条</h3>
+        <p>单条、全部、保存并同步、Diff 确认四个入口都有实时百分比与三阶段提示；同步后状态即时刷新，脱敏 URL 不再写回磁盘。</p>
+        <div class="tags"><span class="tag c">可视化</span><span class="tag m">四入口</span></div>
       </div>
     </div>
   </div>
@@ -452,7 +452,7 @@
         </svg>
         <b style="font-size:14px">AI-LINK</b>
       </div>
-      <div>NEXUS 全域 3D 智能网关 · v2.4.0 · 2026-11-05</div>
+      <div>NEXUS 全域 3D 智能网关 · v2.4.1 · 2026-11-05</div>
     </div>
     <div class="foot-links">
       <a href="https://github.com/Master-AI-007/ai-link-openwrt" target="_blank" rel="noopener">GitHub</a>
