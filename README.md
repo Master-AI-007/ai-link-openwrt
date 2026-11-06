@@ -4,7 +4,7 @@
 
 **NEXUS 全域 3D 智能网关 · 运行在 OpenWrt 上的智能分流系统**
 
-[![version](https://img.shields.io/badge/version-2.4.1-6ee7f5?style=flat-square)](https://github.com/Master-AI-007/ai-link-openwrt/releases/tag/v2.4.1)
+[![version](https://img.shields.io/badge/version-2.4.2-6ee7f5?style=flat-square)](https://github.com/Master-AI-007/ai-link-openwrt/releases/tag/v2.4.2)
 [![platform](https://img.shields.io/badge/OpenWrt-23.05%20%7C%2024.10%20%7C%20ImmortalWrt-a994ff?style=flat-square)](#环境要求)
 [![core](https://img.shields.io/badge/sing--box-1.14.1-54e6b5?style=flat-square)](#技术架构)
 [![license](https://img.shields.io/badge/license-MIT-f9a8d4?style=flat-square)](#许可与免责)
@@ -30,7 +30,10 @@ AI-LINK 是一套面向 OpenWrt 的**智能分流网关**：用 sing-box 单内�
 
 ---
 
-## v2.4.1 新特性（订阅同步可视化 · 假死根治）
+## 核心能力总览（v2.4.2）
+
+> **v2.4.2 增量**：面板鉴权强制开启且仅信任本机回环；桥接令牌移出 UCI 改驻 tmpfs 并 3600s 轮换；自动节点池内核日志实时故障感知 + 目标多样性守卫 + 秒级热切换；单组节点池架构收敛与存量 G1/G2 自动迁移；字节单位统一 KiB/MiB/GiB/TiB；移动端 <=720px 紧凑胶囊。
+
 
 | | 能力 | 说明 |
 |---|---|---|
@@ -182,7 +185,8 @@ sing-box 1.14.1（单内核）
 
 | 版本 | 日期 | 主题 |
 |---|---|---|
-| **2.4.1** | 2026-11-05 | 订阅同步进度条 + 节点假死根治 + 节点命名统一 |
+| **2.4.2** | 2026-11-07 | 安全加固 + 内核日志秒级故障切换 + 单组节点池收敛 |
+| 2.4.1 | 2026-11-05 | 订阅同步进度条 + 节点假死根治 + 节点命名统一 |
 | 2.4.0 | 2026-11-05 | 受控三模 TUN 数据面 + 移动端 Hero 自适应 + 内核安全热升级 |
 | 2.3.7 | 2026-11-04 | 统一单横幅 Hero + P0-1 flock / P0-2 配额保态 + 版本 9 处对齐 |
 | 2.3.6 | 2026-11-03 | 订阅自适应（11 格式）+ 手动零漂移 + 极简节点池 + 窄屏卡片化 |
@@ -209,10 +213,10 @@ sing-box 1.14.1（单内核）
 ## 包指纹
 
 ```
-AI-LINK-v2.4.1.tar.gz
-size   749,348 B
-md5    2747ecb27f1a97a94e1389e05865e460
-sha256 1049e3dbbcf6c3726c638c995818c1456c471b9b1b0271e92f3cf29466f04d6b
+AI-LINK-v2.4.2.tar.gz
+size   763,083 B
+md5    21e1f1f7f0b1dd5070c599f3037171bd
+sha256 7c855ed9cb2226ce35f2d5c2378a6e22b05f4e61aa2ee6cd7123f0e06140f3ad
 ```
 
 在线清单：<https://ai-link-official.pages.dev/version.json>

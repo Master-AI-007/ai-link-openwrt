@@ -1,6 +1,6 @@
 #!/bin/sh
 # ==============================================================================
-# AI-LINK v2.4.1 (luci-app-ai-link v2.4.1) Universal Cross-Platform Installer
+# AI-LINK v2.4.2 (luci-app-ai-link v2.4.2) Universal Cross-Platform Installer
 # Supports:
 #   - Architectures : x86_64 (amd64), aarch64 (arm64), armv7l (armhf), mipsel, riscv64
 #   - Package Mgrs  : OPKG (OpenWrt <=23.05) & APK (OpenWrt 24.10+ / ImmortalWrt 25.x+)
@@ -12,7 +12,7 @@
 set -e
 export PYTHONDONTWRITEBYTECODE="1"
 
-VERSION="2.4.1"
+VERSION="2.4.2"
 UPGRADE_MODE=0
 for arg in "$@"; do
 	case "$arg" in
@@ -261,7 +261,8 @@ else
 	uci_set_default "panel_pwd_customized" "0"
 fi
 uci -q delete ai-link.global.panel_secret 2>/dev/null || true
-uci_set_default "require_lan_auth" "0"
+uci -q set "ai-link.global.require_lan_auth=1" 2>/dev/null || true
+uci -q set "ai-link.global.trusted_cidr=127.0.0.1/32, ::1/128" 2>/dev/null || true
 uci_set_default "tproxy_port" "7893"
 uci_set_default "mixed_port" "7890"
 uci_set_default "dns_port" "7874"
@@ -276,9 +277,9 @@ uci_set_default "dns_filter_enabled" "1"
 uci_set_default "max_outbounds" "$REC_MAX_OB"
 # OTA 在线更新：版本号 + LuCI 桥接令牌（与面板密码解耦，供 LuCI 页面调用面板 API）
 uci -q set "ai-link.global.app_version=${VERSION}" 2>/dev/null || true
-if [ -z "$(uci -q get ai-link.global.luci_bridge_token 2>/dev/null)" ]; then
-	uci -q set "ai-link.global.luci_bridge_token=$(head -c 16 /dev/urandom 2>/dev/null | md5sum 2>/dev/null | cut -d' ' -f1)" 2>/dev/null || true
-fi
+# P0-2 Security Hardening: Purge legacy plaintext luci_bridge_token from UCI and lock /etc/config/ai-link to 0600
+uci -q delete ai-link.global.luci_bridge_token 2>/dev/null || true
+chmod 600 /etc/config/ai-link 2>/dev/null || true
 
 if [ ! -f /etc/ai-link/max_outbounds.txt ] || [ "$(cat /etc/ai-link/max_outbounds.txt 2>/dev/null)" = "60" ] || [ "$(cat /etc/ai-link/max_outbounds.txt 2>/dev/null)" = "0" ]; then
 	echo "$REC_MAX_OB" > /etc/ai-link/max_outbounds.txt
@@ -324,7 +325,7 @@ echo "[5/6] 正在初始化安全证书、智能双栈 DNS 分流规则与内核
 # ------------------------------------------------------------------------------
 echo "[6/6] 正在清理旧版进程缓存、刷新 LuCI 视图并启动服务..."
 rm -rf /tmp/ai-link-cache /tmp/ai-link-export-* /tmp/ai-link-upload-* /tmp/ai-link-arc-extract-* /tmp/ai-link-shunt-test-* /tmp/ailink-*-e2e-* /var/run/ai-link/ephemeral_probe_* /tmp/luci-indexcache* /tmp/luci-modulecache/* /var/run/ai-link/probe.lock /usr/share/ai-link/__pycache__ /usr/share/ai-link/webui/vendor 2>/dev/null || true
-chmod 600 /etc/ai-link/ops_settings.json /etc/ai-link/panel_auth.json /etc/ai-link/panel_token /etc/ai-link/initial_password 2>/dev/null || true
+chmod 600 /etc/config/ai-link /etc/ai-link/ops_settings.json /etc/ai-link/panel_auth.json /etc/ai-link/panel_token /etc/ai-link/initial_password 2>/dev/null || true
 find /usr/share/ai-link -name "*.bak" -o -name "*before-restore*" 2>/dev/null | xargs rm -f 2>/dev/null || true
 if [ -d /root/ai-link-final-backup ]; then
 	ls -1t /root/ai-link-final-backup/*.tgz 2>/dev/null | grep -v '/etc-ai-link.tgz$' | tail -n +5 | while read -r _old_arc; do rm -f "$_old_arc" 2>/dev/null || true; done

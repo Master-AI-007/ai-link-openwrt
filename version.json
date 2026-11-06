@@ -1,19 +1,34 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.4.1",
-  "release_date": "2026-11-05",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.4.1",
+  "latest": "2.4.2",
+  "release_date": "2026-11-07",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.4.2",
   "highlights": [
-    "订阅同步全流程可视化进度条：单条同步 / 同步全部 / 保存并同步 / Diff 确认，实时百分比 + 三阶段提示",
-    "订阅卡片文本出框与同步后状态不刷新修复；脱敏 URL（***）不再写回磁盘",
-    "测速配额与假死雪崩根治：历史 ok 节点跨 6 小时快照仍保持健康态；>50 节点自动扩容到 30,000 次/天；手动测速穿透配额",
-    "总览声呐实时离线感知 + 自定义 8 个探测目标 + 340×340 放大表盘",
-    "节点列表统一显示「（协议）Google地区：xx」与「订阅名丨国家名」，不再按香港特殊改色",
-    "设置页 IPv6 开关像素级右对齐、内核检查入口并入 CORE LIFECYCLE 卡片",
+    "安全加固：升级后强制开启面板鉴权，信任网段仅放行 127.0.0.1/32 与 ::1/128，跨机未鉴权访问 /api/* 统一 401",
+    "桥接令牌移出 UCI 明文，改为 tmpfs 内存驻留（0600）并 3600 秒自动轮换，禁止访问日志/备份等高敏接口",
+    "自动节点池内核日志实时故障感知与秒级切换：3 秒周期监听、30 秒窗口 3 连败、目标多样性守卫、切前 1.5 秒轻量复核",
+    "单飞切换协调器 request_switch() 统一接管选择器热切并与 Clash :9090 实态回读闭环",
+    "单组节点池架构收敛 + 存量 G1/G2 自动迁移；根治死节点池 direct 乒乓振荡；全站数据真实性 D-01~D-11 闭环",
+    "字节单位统一为 KiB / MiB / GiB / TiB；仅 TCP 降级探测的节点显式渲染「L7 降级」徽章",
+    "移动端 <=720px 顶部操作按钮收敛为紧凑胶囊，底部导航保持横向单排；静态资源内容哈希 100% 对齐",
     "延续：受控三模数据面、六页统一 Hero、11 格式订阅、手动零漂移"
   ],
   "changelog": [
+    {
+      "version": "2.4.2",
+      "date": "2026-11-07",
+      "type": "fix",
+      "title": "安全加固 + 内核日志秒级故障切换 + 单组节点池收敛",
+      "items": [
+        "P0-1：升级后 require_lan_auth 不再被旧 UCI 回刷，trusted_cidr 仅放行本机回环，跨机未鉴权 /api/* 统一返回 401",
+        "P0-2：彻底移除 UCI 中的 luci_bridge_token，桥接令牌改驻 /var/run tmpfs（0600）并 3600s 轮换，高敏接口显式拒绝",
+        "N-P1：新增内核日志实时故障切换引擎，目标多样性守卫（min_distinct_targets=2）抑制单站宕机误判，切前 1.5s 轻量复核，突破 600s 冷却秒切并隔离 300s",
+        "N-P2：request_switch() 单飞协调器 + Clash :9090 实态回读；字节单位统一 KiB/MiB/GiB/TiB；移动端 <=720px 紧凑胶囊",
+        "单组节点池架构收敛与存量 G1/G2 自动迁移、死节点零乒乓振荡、数据真实性 D-01~D-11 全量闭环",
+        "N-P3：裸 except Exception 收敛为具体异常元组并计数（141 / 8），index.html 静态资源 ?v= 与真实 MD5 前 8 位 100% 一致"
+      ]
+    },
     {
       "version": "2.4.1",
       "date": "2026-11-05",
@@ -196,13 +211,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.4.1/AI-LINK-v2.4.1.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.4.2/AI-LINK-v2.4.2.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.4.1.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.4.2.tar.gz"
       ],
-      "size": 749348,
-      "md5": "2747ecb27f1a97a94e1389e05865e460",
-      "sha256": "1049e3dbbcf6c3726c638c995818c1456c471b9b1b0271e92f3cf29466f04d6b"
+      "size": 763083,
+      "md5": "21e1f1f7f0b1dd5070c599f3037171bd",
+      "sha256": "7c855ed9cb2226ce35f2d5c2378a6e22b05f4e61aa2ee6cd7123f0e06140f3ad"
     }
   }
 }

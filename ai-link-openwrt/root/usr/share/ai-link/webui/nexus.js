@@ -234,31 +234,39 @@
 
   const mock = {
     connections: 0,
-    down: 274,
-    up: 24,
-    downText: '274 KB/s',
-    upText: '24 KB/s',
-    monthTotalText: '6.58 GB',
-    upTotalText: '134.0 MB',
-    latency: 156,
-    healthScore: 98,
-    coreMemMib: 117.4,
+    connsDisplayed: 0,
+    connsTruncated: false,
+    conntrackCount: 0,
+    conntrackMax: 65536,
+    down: 0,
+    up: 0,
+    downText: '0 B/s',
+    upText: '0 B/s',
+    monthTotalText: '--',
+    upTotalText: '0 B',
+    latency: null,
+    healthScore: 100,
+    coreMemMib: null,
     blockedTotal: 0,
-    dnsRulesCount: 50000,
+    dnsRulesCount: null,
+    dnsRawRuleLines: null,
     dnsLayerCount: 0,
     rejectLayerCount: 0,
-    activeOutbounds: 200,
-    maxOutboundsLimit: 200,
-    totalNodes: 6,
-    devicesTotal: 8,
-    devicesActive: 3,
-    destinationsTotal: 126,
+    activeOutbounds: 0,
+    maxOutboundsLimit: 0,
+    totalNodes: 0,
+    devicesTotal: 0,
+    devicesActive: 0,
+    destinationsTotal: 0,
     inTotalText: '0 B',
     outTotalText: '0 B',
     monthTotalConns: 0,
-    uptimeStr: '运行中',
+    uptimeStr: '--',
     dnsBlockedPct: 0.0,
-    dnsAvgMs: 1,
+    dnsAvgMs: null,
+    srsRulesetsCount: null,
+    backupInfo: null,
+    statusDataAgeMs: 0,
     services: [
       { id: 'openai', name: 'ChatGPT', selector: 'Shunt_AI', groupId: 'AI', url: 'https://chat.openai.com/cdn-cgi/trace', ms: 168, state: 'ok' },
       { id: 'gemini', name: 'Gemini', selector: 'Shunt_AI', groupId: 'AI', url: 'https://gemini.google.com', ms: 182, state: 'ok' },
@@ -343,13 +351,7 @@
     schedules: [
       { id: 'sched_default', name: '每日全量 URL Ping 巡检', region: 'ALL', interval_min: 360, enabled: true, check_ipv6: false }
     ],
-    logs: [
-      '[INFO] AI-LINK NEXUS daemon v2.4.1 started on 0.0.0.0:9099',
-      '[INFO] sing-box 1.14.1 core process verified alive (ports :7890, :7893, :7874 ready)',
-      '[INFO] NFTables table inet ai_link synchronized via --generate-nft single source of truth',
-      '[INFO] Dual-group Auto Node Pools (Auto_AI, Auto_YouTube, Auto_Netflix) initialized',
-      '[INFO] Self-healing watchdog active (5s respawn guard, anti-blackhole protection armed)'
-    ]
+    logs: []
   };
 
   const state = {
@@ -468,7 +470,7 @@
   function fmtBytes(b) {
     const n = Number(b || 0);
     if (!isFinite(n) || n <= 0) return '0 B';
-    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
     let idx = 0;
     let val = n;
     while (val >= 1024 && idx < units.length - 1) { val /= 1024; idx++; }
@@ -593,7 +595,8 @@
       const res = await fetch(endpoint, opts);
       let data = {};
       try { data = await res.json(); } catch (_) {}
-      if (res.status === 401 && endpoint !== '/api/login' && !isBgPoll) {
+      if (res.status === 401 && endpoint !== '/api/login' && (!isBgPoll || (endpoint === '/api/status' && !state._loginPromptedOnce))) {
+        state._loginPromptedOnce = true;
         promptPanelLoginModal();
       }
       const okFlag = Boolean(res.ok && data.ok !== false);
@@ -921,7 +924,7 @@
     if (heroDescEl) {
       heroDescEl.textContent = eg.isSingleEgress
         ? ('当前模式：' + eg.modeName + '（单一总出口模式） · 正在使用出口：' + eg.poolOrNodeName)
-        : ('当前模式：' + eg.modeName + ' · AI/流媒体/社交/国内各走独立最优出口，双组省流自动节点池实时守护中');
+        : ('当前模式：' + eg.modeName + ' · AI/流媒体/社交/国内各走独立最优出口，单组省流自动节点池实时守护中');
     }
     const pModeEl = $('#ov-pillar-mode');
     if (pModeEl) pModeEl.textContent = eg.modeName;
@@ -1313,7 +1316,7 @@
               '<b title="' + esc(p.name) + '">' + esc(p.name) + '</b>' +
               '<button type="button" class="hud-help-btn" data-action="show-pool-help" data-pool-idx="' + idx + '" title="' + esc(tipDetail) + '" aria-label="查看节点池规则详情">?</button>' +
             '</div>' +
-            '<span class="' + pillCls + '" style="flex-shrink:0">' + esc(shortPillTxt) + '</span>' +
+            (p.l7_degraded ? '<span class="l7-degraded-badge" title="L7 语义校验降级保底">L7 降级</span>' : '') + '<span class="' + pillCls + '" style="flex-shrink:0">' + esc(shortPillTxt) + '</span>' +
           '</div>' +
           '<div class="hud-pool-mid">' +
             '<strong class="hud-pool-node mono" style="color:' + (isDirectPool ? 'var(--amber)' : 'var(--cyan)') + '" title="当前出口：' + esc(curNode) + ' · 池内 ' + g1Tags.length + ' 个候选">' + esc(curNode) + ' <small style="color:var(--text-3);font-weight:400">· ' + g1Tags.length + ' 候选</small></strong>' +
@@ -1576,8 +1579,14 @@
     }
     const heroTitle = $('#dns-hero-title');
     if (heroTitle) {
-      const ruleTotal = Number(mock.dnsRulesCount || 50000);
-      heroTitle.textContent = ruleTotal.toLocaleString('zh-CN') + ' 条净网与防污染规则正在协同工作';
+      if (mock.dnsRulesCount != null && Number(mock.dnsRulesCount) > 0) {
+        const ruleTotal = Number(mock.dnsRulesCount);
+        const rawLines = Number(mock.dnsRawRuleLines || 0);
+        const rawNote = rawLines > ruleTotal ? ('（源规则 ' + rawLines.toLocaleString('zh-CN') + ' 条去重合并）') : '';
+        heroTitle.textContent = ruleTotal.toLocaleString('zh-CN') + ' 条净网与防污染规则正在协同工作' + rawNote;
+      } else {
+        heroTitle.textContent = state.backendOffline ? '后端离线 · 净网规则状态未知' : '正在加载净网与防污染规则统计...';
+      }
     }
     const heroReady = $('#dns-engine-readiness');
     if (heroReady) {
@@ -1587,11 +1596,15 @@
         : '规则引擎已就绪 · 今日已拦截 0 次（DNS REFUSED + 路由 REJECT 双层实时守护中）';
     }
     const bq = $('#ov-dns-blocked-q');
-    if (bq) bq.textContent = Number.isFinite(Number(mock.blockedTotal)) ? (Number.isFinite(Number(mock.blockedTotal)) ? Number(mock.blockedTotal).toLocaleString('zh-CN') : '--') : String(mock.blockedTotal || '0');
+    if (bq) bq.textContent = Number.isFinite(Number(mock.blockedTotal)) ? Number(mock.blockedTotal).toLocaleString('zh-CN') : String(mock.blockedTotal || '0');
     const bpct = $('#ov-dns-blocked-pct');
     if (bpct) bpct.textContent = Number(mock.dnsBlockedPct || 0).toFixed(1) + '%';
     const bms = $('#ov-dns-avg-ms');
-    if (bms) bms.textContent = Math.max(1, Math.round(Number(mock.dnsAvgMs || 1))) + ' ms';
+    if (bms) {
+      bms.textContent = (mock.dnsAvgMs != null && Number(mock.dnsAvgMs) >= 0)
+        ? (Math.round(Number(mock.dnsAvgMs)) + ' ms')
+        : '未采样';
+    }
     const lr = $('#ov-dns-layer-rules');
     if (lr) lr.textContent = Number(mock.dnsLayerCount || 0).toLocaleString('zh-CN');
     const rj = $('#dns-layer-reject');
@@ -2021,7 +2034,7 @@
       const dpmLabel = state.dataPlaneMode === 'tun_full'
         ? '全量 TUN 虚拟网卡 (ailink0)'
         : (state.dataPlaneMode === 'tproxy_tcp_tun_udp' ? 'TCP TProxy + UDP TUN 游戏混合' : 'TProxy + Redirect 零拷贝');
-      coreSubEl.textContent = 'AI-LINK v2.4.1 · ' + dpmLabel;
+      coreSubEl.textContent = 'AI-LINK v2.4.2 · ' + dpmLabel;
     }
     setSwitchState($('#toggle-require-lan-auth'), state.authEnabled);
     setSwitchState($('#toggle-ops-entry-bypass'), state.entryBypass);
@@ -2290,12 +2303,13 @@
 
   function renderOpsAndUpdatesSection() {
     renderOpsSettings(state.rawOps);
+    const totalRealConns = Math.max((state.rawConnections || []).length, Number(mock.connections) || 0);
     const setHeroConns = $('#settings-hero-stat-conns');
-    if (setHeroConns) setHeroConns.textContent = String(((state.rawConnections || []).length) || mock.connections || 0) + ' 条';
+    if (setHeroConns) setHeroConns.textContent = state.backendOffline ? '--' : (String(totalRealConns) + ' 条');
     const setHeroCore = $('#settings-hero-stat-core');
     if (setHeroCore) setHeroCore.textContent = state.coreOnline === false ? '内核离线' : '运行正常';
     const connStat = $('#conn-stat-count');
-    if (connStat) connStat.textContent = String(mock.connections);
+    if (connStat) connStat.textContent = state.backendOffline ? '--' : String(totalRealConns);
     const pill = $('#settings-proxy-status-pill');
     if (pill) {
       pill.textContent = state.backendOffline ? '服务未连接' : (!state.coreAlive ? '内核离线' : state.bypassActive ? '直连恢复中' : '运行正常');
@@ -2355,15 +2369,21 @@
           countsByIp[d.ip] = Number(d.conns || 0);
         }
       });
+      const totalRealConns = Math.max(allNormalized.length, Number(mock.connections) || 0);
+      const isTrunc = totalRealConns > allNormalized.length && allNormalized.length > 0;
       const curDev = state.connDeviceFilter || 'ALL';
       const devKeys = Object.keys(countsByIp).sort((a, b) => (countsByIp[b] || 0) - (countsByIp[a] || 0));
-      const opts = ['<option value="ALL"' + (curDev === 'ALL' ? ' selected' : '') + '>设备: 全部终端 (' + (allNormalized.length || mock.connections || 0) + ')</option>'];
+      const allLabel = isTrunc ? ('设备: 全部终端 (采样 ' + allNormalized.length + '/' + totalRealConns + ')') : ('设备: 全部终端 (' + totalRealConns + ')');
+      const opts = ['<option value="ALL"' + (curDev === 'ALL' ? ' selected' : '') + '>' + allLabel + '</option>'];
       devKeys.forEach(ip => {
         const label = ip === 'LOCAL' ? '本机网关' : ip;
         opts.push('<option value="' + esc(ip) + '"' + (curDev === ip ? ' selected' : '') + '>' + esc(label) + ' (' + countsByIp[ip] + ' 条)</option>');
       });
       devSel.innerHTML = opts.join('');
     }
+    const totalRealConns = Math.max(allNormalized.length, Number(mock.connections) || 0);
+    const setHeroConns = $('#settings-hero-stat-conns');
+    if (setHeroConns && !state.backendOffline) setHeroConns.textContent = String(totalRealConns) + ' 条';
     const q = (state.connSearch || '').trim().toLowerCase();
     const devF = state.connDeviceFilter || 'ALL';
     const list = allNormalized.filter(item => {
@@ -2373,7 +2393,7 @@
     });
     const connStat = $('#conn-stat-count');
     if (connStat) {
-      connStat.textContent = (devF !== 'ALL' || q) ? (list.length + ' / ' + (allNormalized.length || mock.connections)) : String(allNormalized.length || mock.connections);
+      connStat.textContent = (devF !== 'ALL' || q) ? (list.length + ' / ' + totalRealConns) : String(totalRealConns);
     }
     const tbody = $('#connections-tbody');
     if (!tbody) return;
@@ -2482,7 +2502,9 @@
       callRouterApi('/api/clash/connections', 'GET').then(res => {
         if (res && Array.isArray(res.connections)) {
           state.rawConnections = res.connections;
-          mock.connections = res.connections.length;
+          mock.connections = typeof res.total === 'number' ? res.total : res.connections.length;
+          mock.connsDisplayed = res.connections.length;
+          mock.connsTruncated = Boolean(res.truncated) || (mock.connections > res.connections.length);
           renderConnectionsSection();
         }
       });
@@ -2533,9 +2555,11 @@
         ? state.galaxyLanDevices
         : state.insightDevices.map(d => ({ ip: d.ip || '', name: d.name || d.ip, down_rate: 0, up_rate: 0, conns: 0, totalMb: d.totalMb || 0, is_remote: false }));
       const sortedDevs = devs.slice().sort((a, b) => ((Number(b.down_rate || 0) + Number(b.up_rate || 0)) - (Number(a.down_rate || 0) + Number(a.up_rate || 0))) || ((b.conns || 0) - (a.conns || 0)));
+      const totalOnlineDevs = (Number(mock.devicesTotal) > 0) ? Number(mock.devicesTotal) : sortedDevs.length;
       const maxConns = (Number(mock.conntrackMax) > 0) ? Number(mock.conntrackMax) : 65536;
+      const conntrackCur = (Number(mock.conntrackCount) > 0) ? Number(mock.conntrackCount) : Number(mock.connections || 0);
       const maxMemMib = (Number(mock.memTotalMib) > 0) ? Number(mock.memTotalMib) : 1024;
-      const rawConnPct = (Number(mock.connections) / maxConns) * 100;
+      const rawConnPct = (conntrackCur / maxConns) * 100;
       const connPct = (!state.backendOffline && Number.isFinite(rawConnPct)) ? Math.min(100, Math.max(0, rawConnPct)) : null;
       const rawMemPct = (Number(mock.coreMemMib) / maxMemMib) * 100;
       const memPct = (!state.backendOffline && Number.isFinite(rawMemPct)) ? Math.min(100, Math.max(0, rawMemPct)) : null;
@@ -2555,14 +2579,14 @@
 
       return spotlightHtml +
         '<div class="galaxy-kpi-grid">' +
-          '<div class="galaxy-kpi-card"><span>在线终端总数</span><b style="color:var(--cyan)">' + esc(sortedDevs.length) + ' 台</b><small>含局域网与回家远程终端</small></div>' +
-          '<div class="galaxy-kpi-card"><span>活跃连接总计</span><b style="color:var(--violet)">' + esc(mock.connections) + '</b><small>内核运行: ' + esc(mock.uptimeStr) + '</small></div>' +
+          '<div class="galaxy-kpi-card"><span>在线终端总数</span><b style="color:var(--cyan)">' + esc(totalOnlineDevs) + ' 台</b><small>' + (sortedDevs.length < totalOnlineDevs ? ('星图采样 Top ' + esc(sortedDevs.length) + ' 活跃终端') : '含局域网与回家远程终端') + '</small></div>' +
+          '<div class="galaxy-kpi-card"><span>代理活跃会话</span><b style="color:var(--violet)">' + esc(mock.connections) + '</b><small>内核运行: ' + esc(mock.uptimeStr) + '</small></div>' +
           '<div class="galaxy-kpi-card"><span>实时总下行</span><b style="color:var(--mint)">' + esc(mock.downText) + '</b><small>累计下载 ' + esc(mock.inTotalText) + '</small></div>' +
           '<div class="galaxy-kpi-card"><span>实时总上行</span><b style="color:var(--amber)">' + esc(mock.upText) + '</b><small>累计上传 ' + esc(mock.outTotalText) + '</small></div>' +
         '</div>' +
         '<div class="galaxy-waterline-box">' +
           '<div class="galaxy-waterline-row">' +
-            '<div class="galaxy-waterline-top"><span>内核连接池水位</span><b>' + (connPct !== null ? (esc(mock.connections) + ' / ' + esc(maxConns) + ' (' + esc(connPct.toFixed(2)) + '%)') : '--') + '</b></div>' +
+            '<div class="galaxy-waterline-top"><span>内核连接池水位 (nf_conntrack)</span><b>' + (connPct !== null ? (esc(conntrackCur) + ' / ' + esc(maxConns) + ' (' + esc(connPct.toFixed(2)) + '%)') : '--') + '</b></div>' +
             '<div class="galaxy-waterline-bar"><i style="width:' + (connPct !== null ? Math.max(4, connPct) : 0) + '%"></i></div>' +
           '</div>' +
           '<div class="galaxy-waterline-row">' +
@@ -2570,7 +2594,7 @@
             '<div class="galaxy-waterline-bar"><i style="width:' + (memPct !== null ? Math.max(6, memPct) : 0) + '%"></i></div>' +
           '</div>' +
         '</div>' +
-        '<div class="galaxy-list-head"><b>接入终端列表 (按实时速率排序)</b><span>共 ' + esc(sortedDevs.length) + ' 台</span></div>' +
+        '<div class="galaxy-list-head"><b>接入终端列表 (按实时速率排序)</b><span>' + (sortedDevs.length < totalOnlineDevs ? ('活跃 Top ' + esc(sortedDevs.length) + ' / 共 ' + esc(totalOnlineDevs) + ' 台') : ('共 ' + esc(totalOnlineDevs) + ' 台')) + '</span></div>' +
         '<div class="galaxy-entity-list">' + (rowsHtml || '<div class="empty-state"><h4>暂无活跃局域网终端</h4></div>') + '</div>';
     }
 
@@ -2990,6 +3014,7 @@
               google_region_label: n.google_region_label || '',
               gemini_supported: n.gemini_supported !== false,
               region_blocked: Boolean(n.region_blocked),
+              l7_degraded: Boolean(n.l7_degraded || n.l7_degraded_fallback),
               svc: (n.svc && typeof n.svc === 'object') ? n.svc : {},
               sparkline: Array.isArray(n.sparkline) ? n.sparkline : []
             };
@@ -3106,6 +3131,9 @@
                   return null;
                 })(),
                 current_google_region: a.current_google_region || '',
+                l7_degraded: Boolean(a.l7_degraded || a.l7_degraded_fallback),
+                pool_degraded_alert: Boolean(a.pool_degraded_alert),
+                degraded_reason: a.degraded_reason || '',
                 selection_explain: a.selection_explain || '',
                 missing_members: Array.isArray(a.missing_members) ? a.missing_members : [],
                 filters: (a.filters && typeof a.filters === 'object') ? a.filters : null,
@@ -3202,12 +3230,12 @@
           if (dt.remote_upstream) state.remoteUpstream = dt.remote_upstream;
 
           const realRulesCnt = s24.total_loaded_rules != null ? Number(s24.total_loaded_rules) : (shd.total_rules != null ? Number(shd.total_rules) : null);
-          if (realRulesCnt != null && realRulesCnt > 0) mock.dnsRulesCount = realRulesCnt;
+          if (realRulesCnt != null && realRulesCnt >= 0) mock.dnsRulesCount = realRulesCnt;
           if (s24.blocked_queries != null) mock.blockedTotal = Number(s24.blocked_queries);
           if (s24.dns_layer_blocks != null) mock.dnsLayerCount = Number(s24.dns_layer_blocks);
           if (s24.route_reject_blocks != null) mock.rejectLayerCount = Number(s24.route_reject_blocks);
           if (s24.blocked_pct != null) mock.dnsBlockedPct = Number(s24.blocked_pct);
-          if (s24.avg_resolve_ms != null) mock.dnsAvgMs = Number(s24.avg_resolve_ms);
+          mock.dnsAvgMs = (s24.avg_resolve_ms != null && Number(s24.avg_resolve_ms) >= 0) ? Number(s24.avg_resolve_ms) : null;
 
           const topDom = s24.top_blocked_domains || dt.top_blocked_domains || shd.top_blocked_domains;
           if (Array.isArray(topDom)) {
@@ -3224,6 +3252,7 @@
           }
           if (dt.filter && Array.isArray(dt.filter.lists)) {
             mock.filterLists = dt.filter.lists;
+            mock.dnsRawRuleLines = dt.filter.lists.reduce((acc, fl) => acc + (fl && fl.enabled !== false ? Number(fl.rules_count || fl.rules || 0) : 0), 0);
           }
         }
 
@@ -3231,8 +3260,27 @@
           const sm = stRes.sys_metrics;
           if (sm.os_release && $('#sys-spec-os')) $('#sys-spec-os').textContent = sm.os_release;
           if (sm.arch && $('#sys-spec-arch')) $('#sys-spec-arch').textContent = sm.arch;
+          if (sm.conntrack_count != null && Number(sm.conntrack_count) >= 0) mock.conntrackCount = Number(sm.conntrack_count);
           if (sm.conntrack_max != null && Number(sm.conntrack_max) > 0) mock.conntrackMax = Number(sm.conntrack_max);
           if (sm.mem_total_mb != null && Number(sm.mem_total_mb) > 0) mock.memTotalMib = Number(sm.mem_total_mb);
+        }
+        if (typeof stRes.srs_rulesets_count === 'number') {
+          mock.srsRulesetsCount = stRes.srs_rulesets_count;
+          if ($('#srs-rulesets-sub')) $('#srs-rulesets-sub').textContent = stRes.srs_rulesets_count + ' 组官方与自定义编译规则集';
+        }
+        if (stRes.backup_info && typeof stRes.backup_info === 'object') {
+          mock.backupInfo = stRes.backup_info;
+          if ($('#backup-status-val')) {
+            if (stRes.backup_info.verified) {
+              const dtStr = stRes.backup_info.mtime ? new Date(stRes.backup_info.mtime * 1000).toLocaleString('zh-CN', { hour12: false }) : '已验证';
+              $('#backup-status-val').textContent = '已验证 (' + (stRes.backup_info.file_count || 1) + ' 项 · ' + dtStr + ')';
+            } else {
+              $('#backup-status-val').textContent = '尚未生成持久化备份 · 点击上方导出创建';
+            }
+          }
+        }
+        if (typeof stRes.data_age_ms === 'number') {
+          mock.statusDataAgeMs = stRes.data_age_ms;
         }
 
         if (stRes.overview_telemetry) {
@@ -3376,6 +3424,14 @@
         mock.downText = '--';
         mock.upText = '--';
         mock.connections = '--';
+        mock.conntrackCount = 0;
+        mock.devicesTotal = 0;
+        mock.devicesActive = 0;
+        mock.dnsRulesCount = null;
+        mock.dnsRawRuleLines = null;
+        mock.dnsAvgMs = null;
+        mock.dnsLayerCount = 0;
+        mock.rejectLayerCount = 0;
         mock.healthScore = '--';
         mock.coreMemMib = '--';
         mock.blockedTotal = '--';
@@ -4536,6 +4592,28 @@
 
         if (res && res.ok !== false) {
           okCount++;
+          const nowSyncTs = Math.floor(Date.now() / 1000);
+          const pad2 = v => String(v).padStart(2, '0');
+          const dNow = new Date();
+          const nowSyncStr = dNow.getFullYear() + '-' + pad2(dNow.getMonth() + 1) + '-' + pad2(dNow.getDate()) + ' ' + pad2(dNow.getHours()) + ':' + pad2(dNow.getMinutes());
+          const markSubOk = list => {
+            if (!Array.isArray(list)) return;
+            list.forEach(item => {
+              if (item && (item.id === t.id || item.name === t.name)) {
+                item.status = 'ok';
+                item.last_sync_status = 'ok';
+                item.health_status = 'ok';
+                item.last_error = '';
+                item.last_sync_ts = nowSyncTs;
+                item.last_sync_time = nowSyncStr;
+                item.sync_status_text = nowSyncStr;
+              }
+            });
+          };
+          markSubOk(mock.subscriptions);
+          if (state.rawStatus && Array.isArray(state.rawStatus.subscriptions)) markSubOk(state.rawStatus.subscriptions);
+          if (typeof window !== 'undefined' && window.__MOCK_STATUS && Array.isArray(window.__MOCK_STATUS.subscriptions)) markSubOk(window.__MOCK_STATUS.subscriptions);
+          renderSubscriptionsAndNodes();
           const impCnt = res.imported_count != null ? res.imported_count : (res.subscription && res.subscription.count != null ? res.subscription.count : '');
           const uinfo = res.userinfo || (res.subscription && res.subscription.userinfo) || null;
           let extraTraffic = '';
@@ -5456,7 +5534,7 @@
         openModal(
           'OTA 在线升级状态与确认',
           '<div class="detail-grid">' +
-            '<div><span>当前运行版本</span><b class="mono">v' + esc((res && res.current) || (state.rawStatus && state.rawStatus.version) || '2.4.1') + '</b></div>' +
+            '<div><span>当前运行版本</span><b class="mono">v' + esc((res && res.current) || (state.rawStatus && state.rawStatus.version) || '2.4.2') + '</b></div>' +
             '<div><span>升级阶段</span><b>' + esc(prog.stage || 'idle (就绪)') + '</b></div>' +
             '<div><span>进度百分比</span><b>' + esc((prog.percent != null ? prog.percent : 100) + '%') + '</b></div>' +
             '<div><span>状态说明</span><b>' + esc(prog.message || '当前无进行中的升级任务') + '</b></div>' +
@@ -6606,7 +6684,7 @@
           if (applyBtn) applyBtn.classList.remove('hidden');
           toast('发现新版本 v' + res.latest + '，可点击「立即升级」');
         } else {
-          const curVer = (res && res.current) || (state.rawStatus && state.rawStatus.version) || '2.4.1';
+          const curVer = (res && res.current) || (state.rawStatus && state.rawStatus.version) || '2.4.2';
           if (subEl) subEl.textContent = '当前已是最新版本 (v' + curVer + ' · 已校验云端清单)';
           toast('当前已是最新版本 (v' + curVer + ')');
         }
@@ -6774,7 +6852,9 @@
         const res = await callRouterApi('/api/clash/connections', 'GET');
         if (res && Array.isArray(res.connections)) {
           state.rawConnections = res.connections;
-          mock.connections = res.connections.length;
+          mock.connections = typeof res.total === 'number' ? res.total : res.connections.length;
+          mock.connsDisplayed = res.connections.length;
+          mock.connsTruncated = Boolean(res.truncated) || (mock.connections > res.connections.length);
         }
         renderConnectionsSection();
         toast('活跃连接列表已刷新');
@@ -7305,6 +7385,7 @@
               '<div class="trace-stage"><i>01</i><div><b>当前首选出口与延迟</b><span class="mono">' + esc(p.current_node || 'direct') + '</span></div><strong>' + (p.current_delay_ms > 0 ? (p.current_delay_ms + ' ms') : '直连/待测') + '</strong></div>' +
               '<div class="trace-stage"><i>02</i><div><b>候选订阅与地区范围</b><span>来源: ' + esc((p.scope_sources || ['ALL']).join(', ')) + ' · 地区: ' + esc((p.scope_countries || ['ALL']).join('/')) + '</span></div><strong>' + g1Tags.length + ' / ' + (p.target_size || 5) + ' 节点</strong></div>' +
               '<div class="trace-stage"><i>03</i><div><b>服务可用性检测策略</b><span>' + (p.service_check_enabled && p.service_checks && p.service_checks.length ? ('建池与低健康度复选时验证: ' + p.service_checks.join('/').toUpperCase()) : '纯 URL Ping 极速选优（不额外消耗应用探测流量）') + '</span></div><strong>低于 ' + (p.replenish_threshold || 2) + ' 自动复选</strong></div>' +
+              '<div class="trace-stage"><i>04</i><div><b>内核日志实时报错秒切守护</b><span>当节点池正在使用时实时监听 sing-box 内核日志，当前节点在 30s 内对 ≥2 个不同目标连续 3 次报错并经轻量复检确认失效后，即刻破除防抖锁秒切至下一健康节点</span></div><strong>秒级容灾</strong></div>' +
             '</div>',
             'AUTO NODE POOL HUD SPEC'
           );
@@ -7329,7 +7410,7 @@
           ]],
           autopool: ['自动节点池工作原理', [
             ['极简 6 步建池', '勾选订阅源与国家 -> 选择是否检测流媒体/AI服务 -> 设定池容量(1-10)与复选阈值 -> 自动选入最快节点。'],
-            ['日常省流巡检', '日常仅对池内节点做轻量 URL Ping 并自动切换至最快节点，不重复消耗重量级服务探测流量。'],
+            ['内核日志秒级容灾', '当节点池正在被使用时，实时监测 sing-box 内核当前节点运行日志，连续 3 次传输报错立即隔离并秒切至下一健康节点。'],
             ['低健康度自动复选', '当池内健康节点数跌破设定阈值（或订阅更新导致节点变动）时，自动从候选库补充合格节点。']
           ]],
           homelink: ['回家加密隧道 · 模块指南', [
@@ -7473,7 +7554,9 @@
           ]);
           if (connRes && Array.isArray(connRes.connections)) {
             state.rawConnections = connRes.connections;
-            mock.connections = connRes.connections.length;
+            mock.connections = typeof connRes.total === 'number' ? connRes.total : connRes.connections.length;
+            mock.connsDisplayed = connRes.connections.length;
+            mock.connsTruncated = Boolean(connRes.truncated) || (mock.connections > connRes.connections.length);
           }
           if (galRes && galRes.ok !== false) {
             if (Array.isArray(galRes.lan) && galRes.lan.length) state.galaxyLanDevices = galRes.lan;
