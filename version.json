@@ -1,20 +1,35 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.4.2",
-  "release_date": "2026-11-07",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.4.2",
+  "latest": "2.4.3",
+  "release_date": "2026-11-08",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.4.3",
   "highlights": [
-    "安全加固：升级后强制开启面板鉴权，信任网段仅放行 127.0.0.1/32 与 ::1/128，跨机未鉴权访问 /api/* 统一 401",
-    "桥接令牌移出 UCI 明文，改为 tmpfs 内存驻留（0600）并 3600 秒自动轮换，禁止访问日志/备份等高敏接口",
-    "自动节点池内核日志实时故障感知与秒级切换：3 秒周期监听、30 秒窗口 3 连败、目标多样性守卫、切前 1.5 秒轻量复核",
-    "单飞切换协调器 request_switch() 统一接管选择器热切并与 Clash :9090 实态回读闭环",
-    "单组节点池架构收敛 + 存量 G1/G2 自动迁移；根治死节点池 direct 乒乓振荡；全站数据真实性 D-01~D-11 闭环",
-    "字节单位统一为 KiB / MiB / GiB / TiB；仅 TCP 降级探测的节点显式渲染「L7 降级」徽章",
-    "移动端 <=720px 顶部操作按钮收敛为紧凑胶囊，底部导航保持横向单排；静态资源内容哈希 100% 对齐",
-    "延续：受控三模数据面、六页统一 Hero、11 格式订阅、手动零漂移"
+    "升版 v2.4.3：解除同版本号修包导致的 OTA 更新死锁，现网 2.4.2 设备可正常收到在线升级提示",
+    "静态资源 8 项 ?v= 指纹与真实 MD5 前 8 位 100% 对齐；gates_v101 新增第 16 项 static_assets_md5_gate 硬门禁自动拦截哈希失步",
+    "自动节点池「多线并发」调度：优选单线 / 多线并发双模式，AI·Google·Microsoft·Apple·Social 等 IP 敏感分流组自动启用单线保护",
+    "多核 CPU RPS/RFS/XPS 软中断静默均衡与 GOMAXPROCS 调优；节点切换时异步秒清 Clash 活跃连接与 conntrack 残留",
+    "节点线路识别（中转专线 / 链式落地 / 直连线路）+ 原名关键词 AND/OR 过滤 + 定量低频「带宽择优」",
+    "图形化「链式代理 (Detour)」4 层有向无环图防环，前置节点改名 / 节点池删除时级联自愈零孤儿引用",
+    "按天按小时「三维流量归因洞察」：24h/7d 趋势 + 终端 × 节点 × 目标域名三维下钻",
+    "交接包补齐 tests/ 51 项、tools/ 与完整源码树；except->pass 收敛回 8；接管手册更新至 2.4.3 基线"
   ],
   "changelog": [
+    {
+      "version": "2.4.3",
+      "date": "2026-11-08",
+      "type": "feat",
+      "title": "多线并发 + 链式代理 DAG + 三维流量洞察 + 交付闭环",
+      "items": [
+        "全量升版 2.4.3，七处版本锚点对齐，恢复 OTA 在线升级能力",
+        "P2-1 修复：index.html 全部 8 项静态资源 ?v= 与真实 MD5 前 8 位一致；gates_v101 新增 static_assets_md5_gate（16/16 PASS）",
+        "P2-2 修复：交接包完整收录 tests/（15 套套件与 12 个订阅夹具）、tools/、site/ai-link-openwrt/ 源码树",
+        "P2-3 / P3 修复：接管手册更新至 2.4.3；报告常量表述修正为 APP_VERSION / APP_BUILD / API build_revision；except->pass 回到 8",
+        "自动节点池多线并发（single_best / multi_line）+ AI 敏感分流组自动单线保护 auto_single_line_protected",
+        "多核 RPS/RFS/XPS 软中断均衡、切换秒清 conntrack；节点线路识别与关键词 AND/OR 过滤、带宽择优",
+        "链式代理 4 层 DAG 防环与删除/改名级联自愈；/api/traffic/insights 三维流量归因洞察"
+      ]
+    },
     {
       "version": "2.4.2",
       "date": "2026-11-07",
@@ -211,13 +226,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.4.2/AI-LINK-v2.4.2.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.4.3/AI-LINK-v2.4.3.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.4.2.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.4.3.tar.gz"
       ],
-      "size": 763083,
-      "md5": "21e1f1f7f0b1dd5070c599f3037171bd",
-      "sha256": "7c855ed9cb2226ce35f2d5c2378a6e22b05f4e61aa2ee6cd7123f0e06140f3ad"
+      "size": 776930,
+      "md5": "dd7baa8299f10dd59eeffd3b1299f2cd",
+      "sha256": "d26c9db0723e11ee5d824c065d125b767b27d712f23c6c9fc78989f8f038fa7f"
     }
   }
 }

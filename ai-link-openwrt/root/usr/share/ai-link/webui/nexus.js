@@ -1319,7 +1319,7 @@
             (p.l7_degraded ? '<span class="l7-degraded-badge" title="L7 语义校验降级保底">L7 降级</span>' : '') + '<span class="' + pillCls + '" style="flex-shrink:0">' + esc(shortPillTxt) + '</span>' +
           '</div>' +
           '<div class="hud-pool-mid">' +
-            '<strong class="hud-pool-node mono" style="color:' + (isDirectPool ? 'var(--amber)' : 'var(--cyan)') + '" title="当前出口：' + esc(curNode) + ' · 池内 ' + g1Tags.length + ' 个候选">' + esc(curNode) + ' <small style="color:var(--text-3);font-weight:400">· ' + g1Tags.length + ' 候选</small></strong>' +
+            '<strong class="hud-pool-node mono" style="color:' + (isDirectPool ? 'var(--amber)' : 'var(--cyan)') + '" title="当前出口：' + esc(curNode) + ' · 池内 ' + g1Tags.length + ' 个候选">' + esc(curNode) + ' <small style="color:var(--text-3);font-weight:400">· ' + g1Tags.length + ' 候选' + (p.dispatch_mode === 'multi_line' ? (' · 多线并发(' + Math.max(2, Number(p.active_lines_count || g1Tags.length || 2)) + '线)') : '') + (p.bandwidth_prefer ? ' · 带宽择优' : '') + '</small></strong>' +
             '<span style="flex-shrink:0">' + latBadgeCompact + '</span>' +
           '</div>' +
           '<div class="hud-pool-foot">' +
@@ -2034,7 +2034,7 @@
       const dpmLabel = state.dataPlaneMode === 'tun_full'
         ? '全量 TUN 虚拟网卡 (ailink0)'
         : (state.dataPlaneMode === 'tproxy_tcp_tun_udp' ? 'TCP TProxy + UDP TUN 游戏混合' : 'TProxy + Redirect 零拷贝');
-      coreSubEl.textContent = 'AI-LINK v2.4.2 · ' + dpmLabel;
+      coreSubEl.textContent = 'AI-LINK v2.4.3 · ' + dpmLabel;
     }
     setSwitchState($('#toggle-require-lan-auth'), state.authEnabled);
     setSwitchState($('#toggle-ops-entry-bypass'), state.entryBypass);
@@ -3015,6 +3015,12 @@
               gemini_supported: n.gemini_supported !== false,
               region_blocked: Boolean(n.region_blocked),
               l7_degraded: Boolean(n.l7_degraded || n.l7_degraded_fallback),
+              line_type: n.line_type || 'direct_line',
+              line_badge: n.line_badge || '直连线路',
+              is_relay: Boolean(n.is_relay),
+              is_chained: Boolean(n.is_chained),
+              detour_target: n.detour_target || n.detour || n.detour_pool_id || '',
+              bandwidth_mbps: Number(n.bandwidth_mbps || 0),
               svc: (n.svc && typeof n.svc === 'object') ? n.svc : {},
               sparkline: Array.isArray(n.sparkline) ? n.sparkline : []
             };
@@ -3131,6 +3137,17 @@
                   return null;
                 })(),
                 current_google_region: a.current_google_region || '',
+                dispatch_mode: a.dispatch_mode || 'single_best',
+                multi_line_nodes: Array.isArray(a.multi_line_nodes) ? a.multi_line_nodes : [],
+                active_lines_count: Number(a.active_lines_count || 1),
+                multi_line_locked: Boolean(a.multi_line_locked),
+                multi_line_locked_reason: a.multi_line_locked_reason || '',
+                bandwidth_prefer: Boolean(a.bandwidth_prefer),
+                bandwidth_interval_h: Number(a.bandwidth_interval_h || 6),
+                bandwidth_limit_mb: Number(a.bandwidth_limit_mb || 16),
+                estimated_daily_bw_mib: Number(a.estimated_daily_bw_mib || 0),
+                keyword_filter: a.keyword_filter || '',
+                keyword_mode: a.keyword_mode || 'OR',
                 l7_degraded: Boolean(a.l7_degraded || a.l7_degraded_fallback),
                 pool_degraded_alert: Boolean(a.pool_degraded_alert),
                 degraded_reason: a.degraded_reason || '',
@@ -3161,6 +3178,11 @@
                 country: g.country || 'JP',
                 manual_node: g.manual_node || '',
                 resolved_node: resolvedN,
+                dispatch_mode: g.dispatch_mode || (boundP && boundP.dispatch_mode) || 'single_best',
+                multi_line_nodes: Array.isArray(g.multi_line_nodes) ? g.multi_line_nodes : ((boundP && boundP.multi_line_nodes) || []),
+                active_lines_count: Number(g.active_lines_count || (boundP && boundP.active_lines_count) || 1),
+                auto_single_line_protected: Boolean(g.auto_single_line_protected),
+                ip_sensitive: Boolean(g.ip_sensitive || ['AI','AI_Assistant','Google','Microsoft','Apple','Apple_Microsoft','Social','Social_Media','Custom_Soul','Custom_Copilot','Custom_WorkBuddy'].includes(g.id)),
                 strict_lock: Boolean(g.strict_lock),
                 manual_drifted: Boolean(g.manual_drifted),
                 strict_locked_dead: Boolean(g.strict_locked_dead),
@@ -3666,9 +3688,9 @@
     openModal(
       '节点详情与编辑 · ' + n.name,
       '<div class="detail-grid">' +
-        '<div><span>标注所属地区</span><b>' + esc((COUNTRY_META[n.region] && COUNTRY_META[n.region].name) || n.region) + '</b></div>' +
+        '<div><span>线路属性识别</span><b>' + esc(n.line_badge || '直连线路') + (n.detour_target ? (' (前置: ' + esc(n.detour_target) + ')') : '') + '</b></div>' +
         '<div><span>Google 视角地区 (301 TLD)</span><b>' + renderGoogleRegionBadgeHtml(n, true) + '</b></div>' +
-        '<div><span>稳定身份指纹 (node_key)</span><b class="mono">' + esc(n.node_key || n.id || '—') + '</b></div>' +
+        '<div><span>实测带宽 / 稳定指纹</span><b class="mono">' + (n.bandwidth_mbps > 0 ? (n.bandwidth_mbps + ' Mbps · ') : '') + esc((n.node_key || n.id || '—').slice(0, 12)) + '</b></div>' +
         '<div><span>实测延迟 / 评分</span><b>' + formatLatencyText(n.rtt, false) + ' · ' + (n.score != null && n.rtt > 0 ? n.score + ' 分' : '待评估') + '</b></div>' +
       '</div>' +
       qrHtml +
@@ -3683,6 +3705,10 @@
           '<div class="modal-field"><label>服务器地址</label><input id="mdl-edit-node-server" value="' + esc(n.server || '') + '" placeholder="server.example.com"></div>' +
           '<div class="modal-field"><label>端口</label><input id="mdl-edit-node-port" type="number" value="' + esc(n.server_port || 443) + '"></div>' +
         '</div>' +
+        '<div class="modal-field"><label>链式代理前置中转 (可选：为静态住宅 IP 绑定前置自动节点池)</label><select id="mdl-edit-node-detour" aria-label="链式代理前置中转">' +
+          '<option value="">不使用前置中转 (直接连接此节点)</option>' +
+          (mock.autoPools || []).map(ap => '<option value="' + esc(ap.id) + '" ' + (n.detour_target === ap.id || n.detour_target === ap.tag ? 'selected' : '') + '>前置自动池：' + esc(ap.name) + ' (' + esc(ap.id) + ')</option>').join('') +
+        '</select></div>' +
         (shareUri ? '<div class="modal-field"><label>标准节点分享 URI（点击全选复制）</label><input id="mdl-node-share-uri" class="mono" value="' + esc(shareUri) + '" readonly onclick="this.select()"></div>' : '') +
       '</div>' +
       '<div class="button-row" style="margin-top:14px">' +
@@ -3696,7 +3722,8 @@
         const region_override = ($('#mdl-edit-node-region') && $('#mdl-edit-node-region').value) || n.region;
         const server = ($('#mdl-edit-node-server') && $('#mdl-edit-node-server').value.trim()) || n.server;
         const server_port = Number(($('#mdl-edit-node-port') && $('#mdl-edit-node-port').value) || n.server_port || 443);
-        const patch = { new_tag, region_override };
+        const detour_pool_id = ($('#mdl-edit-node-detour') && $('#mdl-edit-node-detour').value) || '';
+        const patch = { new_tag, region_override, detour_pool_id, detour: detour_pool_id };
         if (server) patch.server = server;
         if (server_port) patch.server_port = server_port;
         await callRouterApi('/api/nodes/update', 'POST', { tag: n.tag || n.name, node_id: n.id, patch });
@@ -3706,6 +3733,106 @@
       },
       '保存节点修改'
     );
+  }
+
+
+  function openChainedProxyModal() {
+    const poolOpts = (mock.autoPools || []).map(ap =>
+      '<option value="' + esc(ap.id) + '">前置自动节点池：' + esc(ap.name) + ' (' + esc(ap.id) + ')</option>'
+    ).join('');
+    const nodeOpts = (mock.nodes || []).filter(n => !n.is_chained).slice(0, 30).map(n =>
+      '<option value="' + esc(n.tag || n.name) + '">前置单节点：' + esc(cleanNodeDisplayName(n.name)) + '</option>'
+    ).join('');
+    openModal(
+      '配置链式代理落地节点 (Chained Proxy / Detour)',
+      '<div class="modal-form">' +
+        '<div class="syntax-guide"><b>链式代理工作流：</b>将自购的海外静态住宅 IP（Socks5 / HTTP / VLESS 等）设为最终落地节点，并选择任意<b>自动节点池</b>或<b>高速专线节点</b>作为前置中转跳板，自动生成无环路的 sing-box <code>detour</code> 级联链路。</div>' +
+        '<div class="modal-grid-3">' +
+          '<div class="modal-field"><label>落地节点名称</label><input id="mdl-ch-tag" placeholder="如：美国静态住宅-ISP-01" aria-label="落地节点名称"></div>' +
+          '<div class="modal-field"><label>落地协议类型</label><select id="mdl-ch-type" aria-label="落地协议类型"><option value="socks">Socks5 (住宅静态IP常用)</option><option value="http">HTTP / HTTPS 代理</option><option value="vless">VLESS</option><option value="trojan">Trojan</option><option value="shadowsocks">Shadowsocks</option></select></div>' +
+          '<div class="modal-field"><label>落地国家/地区</label><select id="mdl-ch-region" aria-label="落地国家地区">' +
+            COUNTRY_CODES.map(c => '<option value="' + esc(c) + '">' + esc(COUNTRY_META[c].flag + ' ' + COUNTRY_META[c].name) + '</option>').join('') +
+          '</select></div>' +
+        '</div>' +
+        '<div class="modal-grid-3">' +
+          '<div class="modal-field"><label>落地服务器 IP / 域名</label><input id="mdl-ch-server" class="mono" placeholder="198.51.100.88" aria-label="落地服务器地址"></div>' +
+          '<div class="modal-field"><label>端口</label><input id="mdl-ch-port" type="number" value="1080" aria-label="落地端口"></div>' +
+          '<div class="modal-field"><label>前置中转跳板 (自动节点池 / 节点)</label><select id="mdl-ch-detour-pool" aria-label="前置中转跳板">' + poolOpts + nodeOpts + '</select></div>' +
+        '</div>' +
+        '<div class="modal-grid-2">' +
+          '<div class="modal-field"><label>账号 / 用户名 (Socks5/HTTP 可选)</label><input id="mdl-ch-user" class="mono" placeholder="username" aria-label="代理用户名"></div>' +
+          '<div class="modal-field"><label>密码 / UUID</label><input id="mdl-ch-pass" class="mono" placeholder="password 或 UUID" aria-label="代理密码或UUID"></div>' +
+        '</div>' +
+      '</div>',
+      'CHAINED PROXY BUILDER',
+      async () => {
+        const tag = ($('#mdl-ch-tag') && $('#mdl-ch-tag').value.trim()) || 'Chained-ISP-Node';
+        const type = ($('#mdl-ch-type') && $('#mdl-ch-type').value) || 'socks';
+        const region_override = ($('#mdl-ch-region') && $('#mdl-ch-region').value) || 'US';
+        const server = ($('#mdl-ch-server') && $('#mdl-ch-server').value.trim()) || '';
+        const server_port = Number(($('#mdl-ch-port') && $('#mdl-ch-port').value) || 1080);
+        const detour_pool_id = ($('#mdl-ch-detour-pool') && $('#mdl-ch-detour-pool').value) || 'auto_ai';
+        const username = ($('#mdl-ch-user') && $('#mdl-ch-user').value.trim()) || '';
+        const password = ($('#mdl-ch-pass') && $('#mdl-ch-pass').value.trim()) || '';
+        if (!server) { toast('请填写落地服务器地址', 'warn'); return; }
+        const res = await callRouterApi('/api/nodes/chained_create', 'POST', {
+          tag, type, region_override, server, server_port, username, password, uuid: password, detour_pool_id
+        });
+        if (res && res.ok !== false) {
+          closeModal();
+          toast(res.message || ('已创建链式落地节点：' + tag));
+          await syncBackendStatus(true, true);
+        }
+      },
+      '创建链式落地节点'
+    );
+  }
+
+  async function openTrafficInsightsModal(includeDirect) {
+    const incDir = Boolean(includeDirect);
+    const buildGridHtml = (data) => {
+      const devs = Array.isArray(data.by_device) ? data.by_device : [];
+      const nodes = Array.isArray(data.by_node) ? data.by_node : [];
+      const doms = Array.isArray(data.by_domain) ? data.by_domain : [];
+      return (
+        '<div class="glass-card" style="padding:10px"><h4 style="margin:0 0 8px;font-size:13px">01 / 终端设备耗流排行</h4>' +
+          (devs.slice(0, 5).map(d => '<div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid var(--line)"><span>' + esc(d.name || d.ip) + '</span><b class="mono">' + esc(d.total_human || ((d.total_mb || 0) + ' MiB')) + '</b></div>').join('') || '<div class="muted" style="font-size:12px">暂无活跃终端流量</div>') +
+        '</div>' +
+        '<div class="glass-card" style="padding:10px"><h4 style="margin:0 0 8px;font-size:13px">02 / 出站节点耗流排行</h4>' +
+          (nodes.slice(0, 5).map(n => '<div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid var(--line)"><span>' + esc(cleanNodeDisplayName(n.node)) + ' <small style="color:var(--muted)">[' + esc(n.line_badge || '直连') + ']</small></span><b class="mono">' + esc(n.total_human || ((n.total_mb || 0) + ' MiB')) + '</b></div>').join('') || '<div class="muted" style="font-size:12px">暂无节点统计</div>') +
+        '</div>' +
+        '<div class="glass-card" style="padding:10px"><h4 style="margin:0 0 8px;font-size:13px">03 / 目标域名耗流排行</h4>' +
+          (doms.slice(0, 5).map(dm => '<div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid var(--line)"><span class="mono">' + esc(dm.domain) + '</span><b class="mono">' + esc(dm.total_human || ((dm.total_mb || 0) + ' MiB')) + '</b></div>').join('') || '<div class="muted" style="font-size:12px">暂无域名统计</div>') +
+        '</div>'
+      );
+    };
+    const initData = state.lastTrafficInsights || { hourly_series: [], daily_series: [], by_device: [], by_node: [], by_domain: [] };
+    openModal(
+      '按天/按小时三维流量归因洞察 (终端 × 节点 × 目标域名)',
+      '<div class="ov-insight-modal-wrap modal-form" style="gap:12px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">' +
+          '<span style="color:var(--muted);font-size:12px">实时聚合 24 小时与 7 天流量趋势，支持下钻定位高耗流终端、出站节点与目标域名</span>' +
+          '<label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:12px">' +
+            '<input type="checkbox" id="chk-ti-include-direct" ' + (incDir ? 'checked' : '') + ' aria-label="包含国内直连流量">' +
+            '<span>统计包含国内直连 (DIRECT) 流量</span>' +
+          '</label>' +
+        '</div>' +
+        '<div id="mdl-ti-3d-grid" class="modal-grid-3" style="gap:10px">' + buildGridHtml(initData) + '</div>' +
+      '</div>',
+      '3D TRAFFIC ATTRIBUTION INSIGHTS'
+    );
+    const chkDir = $('#chk-ti-include-direct');
+    if (chkDir) {
+      chkDir.addEventListener('change', () => {
+        openTrafficInsightsModal(chkDir.checked);
+      });
+    }
+    const res = await callRouterApi('/api/traffic/insights?include_direct=' + (incDir ? '1' : '0'), 'GET');
+    if (res && res.ok !== false) {
+      state.lastTrafficInsights = res;
+      const gEl = $('#mdl-ti-3d-grid');
+      if (gEl) gEl.innerHTML = buildGridHtml(res);
+    }
   }
 
   function openRestoreBackupModal() {
@@ -3856,6 +3983,14 @@
     let poolMode = !p ? 'ping_only' : ((p.pool_mode === 'ping_only' || p.service_check_enabled === false || p.mode === 'semi') ? 'ping_only' : 'service_check');
     let targetSize = Math.max(1, Math.min(10, Number((p && p.target_size) || (initPoolTags.length || 5))));
     let replenishThresh = Math.max(1, Math.min(targetSize, Number((p && p.replenish_threshold != null) ? p.replenish_threshold : Math.max(1, Math.ceil(targetSize / 2)))));
+    let dispatchMode = (p && p.dispatch_mode === 'multi_line') ? 'multi_line' : 'single_best';
+    let bwPrefer = Boolean(p && p.bandwidth_prefer);
+    let bwIntervalH = Number((p && p.bandwidth_interval_h) || 6);
+    let bwLimitMb = Number((p && p.bandwidth_limit_mb) || 16);
+    let keywordFilter = String((p && p.keyword_filter) || '');
+    let keywordMode = (p && p.keyword_mode === 'AND') ? 'AND' : 'OR';
+    const IP_SENSITIVE_SVCS = new Set(['gemini', 'chatgpt', 'openai', 'claude']);
+    const isFixedAiPoolId = Boolean(p && ['auto_ai', 'auto_soul'].includes(p.id));
 
     const SERVICE_OPTIONS = [
       { id: 'gemini', name: 'Google Gemini (真实 301/地域校验)' },
@@ -3924,13 +4059,20 @@
           '<div id="mdl-an-source-checks" class="an-source-grid"></div>' +
         '</div>' +
 
-        /* Step 3: Multi-Select Countries / Regions */
+        /* Step 3: Multi-Select Countries / Regions + Original Name Keyword Filter */
         '<div class="an-wizard-step">' +
           '<div class="an-wizard-step-head">' +
-            '<span class="an-wizard-step-title">3. 勾选国家/地区区域（支持多选）</span>' +
+            '<span class="an-wizard-step-title">3. 勾选国家/地区区域与原名关键词过滤（支持多选）</span>' +
             '<span class="an-wizard-step-sub" id="mdl-an-country-summary">已匹配候选节点数实时统计</span>' +
           '</div>' +
           '<div id="mdl-an-country-chips" class="region-chips"></div>' +
+          '<div class="input-row" style="margin-top:6px;gap:8px">' +
+            '<input id="mdl-an-keywords" value="' + esc(keywordFilter) + '" placeholder="可选：按原节点名关键词筛选（如 IEPL, 专线, 家宽，逗号分隔）" aria-label="原节点名关键词筛选">' +
+            '<select id="mdl-an-kw-mode" style="max-width:160px" aria-label="关键词匹配逻辑">' +
+              '<option value="OR" ' + (keywordMode === 'OR' ? 'selected' : '') + '>OR 命中任一关键词</option>' +
+              '<option value="AND" ' + (keywordMode === 'AND' ? 'selected' : '') + '>AND 同时满足全部</option>' +
+            '</select>' +
+          '</div>' +
         '</div>' +
 
         /* Step 4: Service Availability Detection Toggle & Options */
@@ -3961,11 +4103,11 @@
           '</div>' +
         '</div>' +
 
-        /* Step 5: Target Node Count (1-10) & Low-Health Auto-Replenish Threshold (1-10) */
+        /* Step 5: Target Node Count (1-10), Replenish Threshold, Multi-Line Concurrency & Bandwidth Preference */
         '<div class="an-wizard-step">' +
           '<div class="an-wizard-step-head">' +
-            '<span class="an-wizard-step-title">5. 设定节点数量 (1~10) 与低健康度自动复选阈值</span>' +
-            '<span class="an-wizard-step-sub">当池内健康节点数低于阈值（含订阅更新导致）时，自动按上述条件复选补齐</span>' +
+            '<span class="an-wizard-step-title">5. 设定节点容量、出站调度模式（优选单线 / 多线并发）与带宽择优</span>' +
+            '<span class="an-wizard-step-sub" id="mdl-an-dispatch-guard-hint">系统根据所选目标服务自动启用防风控互斥保护</span>' +
           '</div>' +
           '<div class="modal-grid-2" style="gap:10px">' +
             '<div class="modal-field" style="margin:0">' +
@@ -3975,6 +4117,35 @@
             '<div class="modal-field" style="margin:0">' +
               '<label>健康节点数量低于多少时自动复选 (1 ~ 10 个)</label>' +
               '<select id="mdl-an-replenish-thresh">' + numOptionsHtml(targetSize, replenishThresh) + '</select>' +
+            '</div>' +
+          '</div>' +
+          '<div class="modal-grid-2" style="gap:8px;margin-top:6px">' +
+            '<button type="button" class="route-mode ' + (dispatchMode === 'single_best' ? 'active' : '') + '" data-an-dispatch="single_best" id="btn-an-dispatch-single" style="text-align:left;padding:8px 12px">' +
+              '<b>优选单线（默认 · 账号防风控）</b>' +
+              '<p style="margin-top:2px">全流量锚定池内最快单节点，适合 AI 助手 / 社交 / 跨境账号。</p>' +
+            '</button>' +
+            '<button type="button" class="route-mode ' + (dispatchMode === 'multi_line' ? 'active' : '') + '" data-an-dispatch="multi_line" id="btn-an-dispatch-multi" style="text-align:left;padding:8px 12px">' +
+              '<b id="lbl-an-dispatch-multi">多线并发（池内健康节点叠加吞吐）</b>' +
+              '<p style="margin-top:2px" id="sub-an-dispatch-multi">多连接并发分摊至池内各健康节点，适合 YouTube 8K / 流媒体 / 高速下载。</p>' +
+            '</button>' +
+          '</div>' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding-top:4px">' +
+            '<label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">' +
+              '<input type="checkbox" id="mdl-an-bw-prefer" ' + (bwPrefer ? 'checked' : '') + '>' +
+              '<span>启用低频定量<b>带宽择优</b>（同延迟优先选高下行带宽节点）</span>' +
+            '</label>' +
+            '<div id="mdl-an-bw-opts" class="' + (bwPrefer ? '' : 'hidden') + '" style="display:' + (bwPrefer ? 'inline-flex' : 'none') + ';align-items:center;gap:6px;flex-wrap:wrap">' +
+              '<select id="mdl-an-bw-interval" style="padding:0 8px" aria-label="带宽测试周期">' +
+                '<option value="6" ' + (bwIntervalH === 6 ? 'selected' : '') + '>每 6 小时</option>' +
+                '<option value="12" ' + (bwIntervalH === 12 ? 'selected' : '') + '>每 12 小时</option>' +
+                '<option value="24" ' + (bwIntervalH === 24 ? 'selected' : '') + '>每 24 小时</option>' +
+              '</select>' +
+              '<select id="mdl-an-bw-limit" style="padding:0 8px" aria-label="单次测速上限">' +
+                '<option value="8" ' + (bwLimitMb === 8 ? 'selected' : '') + '>上限 8 MiB</option>' +
+                '<option value="16" ' + (bwLimitMb === 16 ? 'selected' : '') + '>上限 16 MiB</option>' +
+                '<option value="32" ' + (bwLimitMb === 32 ? 'selected' : '') + '>上限 32 MiB</option>' +
+              '</select>' +
+              '<span class="status-pill mono" id="mdl-an-bw-est">预计日耗 ~64 MiB</span>' +
             '</div>' +
           '</div>' +
         '</div>' +
@@ -4042,6 +4213,12 @@
           scope_countries: ctryArr.length ? ctryArr : ['ALL'],
           target_size: tSize,
           replenish_threshold: rThresh,
+          dispatch_mode: dispatchMode,
+          keyword_filter: ($('#mdl-an-keywords') && $('#mdl-an-keywords').value.trim()) || '',
+          keyword_mode: ($('#mdl-an-kw-mode') && $('#mdl-an-kw-mode').value) || 'OR',
+          bandwidth_prefer: Boolean($('#mdl-an-bw-prefer') && $('#mdl-an-bw-prefer').checked),
+          bandwidth_interval_h: Number(($('#mdl-an-bw-interval') && $('#mdl-an-bw-interval').value) || 6),
+          bandwidth_limit_mb: Number(($('#mdl-an-bw-limit') && $('#mdl-an-bw-limit').value) || 16),
           auto_maintain: true,
           filters: {
             enabled: true,
@@ -4214,6 +4391,8 @@
         scope_countries: ctryArr.length ? ctryArr : ['ALL'],
         target_size: targetSize,
         replenish_threshold: replenishThresh,
+        keyword_filter: ($('#mdl-an-keywords') && $('#mdl-an-keywords').value.trim()) || '',
+        keyword_mode: ($('#mdl-an-kw-mode') && $('#mdl-an-kw-mode').value) || 'OR',
         run_live_probe: true
       }, 30000);
 
@@ -4276,9 +4455,76 @@
       }
     }
 
+    function syncDispatchAndBwGuardrails() {
+      const checkedSvcs = poolMode === 'service_check' ? $$('.chk-an-svc:checked').map(el => el.value) : [];
+      const hasAiSvc = isFixedAiPoolId || checkedSvcs.some(s => IP_SENSITIVE_SVCS.has(s));
+      const btnSingle = $('#btn-an-dispatch-single');
+      const btnMulti = $('#btn-an-dispatch-multi');
+      const lblMulti = $('#lbl-an-dispatch-multi');
+      const hintEl = $('#mdl-an-dispatch-guard-hint');
+      if (hasAiSvc) {
+        dispatchMode = 'single_best';
+        if (btnMulti) {
+          btnMulti.disabled = true;
+          btnMulti.classList.remove('active');
+          btnMulti.style.opacity = '0.45';
+          btnMulti.style.cursor = 'not-allowed';
+        }
+        if (btnSingle) btnSingle.classList.add('active');
+        if (lblMulti) lblMulti.textContent = '多线并发（已自动锁定单线：AI/账号服务防跳IP）';
+        if (hintEl) hintEl.textContent = '已启用 AI/账号防风控互斥保护：自动锁定为「优选单线」';
+      } else {
+        if (btnMulti) {
+          btnMulti.disabled = false;
+          btnMulti.style.opacity = '1';
+          btnMulti.style.cursor = 'pointer';
+          btnMulti.classList.toggle('active', dispatchMode === 'multi_line');
+        }
+        if (btnSingle) btnSingle.classList.toggle('active', dispatchMode === 'single_best');
+        if (lblMulti) lblMulti.textContent = '多线并发（池内健康节点叠加吞吐）';
+        if (hintEl) {
+          hintEl.textContent = dispatchMode === 'multi_line'
+            ? '多线并发已开启：已自动屏蔽 AI 敏感服务勾选项，并要求容量 ≥ 2'
+            : '可根据业务类型切换「优选单线」或「多线并发」';
+        }
+      }
+      $$('.chk-an-svc').forEach(chk => {
+        if (IP_SENSITIVE_SVCS.has(chk.value)) {
+          if (dispatchMode === 'multi_line') {
+            chk.checked = false;
+            chk.disabled = true;
+            if (chk.parentElement) chk.parentElement.style.opacity = '0.45';
+          } else {
+            chk.disabled = false;
+            if (chk.parentElement) chk.parentElement.style.opacity = '1';
+          }
+        }
+      });
+      if (dispatchMode === 'multi_line' && targetSize < 2) {
+        targetSize = Math.max(4, targetSize);
+        const tsEl = $('#mdl-an-target-size');
+        if (tsEl) tsEl.value = String(targetSize);
+      }
+      const bwChk = $('#mdl-an-bw-prefer');
+      const bwOpts = $('#mdl-an-bw-opts');
+      const bwEst = $('#mdl-an-bw-est');
+      bwPrefer = Boolean(bwChk && bwChk.checked);
+      if (bwOpts) {
+        bwOpts.classList.toggle('hidden', !bwPrefer);
+        bwOpts.style.display = bwPrefer ? 'inline-flex' : 'none';
+      }
+      if (bwEst && bwPrefer) {
+        const iv = Number(($('#mdl-an-bw-interval') && $('#mdl-an-bw-interval').value) || 6);
+        const lim = Number(($('#mdl-an-bw-limit') && $('#mdl-an-bw-limit').value) || 16);
+        const est = Math.round((24 / Math.max(1, iv)) * lim * Math.max(1, selectedSet.size || targetSize));
+        bwEst.textContent = '预计日耗 ~' + est + ' MiB';
+      }
+    }
+
     renderSourceChecks();
     renderCountryChips();
     renderSelectedTable();
+    syncDispatchAndBwGuardrails();
 
     const builderRoot = $('#an-builder-root');
     if (builderRoot) {
@@ -4318,6 +4564,14 @@
           replenishThresh = Math.max(1, Math.min(targetSize, Number(ev.target.value || 1)));
           return;
         }
+        if (ev.target.classList.contains('chk-an-svc') || ev.target.id === 'mdl-an-bw-prefer' || ev.target.id === 'mdl-an-bw-interval' || ev.target.id === 'mdl-an-bw-limit') {
+          syncDispatchAndBwGuardrails();
+          return;
+        }
+        if (ev.target.id === 'mdl-an-keywords' || ev.target.id === 'mdl-an-kw-mode') {
+          renderCountryChips();
+          return;
+        }
       });
 
       builderRoot.addEventListener('click', ev => {
@@ -4349,6 +4603,16 @@
             svcPanel.classList.toggle('hidden', poolMode !== 'service_check');
             svcPanel.style.display = poolMode === 'service_check' ? 'flex' : 'none';
           }
+          syncDispatchAndBwGuardrails();
+          renderSelectedTable();
+          return;
+        }
+        const dispBtn = ev.target.closest('[data-an-dispatch]');
+        if (dispBtn && !dispBtn.disabled) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          dispatchMode = dispBtn.dataset.anDispatch || 'single_best';
+          syncDispatchAndBwGuardrails();
           renderSelectedTable();
           return;
         }
@@ -5534,7 +5798,7 @@
         openModal(
           'OTA 在线升级状态与确认',
           '<div class="detail-grid">' +
-            '<div><span>当前运行版本</span><b class="mono">v' + esc((res && res.current) || (state.rawStatus && state.rawStatus.version) || '2.4.2') + '</b></div>' +
+            '<div><span>当前运行版本</span><b class="mono">v' + esc((res && res.current) || (state.rawStatus && state.rawStatus.version) || '2.4.3') + '</b></div>' +
             '<div><span>升级阶段</span><b>' + esc(prog.stage || 'idle (就绪)') + '</b></div>' +
             '<div><span>进度百分比</span><b>' + esc((prog.percent != null ? prog.percent : 100) + '%') + '</b></div>' +
             '<div><span>状态说明</span><b>' + esc(prog.message || '当前无进行中的升级任务') + '</b></div>' +
@@ -5563,7 +5827,7 @@
             '<div id="mdl-parse-preview-box" class="trace-inline-box hidden"></div>' +
             '<div class="modal-grid-3">' +
               '<div class="modal-field"><label>节点名称 (tag)</label><input id="mdl-addnode-tag" placeholder="如：新加坡-自建-01"></div>' +
-              '<div class="modal-field"><label>协议类型</label><select id="mdl-addnode-type"><option value="vless">VLESS</option><option value="hysteria2">Hysteria2</option><option value="tuic">TUIC v5</option><option value="trojan">Trojan</option><option value="shadowsocks">Shadowsocks</option><option value="vmess">VMess</option></select></div>' +
+              '<div class="modal-field"><label>协议类型</label><select id="mdl-addnode-type"><option value="vless">VLESS</option><option value="hysteria2">Hysteria2</option><option value="tuic">TUIC v5</option><option value="trojan">Trojan</option><option value="shadowsocks">Shadowsocks</option><option value="vmess">VMess</option><option value="socks">Socks5 (住宅静态IP)</option><option value="http">HTTP (住宅代理)</option></select></div>' +
               '<div class="modal-field"><label>所属地区</label><select id="mdl-addnode-region">' +
                 COUNTRY_CODES.map(c => '<option value="' + esc(c) + '">' + esc(COUNTRY_META[c].flag + ' ' + COUNTRY_META[c].name) + '</option>').join('') +
               '</select></div>' +
@@ -5574,9 +5838,11 @@
               '<div class="modal-field"><label>UUID / 密码</label><input id="mdl-addnode-secret" class="mono" placeholder="UUID 或密码"></div>' +
             '</div>' +
             '<div class="modal-grid-3">' +
-              '<div class="modal-field"><label>TLS SNI</label><input id="mdl-addnode-sni" class="mono" placeholder="www.microsoft.com"></div>' +
+              '<div class="modal-field"><label>TLS SNI / Socks 账号</label><input id="mdl-addnode-sni" class="mono" placeholder="SNI 或 Socks5 用户名"></div>' +
               '<div class="modal-field"><label>Reality PublicKey (pbk)</label><input id="mdl-addnode-pbk" class="mono" placeholder="可选"></div>' +
-              '<div class="modal-field"><label>Reality ShortId (sid)</label><input id="mdl-addnode-sid" class="mono" placeholder="可选"></div>' +
+              '<div class="modal-field"><label>链式代理前置节点池 (可选)</label><select id="mdl-addnode-detour" aria-label="链式代理前置节点池"><option value="">直连入网 (不挂前置)</option>' +
+                (mock.autoPools || []).map(ap => '<option value="' + esc(ap.id) + '">前置池：' + esc(ap.name) + '</option>').join('') +
+              '</select></div>' +
             '</div>' +
           '</div>',
           'MANUAL NODE BUILDER',
@@ -5601,7 +5867,8 @@
               return;
             }
             if (!server) { toast('请填写服务器地址或粘贴分享链接', 'warn'); return; }
-            const payload = { tag: tag || (region_override + '-' + type.toUpperCase() + '-' + server), type, server, server_port, region_override, uuid: secret, password: secret, sni, public_key: pbk, short_id: sid };
+            const detour_pool_id = ($('#mdl-addnode-detour') && $('#mdl-addnode-detour').value) || '';
+            const payload = { tag: tag || (region_override + '-' + type.toUpperCase() + '-' + server), type, server, server_port, region_override, uuid: secret, password: secret, username: (type === 'socks' || type === 'http') ? sni : '', sni: (type === 'socks' || type === 'http') ? '' : sni, public_key: pbk, short_id: sid, detour_pool_id, detour: detour_pool_id };
             const res = await callRouterApi('/api/nodes/add', 'POST', payload);
             if (res && res.ok !== false) {
               closeModal();
@@ -6498,6 +6765,12 @@
       case 'new-sub':
         openNewSubscriptionModal(null);
         break;
+      case 'open-chained-node-modal':
+        openChainedProxyModal();
+        break;
+      case 'open-traffic-insights':
+        await openTrafficInsightsModal(false);
+        break;
       case 'open-schedules':
         openProbeSchedulesModal();
         break;
@@ -6684,7 +6957,7 @@
           if (applyBtn) applyBtn.classList.remove('hidden');
           toast('发现新版本 v' + res.latest + '，可点击「立即升级」');
         } else {
-          const curVer = (res && res.current) || (state.rawStatus && state.rawStatus.version) || '2.4.2';
+          const curVer = (res && res.current) || (state.rawStatus && state.rawStatus.version) || '2.4.3';
           if (subEl) subEl.textContent = '当前已是最新版本 (v' + curVer + ' · 已校验云端清单)';
           toast('当前已是最新版本 (v' + curVer + ')');
         }
@@ -7186,9 +7459,13 @@
         if (!g) return;
         const gid = g.id;
         const initMode = g.shunt_mode || 'auto';
+        const isGrpIpSens = Boolean(g.ip_sensitive || ['AI','AI_Assistant','Google','Microsoft','Apple','Apple_Microsoft','Social','Social_Media','Custom_Soul','Custom_Copilot','Custom_WorkBuddy'].includes(g.id));
         const autoOpts = mock.autoPools.map(p => {
           const pCur = (!p.current_node || p.current_node === 'direct') ? '直连/待选优' : cleanNodeDisplayName(p.current_node);
-          return '<option value="' + esc(p.id) + '" ' + (g.auto_node_id === p.id ? 'selected' : '') + '>' + esc(p.name) + ' (当前: ' + esc(pCur) + ')</option>';
+          const mlTag = p.dispatch_mode === 'multi_line'
+            ? (isGrpIpSens ? ' · 自动锁定单线防风控' : (' · 多线并发 ' + Math.max(2, Number(p.active_lines_count || 2)) + ' 线'))
+            : '';
+          return '<option value="' + esc(p.id) + '" ' + (g.auto_node_id === p.id ? 'selected' : '') + '>' + esc(p.name) + ' (当前: ' + esc(pCur) + esc(mlTag) + ')</option>';
         }).join('');
         const countryOpts = '<option value="ALL">全部国家/地区 (不过滤)</option>' + COUNTRY_CODES.map(c => '<option value="' + c + '" ' + (g.country === c ? 'selected' : '') + '>' + esc(COUNTRY_META[c].flag + ' ' + COUNTRY_META[c].name) + '</option>').join('');
         const curManualSel = (g.manual_node && !String(g.manual_node).startsWith('auto:') && g.manual_node !== 'direct') ? g.manual_node : (g.resolved_node !== 'direct' ? g.resolved_node : '');

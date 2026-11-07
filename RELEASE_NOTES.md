@@ -1,39 +1,35 @@
-# AI-LINK v2.4.2
+# AI-LINK v2.4.3
 
 > OpenWrt 智能分流网关 · sing-box 单内核 · 15 组分流 · 自动节点池 · 订阅自适应
-> 发布日期：2026-11-07 ｜ 适用：OpenWrt 23.05 / 24.10 / ImmortalWrt / LEDE（`fw4` + `nftables`）
+> 发布日期：2026-11-08 ｜ 适用：OpenWrt 23.05 / 24.10 / ImmortalWrt / LEDE（`fw4` + `nftables`）
 
 ---
 
-## 这一版：把门关严，把切换做快
+## 这一版：把上一轮的问题全部闭环，再补五个新能力
 
-### 🔒 面板鉴权与桥接令牌加固
+### 🔄 交付闭环（VERIFY-v2.4.2-r2 逐条修复）
 
-- 升级后强制 `require_lan_auth=1`，`trusted_cidr` 收紧为 `127.0.0.1/32, ::1/128`，UCI 配置文件权限 600；
-- 非本机未鉴权访问 `/api/*`（含 `/api/status`）统一返回 `HTTP 401`，不再有局域网免密可调全量 API 的窗口；
-- `luci_bridge_token` 从 `/etc/config/ai-link` 明文彻底移除，改为仅驻留 `/var/run/ai-link/luci_bridge_token.json`（`0600`），`3600s` 自动过期轮换；
-- 桥接令牌被显式拒绝访问 `/api/ops/logs`、`/api/ops/backup` 等高敏接口。
+- **升版 2.4.3**，七处版本锚点对齐，解决「同版本号修包 → 现网设备收不到 OTA 提示」的死锁；
+- `index.html` 全部 8 项静态资源 `?v=2.4.3-<hash8>` 与文件真实 MD5 前 8 位 100% 一致，`gates_v101.py` 新增第 16 项 `static_assets_md5_gate` 硬门禁；
+- 交接包完整收录 `tests/`（15 套套件 + 12 个订阅格式夹具）、`tools/`、`site/ai-link-openwrt/` 源码树与全部文档；
+- 接管手册重写至 2.4.3 基线，清除 v2.3.6 残留；`except->pass` 收敛回 8。
 
-### ⚡ 内核日志实时故障感知与秒级切换
+### ⚡ 多线并发与 AI 防风控
 
-- 对当前正在使用的自动节点池出口节点，以 3 秒周期增量监听 `sing-box.log`；
-- 30 秒滑动窗口内连续 3 次传输层/握手层报错即判死隔离 300 秒，突破 600 秒粘性冷却期**秒级热切换**至池内下一最快健康节点；
-- 目标多样性守卫（`min_distinct_targets=2`）：日志全部指向同一死站时抑制切换，避免单站宕机误判；
-- 切前 1.5 秒轻量复核确认节点失活，切换后与 Clash `:9090` 实态回读闭环；
-- `/api/status` 与 `/api/auto_nodes` 同步暴露 `kernel_log_failover` / `log_failover_guard` 可观测字段。
+- 自动节点池新增 `single_best`（优选单线）与 `multi_line`（多线并发）两种调度模式；
+- 当 `AI / Google / Microsoft / Apple / Social / Soul / Copilot / WorkBuddy` 等 IP 敏感分流组绑定多线并发池时，后端自动启用 `auto_single_line_protected=True` 锚定单主节点，流媒体组仍保持多线并发；
+- 池内健康节点 4→3→1→0→补满全周期零振荡、零死锁，0 健康时稳定回退 direct 不把死节点塞回并发列表。
 
-### 🧩 单组节点池收敛与数据真实性
+### 🕸 链式代理 4 层 DAG 与线路识别
 
-- 后端单组节点池彻底收敛，存量 `G1 + G2` 自动迁移（`single_group_migrated=true`）；
-- 根治死节点池 `direct` 乒乓振荡，`/var/run/ai-link/auto_pool_runtime.json` 内存态冷却持久化；
-- 全站数据真实性 D-01 ~ D-11 闭环，字节单位统一为 `KiB / MiB / GiB / TiB`；
-- 仅完成 TCP 降级探测的节点显式渲染黄色「L7 降级」徽章。
+- 构建严格 4 层有向无环图（Shunt Selector → Chained Node → Auto-Pool Selector → Physical Transit Node），自动剥离环路；
+- 前置节点改名或节点池删除时 `reconcile_node_references` 级联迁移 `detour`，零孤儿引用；
+- 自动识别「中转专线 / 链式落地 / 直连线路」，向导支持原名关键词 `AND / OR` 过滤与定量低频「带宽择优」。
 
-### 📱 移动端与工程细节
+### 📊 三维流量归因洞察与底层调优
 
-- `<=720px` 顶部操作按钮收敛为紧凑胶囊，底部导航保持横向单排滚动；
-- 裸 `except Exception` 收敛为具体异常元组并计入内部诊断（`except Exception` 141 处 / `except->pass` 8 处）；
-- `index.html` 中 `nexus.css` / `nexus.js` / `nexus3d.js` 的 `?v=2.4.2-<hash8>` 与文件真实 MD5 前 8 位严格一致。
+- 新增 `/api/traffic/insights`：24h / 7d 趋势 + 终端 × 节点 × 目标域名三维下钻；
+- 多核 CPU `RPS / RFS / XPS` 软中断静默均衡与 `GOMAXPROCS` 调优；节点切换时异步秒清 Clash 活跃连接与内核 `conntrack` 表项。
 
 ---
 
@@ -53,14 +49,15 @@ curl -fsSL https://ai-link-official.pages.dev/upgrade.sh | sh
 
 - 订阅为网页/HTML 或 Token 失效时无法解析，需要更新链接；
 - 500+ 节点规模下 `quick_create` 首次约 1 秒；
-- 面板默认仅信任本机回环，需从局域网其他设备访问时请自行配置令牌或可信网段。
+- 面板默认仅信任本机回环，需从局域网其他设备访问时请自行配置令牌或可信网段；
+- 本轮交接包中 `run_all.py` 列出的 `v242_deep_chaos_simulation.py` 未随包交付，该套件无法在验收侧复现（不影响产品功能）。
 
 ---
 
 ## 包指纹
 
 ```
-AI-LINK-v2.4.2.tar.gz   763,083 B
-md5     21e1f1f7f0b1dd5070c599f3037171bd
-sha256  7c855ed9cb2226ce35f2d5c2378a6e22b05f4e61aa2ee6cd7123f0e06140f3ad
+AI-LINK-v2.4.3.tar.gz   776,930 B
+md5     dd7baa8299f10dd59eeffd3b1299f2cd
+sha256  d26c9db0723e11ee5d824c065d125b767b27d712f23c6c9fc78989f8f038fa7f
 ```

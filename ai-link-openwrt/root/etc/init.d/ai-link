@@ -77,6 +77,37 @@ restore_resolv_conf_local() {
 	fi
 }
 
+optimize_multicore_rps() {
+	local ncpu mask qcnt rps_q xps_q flow_per_q
+	ncpu=$(grep -c '^processor' /proc/cpuinfo 2>/dev/null || echo 1)
+	[ "${ncpu:-1}" -le 1 ] && return 0
+	if [ "$ncpu" -ge 32 ]; then
+		mask="ffffffff"
+	else
+		mask=$(printf '%x' $(( (1 << ncpu) - 1 )) 2>/dev/null || echo "f")
+	fi
+	sysctl -w net.core.rps_sock_flow_entries=32768 >/dev/null 2>&1 || true
+	qcnt=0
+	for rps_q in /sys/class/net/*/queues/rx-*; do
+		[ -d "$rps_q" ] || continue
+		case "$rps_q" in */lo/*) continue ;; esac
+		qcnt=$((qcnt + 1))
+	done
+	flow_per_q=$(( 32768 / (qcnt > 0 ? qcnt : 1) ))
+	[ "$flow_per_q" -lt 1024 ] && flow_per_q=1024
+	for rps_q in /sys/class/net/*/queues/rx-*; do
+		[ -d "$rps_q" ] || continue
+		case "$rps_q" in */lo/*) continue ;; esac
+		echo "$mask" > "$rps_q/rps_cpus" 2>/dev/null || true
+		echo "$flow_per_q" > "$rps_q/rps_flow_cnt" 2>/dev/null || true
+	done
+	for xps_q in /sys/class/net/*/queues/tx-*; do
+		[ -d "$xps_q" ] || continue
+		case "$xps_q" in */lo/*) continue ;; esac
+		echo "$mask" > "$xps_q/xps_cpus" 2>/dev/null || true
+	done
+}
+
 setup_tun_and_routing() {
 	modprobe nft_tproxy 2>/dev/null || true
 	modprobe nft_socket 2>/dev/null || true
@@ -97,6 +128,7 @@ setup_tun_and_routing() {
 		sysctl -n net.netfilter.nf_conntrack_tcp_be_liberal > "$RUN_DIR/sysctl_orig/be_liberal" 2>/dev/null || echo 0 > "$RUN_DIR/sysctl_orig/be_liberal"
 	fi
 	sysctl -w net.netfilter.nf_conntrack_tcp_be_liberal=1 >/dev/null 2>&1 || true
+	optimize_multicore_rps
 
 	while ip rule del fwmark $FWMARK table $TABLE_ID 2>/dev/null; do :; done
 	ip route flush table $TABLE_ID 2>/dev/null || true
@@ -373,6 +405,7 @@ start_service() {
 		procd_open_instance "ai-link-core"
 		procd_set_param command "$sb_bin" run -c "$CONF_DIR/sing-box.json" -D "$CONF_DIR"
 		procd_set_param respawn 0 5 0
+		procd_set_param env GOMAXPROCS="$(grep -c '^processor' /proc/cpuinfo 2>/dev/null || echo 4)"
 		procd_set_param limits nofile="65535 65535"
 		procd_set_param stdout 1
 		procd_set_param stderr 1

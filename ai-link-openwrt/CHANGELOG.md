@@ -1,3 +1,11 @@
+## v2.4.3 (2026-11-08)
+
+- **自动节点池「多线并发」与交互级 AI 防风控护栏**：节点池新增优选单线 (`single_best`) 与多线并发 (`multi_line`) 调度模式；勾选 AI 敏感服务时前端自动锁定单线，且当 `AI/Google/Microsoft/Apple/Social/Soul` 等 IP 敏感分流组绑定至多线并发池时后端自动启用单线保护 (`auto_single_line_protected=True`)。
+- **底层静默多核 CPU RPS/RFS/XPS 软中断均衡与切换秒清残留连接**：`init.d/ai-link` 与守护进程启动时静默完成多核网卡队列软中断绑定与 `GOMAXPROCS` 调优；`request_switch()` 切换节点与断开连接时异步秒清 Clash 活跃连接与内核 `conntrack` 表项。
+- **节点中转/链式识别、原名关键词 AND/OR 过滤与定量「带宽择优」**：自动识别 `中转专线` / `链式落地` / `直连线路`；向导支持原名关键词 `AND/OR` 过滤与可选定量低频「带宽择优」及单节点即时带宽探针。
+- **图形化「链式代理 (Detour)」4 层无环拓扑与级联自愈**：支持将静态住宅 IP 落地节点绑定任意自动节点池或单节点作为前置中转，严格构建 4 层有向无环图 (DAG)，并支持前置节点改名或节点池删除时自动级联迁移。
+- **按天/按小时「三维流量归因洞察」与 `VERIFY-v2.4.2-r2.md` 全量闭环**：新增 `/api/traffic/insights`（24h/7d 趋势 + 终端 × 节点 × 域名三维下钻），新增 `index.html` 8 项静态资源 `?v=` MD5 强校验门禁与 `v242_deep_chaos_simulation.py` 11 项混沌自测（全量 15 套自动化测试 100% 通过）。
+
 ## [v2.4.2] - 2026-11-05
 ### 新增与优化 (Added & Optimized)
 - **自动节点池内核日志实时故障感知与秒级切换引擎 (`scan_kernel_logs_for_active_pool_failures`)**：针对当前正在被分流组或全局自动模式使用的自动节点池出口节点，以 3 秒周期增量监听 `sing-box.log` 实时运行日志；当活跃节点在 30 秒滑动窗口内连续出现 3 次传输层/握手层报错（`i/o timeout`、`connection refused`、`handshake failed`、`context deadline exceeded`、`EOF` 等）时，无需等待定时巡检即可立即将该节点判死隔离（300 秒）、突破 600 秒粘性冷却期秒级热切换至池内下一最快健康节点，并自动触发低健康度补位与切换日志记录。

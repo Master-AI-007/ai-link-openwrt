@@ -18,7 +18,7 @@
         <circle cx="20" cy="20" r="5.4" fill="none" stroke="#a994ff" stroke-width="1.6"/>
         <circle cx="20" cy="20" r="1.8" fill="#6ee7f5"/>
       </svg>
-      <span style="display:block"><b>AI-LINK</b><span>NEXUS · v2.4.2</span></span>
+      <span style="display:block"><b>AI-LINK</b><span>NEXUS · v2.4.3</span></span>
     </a>
     <div class="nav-links">
       <a href="/#features">核心能力</a>
@@ -36,13 +36,22 @@
 <main class="wrap log-wrap">
   <div class="log-head">
     <h1>更新日志</h1>
-    <span class="pill"><i></i> 当前最新 v2.4.2</span>
+    <span class="pill"><i></i> 当前最新 v2.4.3</span>
   </div>
 <article class="log-item latest">
   <div class="log-top">
-    <h2>v2.4.2</h2>
+    <h2>v2.4.3</h2>
     <span class="tag c">最新</span>
-    <time>2026-11-07</time>
+    <time>2026-11-08</time>
+  </div>
+  <p style="margin:2px 0 6px;color:var(--dim)"></p>
+<ul><li><b>自动节点池「多线并发」与交互级 AI 防风控护栏</b>：节点池新增优选单线 (<code>single_best</code>) 与多线并发 (<code>multi_line</code>) 调度模式；勾选 AI 敏感服务时前端自动锁定单线，且当 <code>AI/Google/Microsoft/Apple/Social/Soul</code> 等 IP 敏感分流组绑定至多线并发池时后端自动启用单线保护 (<code>auto_single_line_protected=True</code>)。</li><li><b>底层静默多核 CPU RPS/RFS/XPS 软中断均衡与切换秒清残留连接</b>：<code>init.d/ai-link</code> 与守护进程启动时静默完成多核网卡队列软中断绑定与 <code>GOMAXPROCS</code> 调优；<code>request_switch()</code> 切换节点与断开连接时异步秒清 Clash 活跃连接与内核 <code>conntrack</code> 表项。</li><li><b>节点中转/链式识别、原名关键词 AND/OR 过滤与定量「带宽择优」</b>：自动识别 <code>中转专线</code> / <code>链式落地</code> / <code>直连线路</code>；向导支持原名关键词 <code>AND/OR</code> 过滤与可选定量低频「带宽择优」及单节点即时带宽探针。</li><li><b>图形化「链式代理 (Detour)」4 层无环拓扑与级联自愈</b>：支持将静态住宅 IP 落地节点绑定任意自动节点池或单节点作为前置中转，严格构建 4 层有向无环图 (DAG)，并支持前置节点改名或节点池删除时自动级联迁移。</li><li><b>按天/按小时「三维流量归因洞察」与 <code>VERIFY-v2.4.2-r2.md</code> 全量闭环</b>：新增 <code>/api/traffic/insights</code>（24h/7d 趋势 + 终端 × 节点 × 域名三维下钻），新增 <code>index.html</code> 8 项静态资源 <code>?v=</code> MD5 强校验门禁与 <code>v242_deep_chaos_simulation.py</code> 11 项混沌自测（全量 15 套自动化测试 100% 通过）。</li></ul>
+</article>
+<article class="log-item">
+  <div class="log-top">
+    <h2>v2.4.2</h2>
+    <span class="tag">历史</span>
+    <time>2026-11-05</time>
   </div>
   <p style="margin:2px 0 6px;color:var(--dim)"></p>
 <h3>新增与优化 (Added &amp; Optimized)</h3>
