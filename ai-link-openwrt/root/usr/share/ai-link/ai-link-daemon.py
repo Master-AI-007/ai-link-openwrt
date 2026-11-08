@@ -5847,6 +5847,24 @@ def get_auto_node_candidate_pool(an: dict, conf_dir: Path = CONF_DIR,
     groups = normalize_auto_node_groups(an, saved_nodes=saved_nodes, subs_list=subs_list, store=store, conf_dir=conf_dir, auto_seed_if_empty=True)
     by_id = {(n.get("node_id") or compute_node_id(n)): n for n in saved_nodes}
     by_tag = {n.get("tag", ""): n for n in saved_nodes}
+    _cp_sources = an.get("scope_sources") if isinstance(an.get("scope_sources"), list) and an.get("scope_sources") else None
+    _cp_source = str(an.get("scope_source") or (an.get("filters") or {}).get("sub_id") or "ALL").strip() or "ALL"
+    _cp_countries = an.get("scope_countries") if isinstance(an.get("scope_countries"), list) and an.get("scope_countries") else ((an.get("filters") or {}).get("region_any") or ["ALL"])
+    _cp_kw = str(an.get("keyword_filter") or "").strip()
+    _cp_has_scope = bool(
+        (_cp_sources and _cp_sources != ["ALL"])
+        or (_cp_source and _cp_source.upper() != "ALL")
+        or (_cp_countries and [str(c).upper() for c in _cp_countries] != ["ALL"])
+        or _cp_kw
+    )
+    _cp_in_scope_tags = None
+    if _cp_has_scope:
+        _cp_scoped = _filter_nodes_by_pool_scope(
+            saved_nodes, subs_list, scope_source=_cp_source, scope_countries=_cp_countries,
+            conf_dir=conf_dir, scope_sources=_cp_sources, keyword_filter=_cp_kw,
+            keyword_mode=str(an.get("keyword_mode") or "OR"), exclude_chained_for_pool=str(an.get("id") or ""),
+        )
+        _cp_in_scope_tags = {n_s.get("tag", "") for n_s in _cp_scoped if isinstance(n_s, dict) and n_s.get("tag")}
     out = []
     seen = set()
     for g in groups:
@@ -5860,6 +5878,8 @@ def get_auto_node_candidate_pool(an: dict, conf_dir: Path = CONF_DIR,
             if not ev["selectable"] or ev["node_id"] in seen:
                 continue
             tag_s = n_obj.get("tag", "")
+            if _cp_in_scope_tags is not None and tag_s not in _cp_in_scope_tags:
+                continue
             rec_raw = store.get(ev["node_id"]) or store.get(tag_s) or {}
             g_reg_info = get_node_google_region_info(n_obj, rec_raw)
             if is_ai_or_google_pool and g_reg_info["google_region"] in UNSUPPORTED_AI_REGIONS:
@@ -5894,7 +5914,8 @@ def get_auto_node_candidate_pool(an: dict, conf_dir: Path = CONF_DIR,
 def _filter_nodes_by_pool_scope(saved_nodes: list, subs_list: list, scope_source = "ALL",
                                 scope_countries: list = None, conf_dir: Path = CONF_DIR,
                                 scope_sources: list = None, keyword_filter: str = "",
-                                keyword_mode: str = "OR", exclude_chained_for_pool: str = "") -> list:
+                                keyword_mode: str = "OR", exclude_chained_for_pool: str = "",
+                                exclude_regex: str = "", protocol_any: list = None) -> list:
     """v2.3.5: Filters enabled candidate nodes by multi-select subscription/custom scope (`ALL` or list of `<sub_id>` / `custom`) and multi-select country/region scope."""
     if isinstance(scope_sources, list) and scope_sources:
         src_list = [str(x).strip() for x in scope_sources if str(x).strip()]
@@ -5961,6 +5982,18 @@ def _filter_nodes_by_pool_scope(saved_nodes: list, subs_list: list, scope_source
                 else:
                     if not any(k in hay for k in kws):
                         continue
+        if exclude_regex and str(exclude_regex).strip():
+            try:
+                if re.search(str(exclude_regex).strip(), tag, re.I):
+                    continue
+            except re.error as _e_re:
+                _record_internal_diag(_e_re)
+        if isinstance(protocol_any, list) and protocol_any:
+            p_reqs = [str(p).strip().lower() for p in protocol_any if str(p).strip()]
+            if p_reqs:
+                n_proto = str(n.get("type") or n.get("protocol") or "").strip().lower()
+                if not any(pr in n_proto for pr in p_reqs):
+                    continue
         out.append(n)
     return out
 
@@ -6270,7 +6303,12 @@ def maintain_auto_node_pool_health(an: dict, saved_nodes: list = None, store: di
     target_size = max(1, min(10, int(an.get("target_size") or 10)))
     is_svc_mode = (an.get("pool_mode") == "service_check" or bool(an.get("service_check_enabled")) or an.get("mode") == "full")
     svc_checks = [str(s).strip().lower() for s in (an.get("service_checks") or []) if str(s).strip()] if is_svc_mode else []
-    need_ai_region = is_svc_mode and any(s in ("gemini", "chatgpt", "openai", "claude", "ai") for s in svc_checks)
+    _svc_logic_top = "any" if (an.get("service_logic") == "any" or an.get("match_mode") == "any") else "all"
+    _ai_s_set = {"gemini", "chatgpt", "openai", "claude", "ai"}
+    need_ai_region = is_svc_mode and (
+        (_svc_logic_top == "all" and any(s in _ai_s_set for s in svc_checks))
+        or (_svc_logic_top == "any" and bool(svc_checks) and all(s in _ai_s_set for s in svc_checks))
+    )
 
     scope_sources = an.get("scope_sources") if isinstance(an.get("scope_sources"), list) and an.get("scope_sources") else None
     scope_source = str(an.get("scope_source") or (an.get("filters") or {}).get("sub_id") or "ALL").strip() or "ALL"
@@ -6344,6 +6382,15 @@ def maintain_auto_node_pool_health(an: dict, saved_nodes: list = None, store: di
         return False
     clash_up = _is_local_port_listening(9090)
     can_real_reg = (_is_local_port_listening(7890) or bool(os.environ.get("AI_LINK_GOOGLE_PROBE_URL")))
+    if allow_live_l7_probe and clash_up and cands:
+        unprobed_in_scope = [
+            n_obj.get("tag", "") for n_obj in cands
+            if n_obj.get("tag") and int((store.get(n_obj.get("node_id") or compute_node_id(n_obj)) or store.get(n_obj.get("tag", "")) or {}).get("probe_ts") or 0) <= 0
+        ]
+        if unprobed_in_scope:
+            url_ping_batch_nodes(tags_or_ids=unprobed_in_scope[:12], timeout_ms=2200, concurrency=6, conf_dir=conf_dir)
+            store = load_node_probe_store(conf_dir)
+    _svc_logic_c = "any" if (an.get("service_logic") == "any" or an.get("match_mode") == "any") else "all"
     scored_cands = []
     for n_obj in cands:
         t = n_obj.get("tag", "")
@@ -6371,12 +6418,16 @@ def maintain_auto_node_pool_health(an: dict, saved_nodes: list = None, store: di
                 g_reg = get_node_google_region_info(n_obj, rec)
                 if need_ai_region and g_reg["region_blocked"]:
                     continue
-            any_explicit_fail = any(
-                isinstance(rec_svc.get(sid), dict) and rec_svc[sid].get("ok") is False and "HTTP_204_NOT_IN_" not in str(rec_svc[sid].get("reason") or "")
-                for sid in svc_checks
-            )
-            if any_explicit_fail:
-                continue
+            _tested_c = [
+                rec_svc.get(sid) for sid in svc_checks
+                if isinstance(rec_svc.get(sid), dict) and "HTTP_204_NOT_IN_" not in str(rec_svc.get(sid).get("reason") or "")
+            ]
+            if _svc_logic_c == "any":
+                if _tested_c and not any(x.get("ok") is True for x in _tested_c) and all(x.get("ok") is False for x in _tested_c):
+                    continue
+            else:
+                if any(x.get("ok") is False for x in _tested_c):
+                    continue
         if n_obj.get("is_chained") or n_obj.get("detour") or n_obj.get("detour_pool_id"):
             continue
         bw_m = float(rec.get("bandwidth_mbps") or 0.0)
@@ -6397,9 +6448,19 @@ def maintain_auto_node_pool_health(an: dict, saved_nodes: list = None, store: di
     new_g1_tags.sort(key=lambda t: (delay_lookup.get(t, 9999), t))
     new_g1_tags = new_g1_tags[:target_size]
 
-    if len(new_g1_tags) < rep_thresh:
+    # WAN Blackout Anti-Wipeout Guard: if ALL in-scope candidates are temporarily unreachable (new_g1_tags is empty),
+    # evict any out-of-scope/deleted nodes from cur_tags while preserving valid in-scope members so the pool never self-wipes!
+    in_scope_cur_tags = [
+        t for t in cur_tags
+        if t in in_scope_tag_set and t in by_tag and not by_tag[t].get("disabled") and is_node_subscription_enabled(by_tag[t], subs_list=subs_list, conf_dir=conf_dir)
+    ]
+    if not new_g1_tags and in_scope_cur_tags:
+        new_g1_tags = in_scope_cur_tags[:target_size]
+
+    healthy_after_cnt = len(scored_cands) if scored_cands else len(surviving_tags)
+    if min(len(new_g1_tags), healthy_after_cnt) < rep_thresh:
         an["pool_degraded_alert"] = True
-        an["degraded_reason"] = f"池内健康节点 ({len(new_g1_tags)}/{target_size}) 低于补位阈值 {rep_thresh}"
+        an["degraded_reason"] = f"池内健康节点 ({min(len(new_g1_tags), healthy_after_cnt)}/{target_size}) 低于补位阈值 {rep_thresh}"
     else:
         an["pool_degraded_alert"] = False
         an["degraded_reason"] = ""
@@ -6458,6 +6519,24 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
                     c_url = (all_services_map.get(sid) or {}).get("url", "")
                     probe_node_service_l7(ev0["node_id"], sid, custom_url=c_url, timeout_ms=timeout_ms, conf_dir=conf_dir)
         store = load_node_probe_store(conf_dir)
+    _ev_sources = an.get("scope_sources") if isinstance(an.get("scope_sources"), list) and an.get("scope_sources") else None
+    _ev_source = str(an.get("scope_source") or (an.get("filters") or {}).get("sub_id") or "ALL").strip() or "ALL"
+    _ev_countries = an.get("scope_countries") if isinstance(an.get("scope_countries"), list) and an.get("scope_countries") else ((an.get("filters") or {}).get("region_any") or ["ALL"])
+    _ev_kw = str(an.get("keyword_filter") or "").strip()
+    _ev_has_scope = bool(
+        (_ev_sources and _ev_sources != ["ALL"])
+        or (_ev_source and _ev_source.upper() != "ALL")
+        or (_ev_countries and [str(c).upper() for c in _ev_countries] != ["ALL"])
+        or _ev_kw
+    )
+    _ev_in_scope_tags = None
+    if _ev_has_scope:
+        _ev_scoped = _filter_nodes_by_pool_scope(
+            saved_nodes, subs_list, scope_source=_ev_source, scope_countries=_ev_countries,
+            conf_dir=conf_dir, scope_sources=_ev_sources, keyword_filter=_ev_kw,
+            keyword_mode=str(an.get("keyword_mode") or "OR"), exclude_chained_for_pool=str(an.get("id") or ""),
+        )
+        _ev_in_scope_tags = {n_s.get("tag", "") for n_s in _ev_scoped if isinstance(n_s, dict) and n_s.get("tag")}
     qualified_by_group = {}
     pending_by_group = {}
     all_ok_tags = []
@@ -6532,14 +6611,17 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
             google_reg = g_reg_info["google_region"]
             pool_id_l = str(an.get("id") or "").lower()
             pool_name_l = str(an.get("name") or "").lower()
+            _ai_set_ev = {"gemini", "chatgpt", "openai", "claude", "ai"}
             is_ai_or_google_pool = (
                 "ai" in pool_id_l or "ai" in pool_name_l or "gemini" in pool_name_l
-                or any(s in ("gemini", "chatgpt", "openai", "claude") for s in svc_ids)
+                or (svc_logic == "all" and any(s in _ai_set_ev for s in svc_ids))
+                or (svc_logic == "any" and bool(svc_ids) and all(s in _ai_set_ev for s in svc_ids))
             )
             node_region_blocked = bool(is_ai_or_google_pool and google_reg in UNSUPPORTED_AI_REGIONS)
             if node_region_blocked:
                 svc_passed = False
                 svc_verified = False
+            out_of_scope_member = bool(_ev_in_scope_tags is not None and t not in _ev_in_scope_tags)
 
             quarantine_until = int(rec_raw.get("quarantine_until") or 0)
             in_quarantine = bool(quarantine_until > now_sec or int(sc_info.get("consecutive_fail") or 0) >= 3)
@@ -6551,6 +6633,7 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
                 score_passed = False
             is_qual_ok = bool(
                 ev["selectable"]
+                and not out_of_scope_member
                 and ev["state"] == "ok"
                 and ev["delay_ms"] > 0
                 and svc_passed
@@ -6883,6 +6966,13 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
         an["multi_line_nodes"] = [chosen["tag"]] if chosen.get("tag") and chosen["tag"] != "direct" else []
         an["multi_line_filtered_slow_count"] = 0
         an["active_lines_count"] = len(an["multi_line_nodes"])
+    _ml_set_now = set(an.get("multi_line_nodes") or [])
+    _pri_tag_now = str(an.get("current_node") or "")
+    for _grp_m in (an.get("groups") or []):
+        for _mem in (_grp_m.get("members") or []):
+            if isinstance(_mem, dict):
+                _mem["is_primary_egress"] = (_mem.get("tag") == _pri_tag_now)
+                _mem["in_multi_line"] = (_mem.get("tag") in _ml_set_now)
     _set_auto_pool_runtime_state(conf_dir, an.get("id", ""), {
         "multi_line_nodes": list(an["multi_line_nodes"]),
         "active_lines_count": int(an["active_lines_count"]),
@@ -7608,16 +7698,29 @@ def get_auto_node_replace_candidates(an_id: str, target_node_id_or_tag: str, con
     )
     cands = []
     fallback_cands = []
+    now_rep_ts = int(time.time())
+    _rep_svc_ids = [str(s).strip().lower() for s in (target_an.get("service_checks") or []) if str(s).strip()]
+    _rep_need_ai = (
+        "ai" in str(target_an.get("id") or "").lower()
+        or "ai" in str(target_an.get("name") or "").lower()
+        or any(s in ("gemini", "chatgpt", "openai", "claude", "ai") for s in _rep_svc_ids)
+    )
     for n in scoped_replace_nodes:
         nid = n.get("node_id") or compute_node_id(n)
         t = n.get("tag", "")
         if nid in pool_ids or t in pool_tags or nid == target_node_id_or_tag or t == target_node_id_or_tag:
             continue
         c_code = classify_node_country_5plus1(t, n)
+        rec_r = store.get(nid) or store.get(t) or {}
+        if int(rec_r.get("quarantine_until") or 0) > now_rep_ts or int(rec_r.get("consecutive_fail") or 0) >= 3:
+            continue
+        g_reg_r = get_node_google_region_info(n, rec_r)
+        if _rep_need_ai and (g_reg_r.get("region_blocked") or c_code in UNSUPPORTED_AI_REGIONS):
+            continue
         ev = evaluate_node_selectability(n, store=store, subs_list=subs_list, conf_dir=conf_dir)
         if not ev["selectable"]:
             continue
-        sc = compute_node_sliding_score(store.get(nid) or store.get(t) or {})
+        sc = compute_node_sliding_score(rec_r)
         cand_obj = {
             "node_id": nid,
             "tag": t,
@@ -24832,6 +24935,12 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 an_in_copy["tag"] = an_tag
                 an_in_copy["groups"] = norm_groups
                 new_an = _normalize_auto_node_item(an_in_copy, conf_dir=CONF_DIR)
+                if new_an.get("auto_maintain", True):
+                    _sv_src = new_an.get("scope_sources") if isinstance(new_an.get("scope_sources"), list) else ["ALL"]
+                    _sv_ctry = new_an.get("scope_countries") if isinstance(new_an.get("scope_countries"), list) else ["ALL"]
+                    if _sv_src != ["ALL"] or [str(c).upper() for c in _sv_ctry] != ["ALL"] or new_an.get("keyword_filter"):
+                        maintain_auto_node_pool_health(new_an, conf_dir=CONF_DIR, allow_live_l7_probe=False)
+                        norm_groups = new_an.get("groups") or norm_groups
                 all_new_tags = set()
                 all_new_ids = set()
                 for ng in norm_groups:

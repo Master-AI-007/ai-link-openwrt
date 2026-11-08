@@ -26,7 +26,8 @@
         "_filter_nodes_by_pool_scope 收紧单订阅通配漏洞，完善 id/url/name 交叉匹配，并在 groups 归一化/替换候选/分流解析处接入",
         "前端 openAutoNodeEditorModal 修改范围后剥离 selectedSet 越界旧节点",
         "打包侧把 tests/ 真实写入 tar 的 ai-link-openwrt/tests/ 与 zip 的 tests/、site/.../tests/；gates_v101 修正 SUITES 正则并加非空断言与开包校验",
-        "FB-251-2/3/4/5 闭环：报告指纹三行对齐、v102 断言改动态版本、下拉线数改真实值、Stage 6.21b 全文扫描"
+        "FB-251-2/3/4/5 闭环：报告指纹三行对齐、v102 断言改动态版本、下拉线数改真实值、Stage 6.21b 全文扫描",
+        "同版本热修（2026-11-09 06:53）：节点池 WAN 闪断防团灭、评估引擎与候选池实时范围硬隔离、概览并排双栏等高与波形均值基准线/空态引导、声呐底部动态 KPI；静态资源指纹同步更新。版本号未变，现网 2.5.2 设备需手动重装以获取修订包（OTA 不会提示）。"
       ]
     },
     {
@@ -301,9 +302,9 @@
       "mirrors": [
         "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.5.2.tar.gz"
       ],
-      "size": 940660,
-      "md5": "662b647a380b90d00c40c10c0e5f35d6",
-      "sha256": "f9922563137cef494e61b62bc87fdea32f38c85cc4c4cf3f02086a7dad8430d3"
+      "size": 944522,
+      "md5": "b1ace194f0834c8891a70d4222077897",
+      "sha256": "5934f97dcb5f00534071e8d6538544c962a727a54d2bf666dc75a763797e134b"
     }
   }
 }

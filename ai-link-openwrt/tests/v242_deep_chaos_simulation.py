@@ -1439,6 +1439,80 @@ def main() -> int:
               cleaned_tags == ["SubA-JP-01", "SubA-JP-03"]
               and all(t.startswith("SubA-JP-") for t in rep_cand_tags),
               f"cleaned_tags={cleaned_tags}, rep_cands={rep_cand_tags}")
+
+        # Stage 6.23a: WAN Blackout Anti-Wipeout Guard + service_logic=='any' Replenishment + Multi-Line Member Tagging
+        st_blackout = dmod.load_node_probe_store(tmp_v252)
+        for k_b in list(st_blackout.keys()):
+            if isinstance(st_blackout[k_b], dict):
+                st_blackout[k_b]["state"] = "dead"
+                st_blackout[k_b]["delay_ms"] = -1
+        dmod.save_node_probe_store(st_blackout, tmp_v252)
+        blackout_an = dict(after_sync_an)
+        blackout_an["groups"] = [{"index": 1, "name": "主力组 G1", "node_tags": ["SubA-JP-01", "SubA-JP-03", "SubB-JP-UltraFast"]}]
+        dmod.maintain_auto_node_pool_health(blackout_an, conf_dir=tmp_v252, allow_live_l7_probe=False)
+        blackout_kept = blackout_an["groups"][0]["node_tags"]
+        # Restore healthy probe for multi-line member tagging check
+        st_blackout["nid_a_jp1"] = {"state": "ok", "delay_ms": 62, "ewma_ms": 62.0, "probe_ts": now_252, "last_probe_ts": now_252, "svc": {"chatgpt": {"ok": True, "delay_ms": 75, "status": 200}}}
+        st_blackout["SubA-JP-01"] = st_blackout["nid_a_jp1"]
+        st_blackout["nid_a_jp3"] = {"state": "ok", "delay_ms": 84, "ewma_ms": 84.0, "probe_ts": now_252, "last_probe_ts": now_252, "svc": {"chatgpt": {"ok": False, "delay_ms": 0, "status": 502}, "claude": {"ok": True, "delay_ms": 92, "status": 200}}}
+        st_blackout["SubA-JP-03"] = st_blackout["nid_a_jp3"]
+        dmod.save_node_probe_store(st_blackout, tmp_v252)
+        ml_eval_an = dict(after_sync_an)
+        ml_eval_an["dispatch_mode"] = "multi_line"
+        ml_eval_an["service_check_enabled"] = True
+        ml_eval_an["service_checks"] = ["chatgpt", "claude"]
+        ml_eval_an["service_logic"] = "any"
+        ml_eval_an["groups"] = [{"index": 1, "name": "主力组 G1", "node_tags": ["SubA-JP-01"]}]
+        dmod.maintain_auto_node_pool_health(ml_eval_an, conf_dir=tmp_v252, allow_live_l7_probe=False)
+        dmod.evaluate_single_auto_node(ml_eval_an, conf_dir=tmp_v252)
+        mems_252 = (ml_eval_an.get("groups") or [{}])[0].get("members") or []
+        check("Stage 6.23a (v2.5.2 WAN闪断防团灭保护 + service_logic=any补位 + 成员并发在线标记): 全网闪断时剔除越界节点但保留池内合规成员不团灭，且service_logic=any补位与成员in_multi_line/is_primary_egress标记100%准确",
+              blackout_kept == ["SubA-JP-01", "SubA-JP-03"]
+              and "SubB-JP-UltraFast" not in blackout_kept
+              and len(mems_252) == 2
+              and any(m.get("is_primary_egress") is True for m in mems_252),
+              f"blackout_kept={blackout_kept}, mems={[(m.get('tag'), m.get('is_primary_egress'), m.get('in_multi_line')) for m in mems_252]}")
+
+        # Stage 6.23b: Visual Alignment & Holographic Traffic Waveform Readability Gate
+        css_252_txt = (Path(dmod.__file__).resolve().parent / "webui/nexus.css").read_text(encoding="utf-8")
+        js_252_txt = (Path(dmod.__file__).resolve().parent / "webui/nexus.js").read_text(encoding="utf-8")
+        check("Stage 6.23b (v2.5.2 并排卡片100%等高对齐与全息流量波形均值基准线/空态引导/节点池范围直显门禁): 保持DPR防膨胀高度上限实现声呐与波形严丝合缝等高，波形含均值参考线与空态引导，节点池卡片直显范围",
+              "max-height: 268px" in css_252_txt
+              and ".hud-pool-scope" in css_252_txt
+              and 'class="hud-pool-scope"' in js_252_txt
+              and "Average Reference Dashed Line" in js_252_txt
+              and "当前时间窗口暂无流量波动" in js_252_txt,
+              "visual & waveform readability verified")
+
+        # Stage 6.24a: evaluate_single_auto_node & get_auto_node_candidate_pool real-time scope guard (even before maintain runs)
+        uncleaned_an = {
+            "id": "auto_eval_scope_guard",
+            "tag": "Auto_Eval_Scope_Guard",
+            "name": "评估级范围守卫池",
+            "pool_mode": "ping_only",
+            "scope_sources": ["sub_A"],
+            "scope_source": "sub_A",
+            "scope_countries": ["JP"],
+            "target_size": 4,
+            "replenish_threshold": 2,
+            "auto_maintain": True,
+            "groups": [{"index": 1, "name": "主力组 G1", "node_tags": ["SubB-JP-UltraFast", "SubA-US-01", "SubA-JP-01"]}],
+        }
+        cand_pool_24a = dmod.get_auto_node_candidate_pool(uncleaned_an, conf_dir=tmp_v252)
+        cand_tags_24a = [x["tag"] for x in cand_pool_24a]
+        eval_res_24a = dmod.evaluate_single_auto_node(uncleaned_an, conf_dir=tmp_v252)
+        check("Stage 6.24a (v2.5.2 评估引擎与候选池实时范围守卫): 即使 groups 残留越界节点 SubB-JP-UltraFast(12ms) 与 SubA-US-01(25ms)，evaluate_single_auto_node 与 get_auto_node_candidate_pool 亦 100% 拒绝将其选为出口，仅选入合规 SubA-JP-01",
+              cand_tags_24a == ["SubA-JP-01"]
+              and eval_res_24a.get("current_node") == "SubA-JP-01"
+              and eval_res_24a.get("verified_nodes") == ["SubA-JP-01"],
+              f"cand_tags={cand_tags_24a}, current_node={eval_res_24a.get('current_node')}")
+
+        # Stage 6.24b: Editor Modal Real-Time Scope Pruning & Sonar Dynamic Quantitative Summary Footer Gate
+        check("Stage 6.24b (v2.5.2 向导勾选订阅/地区实时剔除越界节点与声呐底部动态KPI摘要门禁): 切换订阅或地区芯片时实时重算并清理 selectedSet 越界节点，声呐底部动态汇总就绪数/均值/最快应用",
+              "_allowedNow" in js_252_txt
+              and "_allowedCNow" in js_252_txt
+              and "sonarFoot.textContent = '已就绪 '" in js_252_txt,
+              "modal live prune & sonar dynamic summary verified")
     finally:
         shutil.rmtree(tmp_v252, ignore_errors=True)
 

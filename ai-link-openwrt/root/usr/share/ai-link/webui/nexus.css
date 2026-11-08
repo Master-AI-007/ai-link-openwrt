@@ -681,7 +681,7 @@ select { appearance: none; padding-right: 30px; background-image: linear-gradien
 .chart-legend b { margin-left: auto; color: var(--surface-tone-46); font-weight: 500; }
 .live-label { display: inline-flex; align-items: center; gap: var(--sp-1); color: var(--text-3); font-size: 12px; letter-spacing: .15em; font-weight: 400; }
 .live-label::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--mint); }
-.sonar-card { display: flex; flex-direction: column; justify-content: space-between; min-height: 410px; }
+.sonar-card { display: flex; flex-direction: column; justify-content: space-between; min-height: 410px; height: 100%; }
 .sonar-head-actions { display: inline-flex; align-items: center; gap: var(--sp-2); flex-shrink: 0; }
 .sonar-stage { position: relative; width: 340px; height: 340px; max-width: 100%; margin: var(--sp-2) auto var(--sp-2); border-radius: 50%; overflow: visible; background: radial-gradient(circle, var(--cyan-tint-20), var(--surface-tone-47) 70%); border: 1px solid var(--cyan-tint-17); box-shadow: inset 0 0 42px var(--cyan-tint-8), 0 12px 36px var(--shadow-elevation-7); }
 .sonar-rings { position: absolute; inset: 0; border-radius: 50%; overflow: hidden; background: repeating-radial-gradient(circle, transparent 0 54px, var(--cyan-tint-21) 55px 56px); }
@@ -3976,3 +3976,7 @@ small {
 .sub-autosync-btn { display: inline-flex; align-items: center; gap: var(--sp-1); padding: var(--sp-0) var(--sp-2); border-radius: var(--r-full); font-size: 11px; font-weight: 500; border: 1px solid var(--line); background: var(--surface-tone-08); color: var(--muted); cursor: pointer; transition: border-color var(--dur-2), color var(--dur-2); white-space: nowrap; }
 .sub-autosync-btn.on { color: var(--cyan); border-color: var(--cyan-tint-26); }
 .sub-autosync-btn:hover { border-color: var(--cyan); color: var(--text); }
+
+.dashboard-grid.three, .bento-settings-grid { align-items: stretch; }
+.dashboard-grid.three > .glass-card, .bento-settings-grid > .glass-card { height: 100%; display: flex; flex-direction: column; justify-content: space-between; }
+.hud-pool-scope { color: var(--text-3); font-size: var(--fs-xs); font-weight: 400; }

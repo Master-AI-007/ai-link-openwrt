@@ -18,7 +18,7 @@
         <circle cx="20" cy="20" r="5.4" fill="none" stroke="#a994ff" stroke-width="1.6"/>
         <circle cx="20" cy="20" r="1.8" fill="#6ee7f5"/>
       </svg>
-      <span style="display:block"><b>AI-LINK</b><span>NEXUS · 2.5.2</span></span>
+      <span style="display:block"><b>AI-LINK</b><span>NEXUS · v2.5.2</span></span>
     </a>
     <div class="nav-links">
       <a href="/#features">核心能力</a>
@@ -36,7 +36,7 @@
 <main class="wrap log-wrap">
   <div class="log-head">
     <h1>更新日志</h1>
-    <span class="pill"><i></i> 当前最新 2.5.2</span>
+    <span class="pill"><i></i> 当前最新 v2.5.2</span>
   </div>
 <article class="log-item latest">
   <div class="log-top">
@@ -46,7 +46,7 @@
   </div>
   <p style="margin:2px 0 6px;color:var(--dim)"></p>
 <h3>节点池订阅源/地区强约束闭环 + 测试集随包内置</h3>
-<ul><li><b>订阅同步补位按范围过滤</b>：<code>_reconcile_auto_pools_after_sub_sync</code> 补位前经 <code>_filter_nodes_by_pool_scope</code> 按池的 <code>scope_sources</code> / <code>scope_countries</code> 过滤，越界存量节点自动剔除。</li><li><b>保存归一化锁步</b>：<code>_normalize_auto_node_item</code> 每次保存强制 <code>scope_sources</code> / <code>scope_countries</code> 与 <code>filters</code>（<code>sub_id</code> / <code>region_any</code> / <code>require_services</code> / <code>replenish_threshold</code>）双向同步。</li><li><b>健康巡检只从范围内补齐</b>：<code>maintain_auto_node_pool_health</code> 入口预计算范围内集合，越界成员立即剔除。</li><li><b>范围守卫收紧</b>：<code>_filter_nodes_by_pool_scope</code> 修复单订阅通配放行漏洞，完善 <code>id</code> / <code>url</code> / <code>name</code> 交叉匹配，并在分组归一化、替换候选、分流解析三处接入。</li><li><b>前端向导剥离越界旧节点</b>：修改勾选订阅/地区后保存，自动从已选集合移除范围外节点。</li><li><b>测试集随包内置</b>：<code>tests/</code> 写入 tar 的 <code>ai-link-openwrt/tests/</code> 与 zip 的 <code>tests/</code>、<code>site/ai-link-openwrt/tests/</code>；<code>gates_v101</code> 修正 SUITES 正则、加 <code>len(suites)&gt;=14</code> 非空断言与开包校验、逐行核对报告指纹。</li><li><b>FB-251-2/3/4/5 闭环</b>：报告三行指纹对齐、v102 断言改动态版本号、下拉线数改真实值、Stage 6.21b 全文扫描。</li><li>稳定性：P0 与多线出口未退化；Design Lint 18/18、发布门禁 17/17、混沌 45/45。</li><li>遗留（不影响运行）：<code>tests/subscription_formats/</code> 夹具未随包，原始包零补发跑 <code>run_all</code> 时订阅格式套件会因缺夹具失败。</li></ul>
+<ul><li><b>订阅同步补位按范围过滤</b>：<code>_reconcile_auto_pools_after_sub_sync</code> 补位前经 <code>_filter_nodes_by_pool_scope</code> 按池的 <code>scope_sources</code> / <code>scope_countries</code> 过滤，越界存量节点自动剔除。</li><li><b>保存归一化锁步</b>：<code>_normalize_auto_node_item</code> 每次保存强制 <code>scope_sources</code> / <code>scope_countries</code> 与 <code>filters</code>（<code>sub_id</code> / <code>region_any</code> / <code>require_services</code> / <code>replenish_threshold</code>）双向同步。</li><li><b>健康巡检只从范围内补齐</b>：<code>maintain_auto_node_pool_health</code> 入口预计算范围内集合，越界成员立即剔除。</li><li><b>范围守卫收紧</b>：<code>_filter_nodes_by_pool_scope</code> 修复单订阅通配放行漏洞，完善 <code>id</code> / <code>url</code> / <code>name</code> 交叉匹配，并在分组归一化、替换候选、分流解析三处接入。</li><li><b>前端向导剥离越界旧节点</b>：修改勾选订阅/地区后保存，自动从已选集合移除范围外节点。</li><li><b>测试集随包内置</b>：<code>tests/</code> 写入 tar 的 <code>ai-link-openwrt/tests/</code> 与 zip 的 <code>tests/</code>、<code>site/ai-link-openwrt/tests/</code>；<code>gates_v101</code> 修正 SUITES 正则、加 <code>len(suites)&gt;=14</code> 非空断言与开包校验、逐行核对报告指纹。</li><li><b>FB-251-2/3/4/5 闭环</b>：报告三行指纹对齐、v102 断言改动态版本号、下拉线数改真实值、Stage 6.21b 全文扫描。</li><li>稳定性：P0 与多线出口未退化；Design Lint 18/18、发布门禁 17/17、混沌 45/45。</li><li>遗留（不影响运行）：<code>tests/subscription_formats/</code> 夹具未随包，原始包零补发跑 <code>run_all</code> 时订阅格式套件会因缺夹具失败。</li><li>同版本热修（2026-11-09 06:53）：节点池 WAN 闪断防团灭、评估引擎与候选池实时范围硬隔离、概览并排双栏等高与波形均值基准线/空态引导、声呐底部动态 KPI；静态资源指纹同步更新。版本号未变，现网 2.5.2 设备需手动重装以获取修订包（OTA 不会提示）。</li></ul>
 </article>
 <article class="log-item">
   <div class="log-top">

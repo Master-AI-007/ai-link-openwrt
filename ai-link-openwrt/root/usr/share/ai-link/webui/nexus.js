@@ -979,6 +979,20 @@
         const tUrl = s.url || '';
         return '<button type="button" class="' + cls + '" data-action="probe-service" data-service="' + esc(s.id || s.name) + '" data-selector="' + esc(selTag) + '" data-url="' + esc(tUrl) + '" data-name="' + esc(s.name) + ' · ' + esc(msTxt) + '" title="点击立即探测 ' + esc(s.name) + ' (' + esc(selTag) + (tUrl ? ' -> ' + tUrl : '') + ')" style="left:' + bx + '%;top:' + by + '%"></button>';
       }).join(''));
+      const sonarFoot = $('#sonar-foot-hint');
+      if (sonarFoot) {
+        const svcs8 = mock.services.slice(0, 8);
+        const okSvcs = svcs8.filter(s => !isOff && s.state !== 'dead' && s.ms != null && Number(s.ms) > 0);
+        if (isOff) {
+          sonarFoot.textContent = '核心服务离线 · 点击星点可单测对应分流组连通性';
+        } else if (okSvcs.length > 0) {
+          const avgMs = Math.round(okSvcs.reduce((a, b) => a + Number(b.ms || 0), 0) / okSvcs.length);
+          const bestSvc = okSvcs.slice().sort((a, b) => Number(a.ms) - Number(b.ms))[0];
+          sonarFoot.textContent = '已就绪 ' + okSvcs.length + '/' + svcs8.length + ' 项 · 均值 ' + avgMs + 'ms · 最快 ' + bestSvc.name + ' ' + Math.round(Number(bestSvc.ms)) + 'ms（点击星点单测）';
+        } else {
+          sonarFoot.textContent = '点击星点实时测速对应分流组 · 断网或节点不可达时实时告警';
+        }
+      }
     }
 
     /* Fix #2: Full Strategy Matrix on Overview Page (All groups, no truncation at 5) */
@@ -1399,7 +1413,7 @@
                 ? (mlCnt >= 2 ? (' · 多线并发(' + mlCnt + '线)') : (mlCnt === 1 ? ' · 多线并发(1线·单线降级)' : ' · 多线并发(0线·无可用)'))
                 : '';
               const mlTitleExtra = (p.dispatch_mode === 'multi_line' && mlArr.length) ? (' · 并发在线：' + mlArr.map(cleanNodeDisplayName).join(' / ')) : '';
-              return '<strong class="hud-pool-node mono" style="color:' + (isDirectPool ? 'var(--amber)' : 'var(--cyan)') + '" title="当前出口：' + esc(curNode) + ' · 池内 ' + g1Tags.length + ' 个候选' + esc(mlTitleExtra) + '">' + esc(curNode) + ' <small style="color:var(--text-3);font-weight:400">· ' + g1Tags.length + ' 候选' + mlSuffix + (p.bandwidth_prefer ? ' · 带宽择优' : '') + '</small></strong>';
+              return '<strong class="hud-pool-node mono" style="color:' + (isDirectPool ? 'var(--amber)' : 'var(--cyan)') + '" title="当前出口：' + esc(curNode) + ' · 池内 ' + g1Tags.length + ' 个候选' + esc(mlTitleExtra) + '">' + esc(curNode) + ' <small class="hud-pool-scope" style="color:var(--text-3);font-weight:400">· ' + g1Tags.length + ' 候选 · ' + esc(ctryLabel) + '' + mlSuffix + (p.bandwidth_prefer ? ' · 带宽择优' : '') + '</small></strong>';
             })() +
             '<span style="flex-shrink:0">' + latBadgeCompact + '</span>' +
           '</div>' +
@@ -4755,6 +4769,9 @@
           scopeDirty = true;
           renderSourceChecks();
           renderCountryChips();
+          const _allowedNow = new Set(getScopeFilteredNodes().map(n => n.tag || n.name));
+          Array.from(selectedSet).forEach(t => { if (!_allowedNow.has(t)) selectedSet.delete(t); });
+          renderSelectedTable();
           return;
         }
         if (ev.target.id === 'mdl-an-target-size') {
@@ -4787,6 +4804,9 @@
         if (ev.target.id === 'mdl-an-keywords' || ev.target.id === 'mdl-an-kw-mode') {
           scopeDirty = true;
           renderCountryChips();
+          const _allowedCNow = new Set(getScopeFilteredNodes().map(n => n.tag || n.name));
+          Array.from(selectedSet).forEach(t => { if (!_allowedCNow.has(t)) selectedSet.delete(t); });
+          renderSelectedTable();
           return;
         }
       });
@@ -8481,9 +8501,10 @@
     const peakEl = $('#tw-kpi-peak');
     if (peakEl) {
       if (peakItem && peakItem.totalBytes > 0) {
-        peakEl.textContent = peakItem.label + ' · ' + formatBytesHuman(peakItem.totalBytes);
+        const avgBytes = Math.round((sumDown + sumUp) / Math.max(1, buckets.length));
+        peakEl.textContent = peakItem.label + ' (' + formatBytesHuman(peakItem.totalBytes) + ') · 均值 ' + formatBytesHuman(avgBytes);
       } else {
-        peakEl.textContent = '暂无峰值 · 0 B';
+        peakEl.textContent = '暂无峰值 · 均值 0 B';
       }
     }
     const topEl = $('#tw-kpi-top');
@@ -8630,6 +8651,47 @@
 
     const downPts = drawSmoothSeries(buckets.map(b => b.downBytes), '#6ee7f5', 'rgba(110,231,245,0.25)', '#8FE3FF');
     const upPts = drawSmoothSeries(buckets.map(b => b.upBytes), '#a994ff', 'rgba(169,148,255,0.18)', '#c4b5fd');
+
+    /* 1b. Average Reference Dashed Line + Right Label & Live Rightmost Pulse Anchor */
+    if (sumTotal > 0 && buckets.length > 1) {
+      const avgBucketBytes = sumTotal / buckets.length;
+      const avgY = yOf(avgBucketBytes);
+      if (avgY >= pad.top + 8 && avgY <= pad.top + plotH - 8) {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(110,231,245,0.28)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([5, 4]);
+        ctx.beginPath();
+        ctx.moveTo(pad.left, avgY);
+        ctx.lineTo(width - pad.right, avgY);
+        ctx.stroke();
+        ctx.restore();
+        ctx.font = '500 10px "JetBrains Mono", "SF Mono", Consolas, monospace';
+        ctx.fillStyle = '#6ee7f5';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText('均值 ' + formatBytesHuman(avgBucketBytes), width - pad.right - 2, avgY - 3);
+      }
+      const lastIdx = buckets.length - 1;
+      if (downPts[lastIdx]) {
+        const lx = downPts[lastIdx][0];
+        const ly = downPts[lastIdx][1];
+        ctx.beginPath();
+        ctx.arc(lx, ly, 6, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(110,231,245,0.20)';
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(lx, ly, 3, 0, Math.PI * 2);
+        ctx.fillStyle = '#6ee7f5';
+        ctx.fill();
+      }
+    } else if (maxVal <= 0) {
+      ctx.font = '500 12px "SF Pro Display", "PingFang SC", sans-serif';
+      ctx.fillStyle = '#8E9DB5';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('当前时间窗口暂无流量波动 · 实时吞吐采样就绪', pad.left + plotW / 2, pad.top + plotH / 2);
+    }
 
     /* 2. Peak Callout Badge on Canvas */
     if (peakIdx >= 0 && peakVal > 0 && downPts[peakIdx]) {
