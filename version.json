@@ -1,19 +1,31 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.5.2",
+  "latest": "2.5.3",
   "release_date": "2026-11-09",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.5.2",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.5.3",
   "highlights": [
-    "自动节点池「严格遵循勾选订阅源与国家/地区」6 层全链路闭环：订阅同步补位、配置归一化、健康巡检复选、范围过滤守卫、前端向导旧节点剥离",
-    "订阅更新触发自动补位时先按池的 scope_sources / scope_countries 过滤，越界存量节点自动剔除",
-    "节点池保存时 scope_sources / scope_countries 与 filters 双向锁步同步，改范围后旧 filters 不再残留",
-    "健康巡检只从勾选订阅与地区内择优补齐，池内越界节点立即剔除",
-    "前端向导修改勾选范围后自动剥离 selectedSet 中越界旧节点，提交列表 100% 符合所选范围",
-    "测试集首次真正随包内置：tar 的 ai-link-openwrt/tests/ 与 zip 的 tests/、site/.../tests/ 三处齐全",
-    "发布门禁加固：套件正则修正 + len(suites)>=14 非空断言 + 开包校验 + 报告指纹逐行核对"
+    "测试集真正自包含：tests/subscription_formats/ 12 个多格式订阅夹具全量随包（tar 84 条目 / 56 文件），原始包零补发即可 15/15",
+    "单文件指纹机制化：产物定稿后统一计算注入四列指纹，混沌脚本尾部换行符差异彻底消除",
+    "daemon --self-test 全量隔离到独立临时沙箱，测试上下文与后台守护进程不再互相干扰",
+    "run_all.py 首套件前增加 /api/status 连续两次 200 就绪等待与自动重试，消除刚重启即跑的时序假失败",
+    "发布门禁增加夹具目录与原始包零补发解压校验（fixtures=12）",
+    "延续：节点池严格遵循勾选订阅源与地区、WAN 闪断防团灭、多线并发 urltest 出口与 0.5s 轮转"
   ],
   "changelog": [
+    {
+      "version": "2.5.3",
+      "date": "2026-11-09",
+      "type": "fix",
+      "title": "测试集自包含与交付指纹机制化（FB-252-1/2 闭环）",
+      "items": [
+        "tests/subscription_formats/ 12 个夹具随包写入 tar 与 zip 三处；gates_v101 增加夹具目录与原始包零补发解压门禁（fixtures=12）",
+        "v242_deep_chaos_simulation.py 以无尾部换行符格式定稿，四列指纹（Bytes/MD5/SHA-256）与报告逐字节一致",
+        "ai-link-daemon.py --self-test 全部改用独立临时沙箱，消除测试上下文污染",
+        "run_all.py 首套件前就绪等待（/api/status 连续 2 次 200）与 2 次自动重试",
+        "延续 v2.5.2 的节点池范围强约束、WAN 闪断防团灭、评估引擎实时范围守卫、概览等高与波形可读性"
+      ]
+    },
     {
       "version": "2.5.2",
       "date": "2026-11-09",
@@ -298,13 +310,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.5.2/AI-LINK-v2.5.2.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.5.3/AI-LINK-v2.5.3.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.5.2.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.5.3.tar.gz"
       ],
-      "size": 944522,
-      "md5": "b1ace194f0834c8891a70d4222077897",
-      "sha256": "5934f97dcb5f00534071e8d6538544c962a727a54d2bf666dc75a763797e134b"
+      "size": 949934,
+      "md5": "4864bc1c376ecf82d8ae1b8b359cb233",
+      "sha256": "8991b2cb1fde59e6f5d159be3281ccd1dca7386cfcae2cf00b968ff575a53057"
     }
   }
 }

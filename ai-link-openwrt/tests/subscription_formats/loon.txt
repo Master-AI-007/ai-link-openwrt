@@ -1,0 +1,2 @@
+[Proxy]
+HK = Shadowsocks,1.2.3.4,443,aes-128-gcm,test123

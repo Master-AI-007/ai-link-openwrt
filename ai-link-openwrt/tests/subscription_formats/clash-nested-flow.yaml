@@ -1,0 +1,2 @@
+proxies:
+  - {name: nested-flow, type: vless, server: c.example.com, port: 443, uuid: 11111111-2222-3333-4444-555555555555, network: ws, ws-opts: {path: /, headers: {Host: c.example.com}}}

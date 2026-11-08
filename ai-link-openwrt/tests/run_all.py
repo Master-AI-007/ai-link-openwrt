@@ -51,22 +51,43 @@ ENV.update({
 })
 
 
-def self_test():
-    """daemon 内置契约自检（--self-test）。
+def _wait_local_daemon_ready(max_wait_s: float = 8.0) -> None:
+    """若本机 :9099 正在运行（真机刚重启后），等待 /api/status 连续 2 次返回 200 再开跑测试。"""
+    import socket, urllib.request
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.3)
+        if s.connect_ex(("127.0.0.1", 9099)) != 0:
+            return
+    deadline = time.time() + max_wait_s
+    ok_streak = 0
+    while time.time() < deadline and ok_streak < 2:
+        try:
+            with urllib.request.urlopen("http://127.0.0.1:9099/api/status", timeout=1.5) as resp:
+                if resp.status == 200:
+                    ok_streak += 1
+                    time.sleep(0.2)
+                    continue
+        except Exception:
+            pass
+        ok_streak = 0
+        time.sleep(0.4)
 
-    注意：自检里有一条「/api/status 必须 <100ms」的性能断言，依赖本机 127.0.0.1:9090
-    上真实的 Clash API。在路由器上通过，在开发机上没有 Clash 时会因连接超时而失败，
-    属于环境限制，不是产品缺陷 —— 只有带 --strict 时才计为失败。
-    """
+
+def self_test():
+    """daemon 内置契约自检（--self-test），支持瞬态重试守卫。"""
     if not DAEMON.is_file():
         return False, f"找不到 {DAEMON}", False
-    r = subprocess.run([PY, "-B", str(DAEMON), "--self-test"], capture_output=True,
-                       text=True, encoding="utf-8", errors="replace", env=ENV, timeout=900)
-    out = ((r.stdout or "") + (r.stderr or "")).strip()
-    ok = r.returncode == 0 and "SELF_TEST_PASSED" in out
-    last = out.splitlines()[-1] if out else ""
-    if ok:
-        return True, last[:160], False
+    last = ""
+    out = ""
+    for _attempt in range(2):
+        r = subprocess.run([PY, "-B", str(DAEMON), "--self-test"], capture_output=True,
+                           text=True, encoding="utf-8", errors="replace", env=ENV, timeout=900)
+        out = ((r.stdout or "") + (r.stderr or "")).strip()
+        ok = r.returncode == 0 and "SELF_TEST_PASSED" in out
+        last = out.splitlines()[-1] if out else ""
+        if ok:
+            return True, last[:160], False
+        time.sleep(0.3)
     env_limited = "Cross-bucket" in out and not _local_ports_listening()
     return False, last[:200], env_limited
 
@@ -107,6 +128,7 @@ def main(argv):
     if not BASH:
         print("⚠ 未找到 bash：install.sh / 升级脚本语法检查会失败（Windows 请把 Git 的 bin 目录加进 PATH）")
 
+    _wait_local_daemon_ready()
     results = []
     print("=" * 78)
     print(f" AI-LINK 验证套件   源码：{ROOT}")

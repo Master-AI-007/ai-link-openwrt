@@ -3992,6 +3992,7 @@
               return '<div class="ti-trend-col" title="' + esc((h.hour || '') + ' · ' + (h.total_human || fmtBytes(tb))) + '"><i style="height:' + pctH + '%;opacity:' + (tb > 0 ? (0.35 + 0.65 * (tb / maxHrB)).toFixed(2) : '0.12') + '"></i></div>';
             }).join('') +
           '</div>' +
+          '<div class="ti-trend-axis" style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-3);margin-top:4px"><span class="mono">00:00</span><span class="mono">06:00</span><span class="mono">12:00</span><span class="mono">18:00</span><span class="mono">23:00</span></div>' +
         '</div>'
       ) : '';
       return kpiHtml + trendHtml + (
@@ -8404,6 +8405,11 @@
     ctx.font = '500 10px "JetBrains Mono", monospace';
     ctx.textAlign = 'right';
     ctx.fillText(rawMax + 'ms', width - 2, 11);
+    if (height >= 36) {
+      ctx.fillStyle = '#6ee7f5';
+      ctx.fillText('均' + avgMs + 'ms', width - 2, Math.round(height / 2) + 3);
+      ctx.fillStyle = '#8E9DB5';
+    }
     ctx.fillText(rawMin + 'ms', width - 2, height - 3);
   }
 

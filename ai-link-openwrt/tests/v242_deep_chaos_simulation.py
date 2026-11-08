@@ -1513,6 +1513,53 @@ def main() -> int:
               and "_allowedCNow" in js_252_txt
               and "sonarFoot.textContent = '已就绪 '" in js_252_txt,
               "modal live prune & sonar dynamic summary verified")
+
+        # Stage 6.25a: Subscription Disable/Delete Cascade Replenishment across Multi-Subscription Auto-Node Pool
+        st_blackout["nid_b_jp1"] = {"state": "ok", "delay_ms": 12, "ewma_ms": 12.0, "probe_ts": now_252, "last_probe_ts": now_252, "svc": {}}
+        st_blackout["SubB-JP-UltraFast"] = st_blackout["nid_b_jp1"]
+        dmod.save_node_probe_store(st_blackout, tmp_v252)
+        # Configure a pool selecting from ["sub_A", "sub_B"] with JP region, initially holding only SubA-JP-01
+        dmod.save_auto_nodes_config({
+            "auto_nodes": [{
+                "id": "auto_multi_sub_jp",
+                "tag": "Auto_Multi_Sub_JP",
+                "name": "双订阅JP容灾池",
+                "pool_mode": "ping_only",
+                "scope_sources": ["sub_A", "sub_B"],
+                "scope_source": "sub_A,sub_B",
+                "scope_countries": ["JP"],
+                "target_size": 2,
+                "replenish_threshold": 2,
+                "auto_maintain": True,
+                "current_node": "SubA-JP-01",
+                "groups": [{"index": 1, "name": "主力组 G1", "node_tags": ["SubA-JP-01", "SubA-JP-03"]}],
+            }]
+        }, tmp_v252)
+        # Disable sub_A via set_subscription_enabled -> pool must immediately evict disabled sub_A nodes and replenish SubB-JP-UltraFast from sub_B!
+        dmod.set_subscription_enabled(sub_id="sub_A", enabled=False, conf_dir=tmp_v252)
+        after_dis_an = dmod.load_auto_nodes_config(tmp_v252)["auto_nodes"][0]
+        after_dis_tags = after_dis_an["groups"][0]["node_tags"]
+        check("Stage 6.25a (v2.5.2 订阅停用/删除级联自愈与跨订阅补位): 双订阅池(sub_A+sub_B)中停用 sub_A 后，节点池毫秒级剔除失效 sub_A 节点并自动从已勾选的 sub_B 补入 SubB-JP-UltraFast 切换出口",
+              after_dis_tags == ["SubB-JP-UltraFast"]
+              and after_dis_an.get("current_node") == "SubB-JP-UltraFast",
+              f"after_dis_tags={after_dis_tags}, current={after_dis_an.get('current_node')}")
+
+        # Stage 6.25b: Latency Sparkline 3-Anchor (Peak/Avg/Min) & 3D Traffic Insights 24h Time Axis Gate
+        check("Stage 6.25b (v2.5.2 实时延迟微波形峰/均/谷三锚点与三维流量洞察24h坐标轴门禁): drawLatencyChart 标注峰值/均值/谷值，openTrafficInsightsModal 24h分时柱状图具备00:00~23:00时间刻度",
+              "ctx.fillText('均' + avgMs + 'ms'" in js_252_txt
+              and "ti-trend-axis" in js_252_txt,
+              "latency avg label & traffic insights 24h axis verified")
+
+        # Stage 6.26a: v2.5.3 FB-252-1 (subscription_formats 12 fixtures), FB-252-2 (no trailing newline on v242 script), and hermetic --self-test sandbox
+        fx_dir_253 = Path(__file__).resolve().parent / "subscription_formats"
+        fx_cnt_253 = len([p for p in fx_dir_253.iterdir() if p.is_file()]) if fx_dir_253.is_dir() else 0
+        self_bytes_253 = Path(__file__).resolve().read_bytes()
+        d_src_253 = Path(dmod.__file__).resolve().read_text(encoding="utf-8")
+        check("Stage 6.26a (v2.5.3 FB-252-1/2 订阅格式夹具随包 >=12 项 + 脚本尾部零换行符防 Canvas 剥离 + --self-test 独立沙箱隔离): subscription_formats 夹具 >=12 个，本脚本末尾无多余换行符，--self-test 零读写现网 CONF_DIR",
+              fx_cnt_253 >= 12
+              and (not self_bytes_253.endswith(bytes([10])))
+              and "NodeURIParser.parse_subscription_text(sample_uris, conf_dir=tmp_test_dir)" in d_src_253,
+              f"fixtures={fx_cnt_253}, no_trailing_nl={not self_bytes_253.endswith(bytes([10]))}")
     finally:
         shutil.rmtree(tmp_v252, ignore_errors=True)
 

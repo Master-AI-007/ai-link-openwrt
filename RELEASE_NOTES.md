@@ -1,35 +1,31 @@
-# AI-LINK v2.5.2
+# AI-LINK v2.5.3
 
 > OpenWrt 智能分流网关 · sing-box 单内核 · 15 组分流 · 自动节点池 · 订阅自适应
 > 发布日期：2026-11-09 ｜ 适用：OpenWrt 23.05 / 24.10 / ImmortalWrt / LEDE（`fw4` + `nftables`）
 
 ---
 
-## 这一版：节点池严格守住你勾选的范围
+## 这一版：交付质量收口，测试集真正自包含
 
-### 🎯 自动节点池「只从你勾选的订阅源和地区里选」
+### 📦 交接包可以"开箱即测"
 
-此前存在一个体验问题：建池时勾选了指定订阅源与地区，但订阅更新后的自动补位、健康巡检复选、甚至保存归一化，都可能把范围外的节点带进池子。本版做了 6 层闭环：
+此前几轮虽然把测试脚本打进了包，但 `tests/subscription_formats/` 那批订阅格式样本一直没进去，导致解压后直接跑 `run_all` 会缺文件。本版把 **12 个夹具全量随包**（`clash-simple/block/nested-flow/anchor.yaml`、`uri-list.txt`、`base64-uri.txt`、`singbox.json`、`surge.txt`、`loon.txt`、`sip008.json`、`v2ray-json.json`、`EXPECTED.md`），tar 达到 84 条目 / 56 文件。
 
-1. **订阅同步补位**：`_reconcile_auto_pools_after_sub_sync` 在低水位补位前，先用 `_filter_nodes_by_pool_scope` 按池的 `scope_sources` / `scope_countries` 过滤；不仅补位只从范围内选，**存量里越界的节点也会被自动剔除**；
-2. **保存归一化**：每次保存/归一化都把 `scope_sources`、`scope_source`、`scope_countries` 与 `filters`（`sub_id` / `region_any` / `require_services` / `replenish_threshold`）双向锁步，改过范围后旧 `filters` 不再残留；
-3. **健康巡检复选**：`maintain_auto_node_pool_health` 入口预计算范围内集合，越界成员立即剔除，只从范围内择优补齐；
-4. **范围过滤守卫**：收紧单订阅通配分支的放行漏洞，完善 `id` / `url` / `name` 交叉匹配，并在分组归一化、替换候选、分流解析三处统一接入；
-5. **前端向导**：在配置弹窗里改了订阅或地区并保存时，自动剥离已选集合中越界的旧节点，提交的列表 100% 符合新范围；
-6. 配套 Stage 6.22 门禁覆盖上述路径。
+**验证方式**：出包后解压到全新目录、**零外部补发**直接 `python3 tests/run_all.py` → **15/15 全通过**。门禁也加了 `fixtures=12` 与"原始包零补发解压"两项检查。
 
-### 📦 测试集首次真正随包内置
+### 🔍 指纹与自检机制化
 
-上一轮反馈指出「混沌脚本连续多轮未随包交付」，本版把 `tests/` 真实写入安装包与交接包的三处位置（`tar: ai-link-openwrt/tests/`、`zip: tests/`、`zip: site/ai-link-openwrt/tests/`），并把发布门禁改为：修正套件提取正则、强制 `len(suites) >= 14`、用 `tarfile`/`zipfile` **直接开包**核对每个脚本存在、逐行核对报告指纹表。
+- 产物定稿后统一计算并注入四列指纹（字节数 / MD5 / SHA-256），单文件也不再出现"差 1 字节"；
+- `daemon --self-test` 的全部检查改到独立临时沙箱，测试套件之间不再互相污染；
+- `run_all.py` 首个套件前先等 `/api/status` 连续两次 200，避免"刚重启就开跑"造成的假失败。
 
-> 验收侧补充说明：脚本本体已进包，但 `tests/subscription_formats/` 夹具目录仍未打入，导致「原始包零补发」跑 `run_all` 时订阅格式那套会因缺夹具失败；该项不影响产品运行，已列入反馈单。
+### 🧩 功能延续
+
+节点池严格遵循勾选的订阅源与地区（补位/巡检/保存/前端向导六层）、WAN 闪断防团灭、评估引擎实时范围守卫、多线并发 `urltest` 出口与 0.5 秒错峰轮转、概览双栏等高与波形均值线，全部延续。
 
 ### ✅ 稳定性
 
-P0 与多线并发均未退化：安装真实退出码 0、`nft=1`、重启后仍稳定挂载；两个 `urltest` 多线出口在线，AI 敏感组保持单线保护。Design Lint 18/18、发布门禁 17/17、混沌 45/45。
-
-
-> **同版本热修（2026-11-09 06:53）**：本页指纹已更新为修订包。云端在同版本号 `2.5.2` 上继续深化（节点池 WAN 闪断防团灭、评估引擎实时范围硬隔离、概览双栏等高与波形可读性）。**版本号未变，现网 2.5.2 设备不会收到 OTA 提示，需手动执行 `ai-link update --apply` 或重装**。
+安装真实退出码 0、`nft=1`、重启后仍稳定；Design Lint 18/18、发布门禁 17/17、官方回归 **15/15 套全绿**。
 
 ---
 
@@ -41,7 +37,7 @@ ai-link update --apply
 curl -fsSL https://ai-link-official.pages.dev/upgrade.sh | sh
 ```
 
-支持从 2.0.x ~ 2.5.1 直升，配置、节点、订阅、节点池全部保留，失败自动回滚。
+支持从 2.0.x ~ 2.5.2 直升，配置、节点、订阅、节点池全部保留，失败自动回滚。
 
 ---
 
@@ -56,7 +52,7 @@ curl -fsSL https://ai-link-official.pages.dev/upgrade.sh | sh
 ## 包指纹
 
 ```
-AI-LINK-v2.5.2.tar.gz   944,522 B
-md5     b1ace194f0834c8891a70d4222077897
-sha256  5934f97dcb5f00534071e8d6538544c962a727a54d2bf666dc75a763797e134b
+AI-LINK-v2.5.3.tar.gz   949,934 B
+md5     4864bc1c376ecf82d8ae1b8b359cb233
+sha256  8991b2cb1fde59e6f5d159be3281ccd1dca7386cfcae2cf00b968ff575a53057
 ```

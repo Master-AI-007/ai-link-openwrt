@@ -1,0 +1,1 @@
+vless://11111111-2222-3333-4444-555555555555@a.example.com:443?security=tls&type=ws&sni=a.example.com&path=%2F#uri-node

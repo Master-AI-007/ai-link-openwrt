@@ -1,3 +1,9 @@
+## v2.5.3 (2026-11-09)
+- **测试集夹具全量随包闭环 (`FB-252-1`)**：将 `tests/subscription_formats/` 全部 12 个多格式订阅夹具文件（Clash/Sing-box/Surge/Loon/SIP008/V2Ray/Base64/URI）完整纳入 `AI-LINK-v2.5.3.tar.gz` 与云端交接包，并在 `gates_v101.py` 增加夹具目录与原始包零补发解压门禁。
+- **单文件指纹零字节偏差机制化 (`FB-252-2`)**：消除 `v242_deep_chaos_simulation.py` 尾部换行符在 Canvas 导出时的 1 字节剥离差异，并在 `gates_v101.py` 中强制校验无尾部换行符及报告 4 列指纹逐字节一致。
+- **守护进程 `--self-test` 全沙箱隔离与 `run_all.py` 就绪等待**：将 `--self-test` 所有配置与状态校验完全隔离至独立临时目录 `tmp_test_dir`（零读写现网 `/etc/ai-link`），并在 `run_all.py` 启动前增加本地 `:9099/api/status` 连续就绪探测与重试守卫。
+- **自动节点池跨订阅级联自愈与微波形/流量洞察刻度增强 (`Stage 6.25a` & `Stage 6.25b`)**：停用或删除订阅时毫秒级触发自动节点池跨订阅补位；`drawLatencyChart` 补齐峰/均/谷三锚点，三维流量洞察补齐 24h 时间坐标轴。
+
 ## v2.5.2 (2026-11-09)
 
 - **[自动节点池订阅源与国家区域范围强约束闭环 (`ai-link-daemon.py` & `nexus.js`)]**：

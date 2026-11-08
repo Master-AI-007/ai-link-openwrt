@@ -1,0 +1,2 @@
+[Proxy]
+HK-SS = ss, 1.2.3.4, 443, encrypt-method=aes-128-gcm, password=test123, udp-relay=true

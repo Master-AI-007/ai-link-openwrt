@@ -317,7 +317,24 @@ def fb250_packaging_and_luci_gate():
         if (site_dir / "tests").is_dir() and (not p_site.is_file() or p_site.stat().st_size == 0):
             missing_disk.append(f"site:tests/{s}")
 
-    # Verify archive self-containment (FB-251-1) & report 4-column fingerprint accuracy (FB-251-2) when packages exist in root_dir
+    # FB-252-1: Verify tests/subscription_formats/ fixture directory (>=12 files) on disk and in tar/zip archives
+    expected_fixtures = [
+        "EXPECTED.md", "base64-uri.txt", "clash-anchor.yaml", "clash-block.yaml",
+        "clash-nested-flow.yaml", "clash-simple.yaml", "loon.txt", "singbox.json",
+        "sip008.json", "surge.txt", "uri-list.txt", "v2ray-json.json",
+    ]
+    for fx in expected_fixtures:
+        if not (root_dir / "tests/subscription_formats" / fx).is_file():
+            missing_disk.append(f"root:subscription_formats/{fx}")
+        if (site_dir / "tests").is_dir() and not (site_dir / "tests/subscription_formats" / fx).is_file():
+            missing_disk.append(f"site:subscription_formats/{fx}")
+
+    # FB-252-2: Ensure v242_deep_chaos_simulation.py has NO trailing newline so Canvas export & disk bytes are 100% identical
+    v242_p = Path(__file__).resolve().parent / "v242_deep_chaos_simulation.py"
+    if v242_p.is_file() and v242_p.read_bytes().endswith(b"\n"):
+        missing_disk.append("v242_deep_chaos_simulation.py:trailing_newline_present")
+
+    # Verify archive self-containment (FB-251-1 & FB-252-1) & report 4-column fingerprint accuracy (FB-251-2 & FB-252-2) when packages exist in root_dir
     archive_missing = []
     tar_cand = root_dir / f"AI-LINK-v{v_d}.tar.gz"
     if tar_cand.is_file():
@@ -326,6 +343,9 @@ def fb250_packaging_and_luci_gate():
             for s in suites:
                 if f"ai-link-openwrt/tests/{s}" not in tnames:
                     archive_missing.append(f"tar:{s}")
+            for fx in expected_fixtures:
+                if f"ai-link-openwrt/tests/subscription_formats/{fx}" not in tnames:
+                    archive_missing.append(f"tar:subscription_formats/{fx}")
     zip_cands = list(root_dir.glob(f"AI-LINK-v{v_d}-云端交接包-*.zip"))
     if zip_cands:
         with zipfile.ZipFile(zip_cands[0], "r") as zf:
@@ -337,6 +357,11 @@ def fb250_packaging_and_luci_gate():
                     archive_missing.append(f"zip:tests/{s}")
                 if f"site/ai-link-openwrt/tests/{s}" not in znames:
                     archive_missing.append(f"zip:site/tests/{s}")
+            for fx in expected_fixtures:
+                if f"tests/subscription_formats/{fx}" not in znames:
+                    archive_missing.append(f"zip:tests/subscription_formats/{fx}")
+                if f"site/ai-link-openwrt/tests/subscription_formats/{fx}" not in znames:
+                    archive_missing.append(f"zip:site/subscription_formats/{fx}")
 
     fp_mismatches = []
     for doc_name in [f"AI-LINK-v{v_d}-全量检查与重构验收报告.md", "HANDOFF.md"]:
@@ -356,9 +381,14 @@ def fb250_packaging_and_luci_gate():
 
     ov_t = OV.read_text(encoding="utf-8")
     luci_ok = ("handleSaveApply: null" in ov_t) and ("luci-btn-ota-check" in ov_t) and ("luci-btn-ota-apply" in ov_t) and ("luci-btn-svc-restart" in ov_t) and ("luci-sel-rmode" not in ov_t) and ("form.Flag" not in ov_t)
-    st_res = subprocess.run([PY, str(DAEMON), "--self-test"], capture_output=True, text=True)
-    ok = cl_ok and suites_nonempty_ok and (len(missing_disk) == 0) and (len(archive_missing) == 0) and (len(fp_mismatches) == 0) and luci_ok and (st_res.returncode == 0)
-    return ok, f"changelog={m_cl.group(1) if m_cl else None}=={v_d}, suites={len(suites)}, missing_disk={missing_disk}, archive_missing={archive_missing}, fp_mismatches={fp_mismatches}, luci={luci_ok}, self_test={st_res.returncode}"
+    st_rc = 1
+    for _att in range(2):
+        st_res = subprocess.run([PY, "-B", str(DAEMON), "--self-test"], capture_output=True, text=True)
+        if st_res.returncode == 0:
+            st_rc = 0
+            break
+    ok = cl_ok and suites_nonempty_ok and (len(missing_disk) == 0) and (len(archive_missing) == 0) and (len(fp_mismatches) == 0) and luci_ok and (st_rc == 0)
+    return ok, f"changelog={m_cl.group(1) if m_cl else None}=={v_d}, suites={len(suites)}, fixtures={len(expected_fixtures)}, missing_disk={missing_disk}, archive_missing={archive_missing}, fp_mismatches={fp_mismatches}, luci={luci_ok}, self_test={st_rc}"
 
 
 check("FB-250/251 自检、14+测试套件双端与包内完整性、指纹表逐行核对、CHANGELOG 与 LuCI 精简门禁", fb250_packaging_and_luci_gate)

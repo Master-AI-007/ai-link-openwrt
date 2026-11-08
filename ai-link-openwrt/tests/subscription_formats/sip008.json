@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "servers": [
+    {
+      "id": "1",
+      "server": "1.2.3.4",
+      "server_port": 8388,
+      "password": "p",
+      "method": "aes-256-gcm"
+    }
+  ]
+}

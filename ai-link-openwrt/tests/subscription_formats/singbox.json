@@ -1,0 +1,15 @@
+{
+  "outbounds": [
+    {
+      "type": "vless",
+      "tag": "singbox-node",
+      "server": "a.example.com",
+      "server_port": 443,
+      "uuid": "11111111-2222-3333-4444-555555555555",
+      "tls": {
+        "enabled": true,
+        "server_name": "a.example.com"
+      }
+    }
+  ]
+}
