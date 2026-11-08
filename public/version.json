@@ -1,20 +1,33 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.4.8",
+  "latest": "2.4.9",
   "release_date": "2026-11-08",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.4.8",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.4.9",
   "highlights": [
-    "P0 根治：nftables 规则按 IPv4 / IPv6 协议族拆分（meta nfproto），彻底消除安装后 table inet ai_link 挂载失败、透明代理不生效",
-    "新增 nft 协议混写静态门禁、AST except->pass <= 8 门禁、tar 顶层目录与测试集完备性门禁，发布门禁 16/16",
-    "T10 按组专属 DNS 真正编译进内核：doh / dot / doq / udp / tcp / custom 均生成 dns_grp_<ID> 并带 domain_resolver",
-    "4 阶流量透视器内联语法完整回显 raw_input / src_ip / src_mac，支持 IP、MAC、@IP 三种写法",
-    "T6 配置历史纯净 Diff 与一键回滚 UCI/内核同步；T8 规则块域名 Fake-IP 提权；Test 沙箱与真机配置彻底隔离",
-    "DNS 三大开关接入重入锁、3 秒轮询静默窗与失败自动回滚；HomeLink 端口动态保留与越界校验",
-    "混沌测试脚本 v242_deep_chaos_simulation.py 随本轮单独交付，官方回归 15/15 套全绿（29/29 混沌项）",
-    "延续：多线并发、链式代理 4 层 DAG、三维流量归因洞察、内核日志秒级故障切换"
+    "概览页并排双卡片严格等高（align-items: stretch + flex 填充），左右高度差 0px，分流页独立对齐零回归",
+    "全息流量波形接入真实账本：24 小时 / 7 天 / 30 天分时序列与 7×24 小时热力矩阵（168 单元）全部来自真实流量",
+    "波形图新增 4-KPI 速览栏、5 级自适应 Y 轴刻度、峰值时刻胶囊标注、鼠标/触控悬停十字准星明细浮窗",
+    "自动节点池滑窗评分打通 history 与 sparkline_20，对高丢包 / 高抖动节点施加稳定性惩罚并支持主动切换",
+    "多线并发慢节点离散度护栏：自动剔除拖尾离群节点，遥测暴露 multi_line_filtered_slow_count",
+    "池健康数达标时非破坏性保员（临时隔离节点不再被永久抹除），服务可用性完整支持 any 逻辑",
+    "P0 修复保持不退化：nft 协议族分离、安装与重启均稳定挂载；官方回归 15/15 套全绿"
   ],
   "changelog": [
+    {
+      "version": "2.4.9",
+      "date": "2026-11-08",
+      "type": "feat",
+      "title": "波形真值与节点池深度审计 + 概览视觉重构",
+      "items": [
+        "概览页 .dashboard-grid.two-one 显式 align-items: stretch，子卡 flex 撑满；流量波形容器自适应拉伸，左右卡片高度差 0px",
+        "get_overview_live_telemetry() 新增真实账本驱动的 waveform_24h / waveform_7d / waveform_30d 与 matrix_7x24（168 单元）",
+        "波形图 4-KPI 指标栏、5 级自适应 Y 轴刻度、峰值胶囊标注、悬停十字准星明细浮窗；X 轴字号提升到 11px",
+        "compute_node_sliding_score() 统一解析 history 与 sparkline_20；evaluate_single_auto_node() 引入 _stab_pen 稳定性惩罚与高丢包主动切换",
+        "多线并发剔除 eff_rank_ms > max(fastest*2.2, fastest+160ms) 的离群慢节点",
+        "maintain_auto_node_pool_health() 健康数达标时仅清理 dead/已删除节点，保留隔离期 ok 节点；完整支持 service_logic=any"
+      ]
+    },
     {
       "version": "2.4.8",
       "date": "2026-11-08",
@@ -240,13 +253,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.4.8/AI-LINK-v2.4.8.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.4.9/AI-LINK-v2.4.9.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.4.8.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.4.9.tar.gz"
       ],
-      "size": 792585,
-      "md5": "128af9bc4304fd6cc3e46ba684e3a9d8",
-      "sha256": "e22a062c59fcf28b9f6ff1c8492ece3d1951e44031339cea66b37ce5eded4f1d"
+      "size": 797449,
+      "md5": "64fee4326a9e57a8b8fada8e7abd6384",
+      "sha256": "655d6bf8807d6028320cbb15e8f15f28a292446e907dcfb395bde1bb9e47e4eb"
     }
   }
 }

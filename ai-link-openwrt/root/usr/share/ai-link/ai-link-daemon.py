@@ -3137,11 +3137,16 @@ def save_node_probe_store(store: dict, conf_dir: Path = CONF_DIR, strict_gc: boo
 def compute_node_sliding_score(rec: dict, svc_checks: list = None) -> dict:
     """Part 1 §1.6 Sliding-Window Node Quality Scoring (Last 20 Probes, Zero Extra Network Requests): score = 100 * (success_ra"""
     rec = rec if isinstance(rec, dict) else {}
-    raw_hist = rec.get("history") if isinstance(rec.get("history"), list) else []
+    raw_hist = rec.get("history") if (isinstance(rec.get("history"), list) and rec.get("history")) else (rec.get("sparkline_20") if isinstance(rec.get("sparkline_20"), list) else [])
     hist = []
     for h in raw_hist[-20:]:
         if isinstance(h, dict):
-            st = str(h.get("state") or ("ok" if int(h.get("delay_ms") or -1) > 0 else "dead"))
+            if "state" in h and h.get("state"):
+                st = str(h.get("state"))
+            elif "ok" in h and h.get("ok") is not None:
+                st = "ok" if bool(h.get("ok")) else "dead"
+            else:
+                st = "ok" if int(h.get("delay_ms") or -1) > 0 else "dead"
             d_val = int(h.get("delay_ms") if h.get("delay_ms") is not None else (-1 if st != "ok" else 120))
             hist.append({"state": st, "delay_ms": d_val if st == "ok" else -1, "ts": int(h.get("ts") or 0), "svc_ok": h.get("svc_ok")})
         elif isinstance(h, (int, float)):
@@ -6193,8 +6198,14 @@ def maintain_auto_node_pool_health(an: dict, saved_nodes: list = None, store: di
             continue
         if is_svc_mode and svc_checks:
             rec_svc_s = rec.get("svc") if isinstance(rec.get("svc"), dict) else {}
-            if any(isinstance(rec_svc_s.get(sid), dict) and rec_svc_s[sid].get("ok") is False and "HTTP_204_NOT_IN_" not in str(rec_svc_s[sid].get("reason") or "") for sid in svc_checks):
-                continue
+            _svc_logic_m = "any" if (an.get("service_logic") == "any" or an.get("match_mode") == "any") else "all"
+            _s_tested = [rec_svc_s.get(sid) for sid in svc_checks if isinstance(rec_svc_s.get(sid), dict) and "HTTP_204_NOT_IN_" not in str(rec_svc_s.get(sid).get("reason") or "")]
+            if _svc_logic_m == "any":
+                if _s_tested and not any(x.get("ok") is True for x in _s_tested) and all(x.get("ok") is False for x in _s_tested):
+                    continue
+            else:
+                if any(x.get("ok") is False for x in _s_tested):
+                    continue
         if ev["state"] == "ok" and ev["delay_ms"] > 0 and not in_quar:
             surviving_tags.append(t)
 
@@ -6205,10 +6216,19 @@ def maintain_auto_node_pool_health(an: dict, saved_nodes: list = None, store: di
     if len(surviving_tags) >= rep_thresh and len(surviving_tags) == len(cur_tags):
         return False
     if len(surviving_tags) >= rep_thresh and len(surviving_tags) > 0 and an.get("replenish_threshold") is not None:
-        # Healthy node count is still >= replenish_threshold; just prune dead nodes in-place without triggering heavy external service re-screening
-        if surviving_tags != cur_tags:
-            g1["node_tags"] = surviving_tags
-            g1["node_ids"] = [(by_tag[t].get("node_id") or compute_node_id(by_tag[t])) for t in surviving_tags if t in by_tag]
+        # Healthy node count is still >= replenish_threshold: prune explicitly dead/deleted nodes in-place without triggering heavy external re-screening,
+        # while preserving state=="ok" nodes that are only in temporary quarantine/cooldown!
+        non_dead_tags = []
+        for t in cur_tags:
+            n_o = by_tag.get(t)
+            if not n_o or n_o.get("disabled") or not is_node_subscription_enabled(n_o, subs_list=subs_list, conf_dir=conf_dir):
+                continue
+            ev_nd = evaluate_node_selectability(n_o, store=store, subs_list=subs_list, now_ts=now_ts, conf_dir=conf_dir)
+            if ev_nd["state"] == "ok" and ev_nd["delay_ms"] > 0:
+                non_dead_tags.append(t)
+        if non_dead_tags != cur_tags:
+            g1["node_tags"] = non_dead_tags
+            g1["node_ids"] = [(by_tag[t].get("node_id") or compute_node_id(by_tag[t])) for t in non_dead_tags if t in by_tag]
             an["groups"] = groups
             return True
         return False
@@ -6470,7 +6490,14 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
             if an.get("bandwidth_prefer") and bw_mbps > 0:
                 bw_factor = max(0.55, 1.0 - min(0.42, math.log10(max(1.0, bw_mbps / 10.0)) * 0.22))
                 v2_score = round(v2_score + min(0.55, math.log10(max(1.0, bw_mbps / 10.0)) * 0.28), 4)
-            eff_rank_ms = round(float(delay_ewma) * bw_factor * (w_lat + w_other * (1.35 - 0.35 * sc_norm)) * (1.28 if is_rand_node else 1.0) * (1.0 + 0.4 * passive_fr), 2) if ev["delay_ms"] > 0 else 99999.0
+            _stab_pen = 1.0
+            if int(sc_info.get("samples") or 0) >= 3:
+                if sr_ewma < 0.90:
+                    _stab_pen *= (1.0 + (0.90 - sr_ewma) * 1.8)
+                _cv_val = float(sc_info.get("cv") or 0.0)
+                if _cv_val > 0.35:
+                    _stab_pen *= (1.0 + min(0.60, (_cv_val - 0.35) * 0.8))
+            eff_rank_ms = round(float(delay_ewma) * bw_factor * _stab_pen * (w_lat + w_other * (1.35 - 0.35 * sc_norm)) * (1.28 if is_rand_node else 1.0) * (1.0 + 0.4 * passive_fr), 2) if ev["delay_ms"] > 0 else 99999.0
             m_item = {
                 "node_id": nid,
                 "node_key": n_obj.get("node_key") or compute_node_key(n_obj) or nid,
@@ -6672,6 +6699,11 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
             an["last_smart_switch_ts"] = now_sec
             an["last_switch_ts"] = now_sec
             switch_reason = f"CDN握手异常自动切换 ({cur_in_group['tag']} -> {fastest['tag']})"
+        elif fastest["node_id"] != cur_in_group["node_id"] and int(cur_in_group.get("samples") or 0) >= 4 and float(cur_in_group.get("success_rate") or 1.0) < 0.70 and float(fastest.get("success_rate") or 1.0) >= 0.95:
+            chosen = fastest
+            an["last_smart_switch_ts"] = now_sec
+            an["last_switch_ts"] = now_sec
+            switch_reason = f"当前节点丢包率偏高自动切换 ({cur_in_group['tag']} -> {fastest['tag']})"
         elif fastest["node_id"] != cur_in_group["node_id"] and cur_in_group.get("is_random_region") and not fastest.get("is_random_region") and int(fastest["delay_ms"]) <= int(int(cur_in_group["delay_ms"]) * 1.28) and (last_sw <= 0 or (now_sec - last_sw) >= min(60, cool_s)):
             chosen = fastest
             an["last_smart_switch_ts"] = now_sec
@@ -6740,10 +6772,18 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
         an["multi_line_locked"] = True
         an["multi_line_locked_reason"] = "AI/账号敏感服务自动锁定单线优选（防多IP跳变风控）"
     if an.get("dispatch_mode") == "multi_line":
-        an["multi_line_nodes"] = [x["tag"] for x in g_nodes[:max(2, int(an.get("target_size") or 5))]]
+        _cap_ml = max(2, int(an.get("target_size") or 5))
+        _base_eff = max(10.0, float(fastest.get("eff_rank_ms") or fastest.get("delay_ms") or 50.0))
+        _max_allowed_eff = max(_base_eff * 2.2, _base_eff + 160.0)
+        _fast_ml = [x["tag"] for x in g_nodes[:_cap_ml] if float(x.get("eff_rank_ms") or x.get("delay_ms") or 9999.0) <= _max_allowed_eff]
+        if not _fast_ml and g_nodes:
+            _fast_ml = [g_nodes[0]["tag"]]
+        an["multi_line_nodes"] = _fast_ml
+        an["multi_line_filtered_slow_count"] = max(0, len(g_nodes[:_cap_ml]) - len(_fast_ml))
         an["active_lines_count"] = len(an["multi_line_nodes"])
     else:
         an["multi_line_nodes"] = [chosen["tag"]] if chosen.get("tag") and chosen["tag"] != "direct" else []
+        an["multi_line_filtered_slow_count"] = 0
         an["active_lines_count"] = len(an["multi_line_nodes"])
     _set_auto_pool_runtime_state(conf_dir, an.get("id", ""), {
         "multi_line_nodes": list(an["multi_line_nodes"]),
@@ -16967,14 +17007,83 @@ def get_overview_live_telemetry(conf_dir: Path = CONF_DIR) -> dict:
     month_proxy_bytes = int(round(month_tot_bytes * proxy_share))
     month_tot_conns = sum(x["conns"] for x in monthly_days)
     today_str = time.strftime("%Y-%m-%d")
-    hr_map = (ledger.get("hours") or {}).get(today_str) or {}
+    cur_h_int = int(time.strftime("%H"))
+    hours_root = ledger.get("hours") if isinstance(ledger.get("hours"), dict) else {}
+    hr_day_k = today_str if today_str in hours_root else (sorted(hours_root.keys())[-1] if hours_root else today_str)
+    hr_map = hours_root.get(hr_day_k) or {}
     hourly_in_mb = []
     hourly_out_mb = []
+    waveform_24h = []
     for h_i in range(24):
         hk = f"{h_i:02d}"
-        hv = hr_map.get(hk) or {}
-        hourly_in_mb.append(round(int(hv.get("in_bytes", 0)) / 1048576.0, 2))
-        hourly_out_mb.append(round(int(hv.get("out_bytes", 0)) / 1048576.0, 2))
+        hv = hr_map.get(hk) or hr_map.get(str(h_i)) or {}
+        h_ib = max(0, int(hv.get("in_bytes", 0))) if isinstance(hv, dict) else 0
+        h_ob = max(0, int(hv.get("out_bytes", 0))) if isinstance(hv, dict) else 0
+        if h_i == cur_h_int and h_ib == 0 and h_ob == 0 and (_OVERVIEW_RT["dl_total"] > 0 or _OVERVIEW_RT["ul_total"] > 0):
+            h_ib = max(0, int(_OVERVIEW_RT["dl_total"]))
+            h_ob = max(0, int(_OVERVIEW_RT["ul_total"]))
+        h_tb = h_ib + h_ob
+        hourly_in_mb.append(round(h_ib / 1048576.0, 2))
+        hourly_out_mb.append(round(h_ob / 1048576.0, 2))
+        waveform_24h.append({
+            "label": f"{hk}:00",
+            "in_bytes": h_ib,
+            "out_bytes": h_ob,
+            "total_bytes": h_tb,
+            "in_human": _format_bytes_human(h_ib),
+            "out_human": _format_bytes_human(h_ob),
+            "total_human": _format_bytes_human(h_tb),
+        })
+    now_ep_ov = int(time.time())
+    waveform_7d = []
+    waveform_30d = []
+    for d_off in range(29, -1, -1):
+        d_ts = now_ep_ov - d_off * 86400
+        d_full = time.strftime("%Y-%m-%d", time.localtime(d_ts))
+        d_short = time.strftime("%m-%d", time.localtime(d_ts))
+        dv = days_map.get(d_full) or days_map.get(d_short) or {}
+        d_ib = max(0, int(dv.get("in_bytes", 0))) if isinstance(dv, dict) else 0
+        d_ob = max(0, int(dv.get("out_bytes", 0))) if isinstance(dv, dict) else 0
+        if d_off == 0 and d_ib == 0 and d_ob == 0 and (_OVERVIEW_RT["dl_total"] > 0 or _OVERVIEW_RT["ul_total"] > 0):
+            d_ib = max(0, int(_OVERVIEW_RT["dl_total"]))
+            d_ob = max(0, int(_OVERVIEW_RT["ul_total"]))
+        d_tb = d_ib + d_ob
+        d_entry = {
+            "label": d_short,
+            "full_date": d_full,
+            "in_bytes": d_ib,
+            "out_bytes": d_ob,
+            "total_bytes": d_tb,
+            "in_human": _format_bytes_human(d_ib),
+            "out_human": _format_bytes_human(d_ob),
+            "total_human": _format_bytes_human(d_tb),
+        }
+        waveform_30d.append(d_entry)
+        if d_off < 7:
+            waveform_7d.append(d_entry)
+    matrix_7x24 = []
+    for d_off in range(6, -1, -1):
+        d_ts = now_ep_ov - d_off * 86400
+        d_full = time.strftime("%Y-%m-%d", time.localtime(d_ts))
+        d_short = time.strftime("%m-%d", time.localtime(d_ts))
+        d_hrs = hours_root.get(d_full) if isinstance(hours_root.get(d_full), dict) else {}
+        for h_i in range(24):
+            hk = f"{h_i:02d}"
+            hv = d_hrs.get(hk) or d_hrs.get(str(h_i)) or {}
+            c_ib = max(0, int(hv.get("in_bytes", 0))) if isinstance(hv, dict) else 0
+            c_ob = max(0, int(hv.get("out_bytes", 0))) if isinstance(hv, dict) else 0
+            if d_off == 0 and h_i == cur_h_int and c_ib == 0 and c_ob == 0 and (_OVERVIEW_RT["dl_total"] > 0 or _OVERVIEW_RT["ul_total"] > 0):
+                c_ib = max(0, int(_OVERVIEW_RT["dl_total"]))
+                c_ob = max(0, int(_OVERVIEW_RT["ul_total"]))
+            c_tb = c_ib + c_ob
+            matrix_7x24.append({
+                "date": d_short,
+                "hour": f"{hk}:00",
+                "in_bytes": c_ib,
+                "out_bytes": c_ob,
+                "total_bytes": c_tb,
+                "total_human": _format_bytes_human(c_tb),
+            })
     lan_ip_val = _detect_router_lan_ip()
     in_rate_s = _format_rate_human(_OVERVIEW_RT["in_rate_bps"])
     out_rate_s = _format_rate_human(_OVERVIEW_RT["out_rate_bps"])
@@ -17118,6 +17227,10 @@ def get_overview_live_telemetry(conf_dir: Path = CONF_DIR) -> dict:
         "hourly_out_24": hourly_out_mb,
         "hourly_curve_24": hourly_in_mb,
         "hourly_out_curve_24": hourly_out_mb,
+        "waveform_24h": waveform_24h,
+        "waveform_7d": waveform_7d,
+        "waveform_30d": waveform_30d,
+        "matrix_7x24": matrix_7x24,
         "insight_data": {
             "devices": dev_rows,
             "nodes": node_rows,
@@ -20626,9 +20739,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.4.8"
+APP_VERSION = "2.4.9"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.4.8-release-20261108"
+APP_BUILD = "2.4.9-release-20261108"
 
 UPDATE_MANIFEST_PRIMARY = "https://ai-link-official.pages.dev/version.json"
 UPDATE_MANIFEST_GITHUB = "https://raw.githubusercontent.com/Master-AI-007/ai-link-openwrt/main/version.json"

@@ -4,7 +4,7 @@
 
 **NEXUS 全域 3D 智能网关 · 运行在 OpenWrt 上的智能分流系统**
 
-[![version](https://img.shields.io/badge/version-2.4.8-6ee7f5?style=flat-square)](https://github.com/Master-AI-007/ai-link-openwrt/releases/tag/v2.4.8)
+[![version](https://img.shields.io/badge/version-2.4.9-6ee7f5?style=flat-square)](https://github.com/Master-AI-007/ai-link-openwrt/releases/tag/v2.4.9)
 [![platform](https://img.shields.io/badge/OpenWrt-23.05%20%7C%2024.10%20%7C%20ImmortalWrt-a994ff?style=flat-square)](#环境要求)
 [![core](https://img.shields.io/badge/sing--box-1.14.1-54e6b5?style=flat-square)](#技术架构)
 [![license](https://img.shields.io/badge/license-MIT-f9a8d4?style=flat-square)](#许可与免责)
@@ -30,9 +30,9 @@ AI-LINK 是一套面向 OpenWrt 的**智能分流网关**：用 sing-box 单内�
 
 ---
 
-## 核心能力总览（v2.4.8）
+## 核心能力总览（v2.4.9）
 
-> **v2.4.8 增量**：P0 根治 nftables 协议族混写（安装与重启均稳定挂载）；T10 按组专属 DNS 真正编译进内核；流量透视器完整回显源 IP/MAC；测试沙箱与真机配置隔离；`except->pass` 清零；新增 nft / tar / AST 三项发布门禁。延续多线并发、链式代理 DAG、三维流量洞察等全部能力。
+> **v2.4.9 增量**：全息流量波形接入真实账本（24h/7d/30d + 7×24 矩阵）并新增 4-KPI、自适应刻度与悬停透视；概览双卡片严格等高；自动节点池滑窗评分稳定性惩罚、多线并发慢节点护栏、非破坏性保员与 any 逻辑。延续 nft 协议族分离、T10 专属 DNS 等全部能力。
 
 
 | | 能力 | 说明 |
@@ -185,7 +185,8 @@ sing-box 1.14.1（单内核）
 
 | 版本 | 日期 | 主题 |
 |---|---|---|
-| **2.4.8** | 2026-11-08 | P0 全量闭环稳定版（nft 协议族拆分 + 5 项遗留修复） |
+| **2.4.9** | 2026-11-08 | 波形真值与节点池深度审计 + 概览视觉重构 |
+| 2.4.8 | 2026-11-08 | P0 全量闭环稳定版（nft 协议族拆分 + 5 项遗留修复） |
 | 2.4.3 | 2026-11-08 | 多线并发 + 链式代理 DAG + 三维流量洞察 + 交付闭环 |
 | 2.4.2 | 2026-11-07 | 安全加固 + 内核日志秒级故障切换 + 单组节点池收敛 |
 | 2.4.1 | 2026-11-05 | 订阅同步进度条 + 节点假死根治 + 节点命名统一 |
@@ -215,10 +216,10 @@ sing-box 1.14.1（单内核）
 ## 包指纹
 
 ```
-AI-LINK-v2.4.8.tar.gz
-size   792,585 B
-md5    128af9bc4304fd6cc3e46ba684e3a9d8
-sha256 e22a062c59fcf28b9f6ff1c8492ece3d1951e44031339cea66b37ce5eded4f1d
+AI-LINK-v2.4.9.tar.gz
+size   797,449 B
+md5    64fee4326a9e57a8b8fada8e7abd6384
+sha256 655d6bf8807d6028320cbb15e8f15f28a292446e907dcfb395bde1bb9e47e4eb
 ```
 
 在线清单：<https://ai-link-official.pages.dev/version.json>

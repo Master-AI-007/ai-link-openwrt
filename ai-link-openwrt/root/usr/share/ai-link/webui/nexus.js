@@ -998,17 +998,35 @@
     }
 
     const tm = $('#traffic-matrix');
-    if (tm && !tm.children.length) {
-      const matrix = [];
-      for (let day = 0; day < 7; day++) {
-        for (let hour = 0; hour < 24; hour++) {
-          const value = ((day * 37 + hour * 19 + day * hour * 3) % 100) / 100;
-          const alpha = (.035 + value * .48).toFixed(3);
-          const mb = Math.round(8 + value * 420);
-          matrix.push('<span class="matrix-cell" style="--alpha:' + alpha + '" title="周' + (day + 1) + ' ' + String(hour).padStart(2, '0') + ':00 · ' + mb + ' MB"></span>');
+    if (tm) {
+      const ovMat = (state.rawStatus && state.rawStatus.overview_telemetry && Array.isArray(state.rawStatus.overview_telemetry.matrix_7x24))
+        ? state.rawStatus.overview_telemetry.matrix_7x24
+        : null;
+      if (ovMat && ovMat.length === 168) {
+        let maxCellB = 1;
+        for (let i = 0; i < ovMat.length; i++) {
+          const tb = Number(ovMat[i].total_bytes || 0);
+          if (tb > maxCellB) maxCellB = tb;
         }
+        tm.innerHTML = ovMat.map(cell => {
+          const tb = Number(cell.total_bytes || 0);
+          const ratio = maxCellB > 0 ? Math.min(1, tb / maxCellB) : 0;
+          const alpha = tb > 0 ? (0.09 + ratio * 0.56).toFixed(3) : '0.032';
+          const tip = (cell.date || '') + ' ' + (cell.hour || '') + ' · 合计 ' + (cell.total_human || formatBytesHuman(tb));
+          return '<span class="matrix-cell" style="--alpha:' + alpha + '" title="' + esc(tip) + '"></span>';
+        }).join('');
+      } else if (!tm.children.length) {
+        const matrix = [];
+        for (let day = 0; day < 7; day++) {
+          for (let hour = 0; hour < 24; hour++) {
+            const value = ((day * 37 + hour * 19 + day * hour * 3) % 100) / 100;
+            const alpha = (.035 + value * .48).toFixed(3);
+            const mb = Math.round(8 + value * 420);
+            matrix.push('<span class="matrix-cell" style="--alpha:' + alpha + '" title="周' + (day + 1) + ' ' + String(hour).padStart(2, '0') + ':00 · ' + mb + ' MB"></span>');
+          }
+        }
+        tm.innerHTML = matrix.join('');
       }
-      tm.innerHTML = matrix.join('');
     }
 
     const devList = (state.galaxyLanDevices && state.galaxyLanDevices.length)
@@ -1042,6 +1060,7 @@
         '<span data-action="open-overview-detail" data-detail-type="destinations" data-focus-domain="' + esc(t.name) + '" title="点击查看「' + esc(t.name) + '」流量与分流详情">' + esc(t.name) + '</span>'
       ).join('');
     }
+    drawTrafficChart();
   }
 
   function renderNonShuntGlobalBar() {
@@ -2071,7 +2090,7 @@
       const dpmLabel = state.dataPlaneMode === 'tun_full'
         ? '全量 TUN 虚拟网卡 (ailink0)'
         : (state.dataPlaneMode === 'tproxy_tcp_tun_udp' ? 'TCP TProxy + UDP TUN 游戏混合' : 'TProxy + Redirect 零拷贝');
-      coreSubEl.textContent = 'AI-LINK v2.4.8 · ' + dpmLabel;
+      coreSubEl.textContent = 'AI-LINK v2.4.9 · ' + dpmLabel;
     }
     setSwitchState($('#toggle-require-lan-auth'), state.authEnabled);
     setSwitchState($('#toggle-ops-entry-bypass'), state.entryBypass);
@@ -5887,7 +5906,7 @@
         openModal(
           'OTA 在线升级状态与确认',
           '<div class="detail-grid">' +
-            '<div><span>当前运行版本</span><b class="mono">v' + esc((res && res.current) || (state.rawStatus && state.rawStatus.version) || '2.4.8') + '</b></div>' +
+            '<div><span>当前运行版本</span><b class="mono">v' + esc((res && res.current) || (state.rawStatus && state.rawStatus.version) || '2.4.9') + '</b></div>' +
             '<div><span>升级阶段</span><b>' + esc(prog.stage || 'idle (就绪)') + '</b></div>' +
             '<div><span>进度百分比</span><b>' + esc((prog.percent != null ? prog.percent : 100) + '%') + '</b></div>' +
             '<div><span>状态说明</span><b>' + esc(prog.message || '当前无进行中的升级任务') + '</b></div>' +
@@ -7091,7 +7110,7 @@
           if (applyBtn) applyBtn.classList.remove('hidden');
           toast('发现新版本 v' + res.latest + '，可点击「立即升级」');
         } else {
-          const curVer = (res && res.current) || (state.rawStatus && state.rawStatus.version) || '2.4.8';
+          const curVer = (res && res.current) || (state.rawStatus && state.rawStatus.version) || '2.4.9';
           if (subEl) subEl.textContent = '当前已是最新版本 (v' + curVer + ' · 已校验云端清单)';
           toast('当前已是最新版本 (v' + curVer + ')');
         }
@@ -8128,45 +8147,339 @@
     ctx.beginPath(); ctx.arc(last[0] - 1, last[1], 3, 0, Math.PI * 2); ctx.fillStyle = '#dffbff'; ctx.fill();
   }
 
+  let trafficHoverIdx = -1;
+  let trafficChartBound = false;
+
+  function formatBytesHuman(bytes) {
+    const b = Math.max(0, Number(bytes) || 0);
+    if (b >= 1073741824) return (b / 1073741824).toFixed(b >= 10737418240 ? 1 : 2) + ' GB';
+    if (b >= 1048576) return (b / 1048576).toFixed(b >= 10485760 ? 1 : 2) + ' MB';
+    if (b >= 1024) return (b / 1024).toFixed(1) + ' KB';
+    return Math.round(b) + ' B';
+  }
+
+  function buildTrafficWaveformBuckets() {
+    const ov = (state.rawStatus && state.rawStatus.overview_telemetry) ? state.rawStatus.overview_telemetry : null;
+    const rng = state.trafficRange || '24h';
+    if (ov) {
+      if (rng === '7d' && Array.isArray(ov.waveform_7d) && ov.waveform_7d.length) {
+        return ov.waveform_7d.map(x => ({
+          label: String(x.label || x.date || ''),
+          downBytes: Math.max(0, Number(x.in_bytes || 0)),
+          upBytes: Math.max(0, Number(x.out_bytes || 0)),
+          totalBytes: Math.max(0, Number(x.total_bytes || (Number(x.in_bytes || 0) + Number(x.out_bytes || 0))))
+        }));
+      }
+      if (rng === '30d' && Array.isArray(ov.waveform_30d) && ov.waveform_30d.length) {
+        return ov.waveform_30d.map(x => ({
+          label: String(x.label || x.date || ''),
+          downBytes: Math.max(0, Number(x.in_bytes || 0)),
+          upBytes: Math.max(0, Number(x.out_bytes || 0)),
+          totalBytes: Math.max(0, Number(x.total_bytes || (Number(x.in_bytes || 0) + Number(x.out_bytes || 0))))
+        }));
+      }
+      if (Array.isArray(ov.waveform_24h) && ov.waveform_24h.length) {
+        return ov.waveform_24h.map(x => ({
+          label: String(x.label || x.hour || ''),
+          downBytes: Math.max(0, Number(x.in_bytes || 0)),
+          upBytes: Math.max(0, Number(x.out_bytes || 0)),
+          totalBytes: Math.max(0, Number(x.total_bytes || (Number(x.in_bytes || 0) + Number(x.out_bytes || 0))))
+        }));
+      }
+      if (Array.isArray(ov.hourly_in_24) && ov.hourly_in_24.length === 24) {
+        const upArr = Array.isArray(ov.hourly_out_24) ? ov.hourly_out_24 : [];
+        return ov.hourly_in_24.map((mbIn, i) => {
+          const db = Math.round(Math.max(0, Number(mbIn) || 0) * 1048576);
+          const ub = Math.round(Math.max(0, Number(upArr[i]) || 0) * 1048576);
+          return {
+            label: String(i).padStart(2, '0') + ':00',
+            downBytes: db,
+            upBytes: ub,
+            totalBytes: db + ub
+          };
+        });
+      }
+    }
+    const count = rng === '7d' ? 7 : (rng === '30d' ? 30 : 24);
+    const out = [];
+    const now = new Date();
+    for (let i = 0; i < count; i++) {
+      let lbl = '';
+      if (rng === '24h') {
+        lbl = String(i).padStart(2, '0') + ':00';
+      } else {
+        const d = new Date(now.getTime() - (count - 1 - i) * 86400000);
+        lbl = String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      }
+      const isZeroMode = Boolean(state.rawStatus && !ov);
+      const baseScale = rng === '30d' ? 2.4 : (rng === '7d' ? 1.8 : 0.35);
+      const db = isZeroMode ? 0 : Math.round((85 + 240 * (Math.sin(i * 0.45 + 0.8) * 0.5 + 0.5)) * baseScale * 1048576);
+      const ub = isZeroMode ? 0 : Math.round((22 + 75 * (Math.cos(i * 0.38 + 1.2) * 0.5 + 0.5)) * baseScale * 1048576);
+      out.push({ label: lbl, downBytes: db, upBytes: ub, totalBytes: db + ub });
+    }
+    return out;
+  }
+
+  function updateTrafficWaveformKpis(buckets) {
+    const rateEl = $('#tw-kpi-rate');
+    if (rateEl) {
+      rateEl.textContent = '↓ ' + (mock.downText || '0 B/s') + ' · ↑ ' + (mock.upText || '0 B/s');
+    }
+    let sumDown = 0;
+    let sumUp = 0;
+    let peakItem = null;
+    for (let i = 0; i < buckets.length; i++) {
+      const b = buckets[i];
+      sumDown += b.downBytes;
+      sumUp += b.upBytes;
+      if (!peakItem || b.totalBytes > peakItem.totalBytes) peakItem = b;
+    }
+    const winEl = $('#tw-kpi-window');
+    if (winEl) {
+      winEl.textContent = '↓ ' + formatBytesHuman(sumDown) + ' / ↑ ' + formatBytesHuman(sumUp);
+    }
+    const peakEl = $('#tw-kpi-peak');
+    if (peakEl) {
+      if (peakItem && peakItem.totalBytes > 0) {
+        peakEl.textContent = peakItem.label + ' · ' + formatBytesHuman(peakItem.totalBytes);
+      } else {
+        peakEl.textContent = '暂无峰值 · 0 B';
+      }
+    }
+    const topEl = $('#tw-kpi-top');
+    if (topEl) {
+      const devs = (state.insightDevices && state.insightDevices.length) ? state.insightDevices : [];
+      const nodes = (state.insightNodes && state.insightNodes.length) ? state.insightNodes : [];
+      if (devs.length && Number(devs[0].totalBytes || devs[0].totalMb || 0) > 0) {
+        const d0 = devs[0];
+        topEl.textContent = (d0.name || d0.ip || '终端') + (d0.pct ? (' (' + d0.pct + '%)') : '');
+      } else if (nodes.length && Number(nodes[0].totalBytes || nodes[0].totalMb || 0) > 0) {
+        const n0 = nodes[0];
+        topEl.textContent = (n0.name || '出口') + (n0.pct ? (' (' + n0.pct + '%)') : '');
+      } else {
+        topEl.textContent = '全网待命监控中';
+      }
+    }
+  }
+
+  function bindTrafficChartInteractions(canvas) {
+    if (!canvas || trafficChartBound) return;
+    trafficChartBound = true;
+    const handleMove = (clientX) => {
+      const rect = canvas.getBoundingClientRect();
+      const padLeft = 56;
+      const padRight = 14;
+      const plotW = Math.max(1, rect.width - padLeft - padRight);
+      const relX = clientX - rect.left - padLeft;
+      const buckets = buildTrafficWaveformBuckets();
+      if (!buckets.length) return;
+      const ratio = Math.max(0, Math.min(1, relX / plotW));
+      const idx = Math.round(ratio * Math.max(0, buckets.length - 1));
+      if (idx !== trafficHoverIdx) {
+        trafficHoverIdx = idx;
+        drawTrafficChart();
+      }
+    };
+    canvas.addEventListener('mousemove', (e) => handleMove(e.clientX));
+    canvas.addEventListener('touchmove', (e) => {
+      if (e.touches && e.touches[0]) handleMove(e.touches[0].clientX);
+    }, { passive: true });
+    canvas.addEventListener('mouseleave', () => {
+      trafficHoverIdx = -1;
+      const tip = $('#traffic-chart-tooltip');
+      if (tip) tip.hidden = true;
+      drawTrafficChart();
+    });
+  }
+
   function drawTrafficChart() {
     const canvas = $('#traffic-chart');
     if (!canvas || state.page !== 'overview') return;
+    bindTrafficChartInteractions(canvas);
+    const buckets = buildTrafficWaveformBuckets();
+    updateTrafficWaveformKpis(buckets);
     const { ctx, width, height } = setupCanvas(canvas);
     ctx.clearRect(0, 0, width, height);
-    const pad = { left: 12, right: 8, top: 14, bottom: 20 };
-    ctx.strokeStyle = 'rgba(140,160,190,.08)'; ctx.lineWidth = 1;
-    for (let i = 0; i < 5; i++) {
-      const y = pad.top + (height - pad.top - pad.bottom) * i / 4;
-      ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(width - pad.right, y); ctx.stroke();
+    const pad = { left: 56, right: 16, top: 24, bottom: 26 };
+    const plotW = Math.max(10, width - pad.left - pad.right);
+    const plotH = Math.max(10, height - pad.top - pad.bottom);
+
+    let maxVal = 0;
+    let sumTotal = 0;
+    let peakIdx = -1;
+    let peakVal = 0;
+    for (let i = 0; i < buckets.length; i++) {
+      const d = buckets[i].downBytes;
+      const u = buckets[i].upBytes;
+      const tot = buckets[i].totalBytes;
+      sumTotal += tot;
+      if (d > maxVal) maxVal = d;
+      if (u > maxVal) maxVal = u;
+      if (tot > peakVal) {
+        peakVal = tot;
+        peakIdx = i;
+      }
     }
-    const count = 64;
-    const phase = state.trafficRange === '7d' ? 1.7 : (state.trafficRange === '30d' ? 3.2 : 0.4);
-    const down = [];
-    const up = [];
-    for (let i = 0; i < count; i++) {
-      down.push(.18 + .38 * (Math.sin(i * .16 + phase) * .5 + .5) + .28 * (Math.sin(i * .51 + 1.4 + phase) * .5 + .5));
-      up.push(.1 + .24 * (Math.sin(i * .21 + 2 + phase) * .5 + .5) + .1 * (Math.cos(i * .47 + phase) * .5 + .5));
-    }
-    function drawSeries(series, color, rgba) {
-      const points = series.map((v, i) => [pad.left + i / (count - 1) * (width - pad.left - pad.right), height - pad.bottom - v * (height - pad.top - pad.bottom)]);
-      const gradient = ctx.createLinearGradient(0, pad.top, 0, height);
-      gradient.addColorStop(0, rgba.replace('ALPHA', '.22'));
-      gradient.addColorStop(1, rgba.replace('ALPHA', '0'));
+    const yCeil = maxVal > 0 ? maxVal * 1.16 : 104857600;
+
+    /* 1. Horizontal grid lines + Left Y-axis readable scale labels */
+    ctx.lineWidth = 1;
+    ctx.font = '500 11px "JetBrains Mono", "SF Mono", Consolas, monospace';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    for (let i = 0; i <= 4; i++) {
+      const y = pad.top + (plotH * i) / 4;
+      const valAtLine = maxVal > 0 ? (yCeil * (4 - i)) / 4 : 0;
+      ctx.strokeStyle = i === 4 ? 'rgba(157,177,211,0.20)' : 'rgba(140,160,190,0.09)';
       ctx.beginPath();
-      points.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]));
-      ctx.lineTo(width - pad.right, height - pad.bottom); ctx.lineTo(pad.left, height - pad.bottom); ctx.closePath();
-      ctx.fillStyle = gradient; ctx.fill();
-      ctx.beginPath();
-      points.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]));
-      ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.moveTo(pad.left, y);
+      ctx.lineTo(width - pad.right, y);
+      ctx.stroke();
+      ctx.fillStyle = '#8E9DB5';
+      ctx.fillText(i === 4 ? '0 B' : formatBytesHuman(valAtLine), pad.left - 8, y);
     }
-    drawSeries(down, '#6ee7f5', 'rgba(110,231,245,ALPHA)');
-    drawSeries(up, '#a994ff', 'rgba(169,148,255,ALPHA)');
-    ctx.fillStyle = '#526078'; ctx.font = '8px sans-serif';
-    const labels = state.trafficRange === '7d'
-      ? ['周一', '周三', '周五', '周六', '周日']
-      : (state.trafficRange === '30d' ? ['D-30', 'D-22', 'D-15', 'D-7', '今日'] : ['00:00', '06:00', '12:00', '18:00', '23:00']);
-    labels.forEach((t, i) => ctx.fillText(t, pad.left + i / 4 * (width - pad.left - pad.right) - 10, height - 4));
+
+    const count = Math.max(1, buckets.length);
+    const xOf = (idx) => pad.left + (count > 1 ? (idx / (count - 1)) * plotW : plotW / 2);
+    const yOf = (val) => pad.top + plotH - Math.min(1, Math.max(0, val / yCeil)) * plotH;
+
+    function drawSmoothSeries(vals, strokeColor, topRgba, dotColor) {
+      const pts = vals.map((v, i) => [xOf(i), yOf(v)]);
+      if (!pts.length) return pts;
+      const grad = ctx.createLinearGradient(0, pad.top, 0, pad.top + plotH);
+      grad.addColorStop(0, topRgba);
+      grad.addColorStop(1, 'rgba(8,12,20,0)');
+
+      ctx.beginPath();
+      ctx.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 0; i < pts.length - 1; i++) {
+        const p0 = pts[i];
+        const p1 = pts[i + 1];
+        const cx = (p0[0] + p1[0]) / 2;
+        ctx.bezierCurveTo(cx, p0[1], cx, p1[1], p1[0], p1[1]);
+      }
+      ctx.lineTo(pts[pts.length - 1][0], pad.top + plotH);
+      ctx.lineTo(pts[0][0], pad.top + plotH);
+      ctx.closePath();
+      ctx.fillStyle = grad;
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 0; i < pts.length - 1; i++) {
+        const p0 = pts[i];
+        const p1 = pts[i + 1];
+        const cx = (p0[0] + p1[0]) / 2;
+        ctx.bezierCurveTo(cx, p0[1], cx, p1[1], p1[0], p1[1]);
+      }
+      ctx.strokeStyle = strokeColor;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      /* Subtle data node markers on active buckets */
+      const stepDot = count > 16 ? 2 : 1;
+      for (let i = 0; i < pts.length; i += stepDot) {
+        if (vals[i] <= 0 && maxVal > 0) continue;
+        ctx.beginPath();
+        ctx.arc(pts[i][0], pts[i][1], 2.2, 0, Math.PI * 2);
+        ctx.fillStyle = dotColor;
+        ctx.fill();
+      }
+      return pts;
+    }
+
+    const downPts = drawSmoothSeries(buckets.map(b => b.downBytes), '#6ee7f5', 'rgba(110,231,245,0.25)', '#8FE3FF');
+    const upPts = drawSmoothSeries(buckets.map(b => b.upBytes), '#a994ff', 'rgba(169,148,255,0.18)', '#c4b5fd');
+
+    /* 2. Peak Callout Badge on Canvas */
+    if (peakIdx >= 0 && peakVal > 0 && downPts[peakIdx]) {
+      const px = downPts[peakIdx][0];
+      const py = Math.min(downPts[peakIdx][1], upPts[peakIdx] ? upPts[peakIdx][1] : downPts[peakIdx][1]);
+      const badgeTxt = '峰值 ' + buckets[peakIdx].label + ' · ' + formatBytesHuman(peakVal);
+      ctx.font = '600 11px "SF Pro Display", "PingFang SC", sans-serif';
+      const bw = Math.ceil(ctx.measureText(badgeTxt).width) + 14;
+      const bh = 20;
+      const bx = Math.max(pad.left + 4, Math.min(width - pad.right - bw - 4, px - bw / 2));
+      const by = Math.max(4, py - bh - 8);
+      ctx.fillStyle = 'rgba(13,19,33,0.92)';
+      ctx.strokeStyle = 'rgba(100,210,255,0.45)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      if (typeof ctx.roundRect === 'function') ctx.roundRect(bx, by, bw, bh, 6);
+      else ctx.rect(bx, by, bw, bh);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#6ee7f5';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(badgeTxt, bx + bw / 2, by + bh / 2);
+    }
+
+    /* 3. Bottom X-axis time/date labels */
+    ctx.fillStyle = '#8E9DB5';
+    ctx.font = '500 11px "JetBrains Mono", "SF Mono", Consolas, monospace';
+    ctx.textBaseline = 'bottom';
+    const xTickIndices = [];
+    if (count === 24) {
+      xTickIndices.push(0, 4, 8, 12, 16, 20, 23);
+    } else if (count <= 7) {
+      for (let i = 0; i < count; i++) xTickIndices.push(i);
+    } else {
+      xTickIndices.push(0, 5, 10, 15, 20, 25, count - 1);
+    }
+    xTickIndices.forEach((idx, k) => {
+      if (!buckets[idx]) return;
+      const tx = xOf(idx);
+      ctx.textAlign = k === 0 ? 'left' : (k === xTickIndices.length - 1 ? 'right' : 'center');
+      ctx.fillText(buckets[idx].label, tx, height - 4);
+    });
+
+    /* 4. Interactive Hover Crosshair & Floating HUD Tooltip */
+    const tip = $('#traffic-chart-tooltip');
+    if (trafficHoverIdx >= 0 && trafficHoverIdx < buckets.length) {
+      const hb = buckets[trafficHoverIdx];
+      const hx = xOf(trafficHoverIdx);
+      const hyDown = downPts[trafficHoverIdx] ? downPts[trafficHoverIdx][1] : pad.top + plotH;
+      const hyUp = upPts[trafficHoverIdx] ? upPts[trafficHoverIdx][1] : pad.top + plotH;
+      ctx.save();
+      ctx.strokeStyle = 'rgba(100,210,255,0.42)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(hx, pad.top);
+      ctx.lineTo(hx, pad.top + plotH);
+      ctx.stroke();
+      ctx.restore();
+
+      ctx.beginPath();
+      ctx.arc(hx, hyDown, 4.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#6ee7f5';
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#04060b';
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(hx, hyUp, 4.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#a994ff';
+      ctx.fill();
+      ctx.stroke();
+
+      if (tip) {
+        const sharePct = sumTotal > 0 ? ((hb.totalBytes * 100) / sumTotal).toFixed(1) + '%' : '0.0%';
+        tip.innerHTML =
+          '<div style="font-weight:600;color:var(--text-1);margin-bottom:4px">时段：' + esc(hb.label) + '</div>' +
+          '<div style="color:var(--cyan)">下行：' + esc(formatBytesHuman(hb.downBytes)) + '</div>' +
+          '<div style="color:var(--violet)">上行：' + esc(formatBytesHuman(hb.upBytes)) + '</div>' +
+          '<div style="color:var(--text-3);margin-top:2px">合计：' + esc(formatBytesHuman(hb.totalBytes)) + ' (占比 ' + esc(sharePct) + ')</div>';
+        tip.hidden = false;
+        const leftPx = hx > width * 0.62 ? Math.max(pad.left, hx - 190) : Math.min(width - 195, hx + 12);
+        tip.style.left = Math.round(leftPx) + 'px';
+        tip.style.top = '12px';
+      }
+    } else if (tip) {
+      tip.hidden = true;
+    }
   }
 
   function initCharts() {
@@ -8204,7 +8517,7 @@
         latencySeries.push(mock.latency);
         if (latencySeries.length > 20) latencySeries.shift();
       }
-      if (state.page === 'overview') drawLatencyChart();
+      if (state.page === 'overview') { drawLatencyChart(); drawTrafficChart(); }
     } finally {
       telemetryInFlight = false;
     }

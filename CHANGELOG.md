@@ -1,3 +1,12 @@
+## [v2.4.9] - 2026-11-08
+### 波形真值与节点池深度审计 + 概览视觉重构
+- **概览双卡片等高**：`#page-overview` / `#page-dns` 的 `.dashboard-grid.two-one` 显式 `align-items: stretch`，子卡 flex 纵向撑满、流量波形容器自适应拉伸；Chromium 实测左右卡片高度差 **0px**，分流页保持 `align-items: start` 零回归。
+- **全息流量波形真实账本化**：`get_overview_live_telemetry()` 输出 `waveform_24h`(24) / `waveform_7d`(7) / `waveform_30d`(30) 与 `matrix_7x24`(168) 真实序列，替代原 `Math.sin` 装饰曲线；新增 4-KPI 速览栏、5 级自适应 Y 轴刻度、峰值时刻胶囊、悬停十字准星明细浮窗与 X 轴 11px 字阶。
+- **自动节点池评分与并发护栏**：滑窗评分打通 `history` 与 `sparkline_20`；引入 `_stab_pen` 对高丢包/高抖动分级惩罚并支持主动切换；多线并发自动剔除离群慢节点并暴露 `multi_line_filtered_slow_count`。
+- **非破坏性保员与 any 逻辑**：健康数达标时只清理 `dead`/已删除成员，保留临时隔离期的 `ok` 节点；服务可用性完整支持 `service_logic == "any"`。
+- **稳定性延续**：v2.4.8 的 nft 协议族分离未退化，安装退出码 0、`nft=1`、重启后仍稳定；Design Lint 18/18、发布门禁 16/16、官方回归 15/15 套全绿（混沌 32/32、`test_v102` 150/150）。
+- 云端自动巡检调整为约每 90 分钟一次，并写入「仅在收到用户明确验收确认后才推进下一版本号」的版本推进铁律。
+
 ## [v2.4.8] - 2026-11-08
 ### P0 全量闭环稳定版（VERIFY-v2.4.7 100% 根治）
 - **P0-1 修复**：nftables 规则按 `meta nfproto ipv4` / `ipv6` 拆分为 6 条独立规则，消除单条规则混用 `ip daddr` 与 `ip6 daddr` 导致的 `conflicting network layer protocols` 挂载失败；真机安装退出码 0、`nft=1`、重启后仍自愈；`install.sh` 增加挂载失败诊断。
