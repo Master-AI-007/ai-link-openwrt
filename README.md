@@ -4,7 +4,7 @@
 
 **NEXUS 全域 3D 智能网关 · 运行在 OpenWrt 上的智能分流系统**
 
-[![version](https://img.shields.io/badge/version-2.5.1-6ee7f5?style=flat-square)](https://github.com/Master-AI-007/ai-link-openwrt/releases/tag/v2.5.1)
+[![version](https://img.shields.io/badge/version-2.5.2-6ee7f5?style=flat-square)](https://github.com/Master-AI-007/ai-link-openwrt/releases/tag/v2.5.2)
 [![platform](https://img.shields.io/badge/OpenWrt-23.05%20%7C%2024.10%20%7C%20ImmortalWrt-a994ff?style=flat-square)](#环境要求)
 [![core](https://img.shields.io/badge/sing--box-1.14.1-54e6b5?style=flat-square)](#技术架构)
 [![license](https://img.shields.io/badge/license-MIT-f9a8d4?style=flat-square)](#许可与免责)
@@ -30,9 +30,9 @@ AI-LINK 是一套面向 OpenWrt 的**智能分流网关**：用 sing-box 单内�
 
 ---
 
-## 核心能力总览（v2.5.1）
+## 核心能力总览（v2.5.2）
 
-> **v2.5.1 增量**：LuCI 面板极简重构（禁用 UCI 保存表单，仅保留基础服务与 OTA）；多线并发池副线阵亡时 0.5s 秒级收敛到存活主线/direct、精准清理故障副线存量连接；节点池全死/锁区保持 direct；前端按真实线数展示含单线降级态；上轮反馈中的自测白名单、报告指纹表、HANDOFF.md、源码树 CHANGELOG 已闭环。延续多线并发出口等全部能力。
+> **v2.5.2 增量**：自动节点池严格遵循勾选的订阅源与地区（订阅同步补位、保存归一化、健康巡检、范围守卫、前端向导六层闭环）；`tests/` 首次真正随包内置（tar/zip 三处），发布门禁改为开包校验 + 套件非空断言 + 报告指纹逐行核对。延续 LuCI 极简、多线并发出口等全部能力。
 
 
 | | 能力 | 说明 |
@@ -185,7 +185,8 @@ sing-box 1.14.1（单内核）
 
 | 版本 | 日期 | 主题 |
 |---|---|---|
-| **2.5.1** | 2026-11-08 | LuCI 极简重构 + 多线并发退化收敛 + 上轮反馈闭环 |
+| **2.5.2** | 2026-11-09 | 节点池订阅源/地区强约束闭环 + 测试集随包内置 |
+| 2.5.1 | 2026-11-08 | LuCI 极简重构 + 多线并发退化收敛 + 上轮反馈闭环 |
 | 2.5.0 | 2026-11-08 | 多线并发正式落地 + 节点池全生命周期审计 + 订阅自动同步开关 |
 | 2.4.9 | 2026-11-08 | 波形真值与节点池深度审计 + 概览视觉重构 |
 | 2.4.8 | 2026-11-08 | P0 全量闭环稳定版（nft 协议族拆分 + 5 项遗留修复） |
@@ -218,10 +219,10 @@ sing-box 1.14.1（单内核）
 ## 包指纹
 
 ```
-AI-LINK-v2.5.1.tar.gz
-size   801,450 B
-md5    5f84fde33b6bb7e07a62fb3869fb2fe0
-sha256 ea5ffef0e69c5267133e12b0f6d7ed39ac5b23b68411a2a0d6c2d09a1fc6b550
+AI-LINK-v2.5.2.tar.gz
+size   940,660 B
+md5    662b647a380b90d00c40c10c0e5f35d6
+sha256 f9922563137cef494e61b62bc87fdea32f38c85cc4c4cf3f02086a7dad8430d3
 ```
 
 在线清单：<https://ai-link-official.pages.dev/version.json>

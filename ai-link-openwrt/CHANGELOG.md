@@ -1,3 +1,14 @@
+## v2.5.2 (2026-11-09)
+
+- **[自动节点池订阅源与国家区域范围强约束闭环 (`ai-link-daemon.py` & `nexus.js`)]**：
+  1. **修复订阅同步自动补位跨订阅误选 (`_reconcile_auto_pools_after_sub_sync`)**：修复订阅更新触发节点池自动补位时未按池绑定的 `scope_sources`（勾选订阅源）与 `scope_countries`（勾选国家/地区）过滤的问题，杜绝非勾选订阅源的节点被自动补入池内。
+  2. **修复低健康度自动复选与日常维护范围越界 (`maintain_auto_node_pool_health` / `_normalize_auto_node_item`)**：在保存与加载节点池时强制将 `scope_sources`、`scope_source`、`scope_countries` 与 `filters`（`sub_id` / `region_any`）双向锁步同步；巡检与低健康度复选时自动剔除不在勾选订阅或地区范围内的越界节点，并严格仅从勾选订阅与地区内补位。
+  3. **修复单订阅通配与前端向导范围过滤 (`_filter_nodes_by_pool_scope` / `openAutoNodeEditorModal`)**：移除当节点携带其他订阅 ID 时仍被单订阅兜底匹配的问题，前端修改勾选订阅或地区后保存前自动剥离超范围旧节点。
+- **[闭环 `FEEDBACK-云端-v2.5.1.md` 全部 5 项反馈 (`FB-251-1 ~ FB-251-5`)]**：
+  1. **修复 `gates_v101.py` 套件提取正则与包内自包含校验 (`FB-251-1`)**：修正 `SUITES` 提取正则并断言 `len(suites) >= 14`，显式将 `tests/`（含 `v242_deep_chaos_simulation.py`）写入 `.tar.gz` 与 `.zip` 并由 `gates_v101.py` 直接开包核验。
+  2. **校准报告四列指纹表全量一致性 (`FB-251-2`)**：消除单独补发脚本尾部换行符差异，并在 `gates_v101.py` 中新增报告与 `HANDOFF.md` 指纹表逐行比对硬门禁。
+  3. **消除测试脚本版本号硬编码 (`FB-251-3`) 与分流下拉框多线线数虚标 (`FB-251-4` / `FB-251-5`)**：`test_v102_full_regression.py` 改为动态读取 `dmod.APP_VERSION`；`nexus.js` 分流组下拉选项同步改为真实线数/单线降级文案，且全文零 `Math.max(2, ... active_lines_count)`。
+
 ## v2.5.1 (2026-11-08)
 
 - **[LuCI 面板极简重构 & v2.5.0 验收反馈 FB-250-1~6 全量闭环 (`htdocs/.../overview.js` & `ai-link-daemon.py`)]**：

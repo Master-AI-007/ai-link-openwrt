@@ -1,3 +1,15 @@
+## [v2.5.2] - 2026-11-09
+### 节点池订阅源/地区强约束闭环 + 测试集随包内置
+- **订阅同步补位按范围过滤**：`_reconcile_auto_pools_after_sub_sync` 补位前经 `_filter_nodes_by_pool_scope` 按池的 `scope_sources` / `scope_countries` 过滤，越界存量节点自动剔除。
+- **保存归一化锁步**：`_normalize_auto_node_item` 每次保存强制 `scope_sources` / `scope_countries` 与 `filters`（`sub_id` / `region_any` / `require_services` / `replenish_threshold`）双向同步。
+- **健康巡检只从范围内补齐**：`maintain_auto_node_pool_health` 入口预计算范围内集合，越界成员立即剔除。
+- **范围守卫收紧**：`_filter_nodes_by_pool_scope` 修复单订阅通配放行漏洞，完善 `id` / `url` / `name` 交叉匹配，并在分组归一化、替换候选、分流解析三处接入。
+- **前端向导剥离越界旧节点**：修改勾选订阅/地区后保存，自动从已选集合移除范围外节点。
+- **测试集随包内置**：`tests/` 写入 tar 的 `ai-link-openwrt/tests/` 与 zip 的 `tests/`、`site/ai-link-openwrt/tests/`；`gates_v101` 修正 SUITES 正则、加 `len(suites)>=14` 非空断言与开包校验、逐行核对报告指纹。
+- **FB-251-2/3/4/5 闭环**：报告三行指纹对齐、v102 断言改动态版本号、下拉线数改真实值、Stage 6.21b 全文扫描。
+- 稳定性：P0 与多线出口未退化；Design Lint 18/18、发布门禁 17/17、混沌 45/45。
+- 遗留（不影响运行）：`tests/subscription_formats/` 夹具未随包，原始包零补发跑 `run_all` 时订阅格式套件会因缺夹具失败。
+
 ## [v2.5.1] - 2026-11-08
 ### LuCI 极简重构 + 多线并发退化收敛 + 上轮反馈闭环
 - **LuCI 面板做减法**：仅保留服务启停/重启/代理接管/重载内核/开机自启与 OTA 在线升级模块，以及独立控制台入口；置空 `handleSaveApply / handleSave / handleReset`，移除分流模式下拉、IPv6/旁路开关、组件更新表与底层 UCI 表单，杜绝覆盖 `:9099` 的 SSOT 配置。

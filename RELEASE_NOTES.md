@@ -1,34 +1,32 @@
-# AI-LINK v2.5.1
+# AI-LINK v2.5.2
 
 > OpenWrt 智能分流网关 · sing-box 单内核 · 15 组分流 · 自动节点池 · 订阅自适应
-> 发布日期：2026-11-08 ｜ 适用：OpenWrt 23.05 / 24.10 / ImmortalWrt / LEDE（`fw4` + `nftables`）
+> 发布日期：2026-11-09 ｜ 适用：OpenWrt 23.05 / 24.10 / ImmortalWrt / LEDE（`fw4` + `nftables`）
 
 ---
 
-## 这一版：面板做减法，多线做加固
+## 这一版：节点池严格守住你勾选的范围
 
-### 🎛 LuCI 面板极简重构
+### 🎯 自动节点池「只从你勾选的订阅源和地区里选」
 
-LuCI 页面只保留**基础服务开关**（启动 / 停止 / 重启 / 切换代理接管 / 重载内核 / 开机自启）与**OTA 在线检查与热更新模块**，以及进入独立全功能控制台 `:9099` 的入口。
+此前存在一个体验问题：建池时勾选了指定订阅源与地区，但订阅更新后的自动补位、健康巡检复选、甚至保存归一化，都可能把范围外的节点带进池子。本版做了 6 层闭环：
 
-明确置空 `handleSaveApply / handleSave / handleReset`，移除底部分流模式下拉、IPv6 开关、国内不进内核切换、组件更新表和底层 `form.Flag / ListValue / Value` 编辑项，其余区域只读展示核心运行状态 KPI。**目的**：LuCI 表单不再有机会覆盖独立控制台的 SSOT 配置。
+1. **订阅同步补位**：`_reconcile_auto_pools_after_sub_sync` 在低水位补位前，先用 `_filter_nodes_by_pool_scope` 按池的 `scope_sources` / `scope_countries` 过滤；不仅补位只从范围内选，**存量里越界的节点也会被自动剔除**；
+2. **保存归一化**：每次保存/归一化都把 `scope_sources`、`scope_source`、`scope_countries` 与 `filters`（`sub_id` / `region_any` / `require_services` / `replenish_threshold`）双向锁步，改过范围后旧 `filters` 不再残留；
+3. **健康巡检复选**：`maintain_auto_node_pool_health` 入口预计算范围内集合，越界成员立即剔除，只从范围内择优补齐；
+4. **范围过滤守卫**：收紧单订阅通配分支的放行漏洞，完善 `id` / `url` / `name` 交叉匹配，并在分组归一化、替换候选、分流解析三处统一接入；
+5. **前端向导**：在配置弹窗里改了订阅或地区并保存时，自动剥离已选集合中越界的旧节点，提交的列表 100% 符合新范围；
+6. 配套 Stage 6.22 门禁覆盖上述路径。
 
-### 🧵 多线并发退化与容灾加固
+### 📦 测试集首次真正随包内置
 
-- 池内健康线从 ≥2 跌到 1（或 0）时，0.5 秒调度器**立即把池 selector 与绑定分流组收敛到唯一存活主线 / `direct`**，不再出现上一拍恰好轮转在刚阵亡副线上的滞留；
-- 副线连续 3 次传输报错被隔离时，针对该故障线路执行存量连接清理并立即失效轮转状态缓存，杜绝长连接悬挂；
-- 池内候选全不可达或因地区锁区触发全组告警时，保存操作禁止把死节点回写到 `current_node`；
-- 前端按真实 `multi_line_nodes` 数量展示 `多线并发(N线)` / `1线·单线降级` / `0线·无可用`，分流组胶囊同步标注。
+上一轮反馈指出「混沌脚本连续多轮未随包交付」，本版把 `tests/` 真实写入安装包与交接包的三处位置（`tar: ai-link-openwrt/tests/`、`zip: tests/`、`zip: site/ai-link-openwrt/tests/`），并把发布门禁改为：修正套件提取正则、强制 `len(suites) >= 14`、用 `tarfile`/`zipfile` **直接开包**核对每个脚本存在、逐行核对报告指纹表。
 
-### ✅ 上一轮反馈闭环
-
-按《FEEDBACK-云端-v2.5.0.md》，本版已闭环 FB-250-1（自测白名单纳入 `urltest` 字段）、FB-250-3（报告恢复四列精确指纹表）、FB-250-4（交接包顶层 `HANDOFF.md`）、FB-250-5（源码树 CHANGELOG 首版对齐 `APP_VERSION`），并新增 17 项打包门禁。
-
-> 验收侧仍发现 FB-250-2（混沌脚本未随包内置）与 FB-250-6（门禁正则空集假通过）未真正闭环，详见发布记录与云端反馈单；不影响本版功能。
+> 验收侧补充说明：脚本本体已进包，但 `tests/subscription_formats/` 夹具目录仍未打入，导致「原始包零补发」跑 `run_all` 时订阅格式那套会因缺夹具失败；该项不影响产品运行，已列入反馈单。
 
 ### ✅ 稳定性
 
-延续 P0 修复（nft 协议族分离）与多线并发出口：安装真实退出码 0、`nft=1`、重启后仍稳定；`gates_v101` 17/17、Design Lint 18/18、混沌 43/43、官方回归 15 套 14 通过（1 项为测试脚本硬编码旧版本号，已排除）。
+P0 与多线并发均未退化：安装真实退出码 0、`nft=1`、重启后仍稳定挂载；两个 `urltest` 多线出口在线，AI 敏感组保持单线保护。Design Lint 18/18、发布门禁 17/17、混沌 45/45。
 
 ---
 
@@ -40,7 +38,7 @@ ai-link update --apply
 curl -fsSL https://ai-link-official.pages.dev/upgrade.sh | sh
 ```
 
-支持从 2.0.x / 2.1.x / 2.2.x / 2.3.x / 2.4.x / 2.5.0 直升，配置、节点、订阅、节点池全部保留，失败自动回滚。
+支持从 2.0.x ~ 2.5.1 直升，配置、节点、订阅、节点池全部保留，失败自动回滚。
 
 ---
 
@@ -55,7 +53,7 @@ curl -fsSL https://ai-link-official.pages.dev/upgrade.sh | sh
 ## 包指纹
 
 ```
-AI-LINK-v2.5.1.tar.gz   801,450 B
-md5     5f84fde33b6bb7e07a62fb3869fb2fe0
-sha256  ea5ffef0e69c5267133e12b0f6d7ed39ac5b23b68411a2a0d6c2d09a1fc6b550
+AI-LINK-v2.5.2.tar.gz   940,660 B
+md5     662b647a380b90d00c40c10c0e5f35d6
+sha256  f9922563137cef494e61b62bc87fdea32f38c85cc4c4cf3f02086a7dad8430d3
 ```

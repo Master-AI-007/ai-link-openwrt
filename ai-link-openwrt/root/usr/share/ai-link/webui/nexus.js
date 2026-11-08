@@ -1787,7 +1787,7 @@
     if (subObj) {
       if (n.sub_id && (n.sub_id === subObj.id || n.sub_id === subObj.name)) return true;
       if (n.sub_url && subObj.url && n.sub_url === subObj.url) return true;
-      if (mock.subscriptions.length === 1 && !isNodeManualCustom(n)) return true;
+      if (mock.subscriptions.length === 1 && !isNodeManualCustom(n) && !n.sub_id && !n.sub_url) return true;
     }
     return false;
   }
@@ -2165,7 +2165,7 @@
       const dpmLabel = state.dataPlaneMode === 'tun_full'
         ? '全量 TUN 虚拟网卡 (ailink0)'
         : (state.dataPlaneMode === 'tproxy_tcp_tun_udp' ? 'TCP TProxy + UDP TUN 游戏混合' : 'TProxy + Redirect 零拷贝');
-      coreSubEl.textContent = 'AI-LINK v2.5.1 · ' + dpmLabel;
+      coreSubEl.textContent = 'AI-LINK v2.5.2 · ' + dpmLabel;
     }
     setSwitchState($('#toggle-require-lan-auth'), state.authEnabled);
     setSwitchState($('#toggle-ops-entry-bypass'), state.entryBypass);
@@ -4376,10 +4376,14 @@
         const srcArr = Array.from(selectedSources);
         const ctryArr = Array.from(selectedCountries);
 
+        const allowedScopeSet = new Set(getScopeFilteredNodes().map(n => n.tag || n.name));
+        Array.from(selectedSet).forEach(t => {
+          if (!allowedScopeSet.has(t)) selectedSet.delete(t);
+        });
         if (selectedSet.size === 0 || scopeDirty) {
           await executeAutoSelectionWithProgress();
         }
-        const finalTags = Array.from(selectedSet).slice(0, tSize);
+        const finalTags = Array.from(selectedSet).filter(t => allowedScopeSet.has(t)).slice(0, tSize);
         if (!finalTags.length) {
           toast('当前所选订阅与地区范围内未找到可用节点，请调整订阅或地区范围后重试', 'warn');
           return;
@@ -7822,8 +7826,9 @@
         const isGrpIpSens = Boolean(g.ip_sensitive || ['AI','AI_Assistant','Google','Microsoft','Apple','Apple_Microsoft','Social','Social_Media','Custom_Soul','Custom_Copilot','Custom_WorkBuddy'].includes(g.id));
         const autoOpts = mock.autoPools.map(p => {
           const pCur = (!p.current_node || p.current_node === 'direct') ? '直连/待选优' : cleanNodeDisplayName(p.current_node);
+          const optMlCnt = (Array.isArray(p.multi_line_nodes) && p.multi_line_nodes.length) ? p.multi_line_nodes.length : Number(p.active_lines_count != null ? p.active_lines_count : 0);
           const mlTag = p.dispatch_mode === 'multi_line'
-            ? (isGrpIpSens ? ' · 自动锁定单线防风控' : (' · 多线并发 ' + Math.max(2, Number(p.active_lines_count || 2)) + ' 线'))
+            ? (isGrpIpSens ? ' · 自动锁定单线防风控' : (optMlCnt >= 2 ? (' · 多线并发 ' + optMlCnt + ' 线') : (optMlCnt === 1 ? ' · 多线并发 1线(单线降级)' : ' · 多线并发 0线(无可用)')))
             : '';
           return '<option value="' + esc(p.id) + '" ' + (g.auto_node_id === p.id ? 'selected' : '') + '>' + esc(p.name) + ' (当前: ' + esc(pCur) + esc(mlTag) + ')</option>';
         }).join('');
