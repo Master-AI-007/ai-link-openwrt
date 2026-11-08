@@ -2072,8 +2072,14 @@ def merge_nodes(sub_id: str, incoming_nodes: list, sub_url: str = "", replace_su
     """Spec §6 #8 + Auto Node Pool v2 §5.3: Unified node merge keyed by `node_id` & `node_key`, with automatic pool diff & missing placeholder reconciliation."""
     with _SUB_LOCK:
         existing = load_saved_nodes(conf_dir)
+        prev_by_id = {(n.get("node_id") or compute_node_id(n)): n for n in existing if isinstance(n, dict)}
+        prev_by_key = {(n.get("node_key") or compute_node_key(n)): n for n in existing if isinstance(n, dict)}
         if replace_all:
-            kept = [n for n in existing if is_builtin_test_node(n.get("tag", ""))]
+            kept = [
+                n for n in existing
+                if is_builtin_test_node(n.get("tag", ""))
+                or bool(n.get("_manual") or n.get("is_custom") or n.get("is_chained") or n.get("sub_id") == "custom")
+            ]
         elif replace_sub and (sub_id or sub_url):
             kept = [
                 n for n in existing
@@ -2094,6 +2100,11 @@ def merge_nodes(sub_id: str, incoming_nodes: list, sub_url: str = "", replace_su
                 continue
             nid = compute_node_id(ob)
             nkey = compute_node_key(ob)
+            prev_n = prev_by_id.get(nid) or prev_by_key.get(nkey)
+            if isinstance(prev_n, dict):
+                for u_attr in ("region_override", "disabled", "remark"):
+                    if u_attr in prev_n and u_attr not in ob:
+                        ob[u_attr] = prev_n[u_attr]
             ob["node_id"] = nid
             ob["node_key"] = nkey
             ob["display_tag"] = str(ob.get("display_tag") or ob.get("tag")).strip()
@@ -3102,14 +3113,14 @@ def save_node_probe_store(store: dict, conf_dir: Path = CONF_DIR, strict_gc: boo
         try:
             conf_dir.mkdir(parents=True, exist_ok=True)
             _atomic_write_text(conf_dir / "node_probe.json", raw)
-        except OSError:
-            pass
+        except OSError as _e_diag:
+            globals().get("_record_internal_diag", str)(_e_diag)
         if Path(conf_dir).resolve() == Path(CONF_DIR).resolve():
             try:
                 RUN_DIR.mkdir(parents=True, exist_ok=True)
                 _atomic_write_text(RUN_DIR / "node_probe.json", raw)
-            except OSError:
-                pass
+            except OSError as _e_diag:
+                globals().get("_record_internal_diag", str)(_e_diag)
         with _FAST_CACHE_LOCK:
             _FAST_FILE_CACHE.pop(("probe_store", str(conf_dir / "node_probe.json")), None)
             _FAST_FILE_CACHE.pop(("probe_store", str(RUN_DIR / "node_probe.json")), None)
@@ -3236,7 +3247,7 @@ def get_node_effective_probe(node_or_id, store: dict = None, now_ts: int = None,
                     nid = _sn.get("node_id") or compute_node_id(_sn)
                     break
     rec = store.get(nid) or store.get(tag) or {}
-    probe_ts = int(rec.get("probe_ts") or 0)
+    probe_ts = int(rec.get("probe_ts") or rec.get("last_probe_ts") or 0)
     raw_state = str(rec.get("state") or "pending")
     raw_delay = int(rec.get("delay_ms") if rec.get("delay_ms") is not None else -1)
     hist_len = len(rec.get("history") or []) if isinstance(rec.get("history"), list) else 0
@@ -4738,10 +4749,36 @@ def _enrich_auto_node_groups_members(item: dict, saved_nodes: list = None, subs_
                     else:
                         svc_passed = True
                         svc_verified = False
+            g_reg_info = get_node_google_region_info(n_obj, rec_raw)
+            google_reg = g_reg_info["google_region"]
+            pool_id_l = str(item.get("id") or "").lower()
+            pool_name_l = str(item.get("name") or "").lower()
+            is_ai_or_google_pool = (
+                "ai" in pool_id_l or "ai" in pool_name_l or "gemini" in pool_name_l
+                or any(s in ("gemini", "chatgpt", "openai", "claude") for s in svc_ids)
+            )
+            node_region_blocked = bool(is_ai_or_google_pool and google_reg in UNSUPPORTED_AI_REGIONS)
+            if node_region_blocked:
+                svc_passed = False
+                svc_verified = False
+            quarantine_until = int(rec_raw.get("quarantine_until") or 0)
+            in_quarantine = bool(quarantine_until > now_sec or int(sc_info.get("consecutive_fail") or 0) >= 3)
+            cooldown_until = int(rec_raw.get("cooldown_until") or 0)
+            in_cooldown = bool(cooldown_until > now_sec)
             score_passed = True
             if excl_low and sc_info["samples"] >= 5 and sc_info["score"] < low_thresh:
                 score_passed = False
-            is_qual_ok = bool(ev["selectable"] and ev["state"] == "ok" and ev["delay_ms"] > 0 and svc_passed and score_passed)
+            eff_svc_ok = True if (item.get("l7_degraded") or item.get("l7_degraded_fallback")) else svc_passed
+            is_qual_ok = bool(
+                ev["selectable"]
+                and ev["state"] == "ok"
+                and ev["delay_ms"] > 0
+                and eff_svc_ok
+                and score_passed
+                and not node_region_blocked
+                and not in_quarantine
+                and not in_cooldown
+            )
             if is_qual_ok:
                 g_qual_cnt += 1
                 if t not in all_ok_tags:
@@ -4750,6 +4787,13 @@ def _enrich_auto_node_groups_members(item: dict, saved_nodes: list = None, subs_
                 "node_id": nid,
                 "tag": t,
                 "country": country,
+                "google_region": google_reg,
+                "google_region_label": g_reg_info["label"],
+                "gemini_supported": g_reg_info["gemini_supported"],
+                "region_blocked": node_region_blocked,
+                "in_quarantine": in_quarantine,
+                "quarantine_until": quarantine_until,
+                "in_cooldown": in_cooldown,
                 "state": ev["state"],
                 "delay_ms": ev["delay_ms"],
                 "selectable": ev["selectable"],
@@ -4760,10 +4804,10 @@ def _enrich_auto_node_groups_members(item: dict, saved_nodes: list = None, subs_
                 "score": sc_info["score"],
                 "display_score": sc_info["display_score"],
                 "grade": sc_info["grade"],
-                "badge": sc_info["badge"],
-                "color": sc_info["color"],
-                "pin_top": sc_info["pin_top"],
-                "suggest_remove": sc_info["suggest_remove"],
+                "badge": ("🚫 Google:" + google_reg + " 拒服") if node_region_blocked else ("⏳ 隔离冷却中" if (in_quarantine or in_cooldown) else sc_info["badge"]),
+                "color": "red" if node_region_blocked else ("amber" if (in_quarantine or in_cooldown) else sc_info["color"]),
+                "pin_top": sc_info["pin_top"] or node_region_blocked,
+                "suggest_remove": sc_info["suggest_remove"] or node_region_blocked,
                 "samples": sc_info["samples"],
                 "success_rate": sc_info["success_rate"],
                 "cv": sc_info["cv"],
@@ -4911,18 +4955,34 @@ def _normalize_auto_node_item(an: dict, conf_dir: Path = CONF_DIR, saved_nodes: 
         [m for m in g1_members if m.get("qualified") and m.get("state") == "ok" and int(m.get("delay_ms") or 0) > 0],
         key=lambda m: (m.get("eff_rank_ms", 9999.0), int(m.get("delay_ms") or 9999))
     )
+    has_untested_selectable = any(
+        m.get("state") in ("untested", "pending") and not m.get("region_blocked") and not m.get("in_quarantine")
+        for m in g1_members
+    )
+    any_tested_or_disq = bool(g1_members) and not has_untested_selectable and any(
+        m.get("state") in ("dead", "ok") or m.get("region_blocked") or m.get("in_quarantine")
+        for m in g1_members
+    )
     any_tested_dead = any(m.get("state") == "dead" for m in g1_members)
-    if cur_t == "direct":
+    if item.get("all_groups_dead_alert") and not ok_members:
+        cur_t = "direct"
+        item["current_node"] = "direct"
+        item["current_node_id"] = "direct"
+        item["current_delay_ms"] = -1
+    elif cur_t == "direct":
         if ok_members and not item.get("all_groups_dead_alert"):
             cur_t = ok_members[0]["tag"]
             item["current_node"] = cur_t
-    elif not cur_t or (g1_tags_now and cur_t not in g1_tags_now):
+    elif not cur_t or (g1_tags_now and cur_t not in g1_tags_now) or (any_tested_or_disq and not ok_members):
         if ok_members:
             cur_t = ok_members[0]["tag"]
             item["current_node"] = cur_t
-        elif any_tested_dead and not ok_members:
+        elif any_tested_or_disq and not ok_members:
             cur_t = "direct"
             item["current_node"] = "direct"
+            item["current_node_id"] = "direct"
+            item["current_delay_ms"] = -1
+            item["all_groups_dead_alert"] = True
         elif g1_tags_now:
             cur_t = g1_tags_now[0]
             item["current_node"] = cur_t
@@ -5113,13 +5173,16 @@ def save_auto_nodes_config(cfg: dict, conf_dir: Path = CONF_DIR) -> dict:
             target_f = conf_dir / "auto_nodes.json"
             if not target_f.is_file() or target_f.read_text(encoding="utf-8", errors="ignore") != new_txt:
                 _atomic_write_text(target_f, new_txt)
-        except OSError:
-            pass
+        except OSError as _e_diag:
+            globals().get("_record_internal_diag", str)(_e_diag)
         with _FAST_CACHE_LOCK:
             _FAST_FILE_CACHE.pop(("auto_nodes_cfg", str(conf_dir)), None)
         _AUTO_NODES_API_MEMO.clear()
         _SHUNT_API_MEMO.clear()
         _STATUS_API_MEMO.clear()
+        for _an_norm in normalized_list:
+            if _an_norm.get("bandwidth_prefer"):
+                _trigger_pool_initial_bandwidth_probe(_an_norm, conf_dir=conf_dir, async_mode=True)
         return out
 
 
@@ -5245,7 +5308,7 @@ def probe_node_bandwidth(node_or_tag, limit_mb: int = 16, interval_h: int = 6,
                 t0 = time.time()
                 req = urllib.request.Request(
                     "https://speed.cloudflare.com/__down?bytes=" + str(cap_bytes),
-                    headers={"User-Agent": "AI-LINK-BandwidthProbe/2.4.3"}
+                    headers={"User-Agent": "AI-LINK-BandwidthProbe/2.4.7"}
                 )
                 px = urllib.request.ProxyHandler({"http": "http://127.0.0.1:7890", "https": "http://127.0.0.1:7890"})
                 op = urllib.request.build_opener(px)
@@ -5285,8 +5348,69 @@ def probe_node_bandwidth(node_or_tag, limit_mb: int = 16, interval_h: int = 6,
     }
 
 
-def flush_conntrack_for_switch(target_ip: str = "", dst_host: str = "", selector_tag: str = "", reason: str = "") -> dict:
-    """Capability 2: Immediately flushes active Clash UDP/QUIC/TCP connections and kernel conntrack state when switching routes."""
+_BW_INIT_PROBE_INFLIGHT = set()
+
+
+def _trigger_pool_initial_bandwidth_probe(an: dict, conf_dir: Path = CONF_DIR, async_mode: bool = True) -> int:
+    """Triggers an initial low-overhead bandwidth probe for top healthy members of a pool when bandwidth_prefer=True."""
+    if not isinstance(an, dict) or not bool(an.get("bandwidth_prefer", False)):
+        return 0
+    g1_m = ((an.get("groups") or [{}])[0].get("members") or [])
+    cands = [
+        m for m in g1_m
+        if isinstance(m, dict)
+        and m.get("state") == "ok"
+        and int(m.get("delay_ms") or 0) > 0
+        and float(m.get("bandwidth_mbps") or 0.0) <= 0.0
+    ][:2]
+    if not cands:
+        return 0
+    lim_mb = max(1, min(32, int(an.get("bandwidth_limit_mb") or 8)))
+    iv_h = max(1, int(an.get("bandwidth_interval_h") or 6))
+
+    def _run_bw():
+        for m_item in cands:
+            nid_k = str(m_item.get("node_id") or m_item.get("tag") or "").strip()
+            if not nid_k or nid_k in _BW_INIT_PROBE_INFLIGHT:
+                continue
+            _BW_INIT_PROBE_INFLIGHT.add(nid_k)
+            try:
+                probe_node_bandwidth(nid_k, limit_mb=lim_mb, interval_h=iv_h, timeout_s=3.0, conf_dir=conf_dir)
+            except Exception as _e_diag:
+                globals().get("_record_internal_diag", str)(_e_diag)
+            finally:
+                _BW_INIT_PROBE_INFLIGHT.discard(nid_k)
+
+    if async_mode:
+        threading.Thread(target=_run_bw, daemon=True).start()
+    else:
+        _run_bw()
+    return len(cands)
+
+
+_CONNTRACK_FLUSH_HISTORY = []
+
+
+def flush_conntrack_for_switch(
+    target_ip: str = "",
+    dst_host: str = "",
+    selector_tag: str = "",
+    old_node: str = "",
+    reason: str = "",
+) -> dict:
+    """Capability 2: Immediately flushes active Clash UDP/QUIC/TCP connections and kernel conntrack state when switching routes.
+    Strictly scoped: refuses to execute when all filter parameters (target_ip, dst_host, selector_tag, old_node) are empty."""
+    t_ip = str(target_ip or "").strip()
+    d_host = str(dst_host or "").strip()
+    s_tag = str(selector_tag or "").strip()
+    o_node = str(old_node or "").strip()
+    if not any([t_ip, d_host, s_tag, o_node]):
+        return {
+            "ok": False,
+            "closed_clash_connections": 0,
+            "flushed_conntrack": False,
+            "reason": "empty_scope_refused",
+        }
     closed_clash = 0
     flushed_ct = False
     if _is_local_port_listening(9090):
@@ -5303,76 +5427,155 @@ def flush_conntrack_for_switch(target_ip: str = "", dst_host: str = "", selector
                     meta = c.get("metadata") if isinstance(c.get("metadata"), dict) else {}
                     c_src = str(meta.get("sourceIP") or "").strip()
                     c_dst = str(meta.get("host") or meta.get("destinationIP") or "").strip()
+                    rule_pl = str(c.get("rulePayload") or "").strip()
                     match = False
-                    if selector_tag and (selector_tag in chains or selector_tag == str(c.get("rulePayload") or "")):
+                    if o_node and s_tag:
+                        if o_node in chains and (s_tag in chains or s_tag == rule_pl):
+                            match = True
+                        elif o_node in chains:
+                            match = True
+                    elif o_node:
+                        if o_node in chains:
+                            match = True
+                    elif s_tag:
+                        if s_tag in chains or s_tag == rule_pl:
+                            match = True
+                    elif t_ip and c_src == t_ip:
                         match = True
-                    elif target_ip and c_src == target_ip:
-                        match = True
-                    elif dst_host and dst_host.lower() in c_dst.lower():
-                        match = True
-                    elif not selector_tag and not target_ip and not dst_host:
+                    elif d_host and d_host.lower() in c_dst.lower():
                         match = True
                     if match:
                         clash_api_request(f"/connections/{urllib.parse.quote(cid)}", method="DELETE", timeout=0.8)
                         closed_clash += 1
         except (OSError, ValueError, TypeError, RuntimeError) as _e_diag:
             globals().get("_record_internal_diag", str)(_e_diag)
-    if shutil.which("conntrack") and (target_ip or dst_host):
+    if shutil.which("conntrack") and (t_ip or d_host):
         try:
             cmd = ["conntrack", "-D"]
-            if target_ip and re.match(r"^[0-9a-fA-F.:]+$", target_ip):
-                cmd.extend(["-s", target_ip])
-            elif dst_host and re.match(r"^[0-9.]+$", dst_host):
-                cmd.extend(["-d", dst_host])
+            if t_ip and re.match(r"^[0-9a-fA-F.:]+$", t_ip):
+                cmd.extend(["-s", t_ip])
+            elif d_host and re.match(r"^[0-9.]+$", d_host):
+                cmd.extend(["-d", d_host])
             if len(cmd) > 2:
                 subprocess.run(cmd, capture_output=True, timeout=1.5, check=False)
                 flushed_ct = True
         except (OSError, subprocess.SubprocessError) as _e_diag:
             globals().get("_record_internal_diag", str)(_e_diag)
-    return {"ok": True, "closed_clash_connections": closed_clash, "flushed_conntrack": flushed_ct, "reason": reason}
+    ev_rec = {
+        "ok": True,
+        "ts": int(time.time()),
+        "selector_tag": s_tag,
+        "old_node": o_node,
+        "target_ip": t_ip,
+        "dst_host": d_host,
+        "closed_clash_connections": closed_clash,
+        "flushed_conntrack": flushed_ct,
+        "reason": reason,
+    }
+    _CONNTRACK_FLUSH_HISTORY.append(ev_rec)
+    if len(_CONNTRACK_FLUSH_HISTORY) > 50:
+        del _CONNTRACK_FLUSH_HISTORY[:-50]
+    return ev_rec
 
 
-_MULTICORE_RPS_OPTIMIZED = {"done": False, "cpu_count": 1, "mask": "1", "queues": 0}
+_MULTICORE_RPS_OPTIMIZED = {"done": False, "cpu_count": 1, "mask": "1", "queues": 0, "backup_file": ""}
 
 
-def optimize_multicore_network_rps(force: bool = False) -> dict:
-    """Capability 1B & 5A: Silent system-level multi-core RPS/RFS/XPS soft-IRQ load balancing (zero frontend clutter)."""
-    if _MULTICORE_RPS_OPTIMIZED.get("done") and not force:
+def optimize_multicore_network_rps(
+    force: bool = False,
+    sysfs_root: Path = None,
+    proc_sock_entries: Path = None,
+    backup_dir: Path = None,
+) -> dict:
+    """Capability 1B & 5A: Silent system-level multi-core RPS/RFS/XPS soft-IRQ load balancing with reversible sysfs backup."""
+    if _MULTICORE_RPS_OPTIMIZED.get("done") and not force and sysfs_root is None:
         return dict(_MULTICORE_RPS_OPTIMIZED)
     ncpu = max(1, int(os.cpu_count() or 1))
     mask = "ffffffff" if ncpu >= 32 else hex((1 << ncpu) - 1)[2:]
-    os.environ["GOMAXPROCS"] = str(ncpu)
+    net_root = Path(sysfs_root) if sysfs_root is not None else Path("/sys/class/net")
+    sock_entries = Path(proc_sock_entries) if proc_sock_entries is not None else Path("/proc/sys/net/core/rps_sock_flow_entries")
+    bdir = Path(backup_dir) if backup_dir is not None else (RUN_DIR / "sysctl_orig")
+    bfile = bdir / "rps_xps_orig.json"
     q_written = 0
-    if ncpu > 1 and Path("/sys/class/net").is_dir():
+    if ncpu > 1 and net_root.is_dir():
         try:
+            bdir.mkdir(parents=True, exist_ok=True)
+            orig_map = {}
+            if bfile.is_file():
+                try:
+                    orig_map = json.loads(bfile.read_text(encoding="utf-8"))
+                except Exception:
+                    orig_map = {}
+            if not isinstance(orig_map, dict):
+                orig_map = {}
+            orig_files = orig_map.setdefault("files", {})
             rx_queues = [
-                p for p in Path("/sys/class/net").glob("*/queues/rx-*")
+                p for p in net_root.glob("*/queues/rx-*")
                 if p.is_dir() and "/lo/" not in str(p)
             ]
             flow_per_q = max(1024, 32768 // max(1, len(rx_queues)))
-            sock_entries = Path("/proc/sys/net/core/rps_sock_flow_entries")
             if sock_entries.exists():
                 try:
+                    k_se = str(sock_entries)
+                    if k_se not in orig_files:
+                        orig_files[k_se] = sock_entries.read_text(encoding="utf-8").strip()
                     sock_entries.write_text("32768\n", encoding="utf-8")
                 except OSError as _e_diag:
                     globals().get("_record_internal_diag", str)(_e_diag)
             for rq in rx_queues:
                 try:
-                    (rq / "rps_cpus").write_text(f"{mask}\n", encoding="utf-8")
-                    (rq / "rps_flow_cnt").write_text(f"{flow_per_q}\n", encoding="utf-8")
+                    for fn_q, val_q in (("rps_cpus", mask), ("rps_flow_cnt", str(flow_per_q))):
+                        fp_q = rq / fn_q
+                        if fp_q.exists():
+                            k_q = str(fp_q)
+                            if k_q not in orig_files:
+                                orig_files[k_q] = fp_q.read_text(encoding="utf-8").strip()
+                            fp_q.write_text(f"{val_q}\n", encoding="utf-8")
                     q_written += 1
                 except OSError as _e_diag:
                     globals().get("_record_internal_diag", str)(_e_diag)
-            for tq in Path("/sys/class/net").glob("*/queues/tx-*"):
+            for tq in net_root.glob("*/queues/tx-*"):
                 if tq.is_dir() and "/lo/" not in str(tq):
                     try:
-                        (tq / "xps_cpus").write_text(f"{mask}\n", encoding="utf-8")
+                        fp_x = tq / "xps_cpus"
+                        if fp_x.exists():
+                            k_x = str(fp_x)
+                            if k_x not in orig_files:
+                                orig_files[k_x] = fp_x.read_text(encoding="utf-8").strip()
+                            fp_x.write_text(f"{mask}\n", encoding="utf-8")
                     except OSError as _e_diag:
                         globals().get("_record_internal_diag", str)(_e_diag)
+            if orig_files:
+                _atomic_write_text(bfile, json.dumps(orig_map, indent=2, ensure_ascii=False))
         except OSError as _e_diag:
             globals().get("_record_internal_diag", str)(_e_diag)
-    _MULTICORE_RPS_OPTIMIZED.update({"done": True, "cpu_count": ncpu, "mask": mask, "queues": q_written})
-    return dict(_MULTICORE_RPS_OPTIMIZED)
+    res_d = {"done": True, "cpu_count": ncpu, "mask": mask, "queues": q_written, "backup_file": str(bfile)}
+    if sysfs_root is None:
+        _MULTICORE_RPS_OPTIMIZED.update(res_d)
+    return res_d
+
+
+def restore_multicore_network_rps(backup_dir: Path = None) -> dict:
+    """Restores original sysfs RPS/RFS/XPS values backed up prior to AI-LINK optimization."""
+    bdir = Path(backup_dir) if backup_dir is not None else (RUN_DIR / "sysctl_orig")
+    bfile = bdir / "rps_xps_orig.json"
+    restored = 0
+    if bfile.is_file():
+        try:
+            orig_map = json.loads(bfile.read_text(encoding="utf-8"))
+            files_map = orig_map.get("files") if isinstance(orig_map, dict) else {}
+            if isinstance(files_map, dict):
+                for fpath_s, orig_val in files_map.items():
+                    fp = Path(fpath_s)
+                    if fp.exists():
+                        try:
+                            fp.write_text(f"{str(orig_val).strip()}\n", encoding="utf-8")
+                            restored += 1
+                        except OSError as _e_diag:
+                            globals().get("_record_internal_diag", str)(_e_diag)
+        except Exception as _e_diag:
+            globals().get("_record_internal_diag", str)(_e_diag)
+    return {"ok": True, "restored_files": restored, "backup_file": str(bfile)}
 
 def classify_node_country_5plus1(tag: str, node_obj: dict = None) -> str:
     raw_r = classify_node_region(tag, node_obj)
@@ -5550,7 +5753,11 @@ def probe_working_groups_on_egress_fail(failed_nid: str, failed_tag: str, conf_d
 
 def get_auto_node_candidate_pool(an: dict, conf_dir: Path = CONF_DIR,
                                  saved_nodes: list = None, subs_list: list = None, store: dict = None) -> list:
-    """Returns ordered selectable candidate nodes across the auto_node's groups (Group 1 -> Group 5), preserving compatibility """
+    """Returns ordered selectable & qualified candidate nodes across the auto_node's groups, strictly honoring region_blocked, quarantine, and all_groups_dead_alert."""
+    if not isinstance(an, dict):
+        return []
+    if bool(an.get("all_groups_dead_alert")) and str(an.get("current_node") or "").strip() == "direct":
+        return []
     if saved_nodes is None:
         saved_nodes = [n for n in load_saved_nodes(conf_dir) if not is_builtin_test_node(n.get("tag", ""))]
     if subs_list is None:
@@ -5558,6 +5765,13 @@ def get_auto_node_candidate_pool(an: dict, conf_dir: Path = CONF_DIR,
     if store is None:
         store = load_node_probe_store(conf_dir)
     now_ts = int(time.time())
+    svc_ids = list(an.get("service_checks") or [])
+    pool_id_l = str(an.get("id") or "").lower()
+    pool_name_l = str(an.get("name") or "").lower()
+    is_ai_or_google_pool = (
+        "ai" in pool_id_l or "ai" in pool_name_l or "gemini" in pool_name_l
+        or any(s in ("gemini", "chatgpt", "openai", "claude") for s in svc_ids)
+    )
     groups = normalize_auto_node_groups(an, saved_nodes=saved_nodes, subs_list=subs_list, store=store, conf_dir=conf_dir, auto_seed_if_empty=True)
     by_id = {(n.get("node_id") or compute_node_id(n)): n for n in saved_nodes}
     by_tag = {n.get("tag", ""): n for n in saved_nodes}
@@ -5573,10 +5787,19 @@ def get_auto_node_candidate_pool(an: dict, conf_dir: Path = CONF_DIR,
             ev = evaluate_node_selectability(n_obj, store=store, subs_list=subs_list, now_ts=now_ts, conf_dir=conf_dir)
             if not ev["selectable"] or ev["node_id"] in seen:
                 continue
+            tag_s = n_obj.get("tag", "")
+            rec_raw = store.get(ev["node_id"]) or store.get(tag_s) or {}
+            g_reg_info = get_node_google_region_info(n_obj, rec_raw)
+            if is_ai_or_google_pool and g_reg_info["google_region"] in UNSUPPORTED_AI_REGIONS:
+                continue
+            if int(rec_raw.get("quarantine_until") or 0) > now_ts or int(rec_raw.get("cooldown_until") or 0) > now_ts:
+                continue
+            if int((ev.get("score_info") or {}).get("consecutive_fail") or 0) >= 3:
+                continue
             seen.add(ev["node_id"])
             item = {
                 "node_id": ev["node_id"],
-                "tag": n_obj.get("tag", ""),
+                "tag": tag_s,
                 "group_index": g["index"],
                 "group_name": g["name"],
                 "state": ev["state"],
@@ -5584,10 +5807,10 @@ def get_auto_node_candidate_pool(an: dict, conf_dir: Path = CONF_DIR,
                 "score": ev["score"],
                 "score_info": ev["score_info"],
                 "svc": ev["svc"],
-                "country": classify_node_country_5plus1(n_obj.get("tag", ""), n_obj)
+                "country": classify_node_country_5plus1(tag_s, n_obj)
             }
-            item["cdn_tls_ok"] = _is_node_cdn_tls_healthy(store.get(ev["node_id"]) or store.get(n_obj.get("tag", "")) or {})
-            item["is_random_region"] = _is_random_region_node(n_obj.get("tag", ""))
+            item["cdn_tls_ok"] = _is_node_cdn_tls_healthy(rec_raw)
+            item["is_random_region"] = _is_random_region_node(tag_s)
             if ev["state"] == "ok" and ev["delay_ms"] > 0:
                 g_ok.append(item)
             elif ev["state"] in ("pending", "untested"):
@@ -6397,7 +6620,9 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
         an["active_lines_count"] = 0
         an["last_check_ts"] = now_sec
         an["selection_explain"] = f"候选 0/{max(1, len(all_pool_m))} 达标 · 池内全部节点不可达，已自动回退直连 (direct)"
-        if cur_tag and cur_tag != "direct":
+        prev_rt = _get_auto_pool_runtime_state(conf_dir, an.get("id", ""))
+        already_dead_direct = bool(prev_rt.get("all_groups_dead_alert") and prev_rt.get("current_node") == "direct")
+        if cur_tag and cur_tag != "direct" and not already_dead_direct:
             an["last_switch_ts"] = now_sec
             record_switch_event(an.get("name") or an.get("tag") or "AutoPool", cur_tag, "direct", reason="池内节点全挂回退direct", rtt_ms=0)
         _set_auto_pool_runtime_state(conf_dir, an.get("id", ""), {
@@ -6406,6 +6631,7 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
             "current_node": "direct",
             "current_node_id": "direct",
             "current_delay_ms": -1,
+            "pool_reachable_count": 0,
             "last_switch_ts": int(an.get("last_switch_ts") or 0),
             "last_smart_switch_ts": int(an.get("last_smart_switch_ts") or 0),
             "last_check_ts": now_sec,
@@ -6641,6 +6867,13 @@ def request_switch(
         _REQUEST_SWITCH_STATE["last_applied"][selector_group] = {"target": target_node, "ts": now_f}
         if pool_id:
             _set_auto_pool_runtime_state(conf_dir, pool_id, {"current_node": target_node})
+        ct_flush_res = None
+        if ok and actual_prev and actual_prev != target_node and actual_prev not in ("direct", "block"):
+            ct_flush_res = flush_conntrack_for_switch(
+                selector_tag=selector_group,
+                old_node=actual_prev,
+                reason=reason or f"switch:{selector_group}:{actual_prev}->{target_node}",
+            )
         return {
             "ok": bool(ok),
             "switched": bool(actual_prev != target_node),
@@ -6648,6 +6881,7 @@ def request_switch(
             "live_now": actual_prev,
             "target": target_node,
             "cooldown_bypassed": bool(bypass_cooldown),
+            "conntrack_flushed": ct_flush_res,
         }
 
 
@@ -7922,9 +8156,13 @@ def migrate_legacy_shunt_config(cfg: dict, conf_dir: Path = CONF_DIR) -> tuple:
     if migrated_items:
         try:
             RUN_DIR.mkdir(parents=True, exist_ok=True)
-            log_line = f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Migrated legacy shunt strategies: {', '.join(migrated_items)}\n"
-            with open(RUN_DIR / "migration.log", "a", encoding="utf-8") as lf:
-                lf.write(log_line)
+            mig_sig = ", ".join(migrated_items)
+            mig_log_p = RUN_DIR / "migration.log"
+            existing_mig = mig_log_p.read_text(encoding="utf-8") if mig_log_p.is_file() else ""
+            if f"Migrated legacy shunt strategies: {mig_sig}" not in existing_mig:
+                log_line = f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Migrated legacy shunt strategies: {mig_sig}\n"
+                with open(mig_log_p, "a", encoding="utf-8") as lf:
+                    lf.write(log_line)
         except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
             globals().get("_record_internal_diag", str)(_e_diag)
     return cfg, migrated_items
@@ -7998,6 +8236,11 @@ def load_shunt_config(conf_dir: Path = CONF_DIR) -> dict:
         except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
             globals().get("_record_internal_diag", str)(_e_diag)
     cfg, mig = migrate_legacy_shunt_config(cfg, conf_dir)
+    if mig and loaded_from_disk:
+        try:
+            save_shunt_config(cfg, conf_dir)
+        except Exception as _e_diag:
+            globals().get("_record_internal_diag", str)(_e_diag)
     if loaded_from_disk:
         try:
             raw_on_disk = json.loads((conf_dir / "shunt.json").read_text(encoding="utf-8")) if (conf_dir / "shunt.json").is_file() else {}
@@ -8201,18 +8444,41 @@ def resolve_node_for_country_strategy_with_failover(
         explicit_pool_bound = bool(manual_node and (str(manual_node).startswith("auto:") or str(manual_node).lower().startswith("auto_")))
         an = _match_auto_node_pool(acfg.get("auto_nodes") or [], aid)
         if an is not None:
+            if bool(an.get("all_groups_dead_alert")) or str(an.get("current_node") or "").strip() == "direct":
+                an["current_node"] = "direct"
+                return {
+                    "selected": "direct",
+                    "backups": [],
+                    "target_verified": False,
+                    "no_available_node": True,
+                    "dispatch_mode": "single_best",
+                    "multi_line_nodes": [],
+                    "active_lines_count": 0,
+                    "all_groups_dead_alert": True,
+                }
             an_id_key = str(an.get("id") or an.get("tag") or aid)
             if an_id_key in auto_pools_map:
                 cands = list(auto_pools_map[an_id_key])
             else:
                 cands = get_auto_node_candidate_pool(an, conf_dir=conf_dir, saved_nodes=saved_nodes, subs_list=subs_list, store=store)
                 auto_pools_map[an_id_key] = list(cands)
+            ver_set = set(an.get("verified_nodes") or [])
             ok_cands = [
                 x for x in cands
-                if x["tag"] in selectable_set and tag_state.get(x["tag"]) == "ok" and tag_delay.get(x["tag"], 0.0) > 0
+                if x["tag"] in selectable_set
+                and tag_state.get(x["tag"]) == "ok"
+                and tag_delay.get(x["tag"], 0.0) > 0
+                and (not ver_set or x["tag"] in ver_set)
             ]
             cur_n = str(an.get("current_node") or "").strip()
-            cur_alive = bool(cur_n and cur_n != "direct" and cur_n in selectable_set and tag_state.get(cur_n) == "ok" and tag_delay.get(cur_n, 0.0) > 0)
+            cur_alive = bool(
+                cur_n
+                and cur_n != "direct"
+                and cur_n in selectable_set
+                and tag_state.get(cur_n) == "ok"
+                and tag_delay.get(cur_n, 0.0) > 0
+                and (not ver_set or cur_n in ver_set)
+            )
             if not cur_alive:
                 cur_n = ok_cands[0]["tag"] if ok_cands else ""
             if cur_n and cur_n != "direct" and cur_n in selectable_set and tag_state.get(cur_n) == "ok" and tag_delay.get(cur_n, 0.0) > 0:
@@ -9854,8 +10120,13 @@ def validate_homelink_port(
         return {"ok": False, "reason": f"端口号非法: {port}"}
     if p_int < 1024 or p_int > 65535:
         return {"ok": False, "reason": f"端口 {p_int} 超出安全可用范围 (1024-65535)"}
-    if p_int in RESERVED_HOMELINK_PORTS:
-        return {"ok": False, "reason": f"端口 {p_int} 已被系统核心服务占用 ({RESERVED_HOMELINK_PORTS[p_int]})"}
+    dyn_reserved = dict(RESERVED_HOMELINK_PORTS)
+    for _uk, _ulbl in (("panel_port", "AI-LINK Web 面板"), ("tproxy_port", "Sing-box TProxy"), ("mixed_port", "Sing-box Mixed"), ("dns_port", "Sing-box DNS")):
+        _uv = _uci_get_str(f"global.{_uk}", "")
+        if _uv.isdigit():
+            dyn_reserved[int(_uv)] = _ulbl
+    if p_int in dyn_reserved:
+        return {"ok": False, "reason": f"端口 {p_int} 已被系统核心服务占用 ({dyn_reserved[p_int]})"}
     nodes = load_homelink_nodes(conf_dir)
     for n in nodes:
         if exclude_id and n.get("id") == exclude_id:
@@ -10220,7 +10491,7 @@ def apply_dns_rewrite_system(cfg: dict = None, conf_dir: Path = CONF_DIR) -> dic
     """Write dnsmasq CNAME/address rewrite rules so LAN clients honour rewrites. Hermetic when conf_dir != CONF_DIR."""
     if cfg is None:
         cfg = load_dns_rewrite_config(conf_dir)
-    is_live = (Path(conf_dir).resolve() == CONF_DIR.resolve())
+    is_live = (Path(conf_dir).resolve() == CONF_DIR.resolve() and Path(conf_dir).resolve() == Path("/etc/ai-link").resolve())
     dnsmasq_dir = _detect_dnsmasq_confdir(create=is_live) if is_live else Path(conf_dir)
     conf_path = dnsmasq_dir / "ai-link-rewrite.conf"
     status = {"ok": False, "path": str(conf_path), "rules": 0, "reason": ""}
@@ -10359,7 +10630,7 @@ def restore_resolv_conf_to_local():
 def rollback_dnsmasq_and_resolv(conf_dir: Path = CONF_DIR) -> bool:
     """Removes ai-link-adblock.conf (`no-resolv` + `server=127.0.0.1#7874`), restores direct /etc/resolv.conf fallback,
     and restarts dnsmasq if upstream was mounted."""
-    is_live = (Path(conf_dir).resolve() == CONF_DIR.resolve())
+    is_live = (Path(conf_dir).resolve() == CONF_DIR.resolve() and Path(conf_dir).resolve() == Path("/etc/ai-link").resolve())
     dnsmasq_dir = _detect_dnsmasq_confdir(create=False) if is_live else Path(conf_dir)
     conf_path = dnsmasq_dir / "ai-link-adblock.conf"
     removed_any = False
@@ -10392,7 +10663,7 @@ def apply_dns_adblock_system(conf_dir: Path = CONF_DIR, force_live_mount: bool =
     2. Writes high-frequency blocked domains (`address=/domain/0.0.0.0` + `address=/domain/::`) when AdBlock is enabled.
     3. Remains 100% hermetic when `conf_dir != CONF_DIR` (never mutates live dnsmasq during `--self-test`)."""
     flt_cfg = load_dns_filter_config(conf_dir)
-    is_live = (Path(conf_dir).resolve() == CONF_DIR.resolve())
+    is_live = (Path(conf_dir).resolve() == CONF_DIR.resolve() and Path(conf_dir).resolve() == Path("/etc/ai-link").resolve())
     dnsmasq_dir = _detect_dnsmasq_confdir(create=is_live) if is_live else Path(conf_dir)
     conf_path = dnsmasq_dir / "ai-link-adblock.conf"
     status = {"ok": False, "path": str(conf_path), "rules": 0, "upstream_7874": False}
@@ -12022,9 +12293,21 @@ class ConfigGenerator:
                             if sg.get("country") == "direct":
                                 cn_direct_doms.extend([d.strip() for d in (sg.get("domains") or []) if d.strip()])
                         elif sg.get("country") not in ("direct", "block"):
-                            # Any proxy group above Domestic_CN (or Google/AI/YouTube/GitHub) gets priority FakeIP
+                            # Any proxy group above Domestic_CN (or Google/AI/YouTube/GitHub) gets priority FakeIP (including T8 rule_blocks domains!)
                             if not seen_dom_cn or gid in ("AI", "YouTube", "TikTok", "Netflix", "GitHub", "Google", "Outside_CN"):
                                 proxy_prio_doms.extend([d.strip() for d in (sg.get("domains") or []) + (sg.get("exact_domains") or []) if d.strip()])
+                                for _rb_d in (sg.get("rule_blocks") or []):
+                                    if not isinstance(_rb_d, dict) or not _rb_d.get("enabled", True):
+                                        continue
+                                    for _fdm in (_rb_d.get("domains") or []):
+                                        if str(_fdm).strip().lstrip("."):
+                                            proxy_prio_doms.append(str(_fdm).strip().lstrip("."))
+                                    for _cond in (_rb_d.get("conditions") or []):
+                                        if isinstance(_cond, dict) and (_cond.get("type") or _cond.get("field")) in ("domain", "domain_suffix", "domains"):
+                                            for _dv in re.split(r"[,;\s]+", str(_cond.get("value") or "").strip()):
+                                                _dv = _dv.strip().lstrip(".")
+                                                if _dv:
+                                                    proxy_prio_doms.append(_dv)
                 if proxy_prio_doms:
                     _sorted_pdoms = sorted(list(set(proxy_prio_doms)))
                     # Smart AAAA Shunt: always suppress AAAA for overseas proxy domains so side-router & router-local clients get IPv4 FakeIP (198.18.0.0/15)
@@ -12056,11 +12339,65 @@ class ConfigGenerator:
                     dns_rules.append({"query_type": ["A"], "server": "dns_fakeip"})
                 else:
                     dns_rules.append({"query_type": ["A", "AAAA"], "server": "dns_fakeip"})
+            dns_servers_list = [
+                {"type": "udp", "tag": "dns_direct", "server": "223.5.5.5", "server_port": 53},
+                {"type": "fakeip", "tag": "dns_fakeip", "inet4_range": "198.18.0.0/15", "inet6_range": "fc00::/18"}
+            ]
+            # T10: Register per-group custom DNS servers (when dns_strategy != 'inherit' and custom_dns is set)
+            for _sg_dns in (shunt_cfg.get("groups") or []):
+                if not isinstance(_sg_dns, dict):
+                    continue
+                _d_strat = str(_sg_dns.get("dns_strategy") or "inherit").strip().lower()
+                _c_dns = str(_sg_dns.get("custom_dns") or "").strip()
+                if _d_strat == "inherit" or not _c_dns:
+                    continue
+                _gid_clean = re.sub(r"[^a-zA-Z0-9_]", "_", str(_sg_dns.get("id") or "grp"))
+                _srv_tag = f"dns_grp_{_gid_clean}"
+                _grp_doms = [d.strip().lstrip(".") for d in (_sg_dns.get("domains") or []) + (_sg_dns.get("exact_domains") or []) if d and str(d).strip()]
+                for _rb_g in (_sg_dns.get("rule_blocks") or []):
+                    if isinstance(_rb_g, dict) and _rb_g.get("enabled", True):
+                        for _fd_g in (_rb_g.get("domains") or []):
+                            if str(_fd_g).strip().lstrip("."):
+                                _grp_doms.append(str(_fd_g).strip().lstrip("."))
+                        for _c_g in (_rb_g.get("conditions") or []):
+                            if isinstance(_c_g, dict) and (_c_g.get("type") or _c_g.get("field")) in ("domain", "domain_suffix", "domains"):
+                                for _v_g in re.split(r"[,;\s]+", str(_c_g.get("value") or "").strip()):
+                                    if _v_g.strip().lstrip("."):
+                                        _grp_doms.append(_v_g.strip().lstrip("."))
+                _grp_doms = sorted(list(set(_grp_doms)))
+                _srv_obj = None
+                if _c_dns.startswith(("https://", "h3://")):
+                    if enable_tls_outbounds:
+                        _u_p = urllib.parse.urlsplit(_c_dns)
+                        if _u_p.hostname:
+                            _srv_obj = {"type": "https", "tag": _srv_tag, "server": _u_p.hostname, "server_port": _u_p.port or 443, "path": _u_p.path or "/dns-query"}
+                            if not re.match(r"^\d{1,3}(\.\d{1,3}){3}$", _u_p.hostname) and ":" not in _u_p.hostname:
+                                _srv_obj["domain_resolver"] = "dns_direct"
+                elif _c_dns.startswith("tls://"):
+                    if enable_tls_outbounds:
+                        _u_p = urllib.parse.urlsplit(_c_dns)
+                        if _u_p.hostname:
+                            _srv_obj = {"type": "tls", "tag": _srv_tag, "server": _u_p.hostname, "server_port": _u_p.port or 853}
+                            if not re.match(r"^\d{1,3}(\.\d{1,3}){3}$", _u_p.hostname) and ":" not in _u_p.hostname:
+                                _srv_obj["domain_resolver"] = "dns_direct"
+                elif _c_dns.startswith("quic://"):
+                    if enable_tls_outbounds:
+                        _u_p = urllib.parse.urlsplit(_c_dns)
+                        if _u_p.hostname:
+                            _srv_obj = {"type": "quic", "tag": _srv_tag, "server": _u_p.hostname, "server_port": _u_p.port or 853}
+                            if not re.match(r"^\d{1,3}(\.\d{1,3}){3}$", _u_p.hostname) and ":" not in _u_p.hostname:
+                                _srv_obj["domain_resolver"] = "dns_direct"
+                else:
+                    _raw_h = _c_dns.replace("udp://", "").replace("tcp://", "").strip()
+                    _h_part, _, _p_part = _raw_h.partition(":")
+                    if re.match(r"^\d{1,3}(\.\d{1,3}){3}$", _h_part.strip()):
+                        _srv_obj = {"type": "udp", "tag": _srv_tag, "server": _h_part.strip(), "server_port": int(_p_part) if _p_part.isdigit() else 53}
+                if _srv_obj and not any(s.get("tag") == _srv_tag for s in dns_servers_list):
+                    dns_servers_list.append(_srv_obj)
+                    if _grp_doms and _d_strat != "inherit":
+                        dns_rules.insert(1, {"domain_suffix": _grp_doms, "server": _srv_tag})
             cfg["dns"] = {
-                "servers": [
-                    {"type": "udp", "tag": "dns_direct", "server": "223.5.5.5", "server_port": 53},
-                    {"type": "fakeip", "tag": "dns_fakeip", "inet4_range": "198.18.0.0/15", "inet6_range": "fc00::/18"}
-                ],
+                "servers": dns_servers_list,
                 "rules": dns_rules,
                 "strategy": "prefer_ipv4",
                 "final": "dns_direct"
@@ -12687,7 +13024,7 @@ def generate_nft_rules_file(conf_dir: Path = CONF_DIR, run_dir: Path = RUN_DIR,
 
     # Collect upstream node IPs
     node_ips = set()
-    is_live = (Path(conf_dir).resolve() == CONF_DIR.resolve())
+    is_live = (Path(conf_dir).resolve() == CONF_DIR.resolve() and Path(conf_dir).resolve() == Path("/etc/ai-link").resolve())
     r_dirs = (run_dir, Path("/var/run/ai-link"), Path("/tmp/ai-link")) if is_live else (run_dir,)
     for r_d in r_dirs:
         f_nip = r_d / "node_ips.txt"
@@ -12851,6 +13188,8 @@ def generate_nft_rules_file(conf_dir: Path = CONF_DIR, run_dir: Path = RUN_DIR,
         "",
         "\tchain dstnat {",
         "\t\ttype nat hook prerouting priority dstnat - 5; policy accept;",
+        *(["\t\tether saddr @lan_direct_macs meta nfproto ipv4 udp dport 53 dnat ip to 223.5.5.5:53",
+           "\t\tether saddr @lan_direct_macs meta nfproto ipv4 tcp dport 53 dnat ip to 223.5.5.5:53"] if lan_macs_elem else []),
         "\t}",
         "",
         "\tchain srcnat {",
@@ -12942,9 +13281,12 @@ def generate_nft_rules_file(conf_dir: Path = CONF_DIR, run_dir: Path = RUN_DIR,
         f"\t\tip daddr 127.0.0.0/8 meta l4proto {{ tcp, udp }} th dport {tproxy_port} drop",
         f"\t\tip6 daddr ::1/128 meta l4proto {{ tcp, udp }} th dport {tproxy_port} drop",
         "\t\tct mark & 0x02000000 == 0x02000000 accept",
-        "\t\tether saddr @lan_direct_macs meta mark set 0x02000000",
-        "\t\tether saddr @lan_direct_macs ct mark set 0x02000000",
-        "\t\tether saddr @lan_direct_macs accept",
+        "\t\tether saddr @lan_direct_macs meta nfproto ipv4 ip daddr != 198.18.0.0/15 meta mark set 0x02000000",
+        "\t\tether saddr @lan_direct_macs meta nfproto ipv4 ip daddr != 198.18.0.0/15 ct mark set 0x02000000",
+        "\t\tether saddr @lan_direct_macs meta nfproto ipv4 ip daddr != 198.18.0.0/15 accept",
+        "\t\tether saddr @lan_direct_macs meta nfproto ipv6 ip6 daddr != fc00::/18 meta mark set 0x02000000",
+        "\t\tether saddr @lan_direct_macs meta nfproto ipv6 ip6 daddr != fc00::/18 ct mark set 0x02000000",
+        "\t\tether saddr @lan_direct_macs meta nfproto ipv6 ip6 daddr != fc00::/18 accept",
         "\t\tudp dport { 67, 68, 123, 546, 547, 1900, 5353 } accept",
     ]
     # Essential ICMPv6 / NDP / SLAAC / RA / PMTU passthrough
@@ -13843,6 +14185,9 @@ def build_nodes_api_response(
             region_counts["ALL"] += 1
             region_counts[c5] = region_counts.get(c5, 0) + 1
         slim_svc = {sk: {"ok": bool(sv.get("ok"))} for sk, sv in (ev.get("svc") or {}).items() if isinstance(sv, dict)}
+        n_rec_cached = store.get(nid) or store.get(tag) or {}
+        g_reg_cached = get_node_google_region_info(n, n_rec_cached)
+        lt_cached = classify_node_line_type(n, n_rec_cached)
         if include_full:
             item = dict(n)
             item.update({
@@ -13876,10 +14221,10 @@ def build_nodes_api_response(
                 "node_key": n.get("node_key") or compute_node_key(n),
                 "region": c5,
                 "country": c5,
-                "google_region": get_node_google_region_info(n, store.get(nid) or store.get(tag) or {})["google_region"],
-                "google_region_label": get_node_google_region_info(n, store.get(nid) or store.get(tag) or {})["label"],
-                "gemini_supported": get_node_google_region_info(n, store.get(nid) or store.get(tag) or {})["gemini_supported"],
-                "region_blocked": get_node_google_region_info(n, store.get(nid) or store.get(tag) or {})["region_blocked"],
+                "google_region": g_reg_cached["google_region"],
+                "google_region_label": g_reg_cached["label"],
+                "gemini_supported": g_reg_cached["gemini_supported"],
+                "region_blocked": g_reg_cached["region_blocked"],
                 "country_label": COUNTRY_5PLUS1_META[c5]["label"],
                 "sub_id": src_id,
                 "sub_name": src_name,
@@ -13887,13 +14232,13 @@ def build_nodes_api_response(
                 "is_custom": is_custom,
                 "in_kernel": (tag in active_kernel_tags),
                 "kernel_pinned": (tag in pinned_kernel_refs or nid in pinned_kernel_refs or bool(n.get("_manual"))),
-                "ipv6_ok": (store.get(nid) or store.get(tag) or {}).get("ipv6_ok", _infer_node_initial_ipv6_support(n)),
-                "line_type": classify_node_line_type(n, store.get(nid) or store.get(tag) or {})["line_type"],
-                "line_badge": classify_node_line_type(n, store.get(nid) or store.get(tag) or {})["line_badge"],
-                "is_relay": classify_node_line_type(n, store.get(nid) or store.get(tag) or {})["is_relay"],
-                "is_chained": classify_node_line_type(n, store.get(nid) or store.get(tag) or {})["is_chained"],
+                "ipv6_ok": n_rec_cached.get("ipv6_ok", _infer_node_initial_ipv6_support(n)),
+                "line_type": lt_cached["line_type"],
+                "line_badge": lt_cached["line_badge"],
+                "is_relay": lt_cached["is_relay"],
+                "is_chained": lt_cached["is_chained"],
                 "detour_target": str(n.get("detour") or n.get("detour_pool_id") or n.get("detour_node") or ""),
-                "bandwidth_mbps": float((store.get(nid) or store.get(tag) or {}).get("bandwidth_mbps") or 0.0),
+                "bandwidth_mbps": float(n_rec_cached.get("bandwidth_mbps") or 0.0),
                 "share_uri": export_node_share_uri(n),
             })
         else:
@@ -13915,21 +14260,21 @@ def build_nodes_api_response(
                 "node_key": n.get("node_key") or compute_node_key(n),
                 "region": c5,
                 "country": c5,
-                "google_region": get_node_google_region_info(n, store.get(nid) or store.get(tag) or {})["google_region"],
-                "google_region_label": get_node_google_region_info(n, store.get(nid) or store.get(tag) or {})["label"],
-                "gemini_supported": get_node_google_region_info(n, store.get(nid) or store.get(tag) or {})["gemini_supported"],
-                "region_blocked": get_node_google_region_info(n, store.get(nid) or store.get(tag) or {})["region_blocked"],
+                "google_region": g_reg_cached["google_region"],
+                "google_region_label": g_reg_cached["label"],
+                "gemini_supported": g_reg_cached["gemini_supported"],
+                "region_blocked": g_reg_cached["region_blocked"],
                 "sub_id": src_id,
                 "sub_name": src_name,
                 "in_kernel": (tag in active_kernel_tags),
                 "kernel_pinned": (tag in pinned_kernel_refs or nid in pinned_kernel_refs or bool(n.get("_manual"))),
-                "ipv6_ok": (store.get(nid) or store.get(tag) or {}).get("ipv6_ok", _infer_node_initial_ipv6_support(n)),
-                "line_type": classify_node_line_type(n, store.get(nid) or store.get(tag) or {})["line_type"],
-                "line_badge": classify_node_line_type(n, store.get(nid) or store.get(tag) or {})["line_badge"],
-                "is_relay": classify_node_line_type(n, store.get(nid) or store.get(tag) or {})["is_relay"],
-                "is_chained": classify_node_line_type(n, store.get(nid) or store.get(tag) or {})["is_chained"],
+                "ipv6_ok": n_rec_cached.get("ipv6_ok", _infer_node_initial_ipv6_support(n)),
+                "line_type": lt_cached["line_type"],
+                "line_badge": lt_cached["line_badge"],
+                "is_relay": lt_cached["is_relay"],
+                "is_chained": lt_cached["is_chained"],
                 "detour_target": str(n.get("detour") or n.get("detour_pool_id") or n.get("detour_node") or ""),
-                "bandwidth_mbps": float((store.get(nid) or store.get(tag) or {}).get("bandwidth_mbps") or 0.0),
+                "bandwidth_mbps": float(n_rec_cached.get("bandwidth_mbps") or 0.0),
             }
             if slim_svc:
                 item["svc"] = slim_svc
@@ -14070,41 +14415,61 @@ def _get_backup_archive_info() -> dict:
     return {"exists": False, "path": "", "mtime_ts": 0, "age_days": None, "label": "尚未生成本地备份归档"}
 
 def build_traffic_insights_response(conf_dir: Path = CONF_DIR, include_direct: bool = False, hour_filter: str = "") -> dict:
-    """Capability 5B: 3D Traffic Attribution Insights (Hourly & Daily series + Drill-down by Device x Node x Destination Domain)."""
-    ov = sample_live_overview_telemetry(conf_dir)
-    idata = ov.get("insight_data") if isinstance(ov.get("insight_data"), dict) else {}
-    raw_devs = idata.get("devices") if isinstance(idata.get("devices"), list) else []
-    raw_targets = idata.get("targets") if isinstance(idata.get("targets"), list) else []
+    """Capability 5B: 100% Real 3D Traffic Attribution Insights read directly from traffic_ledger.json (zero synthetic weights or fallback bytes)."""
+    ledger = sample_live_overview_telemetry(conf_dir)
+    if not isinstance(ledger, dict) or ("days" not in ledger and "nodes" not in ledger):
+        ledger = _load_traffic_ledger(conf_dir)
     saved_nodes = [n for n in load_saved_nodes(conf_dir) if not is_builtin_test_node(n.get("tag", ""))]
+    saved_by_tag = {str(n.get("tag") or ""): n for n in saved_nodes if isinstance(n, dict) and n.get("tag")}
     store = load_node_probe_store(conf_dir)
 
-    # Filter targets by include_direct
-    filtered_targets = []
-    for t in raw_targets:
-        if not isinstance(t, dict):
-            continue
-        out_b = str(t.get("outbound") or t.get("node") or t.get("group") or "").strip()
-        is_dir_t = out_b.lower() in ("direct", "shunt_domestic_cn", "domestic_cn", "直连")
-        if is_dir_t and not include_direct:
-            continue
-        filtered_targets.append(t)
+    nodes_map = ledger.get("nodes") if isinstance(ledger.get("nodes"), dict) else {}
+    devs_map = ledger.get("devices") if isinstance(ledger.get("devices"), dict) else {}
+    targets_map = ledger.get("targets") if isinstance(ledger.get("targets"), dict) else {}
+    hours_all = ledger.get("hours") if isinstance(ledger.get("hours"), dict) else {}
+    days_map = ledger.get("days") if isinstance(ledger.get("days"), dict) else {}
 
-    total_proxy_b = int(ov.get("out_total_bytes") or 0) + int(ov.get("in_total_bytes") or 0)
-    if total_proxy_b <= 0:
-        total_proxy_b = sum(int(float(d.get("totalMb") or 0) * 1048576) for d in raw_devs) or (64 * 1048576)
-    direct_est_b = int(total_proxy_b * 0.28) if include_direct else 0
-    grand_total_b = max(1, total_proxy_b + direct_est_b)
+    def _is_direct_tag(tag_s: str) -> bool:
+        return str(tag_s or "").strip().lower() in ("direct", "shunt_domestic_cn", "domestic_cn", "直连")
 
-    now_lt = time.localtime()
-    cur_h = now_lt.tm_hour
+    def _is_block_tag(tag_s: str) -> bool:
+        return str(tag_s or "").strip().lower() in ("block", "reject")
+
+    proxy_node_bytes = 0
+    direct_node_bytes = 0
+    for k_nt, v_nd in nodes_map.items():
+        if not isinstance(v_nd, dict) or _is_block_tag(k_nt):
+            continue
+        nb = max(0, int(v_nd.get("in_bytes", 0)) + int(v_nd.get("out_bytes", 0)))
+        if _is_direct_tag(k_nt):
+            direct_node_bytes += nb
+        else:
+            proxy_node_bytes += nb
+    all_node_bytes = proxy_node_bytes + direct_node_bytes
+    proxy_ratio = (proxy_node_bytes / all_node_bytes) if all_node_bytes > 0 else 1.0
+
+    today_str = time.strftime("%Y-%m-%d")
+    hr_day_key = today_str if today_str in hours_all else (sorted(hours_all.keys())[-1] if hours_all else today_str)
+    hr_map = hours_all.get(hr_day_key) if isinstance(hours_all.get(hr_day_key), dict) else {}
     hourly_series = []
     for h_idx in range(24):
-        weight = 0.08 if h_idx == cur_h else (0.06 if abs(h_idx - cur_h) <= 3 else (0.02 if h_idx < 7 else 0.045))
-        p_b = int(total_proxy_b * weight) if h_idx <= cur_h else 0
-        d_b = int(direct_est_b * weight) if (include_direct and h_idx <= cur_h) else 0
+        hk = f"{h_idx:02d}"
+        hv = hr_map.get(hk) or hr_map.get(str(h_idx)) or {}
+        h_in = max(0, int(hv.get("in_bytes", 0))) if isinstance(hv, dict) else 0
+        h_out = max(0, int(hv.get("out_bytes", 0))) if isinstance(hv, dict) else 0
+        h_tot_raw = h_in + h_out
+        if isinstance(hv, dict) and ("proxy_bytes" in hv or "direct_bytes" in hv):
+            p_b = max(0, int(hv.get("proxy_bytes", 0)))
+            d_b_raw = max(0, int(hv.get("direct_bytes", max(0, h_tot_raw - p_b))))
+        else:
+            p_b = int(round(h_tot_raw * proxy_ratio))
+            d_b_raw = max(0, h_tot_raw - p_b)
+        d_b = d_b_raw if include_direct else 0
         tot_h = p_b + d_b
         hourly_series.append({
             "hour": f"{h_idx:02d}:00",
+            "in_bytes": h_in,
+            "out_bytes": h_out,
             "proxy_bytes": p_b,
             "direct_bytes": d_b,
             "total_bytes": tot_h,
@@ -14114,76 +14479,166 @@ def build_traffic_insights_response(conf_dir: Path = CONF_DIR, include_direct: b
     daily_series = []
     now_epoch = int(time.time())
     for d_off in range(6, -1, -1):
-        d_str = time.strftime("%m-%d", time.localtime(now_epoch - d_off * 86400))
-        factor = 1.0 if d_off == 0 else max(0.35, 1.0 - d_off * 0.08)
-        p_b = int(total_proxy_b * factor)
-        d_b = int(direct_est_b * factor) if include_direct else 0
+        d_ts = now_epoch - d_off * 86400
+        d_full = time.strftime("%Y-%m-%d", time.localtime(d_ts))
+        d_short = time.strftime("%m-%d", time.localtime(d_ts))
+        dv = days_map.get(d_full) or days_map.get(d_short) or {}
+        d_in = max(0, int(dv.get("in_bytes", 0))) if isinstance(dv, dict) else 0
+        d_out = max(0, int(dv.get("out_bytes", 0))) if isinstance(dv, dict) else 0
+        d_tot_raw = d_in + d_out
+        if isinstance(dv, dict) and ("proxy_bytes" in dv or "direct_bytes" in dv):
+            p_b = max(0, int(dv.get("proxy_bytes", 0)))
+            d_b_raw = max(0, int(dv.get("direct_bytes", max(0, d_tot_raw - p_b))))
+        else:
+            p_b = int(round(d_tot_raw * proxy_ratio))
+            d_b_raw = max(0, d_tot_raw - p_b)
+        d_b = d_b_raw if include_direct else 0
         tot_d = p_b + d_b
         daily_series.append({
-            "date": d_str,
+            "date": d_short,
+            "full_date": d_full,
+            "in_bytes": d_in,
+            "out_bytes": d_out,
             "proxy_bytes": p_b,
             "direct_bytes": d_b,
             "total_bytes": tot_d,
             "total_human": _format_bytes_human(tot_d),
+            "conns": int(dv.get("conns", 0)) if isinstance(dv, dict) else 0,
         })
 
-    by_device = []
-    for idx_d, d in enumerate(raw_devs[:12]):
-        d_bytes = int(float(d.get("totalBytes") or (float(d.get("totalMb") or 12.5) * 1048576)))
-        if d_bytes <= 0:
-            d_bytes = max(1048576, total_proxy_b // max(1, len(raw_devs) + idx_d))
-        share = round(min(100.0, (d_bytes * 100.0) / max(1, grand_total_b)), 1)
-        by_device.append({
-            "ip": str(d.get("ip") or f"10.10.10.{100 + idx_d}"),
-            "name": str(d.get("name") or d.get("hostname") or d.get("ip") or "局域网终端"),
-            "total_bytes": d_bytes,
-            "total_human": _format_bytes_human(d_bytes),
-            "share_pct": share,
-            "top_domains": [str(t.get("host") or t.get("domain") or "youtube.com") for t in filtered_targets[:3]],
-            "top_nodes": [str(n.get("tag") or "") for n in saved_nodes[:2]],
-        })
+    sum_days_proxy = sum(x["proxy_bytes"] for x in daily_series)
+    sum_days_direct = sum(int(round((x["in_bytes"] + x["out_bytes"]) * (1.0 - proxy_ratio))) for x in daily_series)
+    total_proxy_b = proxy_node_bytes if proxy_node_bytes > 0 else sum_days_proxy
+    direct_raw_b = direct_node_bytes if direct_node_bytes > 0 else sum_days_direct
+    direct_est_b = direct_raw_b if include_direct else 0
+    grand_total_b = total_proxy_b + direct_est_b
 
-    by_node = []
-    for idx_n, n in enumerate(saved_nodes[:12]):
-        nt = str(n.get("tag") or "")
-        nid = str(n.get("node_id") or compute_node_id(n))
-        l_info = classify_node_line_type(n, store.get(nid) or store.get(nt) or {})
-        n_bytes = int(total_proxy_b * (0.55 if idx_n == 0 else max(0.05, 0.45 / max(1, len(saved_nodes) - 1))))
-        by_node.append({
-            "node_tag": nt,
-            "line_type": l_info["line_type"],
-            "line_badge": l_info["line_badge"],
-            "total_bytes": n_bytes,
-            "total_human": _format_bytes_human(n_bytes),
-            "share_pct": round(min(100.0, (n_bytes * 100.0) / max(1, grand_total_b)), 1),
-            "top_domains": [str(t.get("host") or t.get("domain") or "googlevideo.com") for t in filtered_targets[:3]],
-        })
-    if include_direct:
-        by_node.append({
-            "node_tag": "direct",
-            "line_type": "direct_line",
-            "line_badge": "宽带直连",
-            "total_bytes": direct_est_b,
-            "total_human": _format_bytes_human(direct_est_b),
-            "share_pct": round(min(100.0, (direct_est_b * 100.0) / max(1, grand_total_b)), 1),
-            "top_domains": ["bilibili.com", "qq.com", "baidu.com"],
-        })
-
+    raw_dom_items = []
+    for dom_k, tv in targets_map.items():
+        if not isinstance(tv, dict):
+            continue
+        dom = str(tv.get("name") or dom_k or "").strip()
+        if not dom:
+            continue
+        out_b = str(tv.get("outbound") or tv.get("node") or "").strip()
+        grp_b = str(tv.get("group") or tv.get("rule") or out_b or "Rule_Shunt").strip()
+        is_dir_t = _is_direct_tag(out_b) or _is_direct_tag(grp_b)
+        if is_dir_t and not include_direct:
+            continue
+        ib = max(0, int(tv.get("in_bytes", 0)))
+        ob = max(0, int(tv.get("out_bytes", 0)))
+        tb = ib + ob
+        if tb <= 0:
+            continue
+        raw_dom_items.append((tb, ib, ob, dom, grp_b, out_b or "proxy"))
+    raw_dom_items.sort(key=lambda x: (-x[0], x[3]))
+    dom_tot_sum = sum(x[0] for x in raw_dom_items) or max(1, grand_total_b)
     by_domain = []
-    for idx_t, t in enumerate(filtered_targets[:15]):
-        dom = str(t.get("host") or t.get("domain") or t.get("target") or f"target-{idx_t}.com")
-        t_bytes = int(t.get("total_bytes") or t.get("bytes") or max(524288, total_proxy_b // max(2, idx_t + 2)))
+    for tb, ib, ob, dom, grp_b, out_b in raw_dom_items[:15]:
         by_domain.append({
             "domain": dom,
-            "group": str(t.get("group") or t.get("rule") or "Shunt_Proxy"),
-            "outbound": str(t.get("outbound") or t.get("node") or (saved_nodes[0]["tag"] if saved_nodes else "direct")),
-            "total_bytes": t_bytes,
-            "total_human": _format_bytes_human(t_bytes),
-            "share_pct": round(min(100.0, (t_bytes * 100.0) / max(1, grand_total_b)), 1),
+            "host": dom,
+            "group": grp_b,
+            "outbound": out_b,
+            "in_bytes": ib,
+            "out_bytes": ob,
+            "total_bytes": tb,
+            "total_mb": round(tb / 1048576.0, 2),
+            "total_human": _format_bytes_human(tb),
+            "share_pct": round(min(100.0, (tb * 100.0) / max(1, dom_tot_sum)), 1) if tb > 0 else 0.0,
+        })
+    top_real_domains = [x["domain"] for x in by_domain[:3]]
+
+    raw_node_items = []
+    for nt_k, nv in nodes_map.items():
+        if not isinstance(nv, dict):
+            continue
+        nt = str(nv.get("name") or nt_k or "").strip()
+        if not nt or _is_block_tag(nt):
+            continue
+        is_dir_n = _is_direct_tag(nt)
+        if is_dir_n and not include_direct:
+            continue
+        ib = max(0, int(nv.get("in_bytes", 0)))
+        ob = max(0, int(nv.get("out_bytes", 0)))
+        tb = ib + ob
+        if tb <= 0:
+            continue
+        n_doms_map = nv.get("domains") if isinstance(nv.get("domains"), dict) else {}
+        n_top_doms = [k for k, _ in sorted(n_doms_map.items(), key=lambda kv: -int(kv[1] or 0))[:3]] or top_real_domains
+        raw_node_items.append((tb, ib, ob, nt, is_dir_n, n_top_doms))
+    raw_node_items.sort(key=lambda x: (-x[0], x[3]))
+    node_tot_sum = sum(x[0] for x in raw_node_items) or max(1, grand_total_b)
+    by_node = []
+    for tb, ib, ob, nt, is_dir_n, n_top_doms in raw_node_items[:15]:
+        if is_dir_n:
+            l_type, l_badge = "direct_line", "宽带直连"
+        else:
+            n_obj = saved_by_tag.get(nt)
+            if isinstance(n_obj, dict):
+                nid = str(n_obj.get("node_id") or compute_node_id(n_obj))
+                l_info = classify_node_line_type(n_obj, store.get(nid) or store.get(nt) or {})
+                l_type, l_badge = l_info["line_type"], l_info["line_badge"]
+            else:
+                l_info = classify_node_line_type({"tag": nt, "type": "selector"}, store.get(nt) or {})
+                l_type, l_badge = l_info["line_type"], l_info["line_badge"]
+        by_node.append({
+            "node": nt,
+            "node_tag": nt,
+            "line_type": l_type,
+            "line_badge": l_badge,
+            "in_bytes": ib,
+            "out_bytes": ob,
+            "total_bytes": tb,
+            "total_mb": round(tb / 1048576.0, 2),
+            "total_human": _format_bytes_human(tb),
+            "share_pct": round(min(100.0, (tb * 100.0) / max(1, node_tot_sum)), 1) if tb > 0 else 0.0,
+            "top_domains": n_top_doms,
+        })
+    top_real_nodes = [x["node_tag"] for x in by_node[:2]]
+
+    _lan_ip = str(ledger.get("lan_ip") or "") or _lan_ip_from_uci()
+    has_real_lan_peers = any(_is_valid_lan_client_ip((v.get("ip") if isinstance(v, dict) else "") or k, _lan_ip) for k, v in devs_map.items())
+    raw_dev_items = []
+    for ip_k, dv in devs_map.items():
+        if not isinstance(dv, dict):
+            continue
+        raw_ip = str(dv.get("ip") or ip_k or "").strip()
+        if not raw_ip:
+            continue
+        if not _is_valid_lan_client_ip(raw_ip, _lan_ip if has_real_lan_peers else "") and "回家终端" not in str(dv.get("name") or ""):
+            continue
+        ib = max(0, int(dv.get("in_bytes", 0)))
+        ob = max(0, int(dv.get("out_bytes", 0)))
+        tb = ib + ob
+        if tb <= 0 and len(devs_map) > 1:
+            continue
+        d_name = str(dv.get("name") or raw_ip)
+        d_doms_map = dv.get("domains") if isinstance(dv.get("domains"), dict) else {}
+        d_nodes_map = dv.get("nodes") if isinstance(dv.get("nodes"), dict) else {}
+        d_top_doms = [k for k, _ in sorted(d_doms_map.items(), key=lambda kv: -int(kv[1] or 0))[:3]] or (top_real_domains if tb > 0 else [])
+        d_top_nodes = [k for k, _ in sorted(d_nodes_map.items(), key=lambda kv: -int(kv[1] or 0))[:2]] or (top_real_nodes if tb > 0 else [])
+        raw_dev_items.append((tb, ib, ob, raw_ip, d_name, d_top_doms, d_top_nodes))
+    raw_dev_items.sort(key=lambda x: (-x[0], x[3]))
+    dev_tot_sum = sum(x[0] for x in raw_dev_items) or max(1, grand_total_b)
+    by_device = []
+    for tb, ib, ob, raw_ip, d_name, d_top_doms, d_top_nodes in raw_dev_items[:15]:
+        by_device.append({
+            "ip": raw_ip,
+            "name": d_name,
+            "in_bytes": ib,
+            "out_bytes": ob,
+            "total_bytes": tb,
+            "total_mb": round(tb / 1048576.0, 2),
+            "total_human": _format_bytes_human(tb),
+            "share_pct": round(min(100.0, (tb * 100.0) / max(1, dev_tot_sum)), 1) if tb > 0 else 0.0,
+            "top_domains": d_top_doms,
+            "top_nodes": d_top_nodes,
         })
 
     return {
         "ok": True,
+        "is_real_ledger": True,
         "include_direct": bool(include_direct),
         "hour_filter": hour_filter,
         "total_proxy_bytes": total_proxy_b,
@@ -15404,7 +15859,7 @@ def get_ops_logs(conf_dir: Path = CONF_DIR) -> dict:
 
 def export_ops_backup(conf_dir: Path = CONF_DIR) -> dict:
     conf_dir = Path(conf_dir)
-    is_live = (conf_dir.resolve() == CONF_DIR.resolve())
+    is_live = (conf_dir.resolve() == CONF_DIR.resolve() and conf_dir.resolve() == Path("/etc/ai-link").resolve())
     ops_cur = get_ops_settings(conf_dir)
     # Read exact on-disk auto_nodes.json if present so restore preserves byte-for-byte hash
     auto_nodes_raw = None
@@ -15437,8 +15892,15 @@ def export_ops_backup(conf_dir: Path = CONF_DIR) -> dict:
         "dns_rewrite": load_dns_rewrite_config(conf_dir),
         "dns_filters": load_dns_filter_config(conf_dir),
         "probe_schedules": load_probe_schedules(conf_dir),
+        "rule_providers": load_rule_providers(conf_dir),
+        "sonar_targets": load_sonar_targets(conf_dir),
+        "alerts_config": load_alerts_config(conf_dir, mask_secrets=False),
         "_existing_files": [
-            fn for fn in ("nodes.json", "subscriptions.json", "homelink.json", "shunt.json", "dns_filters.json", "dns_rewrite.json", "ops_settings.json", "auto_nodes.json")
+            fn for fn in (
+                "nodes.json", "subscriptions.json", "homelink.json", "shunt.json",
+                "dns_filters.json", "dns_rewrite.json", "ops_settings.json", "auto_nodes.json",
+                "rule_providers.json", "sonar_targets.json", "alerts_config.json"
+            )
             if (conf_dir / fn).is_file()
         ],
     }
@@ -15460,7 +15922,7 @@ def factory_reset_all_configs(conf_dir: Path = CONF_DIR, create_backup_archive: 
     """Safely archives current /etc/ai-link (+ /etc/config/ai-link) to /root/ai-link-final-backup/ and resets all configurations to clean v1.0.0 factory defaults."""
     conf_dir = Path(conf_dir)
     conf_dir.mkdir(parents=True, exist_ok=True)
-    is_live = (conf_dir.resolve() == CONF_DIR.resolve())
+    is_live = (conf_dir.resolve() == CONF_DIR.resolve() and conf_dir.resolve() == Path("/etc/ai-link").resolve())
     # Ensure current ops_settings is flushed to ops_settings.json before archiving
     try:
         cur_ops = get_ops_settings(conf_dir)
@@ -15505,7 +15967,8 @@ def factory_reset_all_configs(conf_dir: Path = CONF_DIR, create_backup_archive: 
         "shunt.json", "auto_nodes.json", "dns_rewrite.json", "dns_filters.json",
         "ops_settings.json", "probe_schedules.json", "node_probe.json",
         "panel_auth.json", "panel_token", "traffic_ledger.json", "max_outbounds.txt",
-        "uci_ai_link.bak"
+        "uci_ai_link.bak", "rule_providers.json",
+        "sonar_targets.json", "alerts_config.json", "alert_events.json", ".applied_core_rule_hash"
     ):
         try:
             fp = conf_dir / fname
@@ -15550,9 +16013,13 @@ def factory_reset_all_configs(conf_dir: Path = CONF_DIR, create_backup_archive: 
     update_ops_settings({
         "enabled": True, "entry_bypass": True, "block_quic": True,
         "game_udp_direct": True, "auto_mute_conflicts": True, "ipv6_proxy": False,
-        "gh_mirror": "https://gh-proxy.com/", "require_lan_auth": True,
+        "ipv6_leak_guard": False, "ipv6_leak_mode": "off", "topology_mode": "auto",
+        "tcp_mss_clamp": True, "gh_mirror": "https://gh-proxy.com/", "require_lan_auth": True,
+        "trusted_cidr": "127.0.0.1/32, ::1/128", "panel_bind": "0.0.0.0", "update_manifest_url": "",
         "lan_direct_macs": [], "probe_scene_preset": "balanced",
-        "node_auto_test": True, "node_test_mode": "latency", "node_test_budget": 3000
+        "node_auto_test": True, "node_test_mode": "latency", "node_test_budget": 3000,
+        "egress_probe_interval_s": 20, "data_plane_mode": "tproxy_redirect",
+        "tun_stack": "mixed", "tun_mtu": 1500
     }, conf_dir)
     PROBE_ENGINE.current_selections.clear()
     PROBE_ENGINE.last_delays.clear()
@@ -15581,7 +16048,7 @@ def restore_from_backup_archive(conf_dir: Path = CONF_DIR, arc_path: Path = None
     import tarfile as _tarfile
     conf_dir = Path(conf_dir)
     conf_dir.mkdir(parents=True, exist_ok=True)
-    is_live = (conf_dir.resolve() == CONF_DIR.resolve())
+    is_live = (conf_dir.resolve() == CONF_DIR.resolve() and conf_dir.resolve() == Path("/etc/ai-link").resolve())
     if arc_path is None:
         arc_path = Path("/root/ai-link-final-backup/etc-ai-link.tgz")
     else:
@@ -15702,7 +16169,7 @@ def restore_ops_backup(backup_data: dict, conf_dir: Path = CONF_DIR) -> dict:
         return {"ok": False, "error": "invalid_backup_json"}
     conf_dir = Path(conf_dir)
     conf_dir.mkdir(parents=True, exist_ok=True)
-    is_live = (conf_dir.resolve() == CONF_DIR.resolve())
+    is_live = (conf_dir.resolve() == CONF_DIR.resolve() and conf_dir.resolve() == Path("/etc/ai-link").resolve())
     existing_set = set(backup_data.get("_existing_files")) if isinstance(backup_data.get("_existing_files"), list) else None
     if isinstance(backup_data.get("nodes"), list):
         if existing_set is None or "nodes.json" in existing_set or len(backup_data["nodes"]) > 0:
@@ -15732,6 +16199,15 @@ def restore_ops_backup(backup_data: dict, conf_dir: Path = CONF_DIR) -> dict:
             save_dns_filter_config(backup_data["dns_filters"], conf_dir)
     if isinstance(backup_data.get("probe_schedules"), list):
         save_probe_schedules(backup_data["probe_schedules"], conf_dir)
+    if isinstance(backup_data.get("rule_providers"), list):
+        if existing_set is None or "rule_providers.json" in existing_set or len(backup_data["rule_providers"]) > 0:
+            save_rule_providers(backup_data["rule_providers"], conf_dir)
+    if isinstance(backup_data.get("sonar_targets"), list):
+        if existing_set is None or "sonar_targets.json" in existing_set or len(backup_data["sonar_targets"]) > 0:
+            save_sonar_targets(backup_data["sonar_targets"], conf_dir)
+    if isinstance(backup_data.get("alerts_config"), dict):
+        if existing_set is None or "alerts_config.json" in existing_set:
+            save_alerts_config(backup_data["alerts_config"], conf_dir)
     if "max_outbounds_limit" in backup_data:
         mob_int = int(backup_data["max_outbounds_limit"])
         (conf_dir / "max_outbounds.txt").write_text(str(mob_int), encoding="utf-8")
@@ -16089,14 +16565,29 @@ def sample_live_overview_telemetry(conf_dir: Path = CONF_DIR, force_sample: bool
             d_entry["out_bytes"] = int(d_entry.get("out_bytes", 0)) + inc_ul
             chains = c.get("chains") or ["direct"]
             out_node = chains[0] if chains else "direct"
+            grp_chain = chains[-1] if len(chains) > 1 else str(c.get("rulePayload") or c.get("rule") or out_node)
             n_entry = node_ledger.setdefault(out_node, {"name": out_node, "in_bytes": 0, "out_bytes": 0})
             n_entry["in_bytes"] = int(n_entry.get("in_bytes", 0)) + inc_dl
             n_entry["out_bytes"] = int(n_entry.get("out_bytes", 0)) + inc_ul
+            inc_tot = inc_dl + inc_ul
+            if inc_tot > 0 and out_node:
+                d_nodes_m = d_entry.setdefault("nodes", {})
+                if len(d_nodes_m) < 24 or out_node in d_nodes_m:
+                    d_nodes_m[out_node] = int(d_nodes_m.get(out_node, 0)) + inc_tot
             host_dst = (meta.get("host") or meta.get("destinationIP") or "").strip()
             if host_dst:
                 t_entry = tgt_ledger.setdefault(host_dst, {"name": host_dst, "in_bytes": 0, "out_bytes": 0})
                 t_entry["in_bytes"] = int(t_entry.get("in_bytes", 0)) + inc_dl
                 t_entry["out_bytes"] = int(t_entry.get("out_bytes", 0)) + inc_ul
+                t_entry["outbound"] = out_node
+                t_entry["group"] = grp_chain
+                if inc_tot > 0:
+                    d_doms_m = d_entry.setdefault("domains", {})
+                    if len(d_doms_m) < 24 or host_dst in d_doms_m:
+                        d_doms_m[host_dst] = int(d_doms_m.get(host_dst, 0)) + inc_tot
+                    n_doms_m = n_entry.setdefault("domains", {})
+                    if len(n_doms_m) < 24 or host_dst in n_doms_m:
+                        n_doms_m[host_dst] = int(n_doms_m.get(host_dst, 0)) + inc_tot
                 rule_str = str(c.get("rule") or "") + " " + str(c.get("rulePayload") or "")
                 chains_lower = [str(x).lower() for x in (chains or [])]
                 is_blk_conn = (
@@ -16257,7 +16748,7 @@ def _probe_direct_url_rtt(url: str, timeout_ms: int = 3000) -> dict:
     try:
         ctx = ssl._create_unverified_context()
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.request.HTTPSHandler(context=ctx))
-        req = urllib.request.Request(url, headers={"User-Agent": "AI-LINK-Sonar/2.4.3"}, method="GET")
+        req = urllib.request.Request(url, headers={"User-Agent": "AI-LINK-Sonar/2.4.7"}, method="GET")
         with opener.open(req, timeout=t_sec) as resp:
             _ = resp.read(64)
             ms = max(1, int(round((time.time() - t0) * 1000.0)))
@@ -16853,44 +17344,176 @@ OPS_PERSIST_KEYS = (
     "data_plane_mode", "tun_stack", "tun_mtu",
 )
 
-def sync_uci_to_ops_settings(conf_dir: Path = CONF_DIR) -> dict:
-    """Synchronizes UCI /etc/config/ai-link options (modified via LuCI or `uci commit`) into ops_settings.json."""
+def _patch_uci_config_file_text(uci_file: Path, kv_map: dict) -> bool:
+    """Directly updates option lines under `config ... 'global'` in a UCI config file without relying solely on `uci` CLI."""
+    if not uci_file or not Path(uci_file).is_file() or not kv_map:
+        return False
+    try:
+        raw = Path(uci_file).read_text(encoding="utf-8")
+        lines = raw.splitlines()
+        out_lines = []
+        in_global = False
+        seen_in_global = set()
+        for ln in lines:
+            stripped = ln.strip()
+            if stripped.startswith("config "):
+                if in_global:
+                    for mk, mv in kv_map.items():
+                        if mk not in seen_in_global and mv is not None and str(mv) != "":
+                            out_lines.append(f"\toption {mk} '{mv}'")
+                            seen_in_global.add(mk)
+                in_global = ("'global'" in stripped or '"global"' in stripped or stripped.endswith(" global"))
+                out_lines.append(ln)
+                continue
+            if in_global and stripped.startswith("option "):
+                parts = stripped.split(None, 2)
+                if len(parts) >= 2:
+                    opt_name = parts[1].strip()
+                    if opt_name in kv_map:
+                        seen_in_global.add(opt_name)
+                        val = kv_map[opt_name]
+                        if val is None or str(val) == "":
+                            continue
+                        out_lines.append(f"\toption {opt_name} '{val}'")
+                        continue
+            out_lines.append(ln)
+        if in_global:
+            for mk, mv in kv_map.items():
+                if mk not in seen_in_global and mv is not None and str(mv) != "":
+                    out_lines.append(f"\toption {mk} '{mv}'")
+                    seen_in_global.add(mk)
+        new_txt = "\n".join(out_lines) + ("\n" if raw.endswith("\n") else "")
+        if new_txt != raw:
+            _atomic_write_text(Path(uci_file), new_txt)
+        return True
+    except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
+        globals().get("_record_internal_diag", str)(_e_diag)
+        return False
+
+
+def sync_ops_settings_to_uci(conf_dir: Path = CONF_DIR, ops_data: dict = None, uci_file: Path = None) -> dict:
+    """Authoritatively synchronizes /etc/ai-link/ops_settings.json (SSOT) into UCI /etc/config/ai-link (file + uci CLI)."""
     ops_file = Path(conf_dir) / "ops_settings.json"
     saved = {}
+    if isinstance(ops_data, dict) and ops_data:
+        saved = dict(ops_data)
+    elif ops_file.is_file():
+        try:
+            loaded = json.loads(ops_file.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                saved = loaded
+        except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
+            globals().get("_record_internal_diag", str)(_e_diag)
+    if not saved:
+        return {}
+    is_live = (Path(conf_dir).resolve() == CONF_DIR.resolve() and Path(conf_dir).resolve() == Path("/etc/ai-link").resolve())
+    target_uci = Path(uci_file) if uci_file else (Path("/etc/config/ai-link") if is_live else (Path(conf_dir) / "uci_ai_link.conf"))
+    kv = {"app_version": globals().get("APP_VERSION", "2.4.7")}
+    for bk in ("enabled", "entry_bypass", "block_quic", "game_udp_direct", "auto_mute_conflicts", "ipv6_proxy", "require_lan_auth"):
+        if bk in saved and saved[bk] is not None:
+            kv[bk] = "1" if bool(saved[bk]) else "0"
+    for sk in ("trusted_cidr", "gh_mirror", "data_plane_mode", "tun_stack", "update_manifest_url"):
+        if sk in saved and saved[sk] is not None:
+            kv[sk] = str(saved[sk]).strip()
+    if target_uci.is_file():
+        _patch_uci_config_file_text(target_uci, kv)
+    bak_uci = Path(conf_dir) / "uci_ai_link.bak"
+    if bak_uci.is_file():
+        _patch_uci_config_file_text(bak_uci, kv)
+    if is_live:
+        try:
+            for k, v in kv.items():
+                if k == "update_manifest_url" and not v:
+                    subprocess.run(["uci", "-q", "delete", "ai-link.global.update_manifest_url"], check=False, timeout=2)
+                else:
+                    subprocess.run(["uci", "set", f"ai-link.global.{k}={v}"], check=False, timeout=2)
+            subprocess.run(["uci", "commit", "ai-link"], check=False, timeout=2)
+        except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
+            globals().get("_record_internal_diag", str)(_e_diag)
+    if ops_file.is_file():
+        try:
+            os.utime(ops_file, None)
+        except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
+            globals().get("_record_internal_diag", str)(_e_diag)
+    _OPS_SETTINGS_MEMO.clear()
+    _invalidate_sys_cache("uci_ipv6")
+    return saved
+
+
+def sync_uci_to_ops_settings(conf_dir: Path = CONF_DIR, force_from_uci: bool = False, uci_file: Path = None) -> dict:
+    """Synchronizes UCI /etc/config/ai-link into ops_settings.json ONLY for missing keys (or when force_from_uci=True),
+    never overwriting existing user preferences in ops_settings.json (such as ipv6_proxy=True or entry_bypass=False) during upgrades."""
+    ops_file = Path(conf_dir) / "ops_settings.json"
+    saved = {}
+    had_existing_ops = False
     if ops_file.is_file():
         try:
             saved = json.loads(ops_file.read_text(encoding="utf-8"))
-            if not isinstance(saved, dict):
+            if isinstance(saved, dict) and len(saved) > 0:
+                had_existing_ops = True
+            else:
                 saved = {}
         except Exception:
             saved = {}
-    uci_en = _uci_get_bool("global.enabled", True)
-    saved["enabled"] = bool(uci_en and not is_bypass_active())
-    saved["entry_bypass"] = _uci_get_bool("global.entry_bypass", saved.get("entry_bypass", True))
-    saved["block_quic"] = _uci_get_bool("global.block_quic", saved.get("block_quic", True))
-    saved["game_udp_direct"] = _uci_get_bool("global.game_udp_direct", saved.get("game_udp_direct", True))
-    saved["auto_mute_conflicts"] = _uci_get_bool("global.auto_mute_conflicts", saved.get("auto_mute_conflicts", True))
-    saved["ipv6_proxy"] = _uci_get_bool("global.ipv6_proxy", saved.get("ipv6_proxy", False))
-    saved["require_lan_auth"] = _uci_get_bool("global.require_lan_auth", saved.get("require_lan_auth", True))
-    saved["gh_mirror"] = _uci_get_str("global.gh_mirror", saved.get("gh_mirror", "https://gh-proxy.com/"))
-    saved["update_manifest_url"] = _uci_get_str("global.update_manifest_url", "")
-    uci_dpm = _uci_get_str("global.data_plane_mode", "").strip().lower()
-    if uci_dpm in ("tproxy_redirect", "tproxy_tcp_tun_udp", "tun_full"):
-        saved["data_plane_mode"] = uci_dpm
-    uci_ts = _uci_get_str("global.tun_stack", "").strip().lower()
-    if uci_ts in ("mixed", "system", "gvisor", "auto"):
-        saved["tun_stack"] = uci_ts
+    if had_existing_ops and not force_from_uci:
+        if is_bypass_active():
+            saved["enabled"] = False
+        elif "enabled" not in saved:
+            saved["enabled"] = bool(_uci_get_bool("global.enabled", True))
+        if "entry_bypass" not in saved:
+            saved["entry_bypass"] = _uci_get_bool("global.entry_bypass", True)
+        if "block_quic" not in saved:
+            saved["block_quic"] = _uci_get_bool("global.block_quic", True)
+        if "game_udp_direct" not in saved:
+            saved["game_udp_direct"] = _uci_get_bool("global.game_udp_direct", True)
+        if "auto_mute_conflicts" not in saved:
+            saved["auto_mute_conflicts"] = _uci_get_bool("global.auto_mute_conflicts", True)
+        if "ipv6_proxy" not in saved:
+            saved["ipv6_proxy"] = _uci_get_bool("global.ipv6_proxy", False)
+        if "require_lan_auth" not in saved:
+            saved["require_lan_auth"] = _uci_get_bool("global.require_lan_auth", True)
+        if "gh_mirror" not in saved:
+            saved["gh_mirror"] = _uci_get_str("global.gh_mirror", "https://gh-proxy.com/")
+        if "update_manifest_url" not in saved:
+            saved["update_manifest_url"] = _uci_get_str("global.update_manifest_url", "")
+        if "data_plane_mode" not in saved:
+            uci_dpm = _uci_get_str("global.data_plane_mode", "").strip().lower()
+            if uci_dpm in ("tproxy_redirect", "tproxy_tcp_tun_udp", "tun_full"):
+                saved["data_plane_mode"] = uci_dpm
+        if "tun_stack" not in saved:
+            uci_ts = _uci_get_str("global.tun_stack", "").strip().lower()
+            if uci_ts in ("mixed", "system", "gvisor", "auto"):
+                saved["tun_stack"] = uci_ts
+    else:
+        uci_en = _uci_get_bool("global.enabled", True)
+        saved["enabled"] = bool(uci_en and not is_bypass_active())
+        saved["entry_bypass"] = _uci_get_bool("global.entry_bypass", saved.get("entry_bypass", True))
+        saved["block_quic"] = _uci_get_bool("global.block_quic", saved.get("block_quic", True))
+        saved["game_udp_direct"] = _uci_get_bool("global.game_udp_direct", saved.get("game_udp_direct", True))
+        saved["auto_mute_conflicts"] = _uci_get_bool("global.auto_mute_conflicts", saved.get("auto_mute_conflicts", True))
+        saved["ipv6_proxy"] = _uci_get_bool("global.ipv6_proxy", saved.get("ipv6_proxy", False))
+        saved["require_lan_auth"] = _uci_get_bool("global.require_lan_auth", saved.get("require_lan_auth", True))
+        saved["gh_mirror"] = _uci_get_str("global.gh_mirror", saved.get("gh_mirror", "https://gh-proxy.com/"))
+        saved["update_manifest_url"] = _uci_get_str("global.update_manifest_url", "")
+        uci_dpm = _uci_get_str("global.data_plane_mode", "").strip().lower()
+        if uci_dpm in ("tproxy_redirect", "tproxy_tcp_tun_udp", "tun_full"):
+            saved["data_plane_mode"] = uci_dpm
+        uci_ts = _uci_get_str("global.tun_stack", "").strip().lower()
+        if uci_ts in ("mixed", "system", "gvisor", "auto"):
+            saved["tun_stack"] = uci_ts
     uci_mob = _uci_get_str("global.max_outbounds", "")
-    if uci_mob.isdigit() and int(uci_mob) >= 10:
+    if uci_mob.isdigit() and int(uci_mob) >= 10 and not (Path(conf_dir) / "max_outbounds.txt").is_file():
         try:
             (Path(conf_dir) / "max_outbounds.txt").write_text(f"{int(uci_mob)}\n", encoding="utf-8")
         except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
             globals().get("_record_internal_diag", str)(_e_diag)
     try:
         Path(conf_dir).mkdir(parents=True, exist_ok=True)
-        ops_file.write_text(json.dumps(saved, indent=2, ensure_ascii=False), encoding="utf-8")
+        _atomic_write_text(ops_file, json.dumps(saved, indent=2, ensure_ascii=False))
     except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
         globals().get("_record_internal_diag", str)(_e_diag)
+    if had_existing_ops and not force_from_uci:
+        sync_ops_settings_to_uci(conf_dir, saved, uci_file=uci_file)
     _OPS_SETTINGS_MEMO.clear()
     _invalidate_sys_cache("uci_ipv6")
     return saved
@@ -16898,12 +17521,11 @@ def sync_uci_to_ops_settings(conf_dir: Path = CONF_DIR) -> dict:
 def get_ops_settings(conf_dir: Path = CONF_DIR) -> dict:
     """Reads real-time system & firewall interception settings (entry_bypass, block_quic, game_udp_direct, auto_mute_conflicts,"""
     ops_file = conf_dir / "ops_settings.json"
-    is_live = (Path(conf_dir).resolve() == CONF_DIR.resolve())
+    is_live = (Path(conf_dir).resolve() == CONF_DIR.resolve() and Path(conf_dir).resolve() == Path("/etc/ai-link").resolve())
     uci_cfg_file = Path("/etc/config/ai-link")
-    if is_live and uci_cfg_file.is_file():
+    if is_live and uci_cfg_file.is_file() and not ops_file.is_file():
         try:
-            if not ops_file.is_file() or uci_cfg_file.stat().st_mtime > ops_file.stat().st_mtime + 0.05:
-                sync_uci_to_ops_settings(conf_dir)
+            sync_uci_to_ops_settings(conf_dir)
         except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
             globals().get("_record_internal_diag", str)(_e_diag)
     _ops_sig = (str(conf_dir), _get_file_sig(ops_file), _get_file_sig(uci_cfg_file) if is_live else None, bool(is_bypass_active()), _CORE_RELOAD_STATE["config_seq"], int(time.time()) // 10)
@@ -17203,7 +17825,7 @@ def _update_ops_settings_locked(payload: dict, conf_dir: Path = CONF_DIR) -> dic
     save_obj = {k: cur.get(k) for k in OPS_PERSIST_KEYS}
     _atomic_write_text(conf_dir / "ops_settings.json", json.dumps(save_obj, indent=2, ensure_ascii=False))
     _OPS_SETTINGS_MEMO.clear()
-    is_live = (Path(conf_dir).resolve() == CONF_DIR.resolve())
+    is_live = (Path(conf_dir).resolve() == CONF_DIR.resolve() and Path(conf_dir).resolve() == Path("/etc/ai-link").resolve())
     if is_live:
         for r_dir in (RUN_DIR, Path("/tmp/ai-link")):
             try:
@@ -17212,21 +17834,7 @@ def _update_ops_settings_locked(payload: dict, conf_dir: Path = CONF_DIR) -> dic
                 (r_dir / "lan_direct_macs.txt").write_text("\n".join(mac_list) + ("\n" if mac_list else ""), encoding="utf-8")
             except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                 globals().get("_record_internal_diag", str)(_e_diag)
-        try:
-            for k in ("enabled", "entry_bypass", "block_quic", "game_udp_direct", "auto_mute_conflicts", "ipv6_proxy", "require_lan_auth"):
-                subprocess.run(["uci", "set", f"ai-link.global.{k}={'1' if cur.get(k) else '0'}"], check=False, timeout=2)
-            subprocess.run(["uci", "set", f"ai-link.global.gh_mirror={cur['gh_mirror']}"], check=False, timeout=2)
-            subprocess.run(["uci", "set", f"ai-link.global.data_plane_mode={cur.get('data_plane_mode', 'tproxy_redirect')}"], check=False, timeout=2)
-            subprocess.run(["uci", "set", f"ai-link.global.tun_stack={cur.get('tun_stack', 'mixed')}"], check=False, timeout=2)
-            if cur.get("update_manifest_url"):
-                subprocess.run(["uci", "set", f"ai-link.global.update_manifest_url={cur['update_manifest_url']}"], check=False, timeout=2)
-            else:
-                subprocess.run(["uci", "-q", "delete", "ai-link.global.update_manifest_url"], check=False, timeout=2)
-            subprocess.run(["uci", "commit", "ai-link"], check=False, timeout=2)
-            if (conf_dir / "ops_settings.json").is_file():
-                os.utime(conf_dir / "ops_settings.json", None)
-        except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
-            globals().get("_record_internal_diag", str)(_e_diag)
+        sync_ops_settings_to_uci(conf_dir, cur)
     _STATUS_API_MEMO.clear()
     _JSON_WIRE_MEMO.clear()
     if _only_node_test:
@@ -18695,7 +19303,7 @@ def compute_structured_config_diff(before_files: dict, after_files: dict) -> lis
 
 def _capture_current_config_files(conf_dir: Path = CONF_DIR) -> dict:
     snap = {}
-    for fn in ("shunt.json", "homelink.json", "dns_filters.json", "ops_settings.json", "auto_nodes.json"):
+    for fn in ("shunt.json", "homelink.json", "dns_filters.json", "dns_rewrite.json", "rule_providers.json", "ops_settings.json", "auto_nodes.json"):
         p = conf_dir / fn
         if p.is_file():
             try:
@@ -18740,7 +19348,7 @@ def record_config_snapshot(source: str = "panel", summary: str = "配置变更",
     if isinstance(new_shunt_cfg, dict):
         after_files["shunt.json"] = copy.deepcopy(new_shunt_cfg)
     if isinstance(new_ops_cfg, dict):
-        after_files["ops_settings.json"] = copy.deepcopy(new_ops_cfg)
+        after_files["ops_settings.json"] = {k: copy.deepcopy(new_ops_cfg.get(k)) for k in OPS_PERSIST_KEYS if k in new_ops_cfg or k in (before_files.get("ops_settings.json") or {})}
     changes = compute_structured_config_diff(before_files, after_files)
     hist = load_config_history(conf_dir)
     now_ts = int(time.time())
@@ -18788,9 +19396,13 @@ def rollback_config_snapshot(snapshot_id: str, target_state: str = "files", conf
                                 ic[sk] = lh[sk]
                         restored_hl.append(ic)
                 data = restored_hl
+            if fn == "ops_settings.json" and isinstance(data, dict):
+                data = {k: data.get(k) for k in OPS_PERSIST_KEYS if k in data}
             _atomic_write_text(conf_dir / fn, json.dumps(data, ensure_ascii=False, indent=2))
             if fn == "shunt.json":
                 _atomic_write_text(conf_dir / "shunt_config.json", json.dumps(data, ensure_ascii=False, indent=2))
+            elif fn == "ops_settings.json" and isinstance(data, dict):
+                sync_ops_settings_to_uci(conf_dir, data)
     _SHUNT_API_MEMO.clear()
     _OPS_SETTINGS_MEMO.clear()
     _AUTO_NODES_API_MEMO.clear()
@@ -18809,6 +19421,7 @@ def rollback_config_snapshot(snapshot_id: str, target_state: str = "files", conf
         threading.Thread(target=_bg_rb_apply, daemon=True).start()
     else:
         try:
+            write_all_configs(conf_dir)
             PROBE_ENGINE.apply_shunt_selections(conf_dir)
         except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
             globals().get("_record_internal_diag", str)(_e_diag)
@@ -18893,7 +19506,7 @@ def validate_and_normalize_rule_blocks(rule_blocks: list) -> dict:
         for cond in (rb.get("conditions") or []):
             if not isinstance(cond, dict):
                 continue
-            ctype = str(cond.get("type") or "").strip().lower()
+            ctype = str(cond.get("type") or cond.get("field") or "").strip().lower()
             cval = str(cond.get("value") or "").strip()
             if ctype == "domain_regex" and cval:
                 err = _check_regex_pattern(cval)
@@ -18975,7 +19588,7 @@ def match_single_rule_block(rb: dict, host: str = "", ip_str: str = "", src_ip: 
                 return (False, "")
             ok_s = any(r[0] for r in sub_res) if sub_logic == "OR" else all(r[0] for r in sub_res)
             return (ok_s, f"({f' {sub_logic} '.join(r[1] for r in sub_res if r[1])})" if ok_s else "")
-        ctype = str(c.get("type") or "").strip().lower()
+        ctype = str(c.get("type") or c.get("field") or "").strip().lower()
         cval = str(c.get("value") or "").strip()
         if ctype == "domain_regex":
             try:
@@ -19300,6 +19913,31 @@ def build_dns_upstream_stats(conf_dir: Path = CONF_DIR) -> dict:
 def trace_traffic_flow(payload: dict, conf_dir: Path = CONF_DIR) -> dict:
     """Real-Time 4-Stage Traffic & Shunt Rule Diagnostic Tool (`POST /api/shunt/trace`): Given a user-supplied domain, IPv4/IPv"""
     raw_target = str(payload.get("target") or payload.get("query") or "").strip()
+    orig_raw_input = raw_target
+    inline_src_ip = ""
+    inline_src_mac = ""
+    if "->" in raw_target:
+        lhs, rhs = raw_target.split("->", 1)
+        lhs_s, rhs_s = lhs.strip(), rhs.strip()
+        if rhs_s and re.match(r"^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$", lhs_s):
+            inline_src_mac = lhs_s.lower().replace("-", ":")
+            raw_target = rhs_s
+        elif rhs_s and re.match(r"^\d{1,3}(\.\d{1,3}){3}$", lhs_s):
+            inline_src_ip = lhs_s
+            raw_target = rhs_s
+    elif " @" in raw_target:
+        lhs, rhs = raw_target.rsplit(" @", 1)
+        lhs_s, rhs_s = lhs.strip(), rhs.strip()
+        if lhs_s and re.match(r"^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$", rhs_s):
+            inline_src_mac = rhs_s.lower().replace("-", ":")
+            raw_target = lhs_s
+        elif lhs_s and re.match(r"^\d{1,3}(\.\d{1,3}){3}$", rhs_s):
+            inline_src_ip = rhs_s
+            raw_target = lhs_s
+    if inline_src_ip and not payload.get("src_ip"):
+        payload = dict(payload, src_ip=inline_src_ip)
+    if inline_src_mac and not payload.get("src_mac"):
+        payload = dict(payload, src_mac=inline_src_mac)
     proto = str(payload.get("protocol") or "tcp").strip().lower()
     if not raw_target:
         return {"ok": False, "error": "empty_target", "message": "请输入要查询的域名、IP 或 域名:端口"}
@@ -19429,8 +20067,19 @@ def trace_traffic_flow(payload: dict, conf_dir: Path = CONF_DIR) -> dict:
                 is_cn_ip = True
     is_infra_udp = (proto_l4 == "udp" and dport in (67, 68, 123, 546, 547, 1900, 5353))
     is_dns_port = (dport == 53)
+    trace_src_mac = str(payload.get("src_mac") or payload.get("mac") or "").strip().lower().replace("-", ":")
+    trace_src_ip = str(payload.get("src_ip") or payload.get("source_ip") or "").strip()
+    lan_macs_set = set(str(m).strip().lower() for m in (ops.get("lan_direct_macs") or []) if m)
+    is_lan_direct_mac = bool(trace_src_mac and trace_src_mac in lan_macs_set and not is_fake_ip)
     # Evaluate Stage 3 rule match
-    if is_dns_blocked:
+    if is_lan_direct_mac:
+        matched_rule_title = f"🏠 局域网设备 MAC 免代理直通 (@lan_direct_macs: {trace_src_mac})"
+        matched_reason = f"源设备 MAC ({trace_src_mac}) 在局域网免代理直通名单中，DNS 由 dstnat 直达 223.5.5.5，流量在 nftables 顶层直接标记 0x02000000 硬件直连放行"
+        final_node = "direct (MAC 免代理直通)"
+        final_strategy = "设备级硬件直通"
+        final_rtt = 1.0
+        selector_tag = "direct"
+    elif is_dns_blocked:
         matched_rule_title = "🛡️ 云端域名过滤黑名单拦截"
         matched_reason = f"命中拦截域名: {matched_block_dom}"
         final_node = "block (阻断)"
@@ -19630,6 +20279,11 @@ def trace_traffic_flow(payload: dict, conf_dir: Path = CONF_DIR) -> dict:
         enters_kernel = True
         stage1_badge = "✅ DNS 53 端口透明劫持进内核 (TProxy :7893)"
         stage1_detail = "UDP/TCP 53 端口在私有地址豁免前优先进入 sing-box TProxy (:7893) 执行 hijack-dns 防污染解析。"
+    elif is_lan_direct_mac:
+        enters_kernel = False
+        stage1_badge = f"🏠 设备 MAC 免代理直通 ({trace_src_mac} 不进内核)"
+        stage1_detail = f"源设备 MAC {trace_src_mac} 命中 nftables @lan_direct_macs 豁免集，DNS 由 dstnat 转向 223.5.5.5 返回真实 IP，数据流在防火墙顶层直接放行。"
+        final_node = "direct (MAC 免代理直通)"
     elif is_private_ip or is_node_server_ip:
         enters_kernel = False
         stage1_badge = "🏠 内网/节点地址硬件直通 (不进内核)"
@@ -19723,7 +20377,10 @@ def trace_traffic_flow(payload: dict, conf_dir: Path = CONF_DIR) -> dict:
     return {
         "ok": True,
         "query": {
-            "raw_input": raw_target,
+            "raw_input": orig_raw_input,
+            "target": raw_target,
+            "src_ip": trace_src_ip,
+            "src_mac": trace_src_mac,
             "host": clean_host,
             "rewritten_host": rewritten_host,
             "protocol": proto_l4.upper(),
@@ -19969,9 +20626,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.4.3"
+APP_VERSION = "2.4.8"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.4.3-release-20261108"
+APP_BUILD = "2.4.8-release-20261108"
 
 UPDATE_MANIFEST_PRIMARY = "https://ai-link-official.pages.dev/version.json"
 UPDATE_MANIFEST_GITHUB = "https://raw.githubusercontent.com/Master-AI-007/ai-link-openwrt/main/version.json"
@@ -21182,8 +21839,8 @@ def _h3_probe_one(url, use_proxy, timeout=4.0):
         try:
             with op.open(req, timeout=timeout) as r:
                 r.read(64)
-        except _h3_urllib.error.HTTPError:
-            pass
+        except _h3_urllib.error.HTTPError as _e_diag:
+            globals().get("_record_internal_diag", str)(_e_diag)
         return max(1, int((time.time() - t0) * 1000))
     except Exception:
         return -1
@@ -21661,8 +22318,8 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
     def finish(self):
         try:
             super().finish()
-        except (BrokenPipeError, ConnectionResetError, socket.timeout):
-            pass
+        except (BrokenPipeError, ConnectionResetError, socket.timeout) as _e_diag:
+            globals().get("_record_internal_diag", str)(_e_diag)
 
     def _try_send_wire_memo(self) -> bool:
         wk = self._make_wire_key()
@@ -21686,8 +22343,8 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             self._send_cors_headers()
             self.end_headers()
             self.wfile.write(body_out)
-        except (BrokenPipeError, ConnectionResetError, socket.timeout):
-            pass
+        except (BrokenPipeError, ConnectionResetError, socket.timeout) as _e_diag:
+            globals().get("_record_internal_diag", str)(_e_diag)
         return True
 
     def _get_allowed_cors_origin(self) -> str:
@@ -21767,8 +22424,8 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             self._send_cors_headers()
             self.end_headers()
             self.wfile.write(body_out)
-        except (BrokenPipeError, ConnectionResetError, socket.timeout):
-            pass
+        except (BrokenPipeError, ConnectionResetError, socket.timeout) as _e_diag:
+            globals().get("_record_internal_diag", str)(_e_diag)
 
     def do_OPTIONS(self):
         try:
@@ -21784,8 +22441,8 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
                 self.send_header("Access-Control-Allow-Headers", "Content-Type, X-AI-Link-Token, Authorization, X-Requested-With")
             self.end_headers()
-        except (BrokenPipeError, ConnectionResetError, socket.timeout):
-            pass
+        except (BrokenPipeError, ConnectionResetError, socket.timeout) as _e_diag:
+            globals().get("_record_internal_diag", str)(_e_diag)
 
     def _is_loopback_client(self) -> bool:
         client_ip = (self.client_address[0] if self.client_address else "").replace("::ffff:", "")
@@ -22719,7 +23376,7 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 "global_strategy": ("auto", "manual", "direct", "smart", "fastest", "block"),
                 "strategy": ("auto", "manual", "direct", "smart", "fastest", "block"),
                 "shunt_mode": ("auto", "manual", "direct", "block"),
-                "dns_strategy": ("inherit", "doh", "dot", "doq", "udp", "tcp", "custom"),
+                "dns_strategy": ("inherit", "doh", "dot", "doq", "udp", "tcp", "custom", "direct_dns", "custom_real"),
             }
             for _ef, _allowed in _SHUNT_ENUM_RULES.items():
                 if _ef in payload and payload[_ef] is not None and str(payload[_ef]).strip() != "":
@@ -22778,9 +23435,10 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                     g_aid = str(shunt_cfg.get("global_auto_node_id") or "auto_youtube").strip() or "auto_youtube"
                     shunt_cfg["global_auto_node_id"] = g_aid
                     shunt_cfg["global_manual_node"] = f"auto:{g_aid}"
-            # Support updating a single group {"group_id": "AI", "country": "US", "strategy": "smart", "manual_node": "..."}
-            if "group_id" in payload:
-                gid = payload["group_id"]
+            # Support updating a single group {"group_id": "AI", ...} or {"id": "AI", ...}
+            _single_gid = str(payload.get("group_id") or payload.get("id") or "").strip()
+            if _single_gid:
+                gid = _single_gid
                 for g in shunt_cfg.get("groups", []):
                     if g["id"] == gid:
                         for fk in ("country", "strategy", "manual_node", "shunt_mode", "auto_node_id", "strict_lock", "dns_strategy", "custom_dns", "rule_blocks"):
@@ -22824,6 +23482,7 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 )
             except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                 globals().get("_record_internal_diag", str)(_e_diag)
+            _before_sh_fp = _compute_core_rules_fingerprint(CONF_DIR)
             save_shunt_config(shunt_cfg, CONF_DIR)
             mode_changed = (shunt_cfg.get("routing_mode") != old_mode)
             _CORE_RELOAD_STATE["config_seq"] += 1
@@ -22834,7 +23493,9 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             PROBE_ENGINE.apply_shunt_selections(CONF_DIR)
             PROBE_ENGINE.save_persisted_selections(RUN_DIR, record_history=False)
             write_all_configs(CONF_DIR)
-            rel_st = schedule_async_core_reload(force_respawn=mode_changed, apply_nft=mode_changed, hot_only=(not mode_changed))
+            _after_sh_fp = _compute_core_rules_fingerprint(CONF_DIR)
+            _dns_or_rules_changed = bool(mode_changed or (_before_sh_fp != _after_sh_fp) or "dns_strategy" in payload or "custom_dns" in payload or "rule_blocks" in payload)
+            rel_st = schedule_async_core_reload(force_respawn=_dns_or_rules_changed, apply_nft=mode_changed, hot_only=(not _dns_or_rules_changed))
             threading.Thread(target=flush_all_dns_caches, daemon=True).start()
             resp_sh = build_shunt_api_response(CONF_DIR)
             resp_sh["mode_changed"] = mode_changed
@@ -22914,7 +23575,7 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             self._send_json(rollback_config_snapshot(sid, target_state=t_state, conf_dir=CONF_DIR))
             return
         if clean_path == "/api/shunt/rule_blocks":
-            gid = str(payload.get("group_id") or "").strip()
+            gid = str(payload.get("group_id") or payload.get("id") or "").strip()
             rbs = payload.get("rule_blocks")
             v_res = validate_and_normalize_rule_blocks(rbs if isinstance(rbs, list) else [])
             if not v_res.get("ok"):
@@ -22937,6 +23598,10 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             record_config_snapshot(source="panel", summary=f"更新分流组 [{gid}] 增强规则块 ({len(v_res['rule_blocks'])} 条)", conf_dir=CONF_DIR, new_shunt_cfg=sh_cfg)
             save_shunt_config(sh_cfg, CONF_DIR)
             _SHUNT_API_MEMO.clear()
+            _STATUS_API_MEMO.clear()
+            _JSON_WIRE_MEMO.clear()
+            write_all_configs(CONF_DIR)
+            schedule_async_core_reload(force_respawn=True, hot_only=False)
             self._send_json({"ok": True, "group_id": gid, "rule_blocks": v_res["rule_blocks"]})
             return
         if clean_path == "/api/shunt/test_rule_match":
@@ -24192,7 +24857,11 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                     else ("vless-tls" if ("tls" in proto and "reality" not in proto) else "vless-reality")
                 )
                 default_port = 20443 if norm_proto == "hysteria2" else (18443 if norm_proto == "vless-reality" else 9443)
-                raw_lport = int(payload.get("listen_port") or payload.get("port") or (existing_h.get("listen_port") if existing_h else 0) or 0)
+                try:
+                    raw_lport = int(payload.get("listen_port") or payload.get("port") or (existing_h.get("listen_port") if existing_h else 0) or 0)
+                except (ValueError, TypeError):
+                    self._send_json({"ok": False, "error": "invalid_listen_port", "message": "监听端口必须为 1024-65535 之间的整数"}, status=400)
+                    return
                 lport = raw_lport or default_port
                 RESERVED_SYS_PORTS = {22, 53, 80, 443, 1053, 7874, 7890, 7891, 7893, 9090, 9099}
                 if lport in RESERVED_SYS_PORTS or lport < 1024 or lport > 65535:
@@ -24214,7 +24883,14 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                         return
                     while not validate_homelink_port(lport, norm_proto, hl_id, CONF_DIR).get("ok"):
                         lport += 1
-                ext_port = int(payload.get("external_port") or 0) or lport
+                try:
+                    ext_port = int(payload.get("external_port") or 0) or lport
+                except (ValueError, TypeError):
+                    self._send_json({"ok": False, "error": "invalid_external_port", "message": "公网映射端口必须为 1-65535 之间的整数"}, status=400)
+                    return
+                if ext_port < 1 or ext_port > 65535:
+                    self._send_json({"ok": False, "error": "invalid_external_port", "message": f"公网映射端口 {ext_port} 超出合法范围 (1-65535)"}, status=400)
+                    return
                 gen_uuid = str(_uuid_mod.uuid4())
                 gen_pwd = f"ailink_{gen_uuid[:8]}"
                 lan_ip = _detect_router_lan_ip()
@@ -25042,17 +25718,26 @@ def main():
         restore_resolv_conf_to_local()
         print("APPLY_DNS_UPSTREAM_RESULT", json.dumps(res_dns, ensure_ascii=False))
         return 0
+    if "--sync-ops-to-uci" in sys.argv:
+        synced = sync_ops_settings_to_uci(CONF_DIR)
+        print("SYNC_OPS_TO_UCI_RESULT", json.dumps(synced, ensure_ascii=False))
+        return 0
     if "--sync-uci" in sys.argv:
-        synced = sync_uci_to_ops_settings(CONF_DIR)
+        synced = sync_uci_to_ops_settings(CONF_DIR, force_from_uci=("--force-from-uci" in sys.argv))
         apply_dns_adblock_system(CONF_DIR)
         print("SYNC_UCI_RESULT", json.dumps(synced, ensure_ascii=False))
         return 0
     if "--generate-configs" in sys.argv:
         if Path("/etc/config/ai-link").is_file():
-            sync_uci_to_ops_settings(CONF_DIR)
+            if (CONF_DIR / "ops_settings.json").is_file():
+                sync_ops_settings_to_uci(CONF_DIR)
+            else:
+                sync_uci_to_ops_settings(CONF_DIR)
             try:
                 subprocess.run(["uci", "set", f"ai-link.global.app_version={APP_VERSION}"], check=False, timeout=2)
                 _sync_uci_pwd_customized(is_panel_pwd_customized(CONF_DIR))
+                if (CONF_DIR / "ops_settings.json").is_file():
+                    os.utime(CONF_DIR / "ops_settings.json", None)
             except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                 globals().get("_record_internal_diag", str)(_e_diag)
         force_full = "--force-full-config" in sys.argv

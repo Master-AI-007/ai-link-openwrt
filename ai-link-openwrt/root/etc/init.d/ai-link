@@ -78,13 +78,25 @@ restore_resolv_conf_local() {
 }
 
 optimize_multicore_rps() {
-	local ncpu mask qcnt rps_q xps_q flow_per_q
+	local ncpu mask qcnt rps_q xps_q flow_per_q qf
 	ncpu=$(grep -c '^processor' /proc/cpuinfo 2>/dev/null || echo 1)
 	[ "${ncpu:-1}" -le 1 ] && return 0
 	if [ "$ncpu" -ge 32 ]; then
 		mask="ffffffff"
 	else
 		mask=$(printf '%x' $(( (1 << ncpu) - 1 )) 2>/dev/null || echo "f")
+	fi
+	mkdir -p "$RUN_DIR/sysctl_orig" 2>/dev/null || true
+	if [ ! -f "$RUN_DIR/sysctl_orig/rps_sock_flow_entries" ] && [ -f /proc/sys/net/core/rps_sock_flow_entries ]; then
+		cat /proc/sys/net/core/rps_sock_flow_entries > "$RUN_DIR/sysctl_orig/rps_sock_flow_entries" 2>/dev/null || echo 0 > "$RUN_DIR/sysctl_orig/rps_sock_flow_entries"
+	fi
+	if [ ! -f "$RUN_DIR/sysctl_orig/rps_queues.orig" ]; then
+		: > "$RUN_DIR/sysctl_orig/rps_queues.orig" 2>/dev/null || true
+		for qf in /sys/class/net/*/queues/rx-*/rps_cpus /sys/class/net/*/queues/rx-*/rps_flow_cnt /sys/class/net/*/queues/tx-*/xps_cpus; do
+			[ -f "$qf" ] || continue
+			case "$qf" in */lo/*) continue ;; esac
+			echo "$qf $(cat "$qf" 2>/dev/null || echo 0)" >> "$RUN_DIR/sysctl_orig/rps_queues.orig" 2>/dev/null || true
+		done
 	fi
 	sysctl -w net.core.rps_sock_flow_entries=32768 >/dev/null 2>&1 || true
 	qcnt=0
@@ -106,6 +118,51 @@ optimize_multicore_rps() {
 		case "$xps_q" in */lo/*) continue ;; esac
 		echo "$mask" > "$xps_q/xps_cpus" 2>/dev/null || true
 	done
+}
+
+restore_multicore_rps() {
+	local qpath qval
+	if [ -f "$RUN_DIR/sysctl_orig/rps_sock_flow_entries" ]; then
+		sysctl -w net.core.rps_sock_flow_entries="$(cat "$RUN_DIR/sysctl_orig/rps_sock_flow_entries" 2>/dev/null || echo 0)" >/dev/null 2>&1 || true
+	fi
+	if [ -f "$RUN_DIR/sysctl_orig/rps_queues.orig" ]; then
+		while read -r qpath qval; do
+			[ -n "$qpath" ] && [ -f "$qpath" ] && echo "${qval:-0}" > "$qpath" 2>/dev/null || true
+		done < "$RUN_DIR/sysctl_orig/rps_queues.orig"
+	fi
+}
+
+get_ops_or_uci_bool() {
+	local _var="$1"
+	local _key="$2"
+	local _def="$3"
+	local _val=""
+	if [ -f "$CONF_DIR/ops_settings.json" ]; then
+		_val=$(grep -oE "\"${_key}\":[[:space:]]*(true|false|1|0)" "$CONF_DIR/ops_settings.json" 2>/dev/null | head -n 1 | awk -F: '{print $2}' | tr -d ' ,"')
+	fi
+	if [ "$_val" = "true" ] || [ "$_val" = "1" ]; then
+		eval "$_var=1"
+		return 0
+	elif [ "$_val" = "false" ] || [ "$_val" = "0" ]; then
+		eval "$_var=0"
+		return 0
+	fi
+	config_get_bool "$_var" 'global' "$_key" "$_def"
+}
+
+get_ops_or_uci_str() {
+	local _var="$1"
+	local _key="$2"
+	local _def="$3"
+	local _val=""
+	if [ -f "$CONF_DIR/ops_settings.json" ]; then
+		_val=$(grep -oE "\"${_key}\":[[:space:]]*\"[^\"]+\"" "$CONF_DIR/ops_settings.json" 2>/dev/null | head -n 1 | awk -F: '{print $2}' | tr -d ' "')
+	fi
+	if [ -n "$_val" ]; then
+		eval "$_var=\"$_val\""
+		return 0
+	fi
+	config_get "$_var" 'global' "$_key" "$_def"
 }
 
 setup_tun_and_routing() {
@@ -137,7 +194,7 @@ setup_tun_and_routing() {
 
 	local ipv6_proxy
 	config_load 'ai-link'
-	config_get_bool ipv6_proxy 'global' 'ipv6_proxy' '0'
+	get_ops_or_uci_bool ipv6_proxy 'ipv6_proxy' '0'
 	while ip -6 rule del fwmark $FWMARK table $TABLE_ID 2>/dev/null; do :; done
 	ip -6 route flush table $TABLE_ID 2>/dev/null || true
 	if [ "$ipv6_proxy" -eq 1 ]; then
@@ -146,7 +203,7 @@ setup_tun_and_routing() {
 	fi
 
 	local dpm
-	config_get dpm 'global' 'data_plane_mode' 'tproxy_redirect'
+	get_ops_or_uci_str dpm 'data_plane_mode' 'tproxy_redirect'
 	while ip rule del fwmark 0x163 table 163 2>/dev/null; do :; done
 	while ip -6 rule del fwmark 0x163 table 163 2>/dev/null; do :; done
 	ip route flush table 163 2>/dev/null || true
@@ -162,6 +219,7 @@ setup_tun_and_routing() {
 			sysctl -w net.ipv4.conf.default.rp_filter=0 >/dev/null 2>&1 || true
 			sysctl -w net.ipv4.conf.ailink0.rp_filter=0 >/dev/null 2>&1 || true
 			ip link set dev ailink0 up 2>/dev/null || true
+			optimize_multicore_rps
 			ip rule add fwmark 0x163 table 163 priority 163 2>/dev/null || true
 			ip route replace default dev ailink0 table 163 2>/dev/null || true
 			if [ "$ipv6_proxy" -eq 1 ]; then
@@ -191,6 +249,7 @@ cleanup_routing_and_nft() {
 	else
 		sysctl -w net.netfilter.nf_conntrack_tcp_be_liberal=0 >/dev/null 2>&1 || true
 	fi
+	restore_multicore_rps
 }
 
 cleanup_dnsmasq_upstream() {
@@ -348,10 +407,10 @@ start_service() {
 	config_get panel_port 'global' 'panel_port' '9099'
 	config_get tproxy_port 'global' 'tproxy_port' '7893'
 	config_get mixed_port 'global' 'mixed_port' '7890'
-	config_get_bool entry_bypass 'global' 'entry_bypass' '1'
-	config_get_bool block_quic 'global' 'block_quic' '1'
-	config_get_bool game_udp_direct 'global' 'game_udp_direct' '1'
-	config_get_bool ipv6_proxy 'global' 'ipv6_proxy' '0'
+	get_ops_or_uci_bool entry_bypass 'entry_bypass' '1'
+	get_ops_or_uci_bool block_quic 'block_quic' '1'
+	get_ops_or_uci_bool game_udp_direct 'game_udp_direct' '1'
+	get_ops_or_uci_bool ipv6_proxy 'ipv6_proxy' '0'
 
 	mkdir -p "$CONF_DIR" "$CONF_DIR/rules" "$CONF_DIR/certs" "$RUN_DIR" /var/etc/ai-link
 
@@ -439,10 +498,10 @@ reload_service() {
 	config_get panel_port 'global' 'panel_port' '9099'
 	config_get tproxy_port 'global' 'tproxy_port' '7893'
 	config_get mixed_port 'global' 'mixed_port' '7890'
-	config_get_bool entry_bypass 'global' 'entry_bypass' '1'
-	config_get_bool block_quic 'global' 'block_quic' '1'
-	config_get_bool game_udp_direct 'global' 'game_udp_direct' '1'
-	config_get_bool ipv6_proxy 'global' 'ipv6_proxy' '0'
+	get_ops_or_uci_bool entry_bypass 'entry_bypass' '1'
+	get_ops_or_uci_bool block_quic 'block_quic' '1'
+	get_ops_or_uci_bool game_udp_direct 'game_udp_direct' '1'
+	get_ops_or_uci_bool ipv6_proxy 'ipv6_proxy' '0'
 
 	mkdir -p "$RUN_DIR"
 	if [ "$enabled" -eq 0 ]; then
@@ -518,10 +577,10 @@ restart_core() {
 	config_get panel_port 'global' 'panel_port' '9099'
 	config_get tproxy_port 'global' 'tproxy_port' '7893'
 	config_get mixed_port 'global' 'mixed_port' '7890'
-	config_get_bool entry_bypass 'global' 'entry_bypass' '1'
-	config_get_bool block_quic 'global' 'block_quic' '1'
-	config_get_bool game_udp_direct 'global' 'game_udp_direct' '1'
-	config_get_bool ipv6_proxy 'global' 'ipv6_proxy' '0'
+	get_ops_or_uci_bool entry_bypass 'entry_bypass' '1'
+	get_ops_or_uci_bool block_quic 'block_quic' '1'
+	get_ops_or_uci_bool game_udp_direct 'game_udp_direct' '1'
+	get_ops_or_uci_bool ipv6_proxy 'ipv6_proxy' '0'
 
 	[ "$enabled" -eq 0 ] && return 0
 	[ -f "$RUN_DIR/bypass" ] && return 0
@@ -596,10 +655,10 @@ restore_proxy() {
 	config_get panel_port 'global' 'panel_port' '9099'
 	config_get tproxy_port 'global' 'tproxy_port' '7893'
 	config_get mixed_port 'global' 'mixed_port' '7890'
-	config_get_bool entry_bypass 'global' 'entry_bypass' '1'
-	config_get_bool block_quic 'global' 'block_quic' '1'
-	config_get_bool game_udp_direct 'global' 'game_udp_direct' '1'
-	config_get_bool ipv6_proxy 'global' 'ipv6_proxy' '0'
+	get_ops_or_uci_bool entry_bypass 'entry_bypass' '1'
+	get_ops_or_uci_bool block_quic 'block_quic' '1'
+	get_ops_or_uci_bool game_udp_direct 'game_udp_direct' '1'
+	get_ops_or_uci_bool ipv6_proxy 'ipv6_proxy' '0'
 	local _rw=0
 	while [ $_rw -lt 15 ]; do
 		port_is_listening "${tproxy_port:-7893}" && break

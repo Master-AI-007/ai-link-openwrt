@@ -1,20 +1,34 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.4.3",
+  "latest": "2.4.8",
   "release_date": "2026-11-08",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.4.3",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.4.8",
   "highlights": [
-    "升版 v2.4.3：解除同版本号修包导致的 OTA 更新死锁，现网 2.4.2 设备可正常收到在线升级提示",
-    "静态资源 8 项 ?v= 指纹与真实 MD5 前 8 位 100% 对齐；gates_v101 新增第 16 项 static_assets_md5_gate 硬门禁自动拦截哈希失步",
-    "自动节点池「多线并发」调度：优选单线 / 多线并发双模式，AI·Google·Microsoft·Apple·Social 等 IP 敏感分流组自动启用单线保护",
-    "多核 CPU RPS/RFS/XPS 软中断静默均衡与 GOMAXPROCS 调优；节点切换时异步秒清 Clash 活跃连接与 conntrack 残留",
-    "节点线路识别（中转专线 / 链式落地 / 直连线路）+ 原名关键词 AND/OR 过滤 + 定量低频「带宽择优」",
-    "图形化「链式代理 (Detour)」4 层有向无环图防环，前置节点改名 / 节点池删除时级联自愈零孤儿引用",
-    "按天按小时「三维流量归因洞察」：24h/7d 趋势 + 终端 × 节点 × 目标域名三维下钻",
-    "交接包补齐 tests/ 51 项、tools/ 与完整源码树；except->pass 收敛回 8；接管手册更新至 2.4.3 基线"
+    "P0 根治：nftables 规则按 IPv4 / IPv6 协议族拆分（meta nfproto），彻底消除安装后 table inet ai_link 挂载失败、透明代理不生效",
+    "新增 nft 协议混写静态门禁、AST except->pass <= 8 门禁、tar 顶层目录与测试集完备性门禁，发布门禁 16/16",
+    "T10 按组专属 DNS 真正编译进内核：doh / dot / doq / udp / tcp / custom 均生成 dns_grp_<ID> 并带 domain_resolver",
+    "4 阶流量透视器内联语法完整回显 raw_input / src_ip / src_mac，支持 IP、MAC、@IP 三种写法",
+    "T6 配置历史纯净 Diff 与一键回滚 UCI/内核同步；T8 规则块域名 Fake-IP 提权；Test 沙箱与真机配置彻底隔离",
+    "DNS 三大开关接入重入锁、3 秒轮询静默窗与失败自动回滚；HomeLink 端口动态保留与越界校验",
+    "混沌测试脚本 v242_deep_chaos_simulation.py 随本轮单独交付，官方回归 15/15 套全绿（29/29 混沌项）",
+    "延续：多线并发、链式代理 4 层 DAG、三维流量归因洞察、内核日志秒级故障切换"
   ],
   "changelog": [
+    {
+      "version": "2.4.8",
+      "date": "2026-11-08",
+      "type": "fix",
+      "title": "P0 全量闭环稳定版（VERIFY-v2.4.7 100% 根治）",
+      "items": [
+        "P0-1 修复：nft 规则拆分为 meta nfproto ipv4 / ipv6 各 3 条，安装 INSTALL_RC=0、nft=1、重启后仍自愈；install.sh 挂载失败时输出诊断信息",
+        "P2-6 修复：/api/shunt/update 兼容 id/group_id，非 inherit 的 dns_strategy 均生成 dns_grp_<ID> 并附 domain_resolver",
+        "P3-5 修复：/api/shunt/trace 完整回显 raw_input / target / src_ip / src_mac",
+        "P2-7 修复：测试沙箱 is_live 判定收敛，绝不读取或污染真机 /etc/config/ai-link",
+        "P3-4 修复：AST 扫描 except->pass 由 11 降为 0，并写入发布门禁",
+        "新增门禁：nft 协议混写清零、tar 顶层目录条目与测试集完备性、AST except->pass <= 8"
+      ]
+    },
     {
       "version": "2.4.3",
       "date": "2026-11-08",
@@ -226,13 +240,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.4.3/AI-LINK-v2.4.3.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.4.8/AI-LINK-v2.4.8.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.4.3.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.4.8.tar.gz"
       ],
-      "size": 776930,
-      "md5": "dd7baa8299f10dd59eeffd3b1299f2cd",
-      "sha256": "d26c9db0723e11ee5d824c065d125b767b27d712f23c6c9fc78989f8f038fa7f"
+      "size": 792585,
+      "md5": "128af9bc4304fd6cc3e46ba684e3a9d8",
+      "sha256": "e22a062c59fcf28b9f6ff1c8492ece3d1951e44031339cea66b37ce5eded4f1d"
     }
   }
 }

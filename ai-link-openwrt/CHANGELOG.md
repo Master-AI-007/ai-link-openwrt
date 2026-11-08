@@ -1,3 +1,37 @@
+## v2.4.7 (2026-11-08)
+
+- **[深度模拟巡检 #2 · 4 大用户场景深化打磨闭环]**：
+  1. **DNS 三大开关防轮询竞态闪烁 + 4 阶流量透视器内联源 IP/MAC 语法支持 (`webui/nexus.js` & `ai-link-daemon.py`)**：为「云端域名过滤护盾 (`#toggle-dns-filter`)」、「核心应用防误杀白名单保护 (`#toggle-dns-essential-protect`)」与「DNS 防跳重写 (`#toggle-dns-rewrite`)」接入 `_opsMutationInFlight` 重入锁、`_opsFieldMuteUntil` 3 秒轮询静默保护窗与接口失败自动回滚；在 4 阶流量透视器 (`trace_traffic_flow`) 中支持内联源设备语法（如 `10.10.10.58 -> api-chat.soulapp.cn`、`aa:bb:cc:dd:ee:99 -> www.youtube.com` 或 `chatgpt.com @10.10.10.58`）；
+  2. **T6 配置变更历史快照纯净 Diff 与一键回滚 UCI/内核配置同步闭环 (`ai-link-daemon.py`)**：`_capture_current_config_files()` 新增覆盖 `dns_rewrite.json` 与 `rule_providers.json`；`record_config_snapshot()` 对 `new_ops_cfg` 严格按 `OPS_PERSIST_KEYS` 过滤，彻底消除每次修改系统开关时产生 4 条虚假 `added` Diff 的噪音；`rollback_config_snapshot()` 回滚 `ops_settings.json` 时自动调用 `sync_ops_settings_to_uci()` 反向治愈 UCI `/etc/config/ai-link` 并立即重新生成 `sing-box.json` 与 `ai-link.nft`；
+  3. **T8 组合规则块域名 Fake-IP 优先级提权与 T10 按组专属 DNS (`custom_dns`) 真实编译进 `sing-box.json` (`build_singbox_config`)**：将 `Domestic_CN` 之上代理分流组内 T8 `rule_blocks` 的 `domain`/`domain_suffix` 自动提取纳入 `proxy_prio_doms`（确保混合/国内域名命中代理规则块时优先分配 Fake-IP，防止在开启 `entry_bypass` 时被防火墙提前直连放行）；同时将分流组配置的 `custom_dns` (`dns_strategy != 'inherit'`) 真实编译进 `sing-box.json` 的 `dns.servers` (`dns_grp_<id>`) 与 `dns.rules`；
+  4. **HomeLink 回家网关动态系统保留端口防冲突与外网端口边界校验 (`validate_homelink_port`)**：动态读取当前 UCI/运行态配置的 `panel_port`、`tproxy_port`、`mixed_port`、`dns_port` 纳入核心保留端口集，并对 `/api/homelink/add` 与 `/api/homelink/update` 的 `listen_port`/`external_port` 非法类型或越界端口返回明确 400 拦截提示。
+
+## v2.4.6 (2026-11-08)
+
+- **[深度模拟巡检 #1 · 4 大用户场景全链路打磨闭环]**：
+  1. **前端交互与轮询竞态防护 (`webui/nexus.js`)**：`mutateOpsSwitch` 新增 `<16ms` 乐观更新、同键位重入锁 (`_opsMutationInFlight`) 与 3 秒轮询静默保护窗 (`_opsFieldMuteUntil`)，彻底消除点击开关时遭遇后台 5 秒 `/api/status` 轮询覆盖造成的开关跳回闪烁；修复三模数据面 (`#sel-ops-data-plane-mode`) 与 TUN 协议栈 (`#sel-ops-tun-stack`) 切换失败时未回滚下拉框状态的缺陷；在「面板监听、免密网段与设备直通白名单配置」弹窗中补全 `lan_direct_macs`（局域网设备 MAC 免代理直通）、`tun_mtu`（PPPoE 1492/1480 调优）与 GitHub 加速源快捷候选列表；
+  2. **JSON 备份/恢复与恢复出厂全模块覆盖 (`ai-link-daemon.py`)**：`export_ops_backup()` 与 `restore_ops_backup()` 新增 `rule_blocks`（组合分流规则块）、`rule_providers`（远程规则集订阅）、`sonar_targets`（概览声呐自定义目标）与 `alert_channels`（告警通知渠道）完整往返备份与恢复；`factory_reset_all_configs()` 补全上述模块清理及 `data_plane_mode`/`tun_stack`/`tun_mtu`/`ipv6_leak_mode` 全量重置；
+  3. **订阅同步自定义属性继承与手动/链式节点防误删 (`merge_nodes`)**：订阅刷新 (`replace_sub=True`) 时自动继承同 `node_key`/`node_id` 节点上用户设置的 `region_override`、`disabled`、`remark`；全量替换 (`replace_all=True`) 时严格保留所有手动添加节点 (`_manual`/`is_custom`) 与 4 层 DAG 链式落地节点 (`is_chained`)；
+  4. **局域网设备 MAC 免代理直通 (`@lan_direct_macs`) 防 Fake-IP 黑洞闭环**：`generate_nft_rules_file()` 在 `chain dstnat` 为 `@lan_direct_macs` 注入 53 端口直达 `223.5.5.5:53` DNAT 规则（从源头规避 Fake-IP 分配），并在 `prerouting_tproxy` 中限定 `@lan_direct_macs` 仅直通非 Fake-IP (`!= 198.18.0.0/15`, `!= fc00::/18`) 流量，同步在 4 阶流量透视 (`trace_traffic_flow`) 中支持 `src_mac` 免代理直通诊断。
+
+## v2.4.5 (2026-11-08)
+
+- **[P0 修复 · 升级与重启配置持久化单一真相源 (SSOT) 闭环]**：彻底解决每次版本升级、IPK 覆盖安装或服务重启时将用户已开启的「IPv6 透明代理 (`ipv6_proxy`)」重置为关闭、将用户已关闭的「国内流量不进内核 (`entry_bypass`)」重新打开的顽疾：
+  1. `ai-link-daemon.py` 新增 `sync_ops_settings_to_uci()` 纯 Python 文件级 + `uci` CLI 双通道反向同步机制，将 `/etc/ai-link/ops_settings.json` 确立为唯一权威真相源（SSOT）；
+  2. 重构 `sync_uci_to_ops_settings()` 与 `get_ops_settings()`，移除因 `/etc/config/ai-link` 时间戳更新触发反向覆盖 `ops_settings.json` 的缺陷，升级或 `--generate-configs` 时自动从 `ops_settings.json` 治愈 `/etc/config/ai-link` 与 `uci_ai_link.bak`；
+  3. `install.sh` 升级前双重备份 `/etc/config/ai-link` 与 `/etc/ai-link/ops_settings.json`，将 `require_lan_auth` / `trusted_cidr` 改为非破坏性 `uci_set_default`，并在 `uci commit` 后立即执行 `--sync-ops-to-uci`；
+  4. `luci-app-ai-link_2.4.5-r9_all.ipk` 控制包新增 `./conffiles` 声明 `/etc/config/ai-link`，并在 `postinst` 中支持 `AILINK_INSTALLING=1` 协同与 `--sync-ops-to-uci` 自愈；
+  5. `root/etc/init.d/ai-link` 新增 `get_ops_or_uci_bool` / `get_ops_or_uci_str`，优先从 `ops_settings.json` 读取 `ipv6_proxy`、`entry_bypass`、`block_quic`、`game_udp_direct` 与 `data_plane_mode`；
+  6. `webui/nexus.js` 新增 `localStorage` (`ailink_ops_cache_v1`) 首屏瞬态水合与 LuCI `overview.js` 底层复选框双向同步，彻底消除首屏开关闪烁与表单漂移。
+
+## v2.4.4 (2026-11-08)
+- **三维流量洞察 100% 真实账本对齐 (`/api/traffic/insights`)**：彻底重写 `build_traffic_insights_response`，直读 `traffic_ledger.json` 的 `hours`、`days`、`devices`、`nodes`、`targets` 真实账本，清除 `64 MiB` 兜底假数据、`0.55`/`0.45` 固定节点比例与合成时间权重，空账本严格返回 0。
+- **全挂自动节点池 (`all_groups_dead_alert=True`) 四态一致性与防振荡闭环**：修复 `resolve_node_for_country_strategy_with_failover`、`get_auto_node_candidate_pool` 与 `_enrich_auto_node_groups_members` 对地区拒服 (`google_region=HK`)、隔离冷却及 `all_groups_dead_alert` 状态的统一判定，彻底消除 `Auto_WorkBuddyAI` 每 22 秒在 `direct` 与 `VIP1-05-新加坡` 间往复振荡的死循环。
+- **切换残余连接清理 (`flush_conntrack_for_switch`) 生产链路闭环**：接入 `request_switch()` 出口切换流程，按 `selector_tag` 与 `old_node` 精确断开旧出口残余 Clash 会话，并增加空范围拒绝保护 (`empty_scope_refused`)。
+- **底层多核 RPS/RFS/XPS 软中断调优备份与还原闭环**：在 `init.d/ai-link`、`ai-link-daemon.py` 与 `uninstall.sh` 中完整备份并还原 `/proc/sys/net/core/rps_sock_flow_entries` 及各网卡队列 `rps_cpus`/`rps_flow_cnt`/`xps_cpus` 原始值，支持 `ailink0` 虚拟网卡队列调优，并将 `GOMAXPROCS` 收敛至 `sing-box` procd 实例。
+- **节点列表构建单次缓存与带宽偏好首轮异步探测**：消除 `build_nodes_api_response` 每节点 4 次重复调用 `classify_node_line_type` 与 `get_node_google_region_info`；开启 `bandwidth_prefer` 时自动异步触发首轮低开销带宽探针。
+- **启动迁移日志 (`migration.log`) 幂等化**：当 `migrate_legacy_shunt_config` 发生迁移时立即持久化写回 `shunt.json` 并去重日志记录，避免重启重复追加。
+
 ## v2.4.3 (2026-11-08)
 
 - **自动节点池「多线并发」与交互级 AI 防风控护栏**：节点池新增优选单线 (`single_best`) 与多线并发 (`multi_line`) 调度模式；勾选 AI 敏感服务时前端自动锁定单线，且当 `AI/Google/Microsoft/Apple/Social/Soul` 等 IP 敏感分流组绑定至多线并发池时后端自动启用单线保护 (`auto_single_line_protected=True`)。

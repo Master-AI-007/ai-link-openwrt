@@ -422,12 +422,12 @@
     shuntHitStats: null,
     lastDoctorReport: null,
     forceTunnelDns: true,
-    authEnabled: false,
-    entryBypass: true,
-    ipv6Proxy: false,
-    blockQuic: true,
-    gameUdpDirect: true,
-    conflictGuard: true,
+    authEnabled: (function () { try { const c = JSON.parse(localStorage.getItem('ailink_ops_cache_v1') || '{}'); return 'require_lan_auth' in c ? Boolean(c.require_lan_auth) : false; } catch (_) { return false; } })(),
+    entryBypass: (function () { try { const c = JSON.parse(localStorage.getItem('ailink_ops_cache_v1') || '{}'); return 'entry_bypass' in c ? Boolean(c.entry_bypass) : true; } catch (_) { return true; } })(),
+    ipv6Proxy: (function () { try { const c = JSON.parse(localStorage.getItem('ailink_ops_cache_v1') || '{}'); return 'ipv6_proxy' in c ? Boolean(c.ipv6_proxy) : false; } catch (_) { return false; } })(),
+    blockQuic: (function () { try { const c = JSON.parse(localStorage.getItem('ailink_ops_cache_v1') || '{}'); return 'block_quic' in c ? Boolean(c.block_quic) : true; } catch (_) { return true; } })(),
+    gameUdpDirect: (function () { try { const c = JSON.parse(localStorage.getItem('ailink_ops_cache_v1') || '{}'); return 'game_udp_direct' in c ? Boolean(c.game_udp_direct) : true; } catch (_) { return true; } })(),
+    conflictGuard: (function () { try { const c = JSON.parse(localStorage.getItem('ailink_ops_cache_v1') || '{}'); return 'auto_mute_conflicts' in c ? Boolean(c.auto_mute_conflicts) : true; } catch (_) { return true; } })(),
     bypassActive: false,
     coreAlive: true,
     pwdCustomized: false,
@@ -2008,22 +2008,59 @@
     }
   }
 
-  function renderOpsSettings(ops) {
+  const _opsMutationInFlight = {};
+  const _opsFieldMuteUntil = {};
+
+  function _readCurrentOpsBool(fieldKey, fallbackVal = false) {
+    if (fieldKey === 'require_lan_auth') return Boolean(state.authEnabled);
+    if (fieldKey === 'entry_bypass') return Boolean(state.entryBypass);
+    if (fieldKey === 'ipv6_proxy') return Boolean(state.ipv6Proxy);
+    if (fieldKey === 'block_quic') return Boolean(state.blockQuic);
+    if (fieldKey === 'game_udp_direct') return Boolean(state.gameUdpDirect);
+    if (fieldKey === 'auto_mute_conflicts') return Boolean(state.conflictGuard);
+    if (state.rawOps && fieldKey in state.rawOps) return Boolean(state.rawOps[fieldKey]);
+    return Boolean(fallbackVal);
+  }
+
+  function renderOpsSettings(ops, fromUserMutation = false) {
     if (ops && typeof ops === 'object') {
-      state.rawOps = Object.assign({}, state.rawOps, ops);
-      if ('require_lan_auth' in ops) state.authEnabled = Boolean(ops.require_lan_auth);
-      if ('entry_bypass' in ops) state.entryBypass = Boolean(ops.entry_bypass);
-      if ('ipv6_proxy' in ops) state.ipv6Proxy = Boolean(ops.ipv6_proxy);
-      if ('block_quic' in ops) state.blockQuic = Boolean(ops.block_quic);
-      if ('game_udp_direct' in ops) state.gameUdpDirect = Boolean(ops.game_udp_direct);
-      if ('auto_mute_conflicts' in ops) state.conflictGuard = Boolean(ops.auto_mute_conflicts);
-      if (ops.trusted_cidr) state.trustedCidr = String(ops.trusted_cidr);
-      if (ops.gh_mirror != null) state.ghMirror = String(ops.gh_mirror);
-      if (ops.update_manifest_url != null) state.updateManifestUrl = String(ops.update_manifest_url);
-      if (ops.panel_bind != null) state.panelBind = String(ops.panel_bind);
-      if (ops.data_plane_mode) state.dataPlaneMode = String(ops.data_plane_mode);
-      if (ops.tun_stack) state.tunStack = String(ops.tun_stack);
-      if (ops.tun_mtu != null) state.tunMtu = Number(ops.tun_mtu) || 1500;
+      const nowMs = Date.now();
+      const filteredOps = {};
+      Object.keys(ops).forEach(k => {
+        if (!fromUserMutation && (_opsMutationInFlight[k] || (_opsFieldMuteUntil[k] && nowMs < _opsFieldMuteUntil[k]))) {
+          return;
+        }
+        filteredOps[k] = ops[k];
+      });
+      state.rawOps = Object.assign({}, state.rawOps, filteredOps);
+      if ('require_lan_auth' in filteredOps) state.authEnabled = Boolean(filteredOps.require_lan_auth);
+      if ('entry_bypass' in filteredOps) state.entryBypass = Boolean(filteredOps.entry_bypass);
+      if ('ipv6_proxy' in filteredOps) state.ipv6Proxy = Boolean(filteredOps.ipv6_proxy);
+      if ('block_quic' in filteredOps) state.blockQuic = Boolean(filteredOps.block_quic);
+      if ('game_udp_direct' in filteredOps) state.gameUdpDirect = Boolean(filteredOps.game_udp_direct);
+      if ('auto_mute_conflicts' in filteredOps) state.conflictGuard = Boolean(filteredOps.auto_mute_conflicts);
+      if (filteredOps.trusted_cidr) state.trustedCidr = String(filteredOps.trusted_cidr);
+      if (filteredOps.gh_mirror != null) state.ghMirror = String(filteredOps.gh_mirror);
+      if (filteredOps.update_manifest_url != null) state.updateManifestUrl = String(filteredOps.update_manifest_url);
+      if (filteredOps.panel_bind != null) state.panelBind = String(filteredOps.panel_bind);
+      if (filteredOps.data_plane_mode) state.dataPlaneMode = String(filteredOps.data_plane_mode);
+      if (filteredOps.tun_stack) state.tunStack = String(filteredOps.tun_stack);
+      if (filteredOps.tun_mtu != null) state.tunMtu = Number(filteredOps.tun_mtu) || 1500;
+      if (Array.isArray(filteredOps.lan_direct_macs)) state.lanDirectMacs = filteredOps.lan_direct_macs.slice();
+      try {
+        localStorage.setItem('ailink_ops_cache_v1', JSON.stringify({
+          require_lan_auth: state.authEnabled,
+          entry_bypass: state.entryBypass,
+          ipv6_proxy: state.ipv6Proxy,
+          block_quic: state.blockQuic,
+          game_udp_direct: state.gameUdpDirect,
+          auto_mute_conflicts: state.conflictGuard,
+          data_plane_mode: state.dataPlaneMode || 'tproxy_redirect',
+          tun_stack: state.tunStack || 'mixed',
+          tun_mtu: state.tunMtu || 1500,
+          lan_direct_macs: state.lanDirectMacs || []
+        }));
+      } catch (_) {}
     }
     const selDpm = $('#sel-ops-data-plane-mode');
     if (selDpm && state.dataPlaneMode) selDpm.value = state.dataPlaneMode;
@@ -2034,7 +2071,7 @@
       const dpmLabel = state.dataPlaneMode === 'tun_full'
         ? '全量 TUN 虚拟网卡 (ailink0)'
         : (state.dataPlaneMode === 'tproxy_tcp_tun_udp' ? 'TCP TProxy + UDP TUN 游戏混合' : 'TProxy + Redirect 零拷贝');
-      coreSubEl.textContent = 'AI-LINK v2.4.3 · ' + dpmLabel;
+      coreSubEl.textContent = 'AI-LINK v2.4.8 · ' + dpmLabel;
     }
     setSwitchState($('#toggle-require-lan-auth'), state.authEnabled);
     setSwitchState($('#toggle-ops-entry-bypass'), state.entryBypass);
@@ -2055,21 +2092,33 @@
   }
 
   async function mutateOpsSwitch(fieldKey, nextVal, labelText, endpoint = '/api/ops/settings') {
-    const prevVal = Boolean(state.rawOps && fieldKey in state.rawOps ? state.rawOps[fieldKey] : false);
-    const res = await callRouterApi(endpoint, 'POST', { [fieldKey]: nextVal });
-    if (res && res.ok !== false) {
-      renderOpsSettings({ [fieldKey]: nextVal });
-      if (fieldKey === 'ipv6_proxy') renderOverviewDashboard();
-      if (fieldKey === 'require_lan_auth' && nextVal && (!getAuthToken() || res.auth_required_now)) {
-        toast('局域网访问鉴权已开启，请输入面板管理密码以继续会话', 'info');
-        promptPanelLoginModal();
-      } else {
-        toast(labelText + '已' + (nextVal ? '开启' : '关闭'));
+    if (_opsMutationInFlight[fieldKey]) return false;
+    const prevVal = _readCurrentOpsBool(fieldKey, !nextVal);
+    _opsMutationInFlight[fieldKey] = true;
+    _opsFieldMuteUntil[fieldKey] = Date.now() + 3000;
+    renderOpsSettings({ [fieldKey]: nextVal }, true);
+    if (fieldKey === 'ipv6_proxy') renderOverviewDashboard();
+    try {
+      const res = await callRouterApi(endpoint, 'POST', { [fieldKey]: nextVal });
+      if (res && res.ok !== false) {
+        _opsFieldMuteUntil[fieldKey] = Date.now() + 2500;
+        renderOpsSettings({ [fieldKey]: nextVal }, true);
+        if (fieldKey === 'ipv6_proxy') renderOverviewDashboard();
+        if (fieldKey === 'require_lan_auth' && nextVal && (!getAuthToken() || res.auth_required_now)) {
+          toast('局域网访问鉴权已开启，请输入面板管理密码以继续会话', 'info');
+          promptPanelLoginModal();
+        } else {
+          toast(labelText + '已' + (nextVal ? '开启' : '关闭'));
+        }
+        return true;
       }
-      return true;
+      _opsFieldMuteUntil[fieldKey] = 0;
+      renderOpsSettings({ [fieldKey]: prevVal }, true);
+      if (fieldKey === 'ipv6_proxy') renderOverviewDashboard();
+      return false;
+    } finally {
+      _opsMutationInFlight[fieldKey] = false;
     }
-    renderOpsSettings({ [fieldKey]: prevVal });
-    return false;
   }
 
   async function handleToggleEntryBypass() {
@@ -3060,7 +3109,9 @@
         state.bypassActive = Boolean(stRes.bypass_active);
         state.coreAlive = stRes.core ? Boolean(stRes.core.running !== false) : (stRes.core_running !== false);
         state.pwdCustomized = Boolean(stRes.pwd_customized);
-        if (stRes.ipv6_proxy != null) state.ipv6Proxy = Boolean(stRes.ipv6_proxy);
+        if (stRes.ipv6_proxy != null && !_opsMutationInFlight.ipv6_proxy && !(Date.now() < (_opsFieldMuteUntil.ipv6_proxy || 0))) {
+          state.ipv6Proxy = Boolean(stRes.ipv6_proxy);
+        }
 
         if (stRes.ops_settings) {
           renderOpsSettings(stRes.ops_settings);
@@ -3238,15 +3289,20 @@
           const dt = stRes.dns_telemetry || {};
           const s24 = dt.stats_24h || {};
           const shd = stRes.shield_status || dt.shield_status || {};
-          if (dt.filter && dt.filter.enabled != null) {
-            state.dnsEnabled = Boolean(dt.filter.enabled);
+          const _nowDnsMs = Date.now();
+          if (!_opsMutationInFlight.dns_filter && !(_opsFieldMuteUntil.dns_filter && _nowDnsMs < _opsFieldMuteUntil.dns_filter)) {
+            if (dt.filter && dt.filter.enabled != null) {
+              state.dnsEnabled = Boolean(dt.filter.enabled);
+            } else if (shd.enabled != null) {
+              state.dnsEnabled = Boolean(shd.enabled);
+            } else if (shd.state) {
+              state.dnsEnabled = (shd.state !== 'disabled');
+            }
           }
-          if (dt.filter && dt.filter.essential_app_protect != null) {
-            state.dnsEssentialProtect = Boolean(dt.filter.essential_app_protect);
-          } else if (shd.enabled != null) {
-            state.dnsEnabled = Boolean(shd.enabled);
-          } else if (shd.state) {
-            state.dnsEnabled = (shd.state !== 'disabled');
+          if (!_opsMutationInFlight.dns_essential_protect && !(_opsFieldMuteUntil.dns_essential_protect && _nowDnsMs < _opsFieldMuteUntil.dns_essential_protect)) {
+            if (dt.filter && dt.filter.essential_app_protect != null) {
+              state.dnsEssentialProtect = Boolean(dt.filter.essential_app_protect);
+            }
           }
           if (dt.cn_upstream) state.cnUpstream = dt.cn_upstream;
           if (dt.remote_upstream) state.remoteUpstream = dt.remote_upstream;
@@ -3270,7 +3326,9 @@
           }
           if (dt.rewrite && Array.isArray(dt.rewrite.rules)) {
             mock.rewriteRules = dt.rewrite.rules;
-            if (dt.rewrite.enabled != null) state.dnsRewriteEnabled = Boolean(dt.rewrite.enabled);
+            if (dt.rewrite.enabled != null && !_opsMutationInFlight.dns_rewrite && !(Date.now() < (_opsFieldMuteUntil.dns_rewrite || 0))) {
+              state.dnsRewriteEnabled = Boolean(dt.rewrite.enabled);
+            }
           }
           if (dt.filter && Array.isArray(dt.filter.lists)) {
             mock.filterLists = dt.filter.lists;
@@ -3796,13 +3854,13 @@
       const doms = Array.isArray(data.by_domain) ? data.by_domain : [];
       return (
         '<div class="glass-card" style="padding:10px"><h4 style="margin:0 0 8px;font-size:13px">01 / 终端设备耗流排行</h4>' +
-          (devs.slice(0, 5).map(d => '<div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid var(--line)"><span>' + esc(d.name || d.ip) + '</span><b class="mono">' + esc(d.total_human || ((d.total_mb || 0) + ' MiB')) + '</b></div>').join('') || '<div class="muted" style="font-size:12px">暂无活跃终端流量</div>') +
+          (devs.slice(0, 6).map(d => '<div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid var(--line)"><span>' + esc(d.name || d.ip) + '</span><b class="mono">' + esc(d.total_human || ((d.total_mb || 0) + ' MiB')) + '</b></div>').join('') || '<div class="muted" style="font-size:12px">暂无活跃终端流量</div>') +
         '</div>' +
         '<div class="glass-card" style="padding:10px"><h4 style="margin:0 0 8px;font-size:13px">02 / 出站节点耗流排行</h4>' +
-          (nodes.slice(0, 5).map(n => '<div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid var(--line)"><span>' + esc(cleanNodeDisplayName(n.node)) + ' <small style="color:var(--muted)">[' + esc(n.line_badge || '直连') + ']</small></span><b class="mono">' + esc(n.total_human || ((n.total_mb || 0) + ' MiB')) + '</b></div>').join('') || '<div class="muted" style="font-size:12px">暂无节点统计</div>') +
+          (nodes.slice(0, 6).map(n => '<div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid var(--line)"><span>' + esc(cleanNodeDisplayName(n.node || n.node_tag || '')) + ' <small style="color:var(--muted)">[' + esc(n.line_badge || '直连') + ']</small></span><b class="mono">' + esc(n.total_human || ((n.total_mb || 0) + ' MiB')) + '</b></div>').join('') || '<div class="muted" style="font-size:12px">暂无节点统计</div>') +
         '</div>' +
         '<div class="glass-card" style="padding:10px"><h4 style="margin:0 0 8px;font-size:13px">03 / 目标域名耗流排行</h4>' +
-          (doms.slice(0, 5).map(dm => '<div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid var(--line)"><span class="mono">' + esc(dm.domain) + '</span><b class="mono">' + esc(dm.total_human || ((dm.total_mb || 0) + ' MiB')) + '</b></div>').join('') || '<div class="muted" style="font-size:12px">暂无域名统计</div>') +
+          (doms.slice(0, 6).map(dm => '<div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid var(--line)"><span class="mono">' + esc(dm.domain || dm.host || '') + '</span><b class="mono">' + esc(dm.total_human || ((dm.total_mb || 0) + ' MiB')) + '</b></div>').join('') || '<div class="muted" style="font-size:12px">暂无域名统计</div>') +
         '</div>'
       );
     };
@@ -5076,15 +5134,30 @@
   }
 
   function openBindingModal() {
+    const curMacs = Array.isArray(state.lanDirectMacs)
+      ? state.lanDirectMacs.join(', ')
+      : (Array.isArray(state.rawOps && state.rawOps.lan_direct_macs) ? state.rawOps.lan_direct_macs.join(', ') : '');
+    const curMtu = Number(state.tunMtu || (state.rawOps && state.rawOps.tun_mtu) || 1500);
     openModal(
-      '面板监听、免密网段与自定义更新源配置',
+      '面板监听、免密网段与设备直通白名单配置',
       '<div class="modal-form">' +
         '<div class="modal-grid-2">' +
           '<div class="modal-field"><label>面板监听地址 (panel_bind)</label><input id="mdl-panel-bind" value="' + esc(state.rawOps.panel_bind || '0.0.0.0') + '"></div>' +
-          '<div class="modal-field"><label>GitHub 规则加速源 (gh_mirror)</label><input id="mdl-gh-mirror" value="' + esc(state.ghMirror) + '"></div>' +
+          '<div class="modal-field"><label>GitHub 规则加速源 (gh_mirror)</label><input id="mdl-gh-mirror" list="mdl-gh-mirror-list" value="' + esc(state.ghMirror) + '">' +
+            '<datalist id="mdl-gh-mirror-list">' +
+              '<option value="https://gh-proxy.com/">gh-proxy.com (默认高速镜像)</option>' +
+              '<option value="https://ghfast.top/">ghfast.top (国内优选加速源)</option>' +
+              '<option value="https://mirror.ghproxy.com/">mirror.ghproxy.com (备用镜像源)</option>' +
+              '<option value="https://testingcf.jsdelivr.net/">testingcf.jsdelivr.net (Cloudflare CDN)</option>' +
+            '</datalist>' +
+          '</div>' +
         '</div>' +
+        '<div class="modal-grid-2">' +
+          '<div class="modal-field"><label>局域网免密信任网段 (trusted_cidr)</label><input id="mdl-trusted-cidr" value="' + esc(state.trustedCidr) + '"></div>' +
+          '<div class="modal-field"><label>TUN 虚拟网卡 MTU (1280~9000，PPPoE 推荐 1492)</label><input id="mdl-tun-mtu" type="number" min="1280" max="9000" value="' + esc(String(curMtu)) + '"></div>' +
+        '</div>' +
+        '<div class="modal-field"><label>局域网设备 MAC 免代理直通白名单 (lan_direct_macs，逗号分隔，如智能电视/NAS/PT下载机直走宽带)</label><input id="mdl-lan-direct-macs" value="' + esc(curMacs) + '" placeholder="aa:bb:cc:dd:ee:ff, 11:22:33:44:55:66"></div>' +
         '<div class="modal-field"><label>自定义 OTA 更新清单源 URL (update_manifest_url，留空使用官方 Cloudflare/GitHub 主源)</label><input id="mdl-manifest-url" value="' + esc(state.updateManifestUrl || '') + '" placeholder="https://your-domain.example.com/version.json"></div>' +
-        '<div class="modal-field"><label>局域网免密信任网段 (trusted_cidr)</label><input id="mdl-trusted-cidr" value="' + esc(state.trustedCidr) + '"></div>' +
       '</div>',
       'NETWORK & SECURITY',
       async () => {
@@ -5092,6 +5165,21 @@
         const gh_mirror = ($('#mdl-gh-mirror') && $('#mdl-gh-mirror').value.trim()) || '';
         const update_manifest_url = ($('#mdl-manifest-url') && $('#mdl-manifest-url').value.trim()) || '';
         const trusted_cidr = ($('#mdl-trusted-cidr') && $('#mdl-trusted-cidr').value.trim()) || '127.0.0.1/32';
+        const tun_mtu_raw = Number(($('#mdl-tun-mtu') && $('#mdl-tun-mtu').value) || 1500);
+        if (!Number.isFinite(tun_mtu_raw) || tun_mtu_raw < 1280 || tun_mtu_raw > 9000) {
+          toast('TUN MTU 必须为 1280 ~ 9000 之间的整数', 'warn');
+          return;
+        }
+        const tun_mtu = Math.round(tun_mtu_raw);
+        const rawMacStr = ($('#mdl-lan-direct-macs') && $('#mdl-lan-direct-macs').value.trim()) || '';
+        const macParts = rawMacStr.split(/[,;\s]+/).filter(Boolean).map(m => m.toLowerCase().replace(/-/g, ':'));
+        const macRe = /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/;
+        for (let i = 0; i < macParts.length; i++) {
+          if (!macRe.test(macParts[i])) {
+            toast('免代理直通 MAC 第 ' + (i + 1) + ' 项格式不合法: ' + macParts[i], 'warn');
+            return;
+          }
+        }
         const cidrParts = trusted_cidr.split(/[,;\s]+/).filter(Boolean);
         const cidrRe = /^(?:(?:\d{1,3}\.){3}\d{1,3}(?:\/(?:[0-9]|[12][0-9]|3[0-2]))?|[0-9a-fA-F:]+(?:\/(?:[0-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))?)$/;
         for (let i = 0; i < cidrParts.length; i++) {
@@ -5100,11 +5188,12 @@
             return;
           }
         }
-        const res = await callRouterApi('/api/ops/settings', 'POST', { panel_bind, gh_mirror, update_manifest_url, trusted_cidr });
+        const payload = { panel_bind, gh_mirror, update_manifest_url, trusted_cidr, tun_mtu, lan_direct_macs: macParts };
+        const res = await callRouterApi('/api/ops/settings', 'POST', payload);
         if (res && res.ok !== false) {
-          renderOpsSettings({ panel_bind, gh_mirror, update_manifest_url, trusted_cidr });
+          renderOpsSettings(payload, true);
           closeModal();
-          toast('网络、安全与更新源配置已保存');
+          toast('网络、安全与设备直通配置已保存');
         }
       },
       '保存设置'
@@ -5798,7 +5887,7 @@
         openModal(
           'OTA 在线升级状态与确认',
           '<div class="detail-grid">' +
-            '<div><span>当前运行版本</span><b class="mono">v' + esc((res && res.current) || (state.rawStatus && state.rawStatus.version) || '2.4.3') + '</b></div>' +
+            '<div><span>当前运行版本</span><b class="mono">v' + esc((res && res.current) || (state.rawStatus && state.rawStatus.version) || '2.4.8') + '</b></div>' +
             '<div><span>升级阶段</span><b>' + esc(prog.stage || 'idle (就绪)') + '</b></div>' +
             '<div><span>进度百分比</span><b>' + esc((prog.percent != null ? prog.percent : 100) + '%') + '</b></div>' +
             '<div><span>状态说明</span><b>' + esc(prog.message || '当前无进行中的升级任务') + '</b></div>' +
@@ -6536,30 +6625,58 @@
         break;
       }
       case 'dns-toggle': {
-        const nextDnsEn = !state.dnsEnabled;
+        if (_opsMutationInFlight.dns_filter) break;
+        const prevDnsEn = Boolean(state.dnsEnabled);
+        const nextDnsEn = !prevDnsEn;
+        _opsMutationInFlight.dns_filter = true;
+        _opsFieldMuteUntil.dns_filter = Date.now() + 3000;
         state.dnsEnabled = nextDnsEn;
         setSwitchState(el, state.dnsEnabled);
-        const res = await callRouterApi('/api/dns/filter/toggle', 'POST', { enabled: nextDnsEn });
-        if (res && res.filter && res.filter.enabled != null) {
-          state.dnsEnabled = Boolean(res.filter.enabled);
+        try {
+          const res = await callRouterApi('/api/dns/filter/toggle', 'POST', { enabled: nextDnsEn });
+          if (res && res.ok !== false) {
+            if (res.filter && res.filter.enabled != null) state.dnsEnabled = Boolean(res.filter.enabled);
+            _opsFieldMuteUntil.dns_filter = Date.now() + 2500;
+            renderDnsAndFilterSection();
+            toast('云端域名过滤护盾已' + (state.dnsEnabled ? '开启' : '关闭'));
+          } else {
+            _opsFieldMuteUntil.dns_filter = 0;
+            state.dnsEnabled = prevDnsEn;
+            renderDnsAndFilterSection();
+            toast('切换云端域名过滤护盾失败，已回滚', 'warn');
+          }
+        } finally {
+          _opsMutationInFlight.dns_filter = false;
         }
-        renderDnsAndFilterSection();
-        toast('云端域名过滤护盾已' + (state.dnsEnabled ? '开启' : '关闭'));
         break;
       }
       case 'dns-essential-protect-toggle': {
-        const nextProt = !(state.dnsEssentialProtect !== false);
+        if (_opsMutationInFlight.dns_essential_protect) break;
+        const prevProt = Boolean(state.dnsEssentialProtect !== false);
+        const nextProt = !prevProt;
+        _opsMutationInFlight.dns_essential_protect = true;
+        _opsFieldMuteUntil.dns_essential_protect = Date.now() + 3000;
         state.dnsEssentialProtect = nextProt;
         setSwitchState(el, state.dnsEssentialProtect);
-        const res = await callRouterApi('/api/dns/filter/toggle', 'POST', {
-          enabled: state.dnsEnabled,
-          essential_app_protect: nextProt
-        });
-        if (res && res.filter && res.filter.essential_app_protect != null) {
-          state.dnsEssentialProtect = Boolean(res.filter.essential_app_protect);
+        try {
+          const res = await callRouterApi('/api/dns/filter/toggle', 'POST', {
+            enabled: state.dnsEnabled,
+            essential_app_protect: nextProt
+          });
+          if (res && res.ok !== false) {
+            if (res.filter && res.filter.essential_app_protect != null) state.dnsEssentialProtect = Boolean(res.filter.essential_app_protect);
+            _opsFieldMuteUntil.dns_essential_protect = Date.now() + 2500;
+            renderDnsAndFilterSection();
+            toast('核心应用防误杀白名单保护已' + (state.dnsEssentialProtect ? '开启（已豁免 Google Play / Apple / MS 核心域名）' : '关闭'));
+          } else {
+            _opsFieldMuteUntil.dns_essential_protect = 0;
+            state.dnsEssentialProtect = prevProt;
+            renderDnsAndFilterSection();
+            toast('切换核心应用白名单保护失败，已回滚', 'warn');
+          }
+        } finally {
+          _opsMutationInFlight.dns_essential_protect = false;
         }
-        renderDnsAndFilterSection();
-        toast('核心应用防误杀白名单保护已' + (state.dnsEssentialProtect ? '开启（已豁免 Google Play / Apple / MS 核心域名）' : '关闭'));
         break;
       }
       case 'network-doctor': {
@@ -6688,10 +6805,27 @@
         break;
       }
       case 'dns-rewrite-toggle': {
-        state.dnsRewriteEnabled = !state.dnsRewriteEnabled;
+        if (_opsMutationInFlight.dns_rewrite) break;
+        const prevRw = Boolean(state.dnsRewriteEnabled);
+        const nextRw = !prevRw;
+        _opsMutationInFlight.dns_rewrite = true;
+        _opsFieldMuteUntil.dns_rewrite = Date.now() + 3000;
+        state.dnsRewriteEnabled = nextRw;
         setSwitchState(el, state.dnsRewriteEnabled);
-        await callRouterApi('/api/dns/rewrite', 'POST', { enabled: state.dnsRewriteEnabled });
-        toast('DNS 防跳重写已' + (state.dnsRewriteEnabled ? '开启' : '关闭'));
+        try {
+          const res = await callRouterApi('/api/dns/rewrite', 'POST', { enabled: nextRw });
+          if (res && res.ok !== false) {
+            _opsFieldMuteUntil.dns_rewrite = Date.now() + 2500;
+            toast('DNS 防跳重写已' + (state.dnsRewriteEnabled ? '开启' : '关闭'));
+          } else {
+            _opsFieldMuteUntil.dns_rewrite = 0;
+            state.dnsRewriteEnabled = prevRw;
+            setSwitchState(el, state.dnsRewriteEnabled);
+            toast('切换 DNS 防跳重写失败，已回滚', 'warn');
+          }
+        } finally {
+          _opsMutationInFlight.dns_rewrite = false;
+        }
         break;
       }
       case 'add-dns-rewrite': {
@@ -6957,7 +7091,7 @@
           if (applyBtn) applyBtn.classList.remove('hidden');
           toast('发现新版本 v' + res.latest + '，可点击「立即升级」');
         } else {
-          const curVer = (res && res.current) || (state.rawStatus && state.rawStatus.version) || '2.4.3';
+          const curVer = (res && res.current) || (state.rawStatus && state.rawStatus.version) || '2.4.8';
           if (subEl) subEl.textContent = '当前已是最新版本 (v' + curVer + ' · 已校验云端清单)';
           toast('当前已是最新版本 (v' + curVer + ')');
         }
@@ -7916,31 +8050,43 @@
     });
     const dpmSelect = $('#sel-ops-data-plane-mode');
     if (dpmSelect) dpmSelect.addEventListener('change', async event => {
+      const prevMode = state.dataPlaneMode || 'tproxy_redirect';
       const nextMode = event.target.value || 'tproxy_redirect';
       const labelMap = {
         tproxy_redirect: 'TProxy + Redirect 零拷贝模式',
         tproxy_tcp_tun_udp: 'TCP TProxy + UDP TUN 游戏混合模式',
         tun_full: '全量 TUN 虚拟网卡模式 (ailink0)'
       };
+      _opsFieldMuteUntil.data_plane_mode = Date.now() + 3000;
+      renderOpsSettings({ data_plane_mode: nextMode }, true);
       toast('正在切换数据面模式至「' + (labelMap[nextMode] || nextMode) + '」...');
       const res = await callRouterApi('/api/ops/settings', 'POST', { data_plane_mode: nextMode });
       if (res && res.ok !== false) {
-        renderOpsSettings({ data_plane_mode: nextMode });
+        _opsFieldMuteUntil.data_plane_mode = Date.now() + 2500;
+        renderOpsSettings({ data_plane_mode: nextMode }, true);
         toast('已切换至「' + (labelMap[nextMode] || nextMode) + '」，nftables 与策略路由表已同步生效');
       } else {
-        toast('切换数据面模式失败', 'warn');
+        _opsFieldMuteUntil.data_plane_mode = 0;
+        renderOpsSettings({ data_plane_mode: prevMode }, true);
+        toast('切换数据面模式失败，已回滚至原模式', 'warn');
       }
     });
     const tunStackSelect = $('#sel-ops-tun-stack');
     if (tunStackSelect) tunStackSelect.addEventListener('change', async event => {
+      const prevStack = state.tunStack || 'mixed';
       const nextStack = event.target.value || 'mixed';
+      _opsFieldMuteUntil.tun_stack = Date.now() + 3000;
+      renderOpsSettings({ tun_stack: nextStack }, true);
       toast('正在切换 TUN 协议栈至 ' + nextStack + '...');
       const res = await callRouterApi('/api/ops/settings', 'POST', { tun_stack: nextStack });
       if (res && res.ok !== false) {
-        renderOpsSettings({ tun_stack: nextStack });
+        _opsFieldMuteUntil.tun_stack = Date.now() + 2500;
+        renderOpsSettings({ tun_stack: nextStack }, true);
         toast('TUN 虚拟网卡协议栈已更新为 ' + nextStack);
       } else {
-        toast('切换 TUN 协议栈失败', 'warn');
+        _opsFieldMuteUntil.tun_stack = 0;
+        renderOpsSettings({ tun_stack: prevStack }, true);
+        toast('切换 TUN 协议栈失败，已回滚至原协议栈', 'warn');
       }
     });
     window.addEventListener('keydown', event => { if (event.key === 'Escape') closeModal(); });

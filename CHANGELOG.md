@@ -1,3 +1,13 @@
+## [v2.4.8] - 2026-11-08
+### P0 全量闭环稳定版（VERIFY-v2.4.7 100% 根治）
+- **P0-1 修复**：nftables 规则按 `meta nfproto ipv4` / `ipv6` 拆分为 6 条独立规则，消除单条规则混用 `ip daddr` 与 `ip6 daddr` 导致的 `conflicting network layer protocols` 挂载失败；真机安装退出码 0、`nft=1`、重启后仍自愈；`install.sh` 增加挂载失败诊断。
+- **P2-6 修复**：`/api/shunt/update` 兼容 `id`/`group_id` 并强制 `write_all_configs`；所有非 `inherit` 的 `dns_strategy` 均生成 `dns_grp_<ID>` 并附 `domain_resolver`，真机 `doh`/`custom` 实测通过 `sing-box check`。
+- **P3-5 修复**：4 阶流量透视器完整回显 `raw_input` / `target` / `src_ip` / `src_mac`，支持 IP、MAC、`@IP` 三种内联写法。
+- **P2-7 修复**：测试沙箱 `is_live` 判定收敛，绝不读取或污染真机 `/etc/config/ai-link`；`rule_blocks_e2e.py` 恢复 15/15。
+- **P3-4 修复**：AST `except->pass` 由 11 降为 0，写入发布门禁。
+- **门禁加固**：新增 nft 协议混写清零、`tar.gz` 顶层目录与测试集完备性、AST `except->pass <= 8` 三项检查；`gates_v101` 16/16、Design Lint 18/18、官方回归 15/15 套全绿。
+- 中间 2.4.4 ~ 2.4.7 未对外发布，本版起可直接从 2.4.3 OTA 升级。
+
 ## [v2.4.3] - 2026-11-08
 
 - **自动节点池「多线并发」与交互级 AI 防风控护栏**：节点池新增优选单线 (`single_best`) 与多线并发 (`multi_line`) 调度模式；勾选 AI 敏感服务时前端自动锁定单线，且当 `AI/Google/Microsoft/Apple/Social/Soul` 等 IP 敏感分流组绑定至多线并发池时后端自动启用单线保护 (`auto_single_line_protected=True`)。

@@ -18,7 +18,7 @@
         <circle cx="20" cy="20" r="5.4" fill="none" stroke="#a994ff" stroke-width="1.6"/>
         <circle cx="20" cy="20" r="1.8" fill="#6ee7f5"/>
       </svg>
-      <span style="display:block"><b>AI-LINK</b><span>NEXUS · v2.4.3</span></span>
+      <span style="display:block"><b>AI-LINK</b><span>NEXUS · v2.4.8</span></span>
     </a>
     <div class="nav-links">
       <a href="/#features">核心能力</a>
@@ -36,12 +36,22 @@
 <main class="wrap log-wrap">
   <div class="log-head">
     <h1>更新日志</h1>
-    <span class="pill"><i></i> 当前最新 v2.4.3</span>
+    <span class="pill"><i></i> 当前最新 v2.4.8</span>
   </div>
 <article class="log-item latest">
   <div class="log-top">
-    <h2>v2.4.3</h2>
+    <h2>v2.4.8</h2>
     <span class="tag c">最新</span>
+    <time>2026-11-08</time>
+  </div>
+  <p style="margin:2px 0 6px;color:var(--dim)"></p>
+<h3>P0 全量闭环稳定版（VERIFY-v2.4.7 100% 根治）</h3>
+<ul><li><b>P0-1 修复</b>：nftables 规则按 <code>meta nfproto ipv4</code> / <code>ipv6</code> 拆分为 6 条独立规则，消除单条规则混用 <code>ip daddr</code> 与 <code>ip6 daddr</code> 导致的 <code>conflicting network layer protocols</code> 挂载失败；真机安装退出码 0、<code>nft=1</code>、重启后仍自愈；<code>install.sh</code> 增加挂载失败诊断。</li><li><b>P2-6 修复</b>：<code>/api/shunt/update</code> 兼容 <code>id</code>/<code>group_id</code> 并强制 <code>write_all_configs</code>；所有非 <code>inherit</code> 的 <code>dns_strategy</code> 均生成 <code>dns_grp_&lt;ID&gt;</code> 并附 <code>domain_resolver</code>，真机 <code>doh</code>/<code>custom</code> 实测通过 <code>sing-box check</code>。</li><li><b>P3-5 修复</b>：4 阶流量透视器完整回显 <code>raw_input</code> / <code>target</code> / <code>src_ip</code> / <code>src_mac</code>，支持 IP、MAC、<code>@IP</code> 三种内联写法。</li><li><b>P2-7 修复</b>：测试沙箱 <code>is_live</code> 判定收敛，绝不读取或污染真机 <code>/etc/config/ai-link</code>；<code>rule_blocks_e2e.py</code> 恢复 15/15。</li><li><b>P3-4 修复</b>：AST <code>except-&gt;pass</code> 由 11 降为 0，写入发布门禁。</li><li><b>门禁加固</b>：新增 nft 协议混写清零、<code>tar.gz</code> 顶层目录与测试集完备性、AST <code>except-&gt;pass &lt;= 8</code> 三项检查；<code>gates_v101</code> 16/16、Design Lint 18/18、官方回归 15/15 套全绿。</li><li>中间 2.4.4 ~ 2.4.7 未对外发布，本版起可直接从 2.4.3 OTA 升级。</li></ul>
+</article>
+<article class="log-item">
+  <div class="log-top">
+    <h2>v2.4.3</h2>
+    <span class="tag">历史</span>
     <time>2026-11-08</time>
   </div>
   <p style="margin:2px 0 6px;color:var(--dim)"></p>

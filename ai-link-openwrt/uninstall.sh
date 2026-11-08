@@ -99,6 +99,14 @@ if [ -f /var/run/ai-link/sysctl_orig/be_liberal ]; then
 else
 	sysctl -w net.netfilter.nf_conntrack_tcp_be_liberal=0 >/dev/null 2>&1 || true
 fi
+if [ -f /var/run/ai-link/sysctl_orig/rps_sock_flow_entries ]; then
+	sysctl -w net.core.rps_sock_flow_entries="$(cat /var/run/ai-link/sysctl_orig/rps_sock_flow_entries 2>/dev/null || echo 0)" >/dev/null 2>&1 || true
+fi
+if [ -f /var/run/ai-link/sysctl_orig/rps_queues.orig ]; then
+	while read -r qpath qval; do
+		[ -n "$qpath" ] && [ -f "$qpath" ] && echo "${qval:-0}" > "$qpath" 2>/dev/null || true
+	done < /var/run/ai-link/sysctl_orig/rps_queues.orig
+fi
 rm -f /tmp/dnsmasq.d/ai-link-*.conf /tmp/dnsmasq.cfg*/ai-link-*.conf 2>/dev/null || true
 killall -HUP dnsmasq 2>/dev/null || true
 

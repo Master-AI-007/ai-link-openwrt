@@ -1,6 +1,6 @@
 #!/bin/sh
 # ==============================================================================
-# AI-LINK v2.4.3 (luci-app-ai-link v2.4.3) Universal Cross-Platform Installer
+# AI-LINK v2.4.7 (luci-app-ai-link v2.4.7) Universal Cross-Platform Installer
 # Supports:
 #   - Architectures : x86_64 (amd64), aarch64 (arm64), armv7l (armhf), mipsel, riscv64
 #   - Package Mgrs  : OPKG (OpenWrt <=23.05) & APK (OpenWrt 24.10+ / ImmortalWrt 25.x+)
@@ -12,7 +12,7 @@
 set -e
 export PYTHONDONTWRITEBYTECODE="1"
 
-VERSION="2.4.3"
+VERSION="2.4.8"
 UPGRADE_MODE=0
 for arg in "$@"; do
 	case "$arg" in
@@ -186,10 +186,14 @@ fi
 echo "[4/6] 正在部署 AI-LINK (v${VERSION}) 系统文件..."
 IPK_FILE=$(ls "$SCRIPT_DIR"/luci-app-ai-link_*.ipk 2>/dev/null | head -n 1 || true)
 
-# Preserve existing /etc/config/ai-link before copying package files so user settings (gh_mirror, ipv6_proxy, entry_bypass, panel_port) are never overwritten
+# Preserve existing /etc/config/ai-link & /etc/ai-link/ops_settings.json before copying package files so user settings (gh_mirror, ipv6_proxy, entry_bypass, panel_port) are never overwritten
 HAD_UCI_CFG=0
 if [ -f /etc/config/ai-link ]; then
 	cp -f /etc/config/ai-link /tmp/.ai-link-uci.preserve 2>/dev/null && HAD_UCI_CFG=1 || true
+fi
+HAD_OPS_CFG=0
+if [ -f /etc/ai-link/ops_settings.json ]; then
+	cp -f /etc/ai-link/ops_settings.json /tmp/.ai-link-ops.preserve 2>/dev/null && HAD_OPS_CFG=1 || true
 fi
 
 # Pre-clean legacy webui/assets & webui/vendor symlinks before opkg/cp so copying directory assets/ never errors
@@ -208,6 +212,11 @@ cp -rf "$SCRIPT_DIR/root/"* /
 if [ "$HAD_UCI_CFG" -eq 1 ] && [ -f /tmp/.ai-link-uci.preserve ]; then
 	cp -f /tmp/.ai-link-uci.preserve /etc/config/ai-link 2>/dev/null || true
 	rm -f /tmp/.ai-link-uci.preserve 2>/dev/null || true
+fi
+if [ "$HAD_OPS_CFG" -eq 1 ] && [ -f /tmp/.ai-link-ops.preserve ]; then
+	mkdir -p /etc/ai-link 2>/dev/null || true
+	cp -f /tmp/.ai-link-ops.preserve /etc/ai-link/ops_settings.json 2>/dev/null || true
+	rm -f /tmp/.ai-link-ops.preserve 2>/dev/null || true
 fi
 if [ -f "$SCRIPT_DIR/uninstall.sh" ]; then
 	cp -f "$SCRIPT_DIR/uninstall.sh" /usr/share/ai-link/uninstall.sh 2>/dev/null || true
@@ -261,8 +270,8 @@ else
 	uci_set_default "panel_pwd_customized" "0"
 fi
 uci -q delete ai-link.global.panel_secret 2>/dev/null || true
-uci -q set "ai-link.global.require_lan_auth=1" 2>/dev/null || true
-uci -q set "ai-link.global.trusted_cidr=127.0.0.1/32, ::1/128" 2>/dev/null || true
+uci_set_default "require_lan_auth" "1"
+uci_set_default "trusted_cidr" "127.0.0.1/32, ::1/128"
 uci_set_default "tproxy_port" "7893"
 uci_set_default "mixed_port" "7890"
 uci_set_default "dns_port" "7874"
@@ -302,8 +311,9 @@ else
 	rm -rf /usr/bin/UnblockNeteaseMusic /etc/ai-link/music /etc/ai-link/music_settings.json /opt/nolo-music /etc/init.d/nolo-music /etc/ai-link/mihomo.yaml 2>/dev/null || true
 fi
 uci commit ai-link 2>/dev/null || true
-# If ops_settings.json already exists on router, keep its mtime newer than /etc/config/ai-link so user's ops_settings are preserved
+# If ops_settings.json already exists on router, authoritatively reverse-sync ops_settings.json -> UCI and keep its mtime newer than /etc/config/ai-link
 if [ -f /etc/ai-link/ops_settings.json ]; then
+	/usr/bin/env python3 -B /usr/share/ai-link/ai-link-daemon.py --sync-ops-to-uci >/dev/null 2>&1 || true
 	touch /etc/ai-link/ops_settings.json 2>/dev/null || true
 	chmod 600 /etc/ai-link/ops_settings.json 2>/dev/null || true
 fi
@@ -392,6 +402,14 @@ if command -v nft >/dev/null 2>&1; then
 		echo "  -> ✓ nftables 透明代理表 (table inet ai_link) 已成功挂载并校验通过！"
 	elif command -v sing-box >/dev/null 2>&1 && [ "${AILINK_ALLOW_NO_NFT:-0}" != "1" ]; then
 		echo "  -> ❌ 错误: table inet ai_link 未挂载，透明代理规则未生效，安装中止！" >&2
+		if [ -f /var/run/ai-link/nft_apply_status.json ]; then
+			echo "  -> [诊断] nft_apply_status.json:" >&2
+			cat /var/run/ai-link/nft_apply_status.json >&2 || true
+		fi
+		if [ -f /var/run/ai-link/ai-link.nft ]; then
+			echo "  -> [诊断] nft -c -f /var/run/ai-link/ai-link.nft:" >&2
+			nft -c -f /var/run/ai-link/ai-link.nft 2>&1 | head -n 10 >&2 || true
+		fi
 		exit 1
 	fi
 fi
