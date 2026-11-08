@@ -1,3 +1,29 @@
+## v2.5.1 (2026-11-08)
+
+- **[LuCI 面板极简重构 & v2.5.0 验收反馈 FB-250-1~6 全量闭环 (`htdocs/.../overview.js` & `ai-link-daemon.py`)]**：
+  1. **LuCI 面板极简重构**：移除冗余的底层 UCI 表单（防止 LuCI 保存覆盖独立面板配置）、移除组件更新表与高级策略下拉框；可操作区仅保留基础服务启停（启动/停止/重启/开机自启）、透明代理接管开关、重载内核、打开 `:9099` 独立控制台按钮以及完整的 OTA 在线检查与热更新模块；其余区域仅只读展示 4 项核心运行状态 KPI。
+  2. **修复 `daemon --self-test` 出站字段白名单 (`FB-250-1`)**：将 `urltest` 专属字段 `{"url", "interval", "tolerance", "idle_timeout"}` 纳入 `allowed_sb_keys`，确保 `python3 tests/run_all.py` 15/15 全绿通过。
+  3. **打包与文档硬门禁 (`FB-250-2 ~ FB-250-6`)**：将 `v242_deep_chaos_simulation.py` 同步内置于 `tests/` 与源码树 `site/ai-link-openwrt/tests/`，固定产出 `HANDOFF.md` 与自动计算的四列产物校验指纹表（文件名 / 大小 / MD5 / SHA-256），并在 `gates_v101.py` 中新增 4 项交付一致性硬门禁。
+
+## v2.5.0 (2026-11-08)
+
+- **[自动节点池多线并发内核层与数据面真实落地 (`DIAG-多线并发功能生效性-20261108.md` 闭环)]**：
+  1. **内核 `urltest` 编组与无损连接保持 (`generate_singbox_config`)**：为 `dispatch_mode == "multi_line"` 的非敏感自动节点池生成 `"type": "urltest"` 出口 `Auto_<pool>_MultiLine`（严格限定为剔除慢节点后的 `multi_line_nodes`），并将 `Auto_<pool>` 与绑定的非敏感分流组（如 `Shunt_YouTube`、`Shunt_TikTok`）设为 `interrupt_exist_connections: false`，同时保持 `Shunt_AI` 单线防风控保护。
+  2. **0.5s 错峰无损轮转并发调度器 (`dispatch_multi_line_pools_tick`)**：后台守护线程按 `0.5s` 周期与组间错峰偏移静默轮转 `:9090/proxies/<selector>`，实现存量连接不断流、新建并发连接自动分摊至多个物理节点。
+  3. **节点池全生命周期与订阅自动同步开关修复**：统一 `_normalize_auto_node_item` 慢节点离散度过滤，`auto_screen` 纳入带宽择优并排除 4 层 DAG 链式落地节点；订阅卡片新增 `.sub-autosync-btn` 一键切换自动同步胶囊，编辑订阅弹窗新增 `#mdl-sub-auto-update` 开关。
+
+## v2.4.9 (2026-11-08)
+
+- **[自动节点池稳定性加权与全站双栏等高/全息波形可读性重构]**：
+  1. **自动节点池算法加固**：引入滑窗丢包率与抖动变异系数惩罚因子、低健康度非破坏性保员、60 分钟隔离期满自动解封及多线并发副线内核日志故障感知。
+  2. **全息流量波形与双栏 100% 等高对齐**：新增 4-KPI 实时摘要栏、Y 轴自适应刻度、峰值徽章与悬停十字准星浮窗；修复高分屏 `DPR=2` 下 `<canvas>` 高度膨胀问题，确保概览页与 DNS 页左右并排卡片高度差为 `0px`。
+
+## v2.4.8 (2026-11-08)
+
+- **[真机验收报告 `VERIFY-v2.4.7.md` 全量 6 项问题闭环]**：
+  1. **修复 `@lan_direct_macs` Fake-IP 豁免规则协议冲突 (`P0-1`)**：将 `198.18.0.0/15` 豁免规则拆分为 `meta nfproto ipv4` 与 `meta nfproto ipv6` 两条独立规则，消除 `nft -c -f` 协议冲突报错。
+  2. **修复 `/api/shunt/update` 按组专属 DNS 落盘与 `except: pass` 清理 (`P2-6` / `P3-4` / `P3-5`)**：兼容 `id`/`group_id` 字段并注入 `domain_resolver: "dns_direct"`，全文件 `except -> pass` 清零，补齐 4 阶透视 `query` 回显字段。
+
 ## v2.4.7 (2026-11-08)
 
 - **[深度模拟巡检 #2 · 4 大用户场景深化打磨闭环]**：

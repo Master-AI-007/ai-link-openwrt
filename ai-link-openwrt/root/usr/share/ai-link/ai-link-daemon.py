@@ -2232,6 +2232,7 @@ def _compute_core_rules_fingerprint(conf_dir: Path = CONF_DIR) -> str:
                     "tag": str(o.get("tag") or ""),
                     "type": otype,
                     "outbounds": list(o.get("outbounds") or []),
+                    "interrupt_exist_connections": bool(o.get("interrupt_exist_connections", True)),
                 })
             elif otype not in ("direct", "block"):
                 proxy_outbounds.append(o)
@@ -7032,8 +7033,10 @@ def dispatch_multi_line_pools_tick(conf_dir: Path = CONF_DIR, advance: bool = Tr
                     if t and t != "direct" and (not ok_tags or t in ok_tags)
                 ][:max(2, int(a.get("target_size") or 5))]
             ml_nodes = [t for t in raw_ml if t and t not in ("direct", "block") and (not ok_tags or t in ok_tags)]
-            if len(ml_nodes) < 2:
-                continue
+            is_degraded_single = len(ml_nodes) < 2
+            if not ml_nodes:
+                cur_fb = str(a.get("current_node") or "direct").strip()
+                ml_nodes = [cur_fb if (cur_fb and cur_fb != "direct" and (not ok_tags or cur_fb in ok_tags)) else "direct"]
             bound_shunt_selectors = []
             for sg in (sh_cfg.get("groups") or []):
                 gid = str(sg.get("id") or "")
@@ -7047,6 +7050,7 @@ def dispatch_multi_line_pools_tick(conf_dir: Path = CONF_DIR, advance: bool = Tr
                 "pool_id": pid,
                 "pool_tag": ptag,
                 "ml_nodes": ml_nodes,
+                "degraded_single": is_degraded_single,
                 "bound_selectors": bound_shunt_selectors,
             })
         cached_plan = plan_pools
@@ -7055,12 +7059,19 @@ def dispatch_multi_line_pools_tick(conf_dir: Path = CONF_DIR, advance: bool = Tr
             _MULTI_LINE_RR_STATE["memo_plan"] = cached_plan
 
     dispatched = {}
+    active_multi_cnt = 0
     for p_info in (cached_plan or []):
         pid = p_info["pool_id"]
         ptag = p_info["pool_tag"]
         ml_nodes = p_info["ml_nodes"]
-        if len(ml_nodes) < 2:
+        if p_info.get("degraded_single"):
+            sole_target = ml_nodes[0] if ml_nodes else "direct"
+            for sel_t in ([ptag] if ptag else []) + (["Stream_Auto"] if (pid == "auto_youtube" and ptag != "Stream_Auto") else []) + list(p_info["bound_selectors"]):
+                if (_MULTI_LINE_RR_STATE.get("dispatched_history", {}).get(sel_t) or [None])[-1] != sole_target or PROBE_ENGINE.current_selections.get(sel_t) != sole_target:
+                    _put_clash_selector_silent(sel_t, sole_target, clash_api_override=clash_api_override)
+                    dispatched[sel_t] = sole_target
             continue
+        active_multi_cnt += 1
         with _MULTI_LINE_RR_LOCK:
             prev_c = _MULTI_LINE_RR_STATE["cursors"].get((c_str, pid), -1)
             cur_c = (prev_c + 1) % len(ml_nodes) if advance or prev_c < 0 else (prev_c % len(ml_nodes))
@@ -7080,7 +7091,7 @@ def dispatch_multi_line_pools_tick(conf_dir: Path = CONF_DIR, advance: bool = Tr
     return {
         "ok": True,
         "dispatched": dispatched,
-        "active_pools_count": len(cached_plan or []),
+        "active_pools_count": active_multi_cnt,
         "history": dict(_MULTI_LINE_RR_STATE["dispatched_history"]),
     }
 
@@ -7415,6 +7426,13 @@ def scan_kernel_logs_for_active_pool_failures(
             new_rtt = float(p_new.get("current_delay_ms") or 0.0)
             pool_label = p_new.get("name") or p_new.get("tag") or pid
             reason_str = f"内核日志连续 {cnt_val} 次报错 ({l_err}) 极速切换"
+            with _MULTI_LINE_RR_LOCK:
+                _MULTI_LINE_RR_STATE["memo_sig"] = None
+            flush_conntrack_for_switch(
+                selector_tag=p_new.get("tag") or pid,
+                old_node=bad_tag,
+                reason=f"kernel_log_failover:{bad_tag}",
+            )
             request_switch(
                 p_new.get("tag") or pid,
                 new_node,
@@ -21014,9 +21032,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.5.0"
+APP_VERSION = "2.5.1"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.5.0-release-20261108"
+APP_BUILD = "2.5.1-release-20261108"
 
 UPDATE_MANIFEST_PRIMARY = "https://ai-link-official.pages.dev/version.json"
 UPDATE_MANIFEST_GITHUB = "https://raw.githubusercontent.com/Master-AI-007/ai-link-openwrt/main/version.json"
@@ -24202,8 +24220,11 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 target_an["current_node_id"] = ""
             save_auto_nodes_config(cfg, CONF_DIR)
             evaluate_all_auto_nodes(CONF_DIR, target_id=target_an.get("id"), force_service_probe=False, advance_revert_streak=False)
+            with _MULTI_LINE_RR_LOCK:
+                _MULTI_LINE_RR_STATE["memo_sig"] = None
             write_all_configs(CONF_DIR)
             PROBE_ENGINE.apply_shunt_selections(CONF_DIR)
+            schedule_async_core_reload(force_respawn=False, hot_only=False)
             _AUTO_NODES_API_MEMO.clear()
             _SHUNT_API_MEMO.clear()
             _STATUS_API_MEMO.clear()
@@ -24789,11 +24810,13 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 evaluate_all_auto_nodes(CONF_DIR, target_id=an_id, force_service_probe=False, advance_revert_streak=False)
                 # Ensure a newly created card immediately selects its first Group 1 member instead of sitting at "direct" before probe completes
                 cfg_eval = load_auto_nodes_config(CONF_DIR)
+                _probe_store_sv = load_node_probe_store(CONF_DIR)
                 for _a_it in (cfg_eval.get("auto_nodes") or []):
-                    if _a_it.get("id") == an_id and (not _a_it.get("current_node") or _a_it.get("current_node") == "direct"):
+                    if _a_it.get("id") == an_id and (not _a_it.get("current_node") or _a_it.get("current_node") == "direct") and not _a_it.get("all_groups_dead_alert"):
                         _g1_tags = [t for _g in (_a_it.get("groups") or []) for t in (_g.get("node_tags") or []) if t and t != "direct"]
-                        if _g1_tags:
-                            _a_it["current_node"] = _g1_tags[0]
+                        _untested_tags = [t for t in _g1_tags if (_probe_store_sv.get(t) or {}).get("state") not in ("dead",)]
+                        if _untested_tags:
+                            _a_it["current_node"] = _untested_tags[0]
                             _a_it["active_group_index"] = 1
                             _a_it["all_groups_dead_alert"] = False
                             save_auto_nodes_config(cfg_eval, CONF_DIR)
@@ -26203,7 +26226,7 @@ def main():
         cfg_full = ConfigGenerator.generate_singbox_config(enable_dns_section=True, enable_tls_outbounds=True)
         assert "dns" not in cfg_lock and "dns" in cfg_full, "Two-tier config generator check failed"
         assert cfg_full["route"]["rules"][0] == {"port": 53, "action": "hijack-dns"}, "Expected port 53 hijack-dns first rule"
-        allowed_sb_keys = _SB_OUTBOUND_KEYS | {"outbounds", "default", "interrupt_exist_connections"}
+        allowed_sb_keys = _SB_OUTBOUND_KEYS | {"outbounds", "default", "interrupt_exist_connections", "url", "interval", "tolerance", "idle_timeout"}
         for _ob in cfg_full.get("outbounds", []):
             assert "node_id" not in _ob and set(_ob.keys()) <= allowed_sb_keys, f"Invalid sing-box outbound keys: {set(_ob.keys()) - allowed_sb_keys}"
         # Test CA-capable cert generation & Top-N subscription pre-filtering

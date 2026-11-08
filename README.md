@@ -4,7 +4,7 @@
 
 **NEXUS 全域 3D 智能网关 · 运行在 OpenWrt 上的智能分流系统**
 
-[![version](https://img.shields.io/badge/version-2.5.0-6ee7f5?style=flat-square)](https://github.com/Master-AI-007/ai-link-openwrt/releases/tag/v2.5.0)
+[![version](https://img.shields.io/badge/version-2.5.1-6ee7f5?style=flat-square)](https://github.com/Master-AI-007/ai-link-openwrt/releases/tag/v2.5.1)
 [![platform](https://img.shields.io/badge/OpenWrt-23.05%20%7C%2024.10%20%7C%20ImmortalWrt-a994ff?style=flat-square)](#环境要求)
 [![core](https://img.shields.io/badge/sing--box-1.14.1-54e6b5?style=flat-square)](#技术架构)
 [![license](https://img.shields.io/badge/license-MIT-f9a8d4?style=flat-square)](#许可与免责)
@@ -30,9 +30,9 @@ AI-LINK 是一套面向 OpenWrt 的**智能分流网关**：用 sing-box 单内�
 
 ---
 
-## 核心能力总览（v2.5.0）
+## 核心能力总览（v2.5.1）
 
-> **v2.5.0 增量**：多线并发正式落地（内核 `urltest` 多出口编组 + `interrupt_exist_connections=false` + 0.5s 错峰轮转，真机实测多物理节点同时承载）；自动节点池建池/筛选/入核/调度/容灾全生命周期审计；订阅卡片与弹窗新增自动同步开关且手动同步保态。延续波形真值、节点池评分、nft 协议族分离等全部能力。
+> **v2.5.1 增量**：LuCI 面板极简重构（禁用 UCI 保存表单，仅保留基础服务与 OTA）；多线并发池副线阵亡时 0.5s 秒级收敛到存活主线/direct、精准清理故障副线存量连接；节点池全死/锁区保持 direct；前端按真实线数展示含单线降级态；上轮反馈中的自测白名单、报告指纹表、HANDOFF.md、源码树 CHANGELOG 已闭环。延续多线并发出口等全部能力。
 
 
 | | 能力 | 说明 |
@@ -185,7 +185,8 @@ sing-box 1.14.1（单内核）
 
 | 版本 | 日期 | 主题 |
 |---|---|---|
-| **2.5.0** | 2026-11-08 | 多线并发正式落地 + 节点池全生命周期审计 + 订阅自动同步开关 |
+| **2.5.1** | 2026-11-08 | LuCI 极简重构 + 多线并发退化收敛 + 上轮反馈闭环 |
+| 2.5.0 | 2026-11-08 | 多线并发正式落地 + 节点池全生命周期审计 + 订阅自动同步开关 |
 | 2.4.9 | 2026-11-08 | 波形真值与节点池深度审计 + 概览视觉重构 |
 | 2.4.8 | 2026-11-08 | P0 全量闭环稳定版（nft 协议族拆分 + 5 项遗留修复） |
 | 2.4.3 | 2026-11-08 | 多线并发 + 链式代理 DAG + 三维流量洞察 + 交付闭环 |
@@ -217,10 +218,10 @@ sing-box 1.14.1（单内核）
 ## 包指纹
 
 ```
-AI-LINK-v2.5.0.tar.gz
-size   804,971 B
-md5    2ce231ef53c3a5fc31b3cbb38dc5a333
-sha256 6261d2e55fa102e8241324bea1953cd5501e772eb1c1b70e36c7d3c327cde6f3
+AI-LINK-v2.5.1.tar.gz
+size   801,450 B
+md5    5f84fde33b6bb7e07a62fb3869fb2fe0
+sha256 ea5ffef0e69c5267133e12b0f6d7ed39ac5b23b68411a2a0d6c2d09a1fc6b550
 ```
 
 在线清单：<https://ai-link-official.pages.dev/version.json>

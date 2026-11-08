@@ -1272,11 +1272,16 @@
         const isManual = g.shunt_mode === 'manual';
         const hasManualDrift = false;
         const driftText = '';
+        const isGrpMulti = Boolean(!isDir && !isManual && ((g.dispatch_mode === 'multi_line') || (boundPool && boundPool.dispatch_mode === 'multi_line')) && !g.ip_sensitive && !g.auto_single_line_protected);
+        const grpMlNodes = Array.isArray(g.multi_line_nodes) && g.multi_line_nodes.length
+          ? g.multi_line_nodes
+          : ((boundPool && Array.isArray(boundPool.multi_line_nodes)) ? boundPool.multi_line_nodes : []);
+        const grpMlCnt = isGrpMulti ? (grpMlNodes.length || Number(g.active_lines_count != null ? g.active_lines_count : (boundPool && boundPool.active_lines_count != null ? boundPool.active_lines_count : 0))) : 1;
         const modeBadge = isDir
           ? '直连模式'
           : (isManual
               ? ('手动固定 · ' + cleanNodeDisplayName(g.manual_node || effResolvedNode || g.country || 'JP'))
-              : ('节点池 · ' + ((boundPool && boundPool.name) || g.auto_node_name || '自动节点池')));
+              : ('节点池 · ' + ((boundPool && boundPool.name) || g.auto_node_name || '自动节点池') + (isGrpMulti && grpMlCnt >= 2 ? (' · 多线(' + grpMlCnt + '线)') : (g.auto_single_line_protected ? ' · 单线保护' : ''))));
         const autoFallbackDirect = !isDir && !isManual && (g.no_available_node || effResolvedNode === 'direct');
         const outNode = isDir
           ? 'DIRECT 宽带直连'
@@ -1387,7 +1392,15 @@
             (p.l7_degraded ? '<span class="l7-degraded-badge" title="L7 语义校验降级保底">L7 降级</span>' : '') + '<span class="' + pillCls + '" style="flex-shrink:0">' + esc(shortPillTxt) + '</span>' +
           '</div>' +
           '<div class="hud-pool-mid">' +
-            '<strong class="hud-pool-node mono" style="color:' + (isDirectPool ? 'var(--amber)' : 'var(--cyan)') + '" title="当前出口：' + esc(curNode) + ' · 池内 ' + g1Tags.length + ' 个候选">' + esc(curNode) + ' <small style="color:var(--text-3);font-weight:400">· ' + g1Tags.length + ' 候选' + (p.dispatch_mode === 'multi_line' ? (' · 多线并发(' + Math.max(2, Number(p.active_lines_count || g1Tags.length || 2)) + '线)') : '') + (p.bandwidth_prefer ? ' · 带宽择优' : '') + '</small></strong>' +
+            (function() {
+              const mlArr = Array.isArray(p.multi_line_nodes) ? p.multi_line_nodes : [];
+              const mlCnt = mlArr.length || Number(p.active_lines_count != null ? p.active_lines_count : 0);
+              const mlSuffix = p.dispatch_mode === 'multi_line'
+                ? (mlCnt >= 2 ? (' · 多线并发(' + mlCnt + '线)') : (mlCnt === 1 ? ' · 多线并发(1线·单线降级)' : ' · 多线并发(0线·无可用)'))
+                : '';
+              const mlTitleExtra = (p.dispatch_mode === 'multi_line' && mlArr.length) ? (' · 并发在线：' + mlArr.map(cleanNodeDisplayName).join(' / ')) : '';
+              return '<strong class="hud-pool-node mono" style="color:' + (isDirectPool ? 'var(--amber)' : 'var(--cyan)') + '" title="当前出口：' + esc(curNode) + ' · 池内 ' + g1Tags.length + ' 个候选' + esc(mlTitleExtra) + '">' + esc(curNode) + ' <small style="color:var(--text-3);font-weight:400">· ' + g1Tags.length + ' 候选' + mlSuffix + (p.bandwidth_prefer ? ' · 带宽择优' : '') + '</small></strong>';
+            })() +
             '<span style="flex-shrink:0">' + latBadgeCompact + '</span>' +
           '</div>' +
           '<div class="hud-pool-foot">' +
@@ -2152,7 +2165,7 @@
       const dpmLabel = state.dataPlaneMode === 'tun_full'
         ? '全量 TUN 虚拟网卡 (ailink0)'
         : (state.dataPlaneMode === 'tproxy_tcp_tun_udp' ? 'TCP TProxy + UDP TUN 游戏混合' : 'TProxy + Redirect 零拷贝');
-      coreSubEl.textContent = 'AI-LINK v2.5.0 · ' + dpmLabel;
+      coreSubEl.textContent = 'AI-LINK v2.5.1 · ' + dpmLabel;
     }
     setSwitchState($('#toggle-require-lan-auth'), state.authEnabled);
     setSwitchState($('#toggle-ops-entry-bypass'), state.entryBypass);
@@ -3272,7 +3285,7 @@
                 current_google_region: a.current_google_region || '',
                 dispatch_mode: a.dispatch_mode || 'single_best',
                 multi_line_nodes: Array.isArray(a.multi_line_nodes) ? a.multi_line_nodes : [],
-                active_lines_count: Number(a.active_lines_count || 1),
+                active_lines_count: (a.active_lines_count != null) ? Number(a.active_lines_count) : (Array.isArray(a.multi_line_nodes) ? a.multi_line_nodes.length : 1),
                 multi_line_locked: Boolean(a.multi_line_locked),
                 multi_line_locked_reason: a.multi_line_locked_reason || '',
                 bandwidth_prefer: Boolean(a.bandwidth_prefer),
@@ -3313,7 +3326,7 @@
                 resolved_node: resolvedN,
                 dispatch_mode: g.dispatch_mode || (boundP && boundP.dispatch_mode) || 'single_best',
                 multi_line_nodes: Array.isArray(g.multi_line_nodes) ? g.multi_line_nodes : ((boundP && boundP.multi_line_nodes) || []),
-                active_lines_count: Number(g.active_lines_count || (boundP && boundP.active_lines_count) || 1),
+                active_lines_count: (g.active_lines_count != null) ? Number(g.active_lines_count) : ((boundP && boundP.active_lines_count != null) ? Number(boundP.active_lines_count) : 1),
                 auto_single_line_protected: Boolean(g.auto_single_line_protected),
                 ip_sensitive: Boolean(g.ip_sensitive || ['AI','AI_Assistant','Google','Microsoft','Apple','Apple_Microsoft','Social','Social_Media','Custom_Soul','Custom_Copilot','Custom_WorkBuddy'].includes(g.id)),
                 strict_lock: Boolean(g.strict_lock),
@@ -6082,7 +6095,7 @@
         openModal(
           'OTA 在线升级状态与确认',
           '<div class="detail-grid">' +
-            '<div><span>当前运行版本</span><b class="mono">v' + esc((res && res.current) || (state.rawStatus && state.rawStatus.version) || '2.5.0') + '</b></div>' +
+            '<div><span>当前运行版本</span><b class="mono">v' + esc((res && res.current) || (state.rawStatus && state.rawStatus.version) || '2.5.1') + '</b></div>' +
             '<div><span>升级阶段</span><b>' + esc(prog.stage || 'idle (就绪)') + '</b></div>' +
             '<div><span>进度百分比</span><b>' + esc((prog.percent != null ? prog.percent : 100) + '%') + '</b></div>' +
             '<div><span>状态说明</span><b>' + esc(prog.message || '当前无进行中的升级任务') + '</b></div>' +
@@ -7304,7 +7317,7 @@
           if (applyBtn) applyBtn.classList.remove('hidden');
           toast('发现新版本 v' + res.latest + '，可点击「立即升级」');
         } else {
-          const curVer = (res && res.current) || (state.rawStatus && state.rawStatus.version) || '2.5.0';
+          const curVer = (res && res.current) || (state.rawStatus && state.rawStatus.version) || '2.5.1';
           if (subEl) subEl.textContent = '当前已是最新版本 (v' + curVer + ' · 已校验云端清单)';
           toast('当前已是最新版本 (v' + curVer + ')');
         }

@@ -1,38 +1,34 @@
-# AI-LINK v2.5.0
+# AI-LINK v2.5.1
 
 > OpenWrt 智能分流网关 · sing-box 单内核 · 15 组分流 · 自动节点池 · 订阅自适应
 > 发布日期：2026-11-08 ｜ 适用：OpenWrt 23.05 / 24.10 / ImmortalWrt / LEDE（`fw4` + `nftables`）
 
 ---
 
-## 这一版：让「多线并发」从配置真正走到数据面
+## 这一版：面板做减法，多线做加固
 
-上一轮功能级诊断（《DIAG-多线并发功能生效性-20261108.md》）指出：`dispatch_mode = multi_line` 只实现到应用层候选池，`sing-box.json` 里没有任何 `urltest`/`loadbalance` 出口，实际仍是单节点承载。本版做三位一体闭环：
+### 🎛 LuCI 面板极简重构
 
-1. **内核出口生成层**：对每个非敏感的 `multi_line` 池生成专属 `urltest` 出口 `Auto_<pool>_MultiLine`，成员严格限定为剔除慢节点后的 `multi_line_nodes`，并设 `interrupt_exist_connections: false`；
-2. **绑定组无损切换**：`Shunt_YouTube` / `Shunt_TikTok` 等绑定组的 `outbounds` 置顶收敛为多线成员 + urltest，`interrupt_exist_connections: false` 保证存量连接不断流；`Shunt_AI` 等 IP 敏感组维持 `true` 与单线锁定保护；
-3. **实时调度层**：新增 `dispatch_multi_line_pools_tick()` 与 0.5 秒守护线程，按组间错峰偏移静默轮转 selector 的 `now`。配合无损连接开关，存量视频流不中断、新建连接均匀分摊到各物理节点；切回 `single_best` 立即停止轮转。
+LuCI 页面只保留**基础服务开关**（启动 / 停止 / 重启 / 切换代理接管 / 重载内核 / 开机自启）与**OTA 在线检查与热更新模块**，以及进入独立全功能控制台 `:9099` 的入口。
 
-**真机实测**：并发 10 条持续连接，9 条 YouTube 连接**同时由 2 个不同物理节点承载**（6 + 3），各自下载字节持续增长；5 次采样中 `Shunt_YouTube` 的 `now` 依次轮转到 HY42 / 03 / HY41 / HY47 / HY48，`Shunt_TikTok` 错峰指向不同节点。
+明确置空 `handleSaveApply / handleSave / handleReset`，移除底部分流模式下拉、IPv6 开关、国内不进内核切换、组件更新表和底层 `form.Flag / ListValue / Value` 编辑项，其余区域只读展示核心运行状态 KPI。**目的**：LuCI 表单不再有机会覆盖独立控制台的 SSOT 配置。
 
-### 🧩 自动节点池全生命周期严查
+### 🧵 多线并发退化与容灾加固
 
-- 慢节点离散度过滤在 `_normalize_auto_node_item` / `evaluate_single_auto_node` / `resolve_node_for_country_strategy_with_failover` 三处同源；
-- 建池自动选取引入带宽择优与滑窗稳定性加权，严格排除 4 层 DAG 中的链式落地节点；
-- 6 步向导引入 `scopeDirty` 脏标记：改了来源/国家/关键词/容量后直接保存，会先自动重筛；
-- 低健康补位、手动移除、替换成员后强制 `write_all_configs()`，`sing-box.json` 的 urltest 与 selector 成员实时同步。
+- 池内健康线从 ≥2 跌到 1（或 0）时，0.5 秒调度器**立即把池 selector 与绑定分流组收敛到唯一存活主线 / `direct`**，不再出现上一拍恰好轮转在刚阵亡副线上的滞留；
+- 副线连续 3 次传输报错被隔离时，针对该故障线路执行存量连接清理并立即失效轮转状态缓存，杜绝长连接悬挂；
+- 池内候选全不可达或因地区锁区触发全组告警时，保存操作禁止把死节点回写到 `current_node`；
+- 前端按真实 `multi_line_nodes` 数量展示 `多线并发(N线)` / `1线·单线降级` / `0线·无可用`，分流组胶囊同步标注。
 
-### 📥 订阅自动同步可控
+### ✅ 上一轮反馈闭环
 
-- 每张订阅卡片新增「自动同步: 每Xh / 自动同步: 已关闭」胶囊开关，一键切换并持久化；
-- 编辑弹窗内新增独立「定时自动同步」开关，关闭时禁用间隔输入框，`auto_update=false` 不再被 `Number(val || 360)` 改回 360；
-- 手动点「立即同步」在未显式传参时严格保留原订阅的 `auto_update` 与 `update_interval_min`。
+按《FEEDBACK-云端-v2.5.0.md》，本版已闭环 FB-250-1（自测白名单纳入 `urltest` 字段）、FB-250-3（报告恢复四列精确指纹表）、FB-250-4（交接包顶层 `HANDOFF.md`）、FB-250-5（源码树 CHANGELOG 首版对齐 `APP_VERSION`），并新增 17 项打包门禁。
+
+> 验收侧仍发现 FB-250-2（混沌脚本未随包内置）与 FB-250-6（门禁正则空集假通过）未真正闭环，详见发布记录与云端反馈单；不影响本版功能。
 
 ### ✅ 稳定性
 
-延续 v2.4.8 的 P0 修复（nft 协议族分离），安装真实退出码 0、`nft=1`、重启后仍稳定挂载。Design Lint 18/18、发布门禁 16/16、深度混沌 39/39、`test_v102` 152/152。
-
-> 说明：官方 15 套回归中 `daemon --self-test` 一项因内置自测的 outbound 键白名单未同步 `urltest` 的 `url`/`interval`/`tolerance` 三个字段而误报；`sing-box check -c /etc/ai-link/sing-box.json` 实际返回 0，内核配置合法。详见发布记录。
+延续 P0 修复（nft 协议族分离）与多线并发出口：安装真实退出码 0、`nft=1`、重启后仍稳定；`gates_v101` 17/17、Design Lint 18/18、混沌 43/43、官方回归 15 套 14 通过（1 项为测试脚本硬编码旧版本号，已排除）。
 
 ---
 
@@ -44,7 +40,7 @@ ai-link update --apply
 curl -fsSL https://ai-link-official.pages.dev/upgrade.sh | sh
 ```
 
-支持从 2.0.x / 2.1.x / 2.2.x / 2.3.x / 2.4.x 直升，配置、节点、订阅、节点池全部保留，失败自动回滚。
+支持从 2.0.x / 2.1.x / 2.2.x / 2.3.x / 2.4.x / 2.5.0 直升，配置、节点、订阅、节点池全部保留，失败自动回滚。
 
 ---
 
@@ -59,7 +55,7 @@ curl -fsSL https://ai-link-official.pages.dev/upgrade.sh | sh
 ## 包指纹
 
 ```
-AI-LINK-v2.5.0.tar.gz   804,971 B
-md5     2ce231ef53c3a5fc31b3cbb38dc5a333
-sha256  6261d2e55fa102e8241324bea1953cd5501e772eb1c1b70e36c7d3c327cde6f3
+AI-LINK-v2.5.1.tar.gz   801,450 B
+md5     5f84fde33b6bb7e07a62fb3869fb2fe0
+sha256  ea5ffef0e69c5267133e12b0f6d7ed39ac5b23b68411a2a0d6c2d09a1fc6b550
 ```

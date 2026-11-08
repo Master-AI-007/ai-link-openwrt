@@ -1,3 +1,13 @@
+## [v2.5.1] - 2026-11-08
+### LuCI 极简重构 + 多线并发退化收敛 + 上轮反馈闭环
+- **LuCI 面板做减法**：仅保留服务启停/重启/代理接管/重载内核/开机自启与 OTA 在线升级模块，以及独立控制台入口；置空 `handleSaveApply / handleSave / handleReset`，移除分流模式下拉、IPv6/旁路开关、组件更新表与底层 UCI 表单，杜绝覆盖 `:9099` 的 SSOT 配置。
+- **多线并发退化秒级收敛**：健康线从 ≥2 跌到 1 或 0 时，0.5s 调度器立即把池 selector 与绑定分流组收敛到唯一存活主线 / `direct`，不再滞留已阵亡副线；副线连续 3 次传输报错时精准清理该线路存量连接并失效轮转缓存。
+- **全死/锁区保态**：`/api/auto_nodes/save` 在 `all_groups_dead_alert` 时禁止把死节点回写 `current_node`，严格保持 `direct`。
+- **真实线数展示**：按 `multi_line_nodes` 实际数量显示 `多线并发(N线)` / `1线·单线降级` / `0线·无可用`，分流组胶囊同步标注。
+- **FB-250-1/3/4/5 闭环**：自测白名单纳入 `urltest` 字段、报告四列精确指纹表、交接包顶层 `HANDOFF.md`、源码树 CHANGELOG 首版对齐 `APP_VERSION`；发布门禁由 16 项增至 17 项。
+- **稳定性**：P0 与多线出口未退化，安装退出码 0、`nft=1`、重启后稳定；Design Lint 18/18、门禁 17/17、混沌 43/43。
+- 验收侧仍记录：混沌脚本未随包内置、打包门禁正则空集假通过、报告第三行指纹不符、v102 脚本硬编码旧版本号、下拉线数虚标残留（详见 `FEEDBACK-云端-v2.5.1.md`）。
+
 ## [v2.5.0] - 2026-11-08
 ### 多线并发正式落地 + 节点池全生命周期审计 + 订阅自动同步开关
 - **多线并发闭环（承接《DIAG-多线并发功能生效性-20261108.md》）**：`generate_singbox_config()` 对 `dispatch_mode == "multi_line"` 的非敏感池生成 `urltest` 出口 `Auto_<pool>_MultiLine`（成员为剔除慢节点后的 `multi_line_nodes`，`interrupt_exist_connections: false`）；绑定组 `Shunt_YouTube` / `Shunt_TikTok` 成员置顶收敛并关闭连接打断，`Shunt_AI` 等 IP 敏感组保持单线锁定。

@@ -1,18 +1,33 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.5.0",
+  "latest": "2.5.1",
   "release_date": "2026-11-08",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.5.0",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.5.1",
   "highlights": [
-    "多线并发正式落地：为 multi_line 池生成内核 urltest 多出口编组，成员严格取剔除慢节点后的 multi_line_nodes",
-    "Shunt_YouTube / Shunt_TikTok 等绑定组开启 interrupt_exist_connections=false，存量连接不断流；Shunt_AI 等 IP 敏感组保持单线保护",
-    "新增 0.5 秒错峰轮转调度器，新建连接分摊到多个物理节点；实测并发连接同时由 2 个节点承载且各自有真实吞吐",
-    "自动节点池全生命周期严查：慢节点过滤三处同源、链式落地节点不入池、向导改筛选自动重筛、成员变更同步重写 sing-box.json",
-    "订阅卡片新增「自动同步 每Xh / 已关闭」一键开关，编辑弹窗加独立开关；手动点「立即同步」不再把 auto_update 重置为 true",
-    "P0 修复延续：nft 协议族分离，安装与重启均稳定挂载"
+    "LuCI 面板极简重构：只保留服务启停/重启/代理开关/重载内核/开机自启与 OTA 在线升级；彻底禁用底部 UCI 保存表单，杜绝覆盖独立控制台配置",
+    "多线并发池副线阵亡时 0.5 秒内收敛到唯一存活主线（或直接），不再滞留死副线",
+    "副线节点连续报错被隔离时精准清理该线路存量连接并失效轮转缓存，避免长连接悬挂",
+    "节点池全死/锁区时禁止保存把死节点写回 current_node，严格保持 direct 保护态",
+    "前端按真实 multi_line_nodes 展示「多线并发(N线) / 1线·单线降级 / 0线·无可用」及分流组胶囊",
+    "FB-250-1/3/4/5 闭环：self-test 白名单纳入 urltest 字段、报告四列指纹表、HANDOFF.md 回归、源码树 CHANGELOG 同步到 2.5.1",
+    "P0 与多线并发出口均未退化：安装与重启稳定挂载，urltest 出口与 0.5s 轮转调度器在线"
   ],
   "changelog": [
+    {
+      "version": "2.5.1",
+      "date": "2026-11-08",
+      "type": "feat",
+      "title": "LuCI 极简重构 + 多线并发退化收敛 + 上轮反馈闭环",
+      "items": [
+        "LuCI 面板移除分流模式/IPv6/旁路切换/组件更新表与底层 UCI 表单，禁用保存并应用/保存/复位按钮，仅保留基础服务与 OTA 模块",
+        "dispatch_multi_line_pools_tick() 在多线池退化为 1 线或 0 线时立即收敛 selector，避免 Clash 滞留已阵亡副线",
+        "副线连续 3 次传输报错时针对该线路执行 flush_conntrack_for_switch 并失效轮转状态缓存",
+        "/api/auto_nodes/save 在全死/锁区态保持 direct，禁止回写死节点",
+        "前端按真实 multi_line_nodes 数量展示线数与单线降级/无可用态",
+        "FB-250-1 自测白名单补齐 urltest 的 url/interval/tolerance/idle_timeout；FB-250-3 报告四列指纹表；FB-250-4 HANDOFF.md；FB-250-5 源码树 CHANGELOG 首版对齐 APP_VERSION"
+      ]
+    },
     {
       "version": "2.5.0",
       "date": "2026-11-08",
@@ -267,13 +282,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.5.0/AI-LINK-v2.5.0.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.5.1/AI-LINK-v2.5.1.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.5.0.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.5.1.tar.gz"
       ],
-      "size": 804971,
-      "md5": "2ce231ef53c3a5fc31b3cbb38dc5a333",
-      "sha256": "6261d2e55fa102e8241324bea1953cd5501e772eb1c1b70e36c7d3c327cde6f3"
+      "size": 801450,
+      "md5": "5f84fde33b6bb7e07a62fb3869fb2fe0",
+      "sha256": "ea5ffef0e69c5267133e12b0f6d7ed39ac5b23b68411a2a0d6c2d09a1fc6b550"
     }
   }
 }
