@@ -18,7 +18,7 @@
         <circle cx="20" cy="20" r="5.4" fill="none" stroke="#a994ff" stroke-width="1.6"/>
         <circle cx="20" cy="20" r="1.8" fill="#6ee7f5"/>
       </svg>
-      <span style="display:block"><b>AI-LINK</b><span>NEXUS · v2.4.9</span></span>
+      <span style="display:block"><b>AI-LINK</b><span>NEXUS · v2.5.0</span></span>
     </a>
     <div class="nav-links">
       <a href="/#features">核心能力</a>
@@ -36,12 +36,22 @@
 <main class="wrap log-wrap">
   <div class="log-head">
     <h1>更新日志</h1>
-    <span class="pill"><i></i> 当前最新 v2.4.9</span>
+    <span class="pill"><i></i> 当前最新 v2.5.0</span>
   </div>
 <article class="log-item latest">
   <div class="log-top">
-    <h2>v2.4.9</h2>
+    <h2>v2.5.0</h2>
     <span class="tag c">最新</span>
+    <time>2026-11-08</time>
+  </div>
+  <p style="margin:2px 0 6px;color:var(--dim)"></p>
+<h3>多线并发正式落地 + 节点池全生命周期审计 + 订阅自动同步开关</h3>
+<ul><li><b>多线并发闭环（承接《DIAG-多线并发功能生效性-20261108.md》）</b>：<code>generate_singbox_config()</code> 对 <code>dispatch_mode == &quot;multi_line&quot;</code> 的非敏感池生成 <code>urltest</code> 出口 <code>Auto_&lt;pool&gt;_MultiLine</code>（成员为剔除慢节点后的 <code>multi_line_nodes</code>，<code>interrupt_exist_connections: false</code>）；绑定组 <code>Shunt_YouTube</code> / <code>Shunt_TikTok</code> 成员置顶收敛并关闭连接打断，<code>Shunt_AI</code> 等 IP 敏感组保持单线锁定。</li><li><b>实时数据面轮转</b>：新增 <code>dispatch_multi_line_pools_tick()</code> 与 0.5s 守护线程，按组间错峰偏移轮转 selector，存量连接无损、新建连接分摊到多个物理节点；真机并发实测 9 条 YouTube 连接同时由 2 个不同节点承载且各有真实吞吐；切回 <code>single_best</code> 立即恢复单节点。</li><li><b>自动节点池全生命周期严查</b>：慢节点离散度过滤三处同源；建池带宽择优与滑窗稳定性加权、严格排除 4 层 DAG 链式落地节点；6 步向导 <code>scopeDirty</code> 脏标记自动重筛；补位/移除/替换成员后强制 <code>write_all_configs()</code> 同步内核配置。</li><li><b>订阅自动同步可控</b>：卡片新增「自动同步 每Xh / 已关闭」一键开关与编辑弹窗独立开关；手动「立即同步」不再把 <code>auto_update=false</code> 重置为 true；接口未显式传参时严格保留原间隔。</li><li><b>稳定性</b>：延续 nft 协议族分离，安装退出码 0、<code>nft=1</code>、重启后稳定；Design Lint 18/18、发布门禁 16/16、深度混沌 39/39、<code>test_v102</code> 152/152。</li><li>已知：<code>daemon --self-test</code> 内置白名单未同步 <code>urltest</code> 的 <code>url</code>/<code>interval</code>/<code>tolerance</code> 字段导致误报，<code>sing-box check</code> 实测 rc=0，内核配置合法。</li></ul>
+</article>
+<article class="log-item">
+  <div class="log-top">
+    <h2>v2.4.9</h2>
+    <span class="tag">历史</span>
     <time>2026-11-08</time>
   </div>
   <p style="margin:2px 0 6px;color:var(--dim)"></p>

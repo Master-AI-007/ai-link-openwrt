@@ -1,3 +1,12 @@
+## [v2.5.0] - 2026-11-08
+### 多线并发正式落地 + 节点池全生命周期审计 + 订阅自动同步开关
+- **多线并发闭环（承接《DIAG-多线并发功能生效性-20261108.md》）**：`generate_singbox_config()` 对 `dispatch_mode == "multi_line"` 的非敏感池生成 `urltest` 出口 `Auto_<pool>_MultiLine`（成员为剔除慢节点后的 `multi_line_nodes`，`interrupt_exist_connections: false`）；绑定组 `Shunt_YouTube` / `Shunt_TikTok` 成员置顶收敛并关闭连接打断，`Shunt_AI` 等 IP 敏感组保持单线锁定。
+- **实时数据面轮转**：新增 `dispatch_multi_line_pools_tick()` 与 0.5s 守护线程，按组间错峰偏移轮转 selector，存量连接无损、新建连接分摊到多个物理节点；真机并发实测 9 条 YouTube 连接同时由 2 个不同节点承载且各有真实吞吐；切回 `single_best` 立即恢复单节点。
+- **自动节点池全生命周期严查**：慢节点离散度过滤三处同源；建池带宽择优与滑窗稳定性加权、严格排除 4 层 DAG 链式落地节点；6 步向导 `scopeDirty` 脏标记自动重筛；补位/移除/替换成员后强制 `write_all_configs()` 同步内核配置。
+- **订阅自动同步可控**：卡片新增「自动同步 每Xh / 已关闭」一键开关与编辑弹窗独立开关；手动「立即同步」不再把 `auto_update=false` 重置为 true；接口未显式传参时严格保留原间隔。
+- **稳定性**：延续 nft 协议族分离，安装退出码 0、`nft=1`、重启后稳定；Design Lint 18/18、发布门禁 16/16、深度混沌 39/39、`test_v102` 152/152。
+- 已知：`daemon --self-test` 内置白名单未同步 `urltest` 的 `url`/`interval`/`tolerance` 字段导致误报，`sing-box check` 实测 rc=0，内核配置合法。
+
 ## [v2.4.9] - 2026-11-08
 ### 波形真值与节点池深度审计 + 概览视觉重构
 - **概览双卡片等高**：`#page-overview` / `#page-dns` 的 `.dashboard-grid.two-one` 显式 `align-items: stretch`，子卡 flex 纵向撑满、流量波形容器自适应拉伸；Chromium 实测左右卡片高度差 **0px**，分流页保持 `align-items: start` 零回归。

@@ -1,19 +1,32 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.4.9",
+  "latest": "2.5.0",
   "release_date": "2026-11-08",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.4.9",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.5.0",
   "highlights": [
-    "概览页并排双卡片严格等高（align-items: stretch + flex 填充），左右高度差 0px，分流页独立对齐零回归",
-    "全息流量波形接入真实账本：24 小时 / 7 天 / 30 天分时序列与 7×24 小时热力矩阵（168 单元）全部来自真实流量",
-    "波形图新增 4-KPI 速览栏、5 级自适应 Y 轴刻度、峰值时刻胶囊标注、鼠标/触控悬停十字准星明细浮窗",
-    "自动节点池滑窗评分打通 history 与 sparkline_20，对高丢包 / 高抖动节点施加稳定性惩罚并支持主动切换",
-    "多线并发慢节点离散度护栏：自动剔除拖尾离群节点，遥测暴露 multi_line_filtered_slow_count",
-    "池健康数达标时非破坏性保员（临时隔离节点不再被永久抹除），服务可用性完整支持 any 逻辑",
-    "P0 修复保持不退化：nft 协议族分离、安装与重启均稳定挂载；官方回归 15/15 套全绿"
+    "多线并发正式落地：为 multi_line 池生成内核 urltest 多出口编组，成员严格取剔除慢节点后的 multi_line_nodes",
+    "Shunt_YouTube / Shunt_TikTok 等绑定组开启 interrupt_exist_connections=false，存量连接不断流；Shunt_AI 等 IP 敏感组保持单线保护",
+    "新增 0.5 秒错峰轮转调度器，新建连接分摊到多个物理节点；实测并发连接同时由 2 个节点承载且各自有真实吞吐",
+    "自动节点池全生命周期严查：慢节点过滤三处同源、链式落地节点不入池、向导改筛选自动重筛、成员变更同步重写 sing-box.json",
+    "订阅卡片新增「自动同步 每Xh / 已关闭」一键开关，编辑弹窗加独立开关；手动点「立即同步」不再把 auto_update 重置为 true",
+    "P0 修复延续：nft 协议族分离，安装与重启均稳定挂载"
   ],
   "changelog": [
+    {
+      "version": "2.5.0",
+      "date": "2026-11-08",
+      "type": "feat",
+      "title": "多线并发正式落地 + 节点池全生命周期审计 + 订阅自动同步开关",
+      "items": [
+        "generate_singbox_config() 对 dispatch_mode == multi_line 的非敏感池生成 urltest 出口 Auto_<pool>_MultiLine，成员为剔除慢节点后的 multi_line_nodes，interrupt_exist_connections=False",
+        "绑定多线池的 Shunt_* 成员置顶收敛为 multi_line_nodes + urltest，interrupt_exist_connections=False；Shunt_AI 等敏感组保持 True 与单线锁定",
+        "新增 dispatch_multi_line_pools_tick() 与 0.5s 守护线程，按组间错峰轮转 selector，存量连接无损、新建连接分摊",
+        "apply_shunt_selections() 识别 live_now in multi_line_nodes，健康轮转期间不误触发 flush_conntrack_for_switch；切回 single_best 立即停止轮转",
+        "_normalize_auto_node_item / auto_screen / 6 步向导 / 池成员变更同步 等 6 项节点池深层隐患修复",
+        "订阅卡片 .sub-autosync-btn 与弹窗 #mdl-sub-auto-update 开关；/api/subscriptions/sync 未显式传参时严格保留 auto_update 与间隔"
+      ]
+    },
     {
       "version": "2.4.9",
       "date": "2026-11-08",
@@ -254,13 +267,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.4.9/AI-LINK-v2.4.9.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.5.0/AI-LINK-v2.5.0.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.4.9.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.5.0.tar.gz"
       ],
-      "size": 798103,
-      "md5": "953cab80be0bc29c2a889d061690475c",
-      "sha256": "858c8897a47a5d777a1ea29447a8aef1042fe4e18d456c10ee58a5232a93d17d"
+      "size": 804971,
+      "md5": "2ce231ef53c3a5fc31b3cbb38dc5a333",
+      "sha256": "6261d2e55fa102e8241324bea1953cd5501e772eb1c1b70e36c7d3c327cde6f3"
     }
   }
 }

@@ -1002,30 +1002,79 @@
       const ovMat = (state.rawStatus && state.rawStatus.overview_telemetry && Array.isArray(state.rawStatus.overview_telemetry.matrix_7x24))
         ? state.rawStatus.overview_telemetry.matrix_7x24
         : null;
-      if (ovMat && ovMat.length === 168) {
-        let maxCellB = 1;
-        for (let i = 0; i < ovMat.length; i++) {
-          const tb = Number(ovMat[i].total_bytes || 0);
-          if (tb > maxCellB) maxCellB = tb;
-        }
-        tm.innerHTML = ovMat.map(cell => {
-          const tb = Number(cell.total_bytes || 0);
-          const ratio = maxCellB > 0 ? Math.min(1, tb / maxCellB) : 0;
-          const alpha = tb > 0 ? (0.09 + ratio * 0.56).toFixed(3) : '0.032';
-          const tip = (cell.date || '') + ' ' + (cell.hour || '') + ' · 合计 ' + (cell.total_human || formatBytesHuman(tb));
-          return '<span class="matrix-cell" style="--alpha:' + alpha + '" title="' + esc(tip) + '"></span>';
-        }).join('');
-      } else if (!tm.children.length) {
-        const matrix = [];
+      let cells168 = ovMat && ovMat.length === 168 ? ovMat : null;
+      if (!cells168) {
+        cells168 = [];
+        const nowMs = Date.now();
         for (let day = 0; day < 7; day++) {
+          const dObj = new Date(nowMs - (6 - day) * 86400000);
+          const dLabel = String(dObj.getMonth() + 1).padStart(2, '0') + '-' + String(dObj.getDate()).padStart(2, '0');
           for (let hour = 0; hour < 24; hour++) {
-            const value = ((day * 37 + hour * 19 + day * hour * 3) % 100) / 100;
-            const alpha = (.035 + value * .48).toFixed(3);
-            const mb = Math.round(8 + value * 420);
-            matrix.push('<span class="matrix-cell" style="--alpha:' + alpha + '" title="周' + (day + 1) + ' ' + String(hour).padStart(2, '0') + ':00 · ' + mb + ' MB"></span>');
+            cells168.push({
+              date: dLabel,
+              hour: String(hour).padStart(2, '0') + ':00',
+              total_bytes: 0,
+              in_bytes: 0,
+              out_bytes: 0,
+              total_human: '0 B'
+            });
           }
         }
-        tm.innerHTML = matrix.join('');
+      }
+      let maxCellB = 0;
+      let maxIdx = -1;
+      let sum7dBytes = 0;
+      let activeSlots = 0;
+      for (let i = 0; i < cells168.length; i++) {
+        const tb = Number(cells168[i].total_bytes || 0);
+        sum7dBytes += tb;
+        if (tb > 0) activeSlots++;
+        if (tb > maxCellB) {
+          maxCellB = tb;
+          maxIdx = i;
+        }
+      }
+      const htmlParts = [];
+      for (let day = 0; day < 7; day++) {
+        const firstCell = cells168[day * 24] || {};
+        const rowLabel = day === 6 ? '今日' : (firstCell.date || ('D-' + (6 - day)));
+        htmlParts.push('<span class="matrix-row-label">' + esc(rowLabel) + '</span>');
+        for (let hour = 0; hour < 24; hour++) {
+          const idx = day * 24 + hour;
+          const cell = cells168[idx] || {};
+          const tb = Number(cell.total_bytes || 0);
+          const ratio = maxCellB > 0 ? Math.min(1, tb / maxCellB) : 0;
+          const alpha = tb > 0 ? (0.12 + ratio * 0.72).toFixed(3) : '0.045';
+          const isPeak = (idx === maxIdx && maxCellB > 0);
+          const tip = (cell.date || rowLabel) + ' ' + (cell.hour || (String(hour).padStart(2, '0') + ':00')) + ' · 合计 ' + (cell.total_human || fmtBytes(tb));
+          htmlParts.push('<span class="matrix-cell' + (isPeak ? ' is-peak' : '') + '" style="--alpha:' + alpha + '" data-tip="' + esc(tip) + '" title="' + esc(tip) + '"></span>');
+        }
+      }
+      tm.innerHTML = htmlParts.join('');
+      const elPeak = $('#tm-kpi-peak');
+      const elTot = $('#tm-kpi-total');
+      const elAct = $('#tm-kpi-active');
+      if (elPeak) {
+        if (maxIdx >= 0 && maxCellB > 0) {
+          const pc = cells168[maxIdx];
+          elPeak.textContent = (pc.date || '今日') + ' ' + (pc.hour || '00:00') + ' (' + (pc.total_human || fmtBytes(maxCellB)) + ')';
+        } else {
+          elPeak.textContent = '待产生流量 (0 B)';
+        }
+      }
+      if (elTot) elTot.textContent = fmtBytes(sum7dBytes);
+      if (elAct) elAct.textContent = ((activeSlots * 100) / 168).toFixed(1) + '% (' + activeSlots + '/168h)';
+      if (!tm.dataset.hoverBound) {
+        tm.dataset.hoverBound = '1';
+        const updateHover = (ev) => {
+          const cellEl = ev.target && ev.target.closest ? ev.target.closest('.matrix-cell') : null;
+          const hEl = $('#tm-kpi-hover');
+          if (cellEl && hEl && cellEl.dataset.tip) {
+            hEl.textContent = cellEl.dataset.tip;
+          }
+        };
+        tm.addEventListener('mouseover', updateHover);
+        tm.addEventListener('click', updateHover);
       }
     }
 
@@ -1393,17 +1442,24 @@
     const stats = state.shuntHitStats || {};
     let list = Array.isArray(stats[tab]) ? stats[tab] : [];
     if (!list.length) {
-      list = mock.groups.slice(0, 6).map((g, idx) => ({
+      list = mock.groups.slice(0, 6).map((g) => ({
         key: g.id,
         title: g.name,
         subtitle: g.resolved_node === 'direct' ? 'DIRECT 宽带直连' : ('出口: ' + (g.resolved_node || g.auto_node_name || '自动池')),
-        hits: Math.max(1, (8 - idx) * 3),
-        bytes_str: ((8 - idx) * 1.4).toFixed(1) + ' MB',
-        share_pct: Math.round(100 / Math.max(1, mock.groups.length)),
+        hits: Number(g.hit_count || 0),
+        bytes_str: fmtBytes(Number(g.hit_bytes || 0)),
+        share_pct: 0,
         sample_target: (g.domains && g.domains[0]) || 'chatgpt.com'
       }));
     }
-    box.innerHTML = list.slice(0, 10).map((it, idx) => {
+    const totalHits = Number(stats.total_hits != null ? stats.total_hits : list.reduce((acc, it) => acc + Number(it.hits != null ? it.hits : (it.count || 0)), 0));
+    const topItem = list[0] ? (list[0].title || list[0].group_title || list[0].rule || list[0].outbound || list[0].key || '--') : '--';
+    const summaryBar = '<div class="traffic-kpi-strip" style="grid-template-columns:repeat(3,1fr);margin-bottom:6px">' +
+      '<div class="traffic-kpi-item"><span>1h 累计命中</span><b class="mono">' + totalHits + ' 次</b></div>' +
+      '<div class="traffic-kpi-item"><span>最高频命中项</span><b class="mono">' + esc(topItem) + '</b></div>' +
+      '<div class="traffic-kpi-item"><span>活跃排行项</span><b class="mono">' + list.length + ' 项</b></div>' +
+    '</div>';
+    box.innerHTML = summaryBar + list.slice(0, 10).map((it, idx) => {
       const title = it.title || it.group_title || it.rule || it.outbound || it.key || ('排行项 #' + (idx + 1));
       const sub = it.subtitle || (it.sample_target ? ('代表目标: ' + it.sample_target) : '最近 1 小时活跃匹配');
       const hits = Number(it.hits != null ? it.hits : (it.count || 0));
@@ -1874,6 +1930,9 @@
             '</div>' +
           '</div>';
         }
+        const autoSyncBtnHtml = '<button type="button" class="sub-autosync-btn ' + (s.auto_update !== false ? 'on' : 'off') + '" data-action="sub-toggle-auto-update" data-sub="' + i + '" title="点击开启或关闭此订阅源的定时自动同步">' +
+          (s.auto_update !== false ? ('自动同步: 每' + Math.max(1, Math.round(Number(s.update_interval_min || 360) / 60)) + 'h') : '自动同步: 已关闭') +
+        '</button>';
         return '<article class="subscription-card selectable ' + (isCardActive ? 'active' : '') + '" data-sub-select="' + esc(subIdVal) + '" title="点击筛选「' + esc(s.name) + '」的节点列表">' +
           '<div class="sub-top">' +
             '<div><h3>' + esc(s.name) + '</h3><div class="sub-url mono" title="' + esc(rawUrl) + '">' + esc(hostPreview) + '</div></div>' +
@@ -1881,7 +1940,10 @@
           '</div>' +
           '<div class="sub-metrics">' +
             '<div><b>' + esc(dispCount) + '</b><span style="color:var(--muted);">个节点</span></div>' +
-            '<span class="status-pill">' + (s.enabled ? '已启用 · 参与选路' : '已停用 · 正交隔离') + '</span>' +
+            '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">' +
+              autoSyncBtnHtml +
+              '<span class="status-pill">' + (s.enabled ? '已启用 · 参与选路' : '已停用 · 正交隔离') + '</span>' +
+            '</div>' +
           '</div>' +
           subHealthHtml +
           '<div class="sub-actions">' +
@@ -2090,7 +2152,7 @@
       const dpmLabel = state.dataPlaneMode === 'tun_full'
         ? '全量 TUN 虚拟网卡 (ailink0)'
         : (state.dataPlaneMode === 'tproxy_tcp_tun_udp' ? 'TCP TProxy + UDP TUN 游戏混合' : 'TProxy + Redirect 零拷贝');
-      coreSubEl.textContent = 'AI-LINK v2.4.9 · ' + dpmLabel;
+      coreSubEl.textContent = 'AI-LINK v2.5.0 · ' + dpmLabel;
     }
     setSwitchState($('#toggle-require-lan-auth'), state.authEnabled);
     setSwitchState($('#toggle-ops-entry-bypass'), state.entryBypass);
@@ -3188,6 +3250,7 @@
                   return 0;
                 })(),
                 active_group_index: Number(a.active_group_index || 1),
+                raw_current_node: a.current_node || 'direct',
                 current_node: (() => {
                   if (a.current_node && a.current_node !== 'direct') return cleanNodeDisplayName(a.current_node);
                   const boundGrp = Array.isArray(sh.groups) ? sh.groups.find(g => g.auto_node_id === a.id && (g.shunt_mode === 'auto' || g.mode === 'auto') && g.resolved_node && g.resolved_node !== 'direct') : null;
@@ -3871,15 +3934,48 @@
       const devs = Array.isArray(data.by_device) ? data.by_device : [];
       const nodes = Array.isArray(data.by_node) ? data.by_node : [];
       const doms = Array.isArray(data.by_domain) ? data.by_domain : [];
-      return (
-        '<div class="glass-card" style="padding:10px"><h4 style="margin:0 0 8px;font-size:13px">01 / 终端设备耗流排行</h4>' +
-          (devs.slice(0, 6).map(d => '<div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid var(--line)"><span>' + esc(d.name || d.ip) + '</span><b class="mono">' + esc(d.total_human || ((d.total_mb || 0) + ' MiB')) + '</b></div>').join('') || '<div class="muted" style="font-size:12px">暂无活跃终端流量</div>') +
+      const hrs = Array.isArray(data.hourly_series) ? data.hourly_series : [];
+      const days = Array.isArray(data.daily_series) ? data.daily_series : [];
+      const maxHrB = Math.max(1, ...hrs.map(h => Number(h.total_bytes || 0)));
+      let peakHr = { hour: '--:--', total_human: '0 B', total_bytes: 0 };
+      hrs.forEach(h => { if (Number(h.total_bytes || 0) >= peakHr.total_bytes) peakHr = h; });
+      const sum7dB = days.reduce((acc, d) => acc + Number(d.total_bytes || 0), 0);
+      const topDev = devs[0] ? ((devs[0].name || devs[0].ip) + ' (' + (devs[0].total_human || '0 B') + ')') : '暂无终端';
+      const topNd = nodes[0] ? (cleanNodeDisplayName(nodes[0].node || nodes[0].node_tag || '') + ' (' + (nodes[0].total_human || '0 B') + ')') : '暂无节点';
+      const renderRankRow = (labelHtml, valStr, pctVal) => {
+        const pNum = Math.max(0, Math.min(100, Number(pctVal || 0)));
+        return '<div class="ti-rank-row">' +
+          '<div class="ti-rank-head"><span>' + labelHtml + '</span><b class="mono">' + esc(valStr) + ' <small style="color:var(--muted)">(' + pNum.toFixed(1) + '%)</small></b></div>' +
+          '<div class="ti-rank-bar"><i style="width:' + Math.max(3, pNum) + '%"></i></div>' +
+        '</div>';
+      };
+      const kpiHtml = '<div class="traffic-kpi-strip" style="grid-column:1/-1;margin-bottom:4px">' +
+        '<div class="traffic-kpi-item"><span>7日累计归因吞吐</span><b class="mono">' + esc(data.grand_total_human || fmtBytes(sum7dB)) + '</b></div>' +
+        '<div class="traffic-kpi-item"><span>今日最高峰时段</span><b class="mono">' + esc((peakHr.hour || '--') + ' · ' + (peakHr.total_human || fmtBytes(peakHr.total_bytes || 0))) + '</b></div>' +
+        '<div class="traffic-kpi-item"><span>头号耗流终端</span><b class="mono">' + esc(topDev) + '</b></div>' +
+        '<div class="traffic-kpi-item"><span>主承载出站节点</span><b class="mono">' + esc(topNd) + '</b></div>' +
+      '</div>';
+      const trendHtml = hrs.length ? (
+        '<div class="glass-card" style="grid-column:1/-1;padding:12px">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--muted)"><span>今日 24 小时分时流量柱状分布 (00:00 - 23:00)</span><span class="mono">峰值 ' + esc(peakHr.hour || '--') + ' (' + esc(peakHr.total_human || '0 B') + ')</span></div>' +
+          '<div class="ti-trend-bars">' +
+            hrs.map(h => {
+              const tb = Number(h.total_bytes || 0);
+              const pctH = Math.max(4, Math.round((tb / maxHrB) * 100));
+              return '<div class="ti-trend-col" title="' + esc((h.hour || '') + ' · ' + (h.total_human || fmtBytes(tb))) + '"><i style="height:' + pctH + '%;opacity:' + (tb > 0 ? (0.35 + 0.65 * (tb / maxHrB)).toFixed(2) : '0.12') + '"></i></div>';
+            }).join('') +
+          '</div>' +
+        '</div>'
+      ) : '';
+      return kpiHtml + trendHtml + (
+        '<div class="glass-card" style="padding:12px;height:100%"><h4 style="margin:0 0 8px;font-size:13px">01 / 终端设备耗流排行</h4>' +
+          (devs.slice(0, 6).map(d => renderRankRow(esc(d.name || d.ip), d.total_human || ((d.total_mb || 0) + ' MiB'), d.share_pct != null ? d.share_pct : d.pct)).join('') || '<div class="muted" style="font-size:12px">暂无活跃终端流量</div>') +
         '</div>' +
-        '<div class="glass-card" style="padding:10px"><h4 style="margin:0 0 8px;font-size:13px">02 / 出站节点耗流排行</h4>' +
-          (nodes.slice(0, 6).map(n => '<div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid var(--line)"><span>' + esc(cleanNodeDisplayName(n.node || n.node_tag || '')) + ' <small style="color:var(--muted)">[' + esc(n.line_badge || '直连') + ']</small></span><b class="mono">' + esc(n.total_human || ((n.total_mb || 0) + ' MiB')) + '</b></div>').join('') || '<div class="muted" style="font-size:12px">暂无节点统计</div>') +
+        '<div class="glass-card" style="padding:12px;height:100%"><h4 style="margin:0 0 8px;font-size:13px">02 / 出站节点耗流排行</h4>' +
+          (nodes.slice(0, 6).map(n => renderRankRow(esc(cleanNodeDisplayName(n.node || n.node_tag || '')) + ' <small style="color:var(--muted)">[' + esc(n.line_badge || '直连') + ']</small>', n.total_human || ((n.total_mb || 0) + ' MiB'), n.share_pct != null ? n.share_pct : n.pct)).join('') || '<div class="muted" style="font-size:12px">暂无节点统计</div>') +
         '</div>' +
-        '<div class="glass-card" style="padding:10px"><h4 style="margin:0 0 8px;font-size:13px">03 / 目标域名耗流排行</h4>' +
-          (doms.slice(0, 6).map(dm => '<div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid var(--line)"><span class="mono">' + esc(dm.domain || dm.host || '') + '</span><b class="mono">' + esc(dm.total_human || ((dm.total_mb || 0) + ' MiB')) + '</b></div>').join('') || '<div class="muted" style="font-size:12px">暂无域名统计</div>') +
+        '<div class="glass-card" style="padding:12px;height:100%"><h4 style="margin:0 0 8px;font-size:13px">03 / 目标域名耗流排行</h4>' +
+          (doms.slice(0, 6).map(dm => renderRankRow('<span class="mono">' + esc(dm.domain || dm.host || '') + '</span>', dm.total_human || ((dm.total_mb || 0) + ' MiB'), dm.share_pct != null ? dm.share_pct : dm.pct)).join('') || '<div class="muted" style="font-size:12px">暂无域名统计</div>') +
         '</div>'
       );
     };
@@ -4046,6 +4142,7 @@
     const initPoolTags = (p && p.groups && p.groups[0]) ? extractGroupTags(p.groups[0]) : [];
     const selectedSet = new Set(initPoolTags);
     const testResultsByTag = {};
+    let scopeDirty = false;
 
     const initSourcesArr = (p && Array.isArray(p.scope_sources) && p.scope_sources.length)
       ? p.scope_sources
@@ -4124,7 +4221,7 @@
             '<span class="an-wizard-step-title">1. 节点池名称</span>' +
             '<span class="an-wizard-step-sub">可在智能分流组或非分流模式（白名单 / GFW / 全局）中直接选用</span>' +
           '</div>' +
-          '<div class="modal-field" style="margin:0"><input id="mdl-an-name" value="' + esc(p ? p.name : 'AI 与流媒体高速池') + '" placeholder="如：AI 专线节点池 / 主力大流量池"></div>' +
+          '<div class="modal-field" style="margin:0"><input id="mdl-an-name" value="' + esc(p ? p.name : '高速自动节点池') + '" placeholder="如：流媒体多线并发池 / 主力高速池"></div>' +
         '</div>' +
 
         /* Step 2: Multi-Select Subscriptions (including Custom) */
@@ -4266,7 +4363,7 @@
         const srcArr = Array.from(selectedSources);
         const ctryArr = Array.from(selectedCountries);
 
-        if (selectedSet.size === 0) {
+        if (selectedSet.size === 0 || scopeDirty) {
           await executeAutoSelectionWithProgress();
         }
         const finalTags = Array.from(selectedSet).slice(0, tSize);
@@ -4333,9 +4430,22 @@
     }
 
     function getScopeFilteredNodes() {
+      const kwRaw = ($('#mdl-an-keywords') && $('#mdl-an-keywords').value.trim()) || keywordFilter || '';
+      const kwM = (($('#mdl-an-kw-mode') && $('#mdl-an-kw-mode').value) || keywordMode || 'OR').toUpperCase();
+      const kwTokens = kwRaw.split(/[,，\s]+/).map(x => x.trim().toLowerCase()).filter(Boolean);
       return getSourceFilteredNodes().filter(n => {
-        if (selectedCountries.has('ALL') || !selectedCountries.size) return true;
-        return selectedCountries.has(classifyNodeCountry(n));
+        if (!selectedCountries.has('ALL') && selectedCountries.size && !selectedCountries.has(classifyNodeCountry(n))) {
+          return false;
+        }
+        if (kwTokens.length) {
+          const hay = String((n.tag || '') + ' ' + (n.name || '') + ' ' + (n.display_tag || '')).toLowerCase();
+          if (kwM === 'AND') {
+            if (!kwTokens.every(k => hay.includes(k))) return false;
+          } else {
+            if (!kwTokens.some(k => hay.includes(k))) return false;
+          }
+        }
+        return true;
       });
     }
 
@@ -4414,8 +4524,11 @@
             return '<span class="status-pill" style="padding:2px 6px;color:' + (ok ? 'var(--mint)' : 'var(--rose)') + ';border-color:' + (ok ? 'var(--ok-border)' : 'var(--err-border)') + '">' + esc(k.toUpperCase() + (ok ? ' 可用' : ' 受限') + ms) + '</span>';
           }).join(' ');
         }
-        const isCurrentExit = Boolean(p && p.current_node === tag) || idx === 0;
-        const exitPill = isCurrentExit ? ' <span class="status-pill" style="color:var(--cyan);border-color:var(--accent-border)">最快首选</span>' : '';
+        const isCurrentExit = Boolean(p && (p.raw_current_node === tag || p.current_node === tag)) || idx === 0;
+        const isMlActive = dispatchMode === 'multi_line' && (!p || !Array.isArray(p.multi_line_nodes) || !p.multi_line_nodes.length || p.multi_line_nodes.includes(tag));
+        const exitPill = isCurrentExit
+          ? ' <span class="status-pill" style="color:var(--cyan);border-color:var(--accent-border)">' + (dispatchMode === 'multi_line' ? '并发主线' : '最快首选') + '</span>'
+          : (isMlActive ? ' <span class="status-pill" style="color:var(--mint)">并发副线</span>' : '');
         rows.push('<tr data-an-row-tag="' + esc(tag) + '" data-an-row-group="1">' +
           '<td><span class="status-pill">#' + (idx + 1) + '</span></td>' +
           '<td><b>' + esc(n.name || cleanNodeDisplayName(tag)) + '</b>' + exitPill + ' ' + renderGoogleRegionBadgeHtml(n, false) + '</td>' +
@@ -4457,6 +4570,7 @@
       }
       setProgressState(true, 8, '正在按所选订阅源与国家地区筛选候选节点...');
 
+      scopeDirty = false;
       const startRes = await callRouterApi('/api/auto_nodes/auto_screen', 'POST', {
         async: true,
         pool_mode: poolMode,
@@ -4468,6 +4582,10 @@
         scope_countries: ctryArr.length ? ctryArr : ['ALL'],
         target_size: targetSize,
         replenish_threshold: replenishThresh,
+        dispatch_mode: dispatchMode,
+        bandwidth_prefer: Boolean($('#mdl-an-bw-prefer') && $('#mdl-an-bw-prefer').checked),
+        bandwidth_interval_h: Number(($('#mdl-an-bw-interval') && $('#mdl-an-bw-interval').value) || 6),
+        bandwidth_limit_mb: Number(($('#mdl-an-bw-limit') && $('#mdl-an-bw-limit').value) || 16),
         keyword_filter: ($('#mdl-an-keywords') && $('#mdl-an-keywords').value.trim()) || '',
         keyword_mode: ($('#mdl-an-kw-mode') && $('#mdl-an-kw-mode').value) || 'OR',
         run_live_probe: true
@@ -4617,6 +4735,7 @@
             else selectedSources.delete(val);
             if (!selectedSources.size) selectedSources.add('ALL');
           }
+          scopeDirty = true;
           renderSourceChecks();
           renderCountryChips();
           return;
@@ -4633,6 +4752,8 @@
             const trimmed = Array.from(selectedSet).slice(0, targetSize);
             selectedSet.clear();
             trimmed.forEach(t => selectedSet.add(t));
+          } else if (selectedSet.size < targetSize) {
+            scopeDirty = true;
           }
           renderSelectedTable();
           return;
@@ -4642,12 +4763,21 @@
           return;
         }
         if (ev.target.classList.contains('chk-an-svc') || ev.target.id === 'mdl-an-bw-prefer' || ev.target.id === 'mdl-an-bw-interval' || ev.target.id === 'mdl-an-bw-limit') {
+          if (ev.target.classList.contains('chk-an-svc') || ev.target.id === 'mdl-an-bw-prefer') scopeDirty = true;
           syncDispatchAndBwGuardrails();
           return;
         }
         if (ev.target.id === 'mdl-an-keywords' || ev.target.id === 'mdl-an-kw-mode') {
+          scopeDirty = true;
           renderCountryChips();
           return;
+        }
+      });
+
+      builderRoot.addEventListener('input', ev => {
+        if (ev.target && ev.target.id === 'mdl-an-keywords') {
+          scopeDirty = true;
+          renderCountryChips();
         }
       });
 
@@ -4666,6 +4796,7 @@
             else selectedCountries.add(c);
             if (!selectedCountries.size) selectedCountries.add('ALL');
           }
+          scopeDirty = true;
           renderCountryChips();
           return;
         }
@@ -5013,12 +5144,23 @@
 
   function openNewSubscriptionModal(subIdx) {
     const s = (subIdx != null && mock.subscriptions[subIdx]) ? mock.subscriptions[subIdx] : null;
+    const initAutoUpdate = s ? (s.auto_update !== false) : true;
+    const initInterval = s ? (Number(s.update_interval_min) > 0 ? Number(s.update_interval_min) : 360) : 360;
     openModal(
       s ? ('编辑订阅源 · ' + s.name) : '新增或更新机场订阅源',
       '<div class="modal-form">' +
         '<div class="modal-grid-2">' +
           '<div class="modal-field"><label>订阅名称</label><input id="mdl-sub-name" value="' + esc(s ? s.name : '') + '" placeholder="如：主力高速机场"></div>' +
-          '<div class="modal-field"><label>定时自动同步间隔（分钟）</label><input id="mdl-sub-interval" type="number" value="' + esc(s ? s.update_interval_min || 360 : 360) + '"></div>' +
+          '<div class="modal-field">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">' +
+              '<label style="margin:0">定时自动同步间隔（分钟）</label>' +
+              '<label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;margin:0">' +
+                '<input type="checkbox" id="mdl-sub-auto-update" ' + (initAutoUpdate ? 'checked' : '') + ' aria-label="开启定时自动同步">' +
+                '<span id="lbl-mdl-sub-auto-update" style="color:' + (initAutoUpdate ? 'var(--cyan)' : 'var(--muted)') + '">' + (initAutoUpdate ? '已开启自动同步' : '已关闭 (仅手动)') + '</span>' +
+              '</label>' +
+            '</div>' +
+            '<input id="mdl-sub-interval" type="number" min="15" value="' + esc(initInterval) + '" ' + (initAutoUpdate ? '' : 'disabled') + '>' +
+          '</div>' +
         '</div>' +
         '<div class="modal-field"><label>订阅链接 URL (支持 Clash / Sing-box / Base64 / V2Ray 订阅链接)</label><input id="mdl-sub-url" value="' + esc(s && !String(s.url).includes('***') ? s.url : '') + '" placeholder="https://..."></div>' +
         '<div class="modal-field"><label>离线订阅文本导入（可选：若路由器无法直连订阅源，可直接粘贴订阅内容）</label><textarea id="mdl-sub-rawtext" rows="3" placeholder="可选：直接粘贴 Base64 或 YAML/URI 列表"></textarea></div>' +
@@ -5031,11 +5173,33 @@
       async () => {
         const name = ($('#mdl-sub-name') && $('#mdl-sub-name').value.trim()) || (s ? s.name : '主力机场订阅');
         const url = ($('#mdl-sub-url') && $('#mdl-sub-url').value.trim()) || (s ? s.url : '');
-        const interval = Number(($('#mdl-sub-interval') && $('#mdl-sub-interval').value) || 360);
+        const rawIv = $('#mdl-sub-interval') ? Number($('#mdl-sub-interval').value) : 360;
+        const interval = (Number.isFinite(rawIv) && rawIv >= 0) ? rawIv : 360;
+        const autoChk = $('#mdl-sub-auto-update');
+        const autoUp = autoChk ? Boolean(autoChk.checked && interval > 0) : (interval > 0);
+        const effInterval = interval > 0 ? interval : 360;
         const raw_text = ($('#mdl-sub-rawtext') && $('#mdl-sub-rawtext').value.trim()) || '';
         if (!url && !raw_text) { toast('请输入订阅链接 URL 或粘贴离线订阅内容', 'warn'); return; }
         closeModal();
         if (s) {
+          const urlChanged = Boolean(url && !url.includes('***') && url !== s.url);
+          if (!urlChanged && !raw_text) {
+            s.name = name;
+            s.auto_update = autoUp;
+            s.update_interval_min = effInterval;
+            renderSubscriptionsAndNodes(true);
+            await callRouterApi('/api/subscriptions/update_settings', 'POST', {
+              id: s.id,
+              old_url: s.url,
+              name,
+              auto_update: autoUp,
+              update_interval_min: effInterval,
+              sync_now: false
+            });
+            await syncBackendStatus(false, true);
+            toast('已保存订阅「' + name + '」设置（定时自动同步：' + (autoUp ? ('每 ' + Math.max(1, Math.round(effInterval / 60)) + 'h') : '已关闭') + '）');
+            return;
+          }
           await runSubscriptionSyncWithModal({
             mode: 'edit',
             payload: {
@@ -5043,8 +5207,8 @@
               old_url: s.url,
               new_url: url.includes('***') ? '' : url,
               name,
-              update_interval_min: interval,
-              auto_update: interval > 0,
+              update_interval_min: effInterval,
+              auto_update: autoUp,
               raw_text,
               sync_now: !raw_text
             }
@@ -5057,12 +5221,24 @@
         } else {
           await runSubscriptionSyncWithModal({
             mode: 'add',
-            payload: { name, url, auto_update: interval > 0, update_interval_min: interval, test_after_add: true }
+            payload: { name, url, auto_update: autoUp, update_interval_min: effInterval, test_after_add: true }
           });
         }
       },
-      s ? '保存并同步' : '添加并拉取'
+      s ? '保存设置' : '添加并拉取'
     );
+    const autoChkEl = $('#mdl-sub-auto-update');
+    if (autoChkEl) {
+      autoChkEl.addEventListener('change', () => {
+        const ivEl = $('#mdl-sub-interval');
+        const lblEl = $('#lbl-mdl-sub-auto-update');
+        if (ivEl) ivEl.disabled = !autoChkEl.checked;
+        if (lblEl) {
+          lblEl.textContent = autoChkEl.checked ? '已开启自动同步' : '已关闭 (仅手动)';
+          lblEl.style.color = autoChkEl.checked ? 'var(--cyan)' : 'var(--muted)';
+        }
+      });
+    }
   }
 
   function openBatchImportModal() {
@@ -5906,7 +6082,7 @@
         openModal(
           'OTA 在线升级状态与确认',
           '<div class="detail-grid">' +
-            '<div><span>当前运行版本</span><b class="mono">v' + esc((res && res.current) || (state.rawStatus && state.rawStatus.version) || '2.4.9') + '</b></div>' +
+            '<div><span>当前运行版本</span><b class="mono">v' + esc((res && res.current) || (state.rawStatus && state.rawStatus.version) || '2.5.0') + '</b></div>' +
             '<div><span>升级阶段</span><b>' + esc(prog.stage || 'idle (就绪)') + '</b></div>' +
             '<div><span>进度百分比</span><b>' + esc((prog.percent != null ? prog.percent : 100) + '%') + '</b></div>' +
             '<div><span>状态说明</span><b>' + esc(prog.message || '当前无进行中的升级任务') + '</b></div>' +
@@ -6955,6 +7131,24 @@
         await syncBackendStatus(true, true);
         break;
       }
+      case 'sub-toggle-auto-update': {
+        const idx = Number(el && el.dataset.sub);
+        const sub = mock.subscriptions[idx];
+        if (!sub) return;
+        const nextAuto = !(sub.auto_update !== false);
+        sub.auto_update = nextAuto;
+        renderSubscriptionsAndNodes(true);
+        await callRouterApi('/api/subscriptions/update_settings', 'POST', {
+          id: sub.id,
+          old_url: sub.url,
+          auto_update: nextAuto,
+          update_interval_min: Number(sub.update_interval_min || 360),
+          sync_now: false
+        });
+        toast('订阅「' + sub.name + '」定时自动同步已' + (nextAuto ? '开启' : '关闭（仅手动同步）'));
+        await syncBackendStatus(false, true);
+        break;
+      }
       case 'sub-preview-sync': {
         const idx = Number(el && el.dataset.sub);
         const s = mock.subscriptions[idx];
@@ -7110,7 +7304,7 @@
           if (applyBtn) applyBtn.classList.remove('hidden');
           toast('发现新版本 v' + res.latest + '，可点击「立即升级」');
         } else {
-          const curVer = (res && res.current) || (state.rawStatus && state.rawStatus.version) || '2.4.9';
+          const curVer = (res && res.current) || (state.rawStatus && state.rawStatus.version) || '2.5.0';
           if (subEl) subEl.textContent = '当前已是最新版本 (v' + curVer + ' · 已校验云端清单)';
           toast('当前已是最新版本 (v' + curVer + ')');
         }
@@ -7776,6 +7970,15 @@
         state.shuntObsTab = targetPane;
         $$('#shunt-obs-tabs [data-shunt-obs-tab]').forEach(b => b.classList.toggle('active', b.dataset.shuntObsTab === targetPane));
         $$('[data-shunt-obs-pane]').forEach(pane => pane.classList.toggle('shunt-obs-hidden', pane.dataset.shuntObsPane !== targetPane));
+        if (targetPane === 'hits') {
+          renderShuntHitLeaderboard();
+          callRouterApi('/api/shunt/hit_stats', 'GET').then(res => {
+            if (res && res.ok !== false) {
+              state.shuntHitStats = res;
+              renderShuntHitLeaderboard();
+            }
+          });
+        }
         return;
       }
 

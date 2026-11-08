@@ -5017,9 +5017,20 @@ def _normalize_auto_node_item(an: dict, conf_dir: Path = CONF_DIR, saved_nodes: 
         item["multi_line_locked"] = False
         item["multi_line_locked_reason"] = ""
     if item["dispatch_mode"] == "multi_line":
-        ml_tags = [m["tag"] for m in ok_members[:max(2, int(item.get("target_size") or 5))]]
+        _cap_n_ml = max(2, int(item.get("target_size") or 5))
+        _cand_n_ml = ok_members[:_cap_n_ml]
+        if _cand_n_ml:
+            _base_n_eff = max(10.0, float(_cand_n_ml[0].get("eff_rank_ms") or _cand_n_ml[0].get("delay_ms") or 50.0))
+            _max_n_eff = max(_base_n_eff * 2.2, _base_n_eff + 160.0)
+            ml_tags = [m["tag"] for m in _cand_n_ml if float(m.get("eff_rank_ms") or m.get("delay_ms") or 9999.0) <= _max_n_eff]
+            if not ml_tags:
+                ml_tags = [_cand_n_ml[0]["tag"]]
+            item["multi_line_filtered_slow_count"] = max(0, len(_cand_n_ml) - len(ml_tags))
+        else:
+            ml_tags = []
+            item["multi_line_filtered_slow_count"] = 0
         if not ml_tags and g1_tags_now and not any_tested_dead and not item.get("all_groups_dead_alert") and cur_t != "direct":
-            ml_tags = [t for t in g1_tags_now if t and t != "direct"][:max(2, int(item.get("target_size") or 5))]
+            ml_tags = [t for t in g1_tags_now if t and t != "direct"][:_cap_n_ml]
         item["multi_line_nodes"] = ml_tags
         item["active_lines_count"] = len(ml_tags)
     else:
@@ -5222,13 +5233,16 @@ def is_pool_ip_sensitive(an: dict) -> bool:
         return False
     pid = str(an.get("id") or "").strip().lower()
     pname = str(an.get("name") or "").strip().lower()
-    if pid in ("auto_ai", "auto_soul") or any(k in pname for k in ("ai", "gemini", "gpt", "claude", "soul", "账号", "电商", "店铺")):
+    is_svc = bool(an.get("service_check_enabled")) or an.get("pool_mode") == "service_check" or an.get("mode") == "full"
+    if pid in ("auto_ai", "auto_soul"):
         return True
     if str(an.get("sticky_mode") or "").strip().lower() in ("residential_isp", "keep_country"):
         return True
-    if bool(an.get("service_check_enabled")) or an.get("pool_mode") == "service_check" or an.get("mode") == "full":
+    if is_svc:
         svcs = {str(s).strip().lower() for s in (an.get("service_checks") or []) if str(s).strip()}
         if svcs & IP_SENSITIVE_SERVICES:
+            return True
+        if any(k in pname for k in ("ai", "gemini", "gpt", "claude", "soul", "账号", "电商", "店铺")):
             return True
     return False
 
@@ -5724,6 +5738,8 @@ def probe_auto_node_dual_groups(an_or_id, probe_services: bool = False, conf_dir
         globals().get("_record_internal_diag", str)(_e_diag)
     _sync_global_url_ping_state(conf_dir, trigger_auto_eval=False)
     evaluate_all_auto_nodes(conf_dir, target_id=an.get("id", ""), force_service_probe=False, advance_revert_streak=True)
+    if maint_changed:
+        write_all_configs(conf_dir)
     PROBE_ENGINE.apply_shunt_selections(conf_dir)
     updated_cfg = load_auto_nodes_config(conf_dir)
     updated_an = next((a for a in updated_cfg.get("auto_nodes", []) if a.get("id") == an.get("id")), an)
@@ -5939,7 +5955,10 @@ def auto_screen_and_fill_pool(spec: dict, conf_dir: Path = CONF_DIR, run_live_pr
     kw_mode = str(spec.get("keyword_mode") or (spec.get("filters") or {}).get("keyword_mode") or "OR").strip().upper()
     if kw_mode not in ("AND", "OR"):
         kw_mode = "OR"
-    candidates = _filter_nodes_by_pool_scope(saved_nodes, subs_list, scope_source=scope_source, scope_countries=scope_countries, conf_dir=conf_dir, scope_sources=scope_sources, keyword_filter=kw_filter, keyword_mode=kw_mode)
+    candidates = [
+        n for n in _filter_nodes_by_pool_scope(saved_nodes, subs_list, scope_source=scope_source, scope_countries=scope_countries, conf_dir=conf_dir, scope_sources=scope_sources, keyword_filter=kw_filter, keyword_mode=kw_mode)
+        if not (n.get("is_chained") or n.get("detour") or n.get("detour_pool_id") or n.get("detour_node") or str(n.get("line_type") or "") == "chained")
+    ]
     clash_up = _is_local_port_listening(9090)
     store = load_node_probe_store(conf_dir)
     now_ts = int(time.time())
@@ -6135,8 +6154,17 @@ def auto_screen_and_fill_pool(spec: dict, conf_dir: Path = CONF_DIR, run_live_pr
             unqualified_items.append(item_out)
         _upd_task("service_check" if is_svc_mode else "ranking", len(candidates), len(ping_ok_cands), len(qualified_items), False)
 
-    # Strictly sort qualified items by fastest URL Ping latency (delay_ms ascending)
-    qualified_items.sort(key=lambda x: (x["delay_ms"], x["tag"]))
+    # Sort qualified items by effective latency rank (incorporating bandwidth_prefer & stability when present)
+    bw_pref_screen = bool(spec.get("bandwidth_prefer", False))
+    def _screen_sort_key(it):
+        d_val = float(it.get("delay_ms") or 9999.0)
+        rec_it = store.get(it.get("node_id") or "") or store.get(it.get("tag") or "") or {}
+        bw_m = float(rec_it.get("bandwidth_mbps") or 0.0)
+        bw_f = max(0.55, 1.0 - min(0.42, math.log10(max(1.0, bw_m / 10.0)) * 0.22)) if (bw_pref_screen and bw_m > 0) else 1.0
+        sc_v = max(0.0, min(100.0, float(it.get("score") or 90.0))) / 100.0
+        eff_d = round(d_val * bw_f * (1.15 - 0.15 * sc_v), 2)
+        return (eff_d, d_val, it.get("tag") or "")
+    qualified_items.sort(key=_screen_sort_key)
     admitted_g1 = qualified_items[:target_size]
     reserve_candidates = qualified_items[target_size:target_size * 2]
     _sync_global_url_ping_state(conf_dir, trigger_auto_eval=True)
@@ -6784,6 +6812,9 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
         _base_eff = max(10.0, float(fastest.get("eff_rank_ms") or fastest.get("delay_ms") or 50.0))
         _max_allowed_eff = max(_base_eff * 2.2, _base_eff + 160.0)
         _fast_ml = [x["tag"] for x in g_nodes[:_cap_ml] if float(x.get("eff_rank_ms") or x.get("delay_ms") or 9999.0) <= _max_allowed_eff]
+        _ch_tag = str(chosen.get("tag") or "").strip()
+        if _ch_tag and _ch_tag != "direct":
+            _fast_ml = ([_ch_tag] + [t for t in _fast_ml if t != _ch_tag])[:_cap_ml]
         if not _fast_ml and g_nodes:
             _fast_ml = [g_nodes[0]["tag"]]
         an["multi_line_nodes"] = _fast_ml
@@ -6932,6 +6963,126 @@ def request_switch(
             "conntrack_flushed": ct_flush_res,
         }
 
+
+
+_MULTI_LINE_RR_LOCK = threading.Lock()
+_MULTI_LINE_RR_STATE = {
+    "cursors": {},            # (conf_dir_str, pool_id) -> int
+    "active_target": {},      # selector_tag -> current dispatched node tag
+    "dispatched_history": {}, # selector_tag -> list of last 16 dispatched node tags
+    "total_ticks": 0,
+    "memo_sig": None,
+    "memo_plan": None,
+}
+
+
+def _put_clash_selector_silent(selector_group: str, target_node: str, clash_api_override=None) -> bool:
+    """Silently rotates a multi-line selector in Sing-box (:9090) without flushing conntrack or spamming switch_history."""
+    if not selector_group or not target_node:
+        return False
+    PROBE_ENGINE.current_selections[selector_group] = target_node
+    with _MULTI_LINE_RR_LOCK:
+        _MULTI_LINE_RR_STATE["active_target"][selector_group] = target_node
+        hist = list(_MULTI_LINE_RR_STATE["dispatched_history"].get(selector_group) or [])
+        hist.append(target_node)
+        _MULTI_LINE_RR_STATE["dispatched_history"][selector_group] = hist[-16:]
+    if callable(clash_api_override):
+        return bool(clash_api_override(selector_group, target_node))
+    if _is_local_port_listening(9090):
+        enc = urllib.parse.quote(selector_group, safe="")
+        code, _ = clash_api_request(f"/proxies/{enc}", method="PUT", payload={"name": target_node}, timeout=0.8)
+        return code in (200, 204)
+    return True
+
+
+def dispatch_multi_line_pools_tick(conf_dir: Path = CONF_DIR, advance: bool = True, clash_api_override=None) -> dict:
+    """v2.5.0 Kernel-Level Multi-Line Concurrent Dispatcher:
+    Rotates active `multi_line` Auto-Node Pools and their bound non-IP-sensitive Shunt Groups across all healthy
+    `multi_line_nodes` with `interrupt_exist_connections: False` so existing streams stay pinned to their assigned
+    physical node while incoming connections distribute across all healthy lines in the pool."""
+    conf_dir = Path(conf_dir)
+    c_str = str(conf_dir.resolve())
+    sig = (c_str, _conf_file_mtimes_sig(conf_dir, ("auto_nodes.json", "shunt.json", "node_probe.json", "nodes.json")))
+    with _MULTI_LINE_RR_LOCK:
+        cached_plan = _MULTI_LINE_RR_STATE["memo_plan"] if _MULTI_LINE_RR_STATE["memo_sig"] == sig else None
+    if cached_plan is None:
+        auto_cfg = load_auto_nodes_config(conf_dir)
+        sh_cfg = load_shunt_config(conf_dir)
+        saved_nodes = [n for n in load_saved_nodes(conf_dir) if not is_builtin_test_node(n.get("tag", ""))]
+        subs_list = load_subscriptions(conf_dir)
+        store = load_node_probe_store(conf_dir)
+        now_ts = int(time.time())
+        ok_tags = set()
+        for n in saved_nodes:
+            ev = evaluate_node_selectability(n, store=store, subs_list=subs_list, now_ts=now_ts, conf_dir=conf_dir)
+            if ev["selectable"] and ev["state"] == "ok" and ev["delay_ms"] > 0:
+                ok_tags.add(n.get("tag", ""))
+        plan_pools = []
+        for a in (auto_cfg.get("auto_nodes") or []):
+            if a.get("dispatch_mode") != "multi_line" or is_pool_ip_sensitive(a):
+                continue
+            pid = str(a.get("id") or "").strip()
+            ptag = str(a.get("tag") or "").strip()
+            rt_p = _get_auto_pool_runtime_state(conf_dir, pid)
+            raw_ml = list(a.get("multi_line_nodes") or rt_p.get("multi_line_nodes") or [])
+            if not raw_ml:
+                raw_ml = [
+                    t for g_obj in (a.get("groups") or [])
+                    for t in (g_obj.get("node_tags") or [])
+                    if t and t != "direct" and (not ok_tags or t in ok_tags)
+                ][:max(2, int(a.get("target_size") or 5))]
+            ml_nodes = [t for t in raw_ml if t and t not in ("direct", "block") and (not ok_tags or t in ok_tags)]
+            if len(ml_nodes) < 2:
+                continue
+            bound_shunt_selectors = []
+            for sg in (sh_cfg.get("groups") or []):
+                gid = str(sg.get("id") or "")
+                stag = sg.get("selector_tag", f"Shunt_{gid}")
+                sm, _, _, aid_sg, _ = _normalize_group_shunt_params(sg)
+                if sm != "auto" or is_ip_sensitive_shunt_group(sg):
+                    continue
+                if _match_auto_node_pool([a], aid_sg) is not None:
+                    bound_shunt_selectors.append(stag)
+            plan_pools.append({
+                "pool_id": pid,
+                "pool_tag": ptag,
+                "ml_nodes": ml_nodes,
+                "bound_selectors": bound_shunt_selectors,
+            })
+        cached_plan = plan_pools
+        with _MULTI_LINE_RR_LOCK:
+            _MULTI_LINE_RR_STATE["memo_sig"] = sig
+            _MULTI_LINE_RR_STATE["memo_plan"] = cached_plan
+
+    dispatched = {}
+    for p_info in (cached_plan or []):
+        pid = p_info["pool_id"]
+        ptag = p_info["pool_tag"]
+        ml_nodes = p_info["ml_nodes"]
+        if len(ml_nodes) < 2:
+            continue
+        with _MULTI_LINE_RR_LOCK:
+            prev_c = _MULTI_LINE_RR_STATE["cursors"].get((c_str, pid), -1)
+            cur_c = (prev_c + 1) % len(ml_nodes) if advance or prev_c < 0 else (prev_c % len(ml_nodes))
+            _MULTI_LINE_RR_STATE["cursors"][(c_str, pid)] = cur_c
+            _MULTI_LINE_RR_STATE["total_ticks"] = int(_MULTI_LINE_RR_STATE.get("total_ticks") or 0) + 1
+        p_target = ml_nodes[cur_c]
+        if ptag:
+            _put_clash_selector_silent(ptag, p_target, clash_api_override=clash_api_override)
+            dispatched[ptag] = p_target
+        if pid == "auto_youtube" and ptag != "Stream_Auto":
+            _put_clash_selector_silent("Stream_Auto", p_target, clash_api_override=clash_api_override)
+            dispatched["Stream_Auto"] = p_target
+        for g_idx, stag in enumerate(p_info["bound_selectors"]):
+            g_target = ml_nodes[(cur_c + g_idx) % len(ml_nodes)]
+            _put_clash_selector_silent(stag, g_target, clash_api_override=clash_api_override)
+            dispatched[stag] = g_target
+    return {
+        "ok": True,
+        "dispatched": dispatched,
+        "active_pools_count": len(cached_plan or []),
+        "history": dict(_MULTI_LINE_RR_STATE["dispatched_history"]),
+    }
 
 _KERNEL_LOG_FAILOVER_LOCK = threading.Lock()
 _KERNEL_LOG_FAILOVER_STATE = {
@@ -7243,7 +7394,24 @@ def scan_kernel_logs_for_active_pool_failures(
         for p_old in active_map.get(bad_tag, []):
             pid = str(p_old.get("id") or "")
             p_new = next((x for x in updated_auto if str(x.get("id") or "") == pid), p_old)
+            rt_new = _get_auto_pool_runtime_state(conf_dir, pid)
+            if isinstance(rt_new.get("multi_line_nodes"), list) and bad_tag in rt_new["multi_line_nodes"]:
+                rt_new["multi_line_nodes"] = [x for x in rt_new["multi_line_nodes"] if x != bad_tag]
+                rt_new["active_lines_count"] = len(rt_new["multi_line_nodes"])
+                _set_auto_pool_runtime_state(conf_dir, pid, rt_new)
+            if isinstance(p_new.get("multi_line_nodes"), list) and bad_tag in p_new["multi_line_nodes"]:
+                p_new["multi_line_nodes"] = [x for x in p_new["multi_line_nodes"] if x != bad_tag]
+                p_new["active_lines_count"] = len(p_new["multi_line_nodes"])
             new_node = str(p_new.get("current_node") or "direct")
+            if new_node == bad_tag:
+                _alt_ml = [x for x in (p_new.get("multi_line_nodes") or p_new.get("verified_nodes") or []) if x and x != bad_tag]
+                new_node = _alt_ml[0] if _alt_ml else "direct"
+                p_new["current_node"] = new_node
+            elif p_new.get("dispatch_mode") == "multi_line" and bad_tag != p_old.get("current_node"):
+                _old_ml_set = set(p_old.get("multi_line_nodes") or [])
+                _promoted = [x for x in (p_new.get("multi_line_nodes") or []) if x not in _old_ml_set and x != bad_tag]
+                if _promoted:
+                    new_node = _promoted[0]
             new_rtt = float(p_new.get("current_delay_ms") or 0.0)
             pool_label = p_new.get("name") or p_new.get("tag") or pid
             reason_str = f"内核日志连续 {cnt_val} 次报错 ({l_err}) 极速切换"
@@ -7435,6 +7603,7 @@ def replace_node_in_auto_group(an_id: str, group_index: int, old_node: str, new_
     target_an["node_tags"] = []
     save_auto_nodes_config(cfg, conf_dir)
     evaluate_all_auto_nodes(conf_dir, target_id=target_an["id"], force_service_probe=False, advance_revert_streak=False)
+    write_all_configs(conf_dir)
     PROBE_ENGINE.apply_shunt_selections(conf_dir)
     try:
         RUN_DIR.mkdir(parents=True, exist_ok=True)
@@ -7764,7 +7933,15 @@ class AIProbeEngine:
             if sm == "manual" and bool(g.get("strict_lock", False)) and manual_node and not str(manual_node).startswith("auto:"):
                 sel_target = manual_node
             group_resolved_map[gid] = sel_target
-            request_switch(stag, sel_target, reason=f"分流组 [{g.get('name', gid)}] 选点同步", conf_dir=conf_dir)
+            _ml_nodes_g = list(res.get("multi_line_nodes") or [])
+            if res.get("dispatch_mode") == "multi_line" and len(_ml_nodes_g) >= 2 and not res.get("auto_single_line_protected"):
+                _cur_live_g = (_read_clash_selector_now(stag, timeout=0.8) if _is_local_port_listening(9090) else "") or self.current_selections.get(stag, "")
+                if _cur_live_g not in _ml_nodes_g:
+                    request_switch(stag, sel_target, reason=f"分流组 [{g.get('name', gid)}] 多线池主线同步", conf_dir=conf_dir)
+                else:
+                    self.current_selections[stag] = _cur_live_g
+            else:
+                request_switch(stag, sel_target, reason=f"分流组 [{g.get('name', gid)}] 选点同步", conf_dir=conf_dir)
         ai_an = _match_auto_node_pool(auto_list, "auto_ai")
         yt_an = _match_auto_node_pool(auto_list, "auto_youtube")
         best_any = (
@@ -7817,7 +7994,15 @@ class AIProbeEngine:
             an_tag = str(an_item.get("tag") or "").strip()
             an_cur = str(an_item.get("current_node") or "").strip()
             if an_tag and an_cur and an_tag not in ("AI_Best_Auto", "Stream_Auto"):
-                request_switch(an_tag, an_cur, reason=f"自动卡片 [{an_item.get('name', an_tag)}] 选优同步", pool_id=str(an_item.get('id') or ''), conf_dir=conf_dir)
+                _an_ml = list(an_item.get("multi_line_nodes") or [])
+                if an_item.get("dispatch_mode") == "multi_line" and len(_an_ml) >= 2 and not is_pool_ip_sensitive(an_item):
+                    _cur_live_an = (_read_clash_selector_now(an_tag, timeout=0.8) if _is_local_port_listening(9090) else "") or self.current_selections.get(an_tag, "")
+                    if _cur_live_an not in _an_ml:
+                        request_switch(an_tag, an_cur, reason=f"自动卡片 [{an_item.get('name', an_tag)}] 多线池主线同步", pool_id=str(an_item.get('id') or ''), conf_dir=conf_dir)
+                    else:
+                        self.current_selections[an_tag] = _cur_live_an
+                else:
+                    request_switch(an_tag, an_cur, reason=f"自动卡片 [{an_item.get('name', an_tag)}] 选优同步", pool_id=str(an_item.get('id') or ''), conf_dir=conf_dir)
         self.save_persisted_selections(RUN_DIR, record_history=False)
         self.load_persisted_selections(RUN_DIR, conf_dir)
         return dict(self.current_selections)
@@ -8547,7 +8732,16 @@ def resolve_node_for_country_strategy_with_failover(
                 is_ml_pool = (an.get("dispatch_mode") == "multi_line")
                 ip_prot = bool(is_ml_pool and is_ip_sensitive_shunt_group(group_id))
                 eff_dm = "single_best" if ip_prot else (an.get("dispatch_mode") or "single_best")
-                ml_list = [cur_n] if eff_dm != "multi_line" else ([cur_n] + [x["tag"] for x in ok_cands if x["tag"] != cur_n])[:max(2, int(an.get("target_size") or 5))]
+                if eff_dm != "multi_line":
+                    ml_list = [cur_n]
+                else:
+                    _cap_sh_ml = max(2, int(an.get("target_size") or 5))
+                    _ok_tag_set = {x["tag"] for x in ok_cands}
+                    _base_sh_d = max(10.0, min([float(tag_delay.get(x["tag"], 50.0) or 50.0) for x in ok_cands] or [50.0]))
+                    _max_sh_d = max(_base_sh_d * 2.2, _base_sh_d + 160.0)
+                    _pre_ml = [t for t in (an.get("multi_line_nodes") or []) if t in _ok_tag_set and t != cur_n and float(tag_delay.get(t, 9999.0)) <= _max_sh_d]
+                    _cand_ml = [x["tag"] for x in ok_cands if x["tag"] != cur_n and x["tag"] not in _pre_ml and float(tag_delay.get(x["tag"], 9999.0)) <= _max_sh_d]
+                    ml_list = ([cur_n] + _pre_ml + _cand_ml)[:_cap_sh_ml]
                 return {"selected": cur_n, "backups": bks, "target_verified": True, "no_available_node": False, "dispatch_mode": eff_dm, "multi_line_nodes": ml_list, "active_lines_count": len(ml_list), "auto_single_line_protected": ip_prot}
             if ok_cands:
                 chosen_c = ok_cands[0]["tag"]
@@ -9012,6 +9206,10 @@ def fetch_and_sync_subscription(url: str = "", name: str = "机场订阅",
             sub_id = target_sub.get("id") or sub_id or f"sub_{now_ts}"
             if "***" in url and target_sub.get("url") and "***" not in str(target_sub.get("url")):
                 url = str(target_sub["url"]).strip()
+            if auto_update is not None:
+                target_sub["auto_update"] = bool(auto_update)
+            if update_interval_min is not None:
+                target_sub["update_interval_min"] = int(update_interval_min)
             target_sub.update({"id": sub_id, "name": name or target_sub.get("name", "订阅源"), "url": url, "status": "syncing", "last_error": ""})
         save_subscriptions(subs, conf_dir)
     parsed_obs = []
@@ -11927,11 +12125,49 @@ class ConfigGenerator:
         transit_selector_list = [t for t in custom_tags if t not in chained_node_tags] + ["direct"]
         transit_non_test = [t for t in transit_selector_list if t != "direct" and not is_builtin_test_node(t)]
         transit_default = transit_non_test[0] if transit_non_test else (transit_selector_list[0] if transit_selector_list else "direct")
+        for _a_ml in (auto_cfg_now.get("auto_nodes") or []):
+            if _a_ml.get("dispatch_mode") == "multi_line" and not is_pool_ip_sensitive(_a_ml):
+                if str(_a_ml.get("id") or "") == "auto_youtube":
+                    ml_pool_tags["Stream_Auto"] = _a_ml
+        urltest_outbounds = []
+        urltest_by_pool_tag = {}
+        ml_nodes_by_pool_tag = {}
         for s_tag in auto_tag_order:
             is_ml_sel = (s_tag in ml_pool_tags)
             s_def_val = auto_def_map[s_tag]
             if s_def_val not in transit_selector_list:
                 s_def_val = transit_default
+            if is_ml_sel:
+                _an_ml_obj = ml_pool_tags[s_tag]
+                _ml_cands = [t for t in (_an_ml_obj.get("multi_line_nodes") or []) if t in transit_selector_list and t != "direct"]
+                if not _ml_cands:
+                    _ml_cands = [
+                        t for _go in (_an_ml_obj.get("groups") or [])
+                        for t in (_go.get("node_tags") or [])
+                        if t in transit_selector_list and t != "direct"
+                    ][:max(2, int(_an_ml_obj.get("target_size") or 5))]
+                if _ml_cands:
+                    _ut_tag = f"{s_tag}_MultiLine"
+                    urltest_outbounds.append({
+                        "type": "urltest",
+                        "tag": _ut_tag,
+                        "outbounds": list(_ml_cands),
+                        "url": "https://www.gstatic.com/generate_204",
+                        "interval": "1m",
+                        "tolerance": 80,
+                        "interrupt_exist_connections": False
+                    })
+                    urltest_by_pool_tag[s_tag] = _ut_tag
+                    ml_nodes_by_pool_tag[s_tag] = list(_ml_cands)
+                    _sel_obs = list(_ml_cands) + [_ut_tag] + [t for t in transit_selector_list if t not in _ml_cands]
+                    auto_card_selectors.append({
+                        "type": "selector",
+                        "tag": s_tag,
+                        "outbounds": _sel_obs,
+                        "default": _ml_cands[0],
+                        "interrupt_exist_connections": False
+                    })
+                    continue
             auto_card_selectors.append({
                 "type": "selector",
                 "tag": s_tag,
@@ -11939,6 +12175,26 @@ class ConfigGenerator:
                 "default": s_def_val,
                 "interrupt_exist_connections": (not is_ml_sel)
             })
+        # Wire Shunt_* selectors bound to multi_line pools: set interrupt_exist_connections=False and prioritize ml_nodes + urltest
+        _sg_by_stag = {sg.get("selector_tag", f"Shunt_{sg['id']}"): sg for sg in shunt_cfg.get("groups", []) if isinstance(sg, dict) and sg.get("id")}
+        for _sh_sel in shunt_selectors:
+            _sg_obj = _sg_by_stag.get(_sh_sel["tag"])
+            if not _sg_obj or is_ip_sensitive_shunt_group(_sg_obj):
+                continue
+            _sm_s, _, _, _aid_s, _ = _normalize_group_shunt_params(_sg_obj)
+            if _sm_s != "auto":
+                continue
+            _an_b = _match_auto_node_pool(auto_cfg_now.get("auto_nodes") or [], _aid_s)
+            if _an_b and _an_b.get("dispatch_mode") == "multi_line" and not is_pool_ip_sensitive(_an_b):
+                _b_ptag = pool_id_to_tag.get(str(_an_b.get("id") or ""), str(_an_b.get("tag") or ""))
+                _b_ml = ml_nodes_by_pool_tag.get(_b_ptag) or [t for t in (_an_b.get("multi_line_nodes") or []) if t in shunt_selector_list and t != "direct"]
+                _b_ut = urltest_by_pool_tag.get(_b_ptag)
+                if _b_ml:
+                    _sh_sel["interrupt_exist_connections"] = False
+                    _extra_refs = ([_b_ut] if _b_ut else []) + ([_b_ptag] if _b_ptag in auto_tag_order else [])
+                    _sh_sel["outbounds"] = list(_b_ml) + _extra_refs + [t for t in shunt_selector_list if t not in _b_ml]
+                    if _sh_sel.get("default") not in _b_ml:
+                        _sh_sel["default"] = _b_ml[0]
         # Resolve and sanitize Chained Proxy `detour` references (strict 4-layer DAG: Shunt -> Chained -> AutoPool -> Transit)
         all_valid_detour_targets = (set(custom_tags) - chained_node_tags) | set(auto_tag_order)
         for c_ob, raw_ob in zip(valid_custom_outbounds, [o for o in filtered_nodes if enable_tls_outbounds or (o.get("type", "") not in ("hysteria2", "tuic", "trojan") and "tls" not in o)]):
@@ -11947,11 +12203,13 @@ class ConfigGenerator:
                 resolved_det = pool_id_to_tag.get(raw_det) or pool_id_to_tag.get(raw_det.lower()) or raw_det
                 if resolved_det in all_valid_detour_targets and resolved_det != c_ob.get("tag") and resolved_det not in chained_node_tags:
                     c_ob["detour"] = resolved_det
+                elif resolved_det not in chained_node_tags and resolved_det != c_ob.get("tag") and str(raw_det).lower().startswith("auto") and auto_tag_order and auto_tag_order[0] != c_ob.get("tag"):
+                    c_ob["detour"] = auto_tag_order[0]
                 else:
                     c_ob.pop("detour", None)
             else:
                 c_ob.pop("detour", None)
-        outbounds = auto_card_selectors + shunt_selectors + valid_custom_outbounds + [
+        outbounds = urltest_outbounds + auto_card_selectors + shunt_selectors + valid_custom_outbounds + [
             {"type": "direct", "tag": "direct"},
             {"type": "block", "tag": "block"}
         ]
@@ -20756,9 +21014,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.4.9"
+APP_VERSION = "2.5.0"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.4.9-release-20261108"
+APP_BUILD = "2.5.0-release-20261108"
 
 UPDATE_MANIFEST_PRIMARY = "https://ai-link-official.pages.dev/version.json"
 UPDATE_MANIFEST_GITHUB = "https://raw.githubusercontent.com/Master-AI-007/ai-link-openwrt/main/version.json"
@@ -23944,6 +24202,7 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 target_an["current_node_id"] = ""
             save_auto_nodes_config(cfg, CONF_DIR)
             evaluate_all_auto_nodes(CONF_DIR, target_id=target_an.get("id"), force_service_probe=False, advance_revert_streak=False)
+            write_all_configs(CONF_DIR)
             PROBE_ENGINE.apply_shunt_selections(CONF_DIR)
             _AUTO_NODES_API_MEMO.clear()
             _SHUNT_API_MEMO.clear()
@@ -24607,6 +24866,11 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             resp_del["deleted_id"] = an_id
             self._send_json(resp_del)
             return
+        if clean_path == "/api/auto_nodes/dispatch_tick":
+            adv = bool(payload.get("advance", True))
+            res_dt = dispatch_multi_line_pools_tick(CONF_DIR, advance=adv)
+            self._send_json(res_dt)
+            return
         if clean_path == "/api/auto_nodes/scan_log_failover":
             lines_in = payload.get("log_lines") if isinstance(payload.get("log_lines"), list) else None
             th_in = int(payload.get("fail_threshold") or 3)
@@ -24651,8 +24915,20 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             name = (payload.get("name") or "主力机场订阅").strip()
             sub_id = str(payload.get("id") or "").strip()
             old_url = str(payload.get("old_url") or "").strip()
-            auto_up = bool(payload.get("auto_update", True))
-            interval_min = int(payload.get("update_interval_min", 360))
+            _ex_subs = load_subscriptions(CONF_DIR)
+            _ex_match = next((s for s in _ex_subs if (sub_id and s.get("id") == sub_id) or (old_url and s.get("url") == old_url) or (url and s.get("url") == url)), None)
+            if "auto_update" in payload:
+                auto_up = bool(payload.get("auto_update"))
+            elif _ex_match is not None and "auto_update" in _ex_match:
+                auto_up = bool(_ex_match.get("auto_update"))
+            else:
+                auto_up = True
+            if "update_interval_min" in payload:
+                interval_min = int(payload.get("update_interval_min") or 0)
+            elif _ex_match is not None and "update_interval_min" in _ex_match:
+                interval_min = int(_ex_match.get("update_interval_min") or 360)
+            else:
+                interval_min = 360
             test_after_add = bool(payload.get("test_after_add", True))
             res = fetch_and_sync_subscription(
                 url=url, name=name, auto_update=auto_up, update_interval_min=interval_min,
@@ -24691,8 +24967,9 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                     matched_sub["url"] = new_url
                 if "update_interval_min" in payload:
                     iv = int(payload["update_interval_min"])
-                    matched_sub["update_interval_min"] = iv
-                    matched_sub["auto_update"] = (iv > 0)
+                    matched_sub["update_interval_min"] = iv if iv > 0 else int(matched_sub.get("update_interval_min") or 360)
+                    if "auto_update" not in payload:
+                        matched_sub["auto_update"] = (iv > 0)
                 if "auto_update" in payload:
                     matched_sub["auto_update"] = bool(payload["auto_update"])
                 save_subscriptions(subs, CONF_DIR)
@@ -25719,10 +25996,20 @@ def start_background_probe_scheduler(interval_sec: int = 21600):
             except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                 globals().get("_record_internal_diag", str)(_e_diag)
             time.sleep(3.0)
+    def _multi_line_dispatcher_loop():
+        while True:
+            try:
+                if _is_local_port_listening(9090):
+                    dispatch_multi_line_pools_tick(CONF_DIR, advance=True)
+            except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
+                globals().get("_record_internal_diag", str)(_e_diag)
+            time.sleep(0.5)
     t = threading.Thread(target=_full_and_service_loop, daemon=True)
     t.start()
     t2 = threading.Thread(target=_telemetry_and_watchdog_loop, daemon=True)
     t2.start()
+    t3 = threading.Thread(target=_multi_line_dispatcher_loop, daemon=True, name="ailink-multiline-dispatch")
+    t3.start()
     return t
 
 def main():

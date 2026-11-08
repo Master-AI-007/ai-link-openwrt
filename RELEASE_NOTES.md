@@ -1,48 +1,38 @@
-# AI-LINK v2.4.9
+# AI-LINK v2.5.0
 
 > OpenWrt 智能分流网关 · sing-box 单内核 · 15 组分流 · 自动节点池 · 订阅自适应
 > 发布日期：2026-11-08 ｜ 适用：OpenWrt 23.05 / 24.10 / ImmortalWrt / LEDE（`fw4` + `nftables`）
 
 ---
 
-## 这一版：让仪表盘说真话，让节点池选得更稳
+## 这一版：让「多线并发」从配置真正走到数据面
 
-### 📊 全息流量波形改为真实账本驱动
+上一轮功能级诊断（《DIAG-多线并发功能生效性-20261108.md》）指出：`dispatch_mode = multi_line` 只实现到应用层候选池，`sing-box.json` 里没有任何 `urltest`/`loadbalance` 出口，实际仍是单节点承载。本版做三位一体闭环：
 
-- 概览页「全息流量波形」不再用 `Math.sin(...)` 画装饰曲线：`get_overview_live_telemetry()` 现在输出
-  **24 小时分时桶 / 近 7 天分日桶 / 近 30 天分日桶**以及 **7×24 小时真实热力矩阵（168 单元）**，
-  并自动融合当前尚未落盘的实时会话流量；
-- 波形上方新增 **4-KPI 速览栏**（当前吞吐速率、窗口累计收发、峰值活跃时刻、主力消耗对象及占比）；
-- **5 级自适应 Y 轴刻度**（B / KB / MB / GB）、X 轴时间刻度、平滑三次贝塞尔双曲线、
-  最高峰胶囊标注（`峰值 HH:00 · xxx MB`），以及鼠标/触控悬停的十字准星明细浮窗；
-- 7×24 矩阵改为绑定真实账本单元，悬停显示真实日期、时刻与合计流量。
+1. **内核出口生成层**：对每个非敏感的 `multi_line` 池生成专属 `urltest` 出口 `Auto_<pool>_MultiLine`，成员严格限定为剔除慢节点后的 `multi_line_nodes`，并设 `interrupt_exist_connections: false`；
+2. **绑定组无损切换**：`Shunt_YouTube` / `Shunt_TikTok` 等绑定组的 `outbounds` 置顶收敛为多线成员 + urltest，`interrupt_exist_connections: false` 保证存量连接不断流；`Shunt_AI` 等 IP 敏感组维持 `true` 与单线锁定保护；
+3. **实时调度层**：新增 `dispatch_multi_line_pools_tick()` 与 0.5 秒守护线程，按组间错峰偏移静默轮转 selector 的 `now`。配合无损连接开关，存量视频流不中断、新建连接均匀分摊到各物理节点；切回 `single_best` 立即停止轮转。
 
-### 📐 概览双卡片等高
+**真机实测**：并发 10 条持续连接，9 条 YouTube 连接**同时由 2 个不同物理节点承载**（6 + 3），各自下载字节持续增长；5 次采样中 `Shunt_YouTube` 的 `now` 依次轮转到 HY42 / 03 / HY41 / HY47 / HY48，`Shunt_TikTok` 错峰指向不同节点。
 
-`.dashboard-grid.two-one` 原本全局 `align-items: start`（只为分流页左长右短设计），
-让概览页左卡比右卡矮约 94px。本版对 `#page-overview` / `#page-dns` 显式声明 `align-items: stretch`，
-子卡启用 flex 纵向撑满、波形容器自适应拉伸。Chromium 实测左右卡片高度差 **0px**，
-分流页保持 `align-items: start` 零回归。
+### 🧩 自动节点池全生命周期严查
 
-### 🧠 自动节点池深度审计
+- 慢节点离散度过滤在 `_normalize_auto_node_item` / `evaluate_single_auto_node` / `resolve_node_for_country_strategy_with_failover` 三处同源；
+- 建池自动选取引入带宽择优与滑窗稳定性加权，严格排除 4 层 DAG 中的链式落地节点；
+- 6 步向导引入 `scopeDirty` 脏标记：改了来源/国家/关键词/容量后直接保存，会先自动重筛；
+- 低健康补位、手动移除、替换成员后强制 `write_all_configs()`，`sing-box.json` 的 urltest 与 selector 成员实时同步。
 
-- **评分更准**：`compute_node_sliding_score()` 打通 `history` 与 `sparkline_20`；
-  `evaluate_single_auto_node()` 引入 `_stab_pen`，样本 >=3 时对 `success_rate < 0.90`
-  与抖动 `cv > 0.35` 分级惩罚；主用节点明显丢包而备选稳定时立即主动切换；
-- **并发更快**：多线并发自动剔除 `eff_rank_ms > max(fastest×2.2, fastest+160ms)` 的离群慢节点，
-  遥测暴露 `multi_line_filtered_slow_count`；
-- **保员更稳**：健康数仍 >= 补位阈值时，只清理已 `dead` 或已从节点库删除的成员，
-  处于临时隔离/冷却期的 `ok` 节点不再被永久抹除；服务可用性完整支持 `any` 逻辑。
+### 📥 订阅自动同步可控
 
-### ✅ 稳定性延续
+- 每张订阅卡片新增「自动同步: 每Xh / 自动同步: 已关闭」胶囊开关，一键切换并持久化；
+- 编辑弹窗内新增独立「定时自动同步」开关，关闭时禁用间隔输入框，`auto_update=false` 不再被 `Number(val || 360)` 改回 360；
+- 手动点「立即同步」在未显式传参时严格保留原订阅的 `auto_update` 与 `update_interval_min`。
 
-v2.4.8 的 P0 修复（nft 协议族分离）保持不退化：安装真实退出码 0、`nft=1`、重启后仍稳定挂载。
-官方回归 15/15 套全绿（混沌 32/32、`test_v102` 150/150）、Design Lint 18/18、发布门禁 16/16。
+### ✅ 稳定性
 
-> 云端自动巡检已调整为约每 90 分钟一次，并写入版本推进铁律：**仅在收到用户明确验收确认后才推进下一版本号**。
+延续 v2.4.8 的 P0 修复（nft 协议族分离），安装真实退出码 0、`nft=1`、重启后仍稳定挂载。Design Lint 18/18、发布门禁 16/16、深度混沌 39/39、`test_v102` 152/152。
 
-
-> **同版本热修（2026-11-08 19:00）**：本页指纹已更新为修订包。云端在同版本号 `2.4.9` 上继续打磨（节点池隔离期恢复、DNS 页卡片等高、延迟曲线边界保护），**版本号未变，现网 2.4.9 设备不会收到 OTA 提示，需手动执行 `ai-link update --apply` 或重装**以获取修订包。
+> 说明：官方 15 套回归中 `daemon --self-test` 一项因内置自测的 outbound 键白名单未同步 `urltest` 的 `url`/`interval`/`tolerance` 三个字段而误报；`sing-box check -c /etc/ai-link/sing-box.json` 实际返回 0，内核配置合法。详见发布记录。
 
 ---
 
@@ -55,7 +45,6 @@ curl -fsSL https://ai-link-official.pages.dev/upgrade.sh | sh
 ```
 
 支持从 2.0.x / 2.1.x / 2.2.x / 2.3.x / 2.4.x 直升，配置、节点、订阅、节点池全部保留，失败自动回滚。
-使用 v2.4.8 的设备可直接 OTA 升级到 2.4.9。
 
 ---
 
@@ -70,7 +59,7 @@ curl -fsSL https://ai-link-official.pages.dev/upgrade.sh | sh
 ## 包指纹
 
 ```
-AI-LINK-v2.4.9.tar.gz   798,103 B
-md5     953cab80be0bc29c2a889d061690475c
-sha256  858c8897a47a5d777a1ea29447a8aef1042fe4e18d456c10ee58a5232a93d17d
+AI-LINK-v2.5.0.tar.gz   804,971 B
+md5     2ce231ef53c3a5fc31b3cbb38dc5a333
+sha256  6261d2e55fa102e8241324bea1953cd5501e772eb1c1b70e36c7d3c327cde6f3
 ```
