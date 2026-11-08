@@ -3153,6 +3153,9 @@ def compute_node_sliding_score(rec: dict, svc_checks: list = None) -> dict:
             ok_h = float(h) > 0
             hist.append({"state": "ok" if ok_h else "dead", "delay_ms": int(h) if ok_h else -1, "ts": 0, "svc_ok": None})
     c_fail = int(rec.get("consecutive_fail") or 0)
+    _q_exp = int(rec.get("quarantine_until") or 0)
+    if str(rec.get("state") or "") == "ok" and int(rec.get("delay_ms") or -1) > 0 and 0 < _q_exp <= int(time.time()):
+        c_fail = 0
     if not hist and (int(rec.get("probe_ts") or 0) > 0 or rec.get("state") in ("ok", "dead", "suspect") or c_fail > 0):
         st_cur = str(rec.get("state") or "pending")
         d_cur = int(rec.get("delay_ms") if rec.get("delay_ms") is not None else -1)
@@ -4767,7 +4770,11 @@ def _enrich_auto_node_groups_members(item: dict, saved_nodes: list = None, subs_
                 svc_passed = False
                 svc_verified = False
             quarantine_until = int(rec_raw.get("quarantine_until") or 0)
-            in_quarantine = bool(quarantine_until > now_sec or int(sc_info.get("consecutive_fail") or 0) >= 3)
+            if 0 < quarantine_until <= now_sec and ev["state"] == "ok" and ev["delay_ms"] > 0:
+                quarantine_until = 0
+                in_quarantine = False
+            else:
+                in_quarantine = bool(quarantine_until > now_sec or (quarantine_until == 0 and int(sc_info.get("consecutive_fail") or 0) >= 3))
             cooldown_until = int(rec_raw.get("cooldown_until") or 0)
             in_cooldown = bool(cooldown_until > now_sec)
             score_passed = True
@@ -6191,7 +6198,8 @@ def maintain_auto_node_pool_health(an: dict, saved_nodes: list = None, store: di
         nid = n_obj.get("node_id") or compute_node_id(n_obj)
         rec = store.get(nid) or store.get(t) or {}
         ev = evaluate_node_selectability(n_obj, store=store, subs_list=subs_list, now_ts=now_ts, conf_dir=conf_dir)
-        in_quar = bool(int(rec.get("quarantine_until") or 0) > now_ts or int(rec.get("cooldown_until") or 0) > now_ts or int(rec.get("consecutive_fail") or 0) >= 2)
+        _q_until_m = int(rec.get("quarantine_until") or 0)
+        in_quar = bool(_q_until_m > now_ts or int(rec.get("cooldown_until") or 0) > now_ts or (_q_until_m == 0 and int(rec.get("consecutive_fail") or 0) >= 3))
         c5_s = classify_node_country_5plus1(t, n_obj)
         g_reg_s = get_node_google_region_info(n_obj, rec)
         if need_ai_region and (g_reg_s["region_blocked"] or c5_s in UNSUPPORTED_AI_REGIONS):
@@ -7022,9 +7030,18 @@ def _get_active_in_use_auto_pools(conf_dir: Path = CONF_DIR, sh_cfg: dict = None
         pid = str(p.get("id") or "")
         if pid not in in_use_pool_ids:
             continue
+        monitored_tags = []
         cur_n = str(p.get("current_node") or "").strip()
         if cur_n and cur_n not in ("direct", "block"):
-            node_to_pools.setdefault(cur_n, []).append(p)
+            monitored_tags.append(cur_n)
+        rt_p = _get_auto_pool_runtime_state(conf_dir, pid)
+        if p.get("dispatch_mode") == "multi_line" or rt_p.get("dispatch_mode") == "multi_line":
+            for ml_t in (p.get("multi_line_nodes") or rt_p.get("multi_line_nodes") or []):
+                ml_s = str(ml_t or "").strip()
+                if ml_s and ml_s not in ("direct", "block") and ml_s not in monitored_tags:
+                    monitored_tags.append(ml_s)
+        for m_tag in monitored_tags:
+            node_to_pools.setdefault(m_tag, []).append(p)
     return node_to_pools
 
 
