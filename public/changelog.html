@@ -18,7 +18,7 @@
         <circle cx="20" cy="20" r="5.4" fill="none" stroke="#a994ff" stroke-width="1.6"/>
         <circle cx="20" cy="20" r="1.8" fill="#6ee7f5"/>
       </svg>
-      <span style="display:block"><b>AI-LINK</b><span>NEXUS · v2.5.5</span></span>
+      <span style="display:block"><b>AI-LINK</b><span>NEXUS · 2.5.6</span></span>
     </a>
     <div class="nav-links">
       <a href="/#features">核心能力</a>
@@ -36,12 +36,22 @@
 <main class="wrap log-wrap">
   <div class="log-head">
     <h1>更新日志</h1>
-    <span class="pill"><i></i> 当前最新 v2.5.5</span>
+    <span class="pill"><i></i> 当前最新 2.5.6</span>
   </div>
 <article class="log-item latest">
   <div class="log-top">
-    <h2>v2.5.5</h2>
+    <h2>v2.5.6</h2>
     <span class="tag c">最新</span>
+    <time>2026-11-09</time>
+  </div>
+  <p style="margin:2px 0 6px;color:var(--dim)"></p>
+<h3>加强复审计（6 项 P1 + 6 项 P2 全量闭环）</h3>
+<ul><li><b>自检语义断言与零生产竞态</b>：以进程级 <code>_SELF_TEST_LIVE_WRITE_ATTEMPTS == 0</code> 守卫 + 语义脏标签断言取代全文件字节比较，消除与常驻 daemon 的时序竞态；生产运行期连跑两次自检均 <code>RC=0 / SELF_TEST_PASSED / 零告警</code>，<code>Stage 6.20b</code> 与 <code>7.1</code> 同步通过。</li><li><b>唯一 <code>SelectorWriteCoordinator</code></b>：收口全部 Selector 写入路径，30s 驻留内目标未变跳过 <code>PUT</code>；<code>evaluate_all_auto_nodes</code> / <code>apply_shunt_selections</code> 不再覆盖合法多线成员，正常轮换仅更新遥测、不写切换历史；外部热切双向同步轮询状态。</li><li><b>内核日志空目标抑制</b>：<code>targets == []</code> 纳入 <code>distinct_targets</code> 守卫，杜绝单条/空目标超时误触发直连降级。</li><li><b>订阅预览与严格 TLS</b>：完整输出 <code>preserved</code> / <code>renamed</code> / <code>endpoint_changed</code> / <code>credential_changed</code> / <code>same_tag_replaced</code>，动态随机订阅 Jaccard 预警，替换候选按池范围与 AI 锁区优选；移除 curl 35/51/60 自动 <code>-k</code> 重试与 localhost 默认 <code>-k</code>，<code>urllib</code> 改用 <code>create_default_context()</code>。</li><li><b>P2</b>：手动与自动池健康配额冻结拆分、前端旧文案清零、IPK <code>prerm</code>/<code>postrm</code> 卸载收尾与 <code>Description</code> 对齐、Watchdog 恢复根因与耗时记录、<code>node_probe.json</code> 闪存写放大治理。</li><li><b>Round 2 增量</b>：500+ 节点订阅变异状态精准分治、协调器外部热切同步、DNS 拦截榜 KPI 与双栏等高、自动复选 EWMA 同源评分、Hero 三联指标实时遥测。</li><li><b>四项出包标准保持</b>：夹具整棵随包、零补发 <code>run_all 15/15 PASS / RC=0</code>、自检沙箱隔离、混沌门禁 <code>78/78</code>；Design Lint 18/18、发布门禁 17/17、UI 零异常。</li></ul>
+</article>
+<article class="log-item">
+  <div class="log-top">
+    <h2>v2.5.5</h2>
+    <span class="tag">历史</span>
     <time>2026-11-09</time>
   </div>
   <p style="margin:2px 0 6px;color:var(--dim)"></p>

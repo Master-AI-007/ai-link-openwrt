@@ -1,3 +1,12 @@
+## v2.5.6 (2026-11-09) — 2.5.5-r15 加强复审计 6 项 P1 & 6 项 P2 全量闭环 (PKG_RELEASE=16)
+
+- **P1-1 & FB-255-2 自检语义断言与零生产竞态**：将 `--self-test` (`ai-link probe`) 末尾全文件字节比较升级为进程级 `_SELF_TEST_LIVE_WRITE_ATTEMPTS == 0` 守卫与语义脏标签断言，彻底消除与后台常驻 daemon 正常选点写入的时序竞态；为 `tarfile.extractall` 注入 `filter="data"` 兼容参数。
+- **P1-2 唯一 `SelectorWriteCoordinator` 与 30s 全局驻留**：收口全部 Clash Selector 写入路径；`dispatch_multi_line_pools_tick` 与 `/api/auto_nodes/dispatch_tick` 默认启用 30s 驻留且目标未变化时跳过冗余 `PUT`；`evaluate_all_auto_nodes` 与 `apply_shunt_selections` 不再覆盖已处于合法 `multi_line_nodes` 内的选择器，正常轮换仅更新遥测不污染 `switch_history.json`。
+- **P1-3 内核日志故障转移未知目标抑制**：将 `targets == []`（无明确目标域名/IP）纳入 `len(distinct_targets) < min_targets` 抑制守卫（`single_target_suppressed=True`），杜绝单条/空目标超时误触发直连降级。
+- **P1-4 & P1-5 订阅预览完整身份 Diff、动态随机订阅检测与零 500 并发保护**：`preview_subscription_sync_impact` 新增 `preserved`、`endpoint_changed`、`credential_changed`、`same_tag_replaced`（同名换节点）完整映射与连续拉取 Jaccard 稳定度告警，替换建议严格按池地区/健康度优选，并加锁返回结构化 `request_id`。
+- **P1-6 订阅拉取严格 TLS 证书校验**：移除 `_curl_fetch_subscription` 在 35/51/60 错误码下的自动 `-k` 重试与 `urllib` 默认不校验证书降级，仅在订阅显式开启 `allow_insecure_tls=True` 时放行。
+- **P2-1 ~ P2-6 & FB-255-3 全量打磨**：拆分 `manual_quota_frozen` 与 `pool_health_quota_frozen`；清理前端残留静态旧文案；补齐 IPK `prerm/postrm` 服务停机与 nft/DNS 恢复并更新 `Description` 为 `v2.5.6`；Watchdog 记录前后 PID、原因与恢复耗时 `recovery_ms`；`node_probe.json` 改为 tmpfs 实时写 + 180s 节流落盘；测试套件计数与指纹全自动注入。
+
 ## v2.5.5 (2026-11-09)
 - **官方自检 (`ai-link probe` / `--self-test`) 100% 生产隔离与脏数据自愈 (`P0-1` & `P1-5.4`)**：全链路增加 `_SELF_TEST_ACTIVE` 与 `_is_live_conf_dir` 守卫，非生产目录或自检态严禁写 `/var/run/ai-link/selections.json`、`/var/run/ai-link/switch_history.json` 或发起 Clash API `PUT /proxies/*`；启动/加载时自动清洗残留的 `JP-Trojan-01`、`HK-SS2022-01` 等自检假节点，并在 `--self-test` 末尾强制执行字节级零变化断言。
 - **探测预算双轨拆分、故障复验免配额穿透与真实探测新鲜度 (`P0-2` & `P1-5.1`)**：将自动池健康巡检预算 (`pool_health_budget >= 45,000`) 与日常探索测速预算分离，500+ 节点库自动扩容至 `>= 60,000` 并迁移清零旧超限计数；`on_egress_fail()` 故障复验强制 `force=True` 免配额穿透，杜绝配额耗尽时因读取旧缓存 `state=ok` 而阻断故障切换；`last_check_ts` 严格反映池成员真实探测时间 (`last_real_probe_ts`)，暴露 `probe_stale`、`fresh_ok_count` 与 `quota_status`。

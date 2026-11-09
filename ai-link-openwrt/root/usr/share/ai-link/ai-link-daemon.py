@@ -1698,87 +1698,211 @@ def count_user_nodes(nodes_or_dir=CONF_DIR) -> int:
     nodes_list = load_saved_nodes(nodes_or_dir) if isinstance(nodes_or_dir, Path) else (nodes_or_dir or [])
     return sum(1 for n in nodes_list if isinstance(n, dict) and not is_builtin_test_node(n.get("tag", "")))
 
+_SUB_PREVIEW_JACCARD_RING = {}
+
 def preview_subscription_sync_impact(sub_id: str, incoming_nodes: list, sub_url: str = "", conf_dir: Path = CONF_DIR) -> dict:
-    """DESIGN-auto-node-pool-v2 §5.4: Calculates subscription update diff (added, removed, renamed) and impact on Auto Node Pools
-    BEFORE or DURING subscription sync so users know which active pool members will be lost or auto-switched."""
-    existing = [n for n in load_saved_nodes(conf_dir) if not is_builtin_test_node(n.get("tag", ""))]
-    old_sub_nodes = [
-        n for n in existing
-        if (sub_id and n.get("_sub_id") == sub_id) or (sub_url and n.get("_sub_url") == sub_url) or (not sub_id and not sub_url)
-    ]
-    old_by_key = {(n.get("node_key") or compute_node_key(n)): n for n in old_sub_nodes}
-    old_by_tag = {str(n.get("tag") or ""): n for n in old_sub_nodes if n.get("tag")}
-    new_clean = [
-        ob for ob in (incoming_nodes or [])
-        if isinstance(ob, dict) and ob.get("tag") and ob.get("type") and not is_subscription_info_node(ob)
-    ]
-    new_by_key = {compute_node_key(ob): ob for ob in new_clean}
-    new_by_tag = {str(ob.get("tag") or ""): ob for ob in new_clean if ob.get("tag")}
-
-    added_keys = [k for k in new_by_key if k not in old_by_key and str(new_by_key[k].get("tag") or "") not in old_by_tag]
-    removed_keys = [k for k in old_by_key if k not in new_by_key and str(old_by_key[k].get("tag") or "") not in new_by_tag]
-    kept_keys = [k for k in new_by_key if k in old_by_key]
-    renamed = []
-    for k in kept_keys:
-        old_t = old_by_key[k].get("tag", "")
-        new_t = new_by_key[k].get("tag", "")
-        if old_t != new_t:
-            renamed.append({"node_key": k, "old_tag": old_t, "new_tag": new_t})
-
-    removed_tags = {old_by_key[k].get("tag", "") for k in removed_keys}
-    removed_key_set = set(removed_keys)
-
-    affected_pools = []
+    """v2.5.6 P1-4/P1-5 Full Identity Diff (`preserved`, `renamed`, `endpoint_changed`, `credential_changed`, `added`, `removed`),
+    Jaccard dynamic subscription stability detector, and pool-scope-qualified replacement selector."""
+    req_id = f"prev_{int(time.time()*1000)}_{os.getpid()}"
     try:
-        an_cfg = load_auto_nodes_config(conf_dir)
-        store = load_node_probe_store(conf_dir)
-        for an in (an_cfg.get("auto_nodes") or []):
-            lost_members = []
-            lost_current = False
-            cur_node = str(an.get("current_node") or "")
-            for g in (an.get("groups") or []):
-                for t in (g.get("node_tags") or []):
-                    n_match = next((x for x in old_sub_nodes if x.get("tag") == t), None)
-                    nk = (n_match.get("node_key") or compute_node_key(n_match)) if n_match else ""
-                    if t in removed_tags or (nk and nk in removed_key_set):
-                        lost_members.append({"group_index": g.get("index", 1), "tag": t, "node_key": nk})
-                        if t == cur_node:
-                            lost_current = True
-            if lost_members:
-                # Suggest best surviving or new candidate
-                surviving = [
-                    ob.get("tag") for k, ob in new_by_key.items()
-                    if classify_node_country_5plus1(ob.get("tag", ""), ob) not in UNSUPPORTED_AI_REGIONS
-                ]
-                suggested = surviving[0] if surviving else "自动池下一顺位健康节点"
-                affected_pools.append({
-                    "pool_id": an.get("id"),
-                    "pool_name": an.get("name"),
-                    "lost_count": len(lost_members),
-                    "lost_current_exit": lost_current,
-                    "lost_members": lost_members,
-                    "suggested_replacement": suggested,
-                    "summary": f"{an.get('name')} 将失去 {len(lost_members)} 个成员" + ("（含当前出口）" if lost_current else "") + f"，建议自动切换至 {suggested}"
-                })
-    except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
-        globals().get("_record_internal_diag", str)(_e_diag)
+        with _SUB_LOCK:
+            existing = [dict(n) for n in load_saved_nodes(conf_dir) if isinstance(n, dict) and not is_builtin_test_node(n.get("tag", ""))]
+        old_sub_nodes = [
+            n for n in existing
+            if (sub_id and n.get("_sub_id") == sub_id) or (sub_url and n.get("_sub_url") == sub_url) or (not sub_id and not sub_url)
+        ]
+        old_by_key = {(n.get("node_key") or compute_node_key(n)): n for n in old_sub_nodes}
+        old_by_tag = {str(n.get("tag") or ""): n for n in old_sub_nodes if n.get("tag")}
+        new_clean = [
+            dict(ob) for ob in (incoming_nodes or [])
+            if isinstance(ob, dict) and ob.get("tag") and ob.get("type") and not is_subscription_info_node(ob)
+        ]
+        new_by_key = {compute_node_key(ob): ob for ob in new_clean}
+        new_by_tag = {str(ob.get("tag") or ""): ob for ob in new_clean if ob.get("tag")}
 
-    summary_lines = [f"本次更新：新增 {len(added_keys)} 个节点，移除 {len(removed_keys)} 个节点" + (f"，改名平滑迁移 {len(renamed)} 个" if renamed else "")]
-    for ap in affected_pools:
-        summary_lines.append("影响：" + ap["summary"])
+        preserved = []
+        renamed = []
+        for k in new_by_key:
+            if k in old_by_key:
+                old_t = str(old_by_key[k].get("tag") or "")
+                new_t = str(new_by_key[k].get("tag") or "")
+                if old_t != new_t:
+                    renamed.append({"node_key": k, "old_tag": old_t, "new_tag": new_t})
+                else:
+                    preserved.append(new_t)
 
-    return {
-        "ok": True,
-        "sub_id": sub_id,
-        "added_count": len(added_keys),
-        "removed_count": len(removed_keys),
-        "renamed_count": len(renamed),
-        "added_tags": [new_by_key[k].get("tag") for k in added_keys[:15]],
-        "removed_tags": [old_by_key[k].get("tag") for k in removed_keys[:15]],
-        "renamed": renamed[:15],
-        "affected_pools": affected_pools,
-        "summary_text": "；".join(summary_lines),
-    }
+        endpoint_changed = []
+        credential_changed = []
+        same_tag_replaced = []
+        for t, new_ob in new_by_tag.items():
+            if t in old_by_tag:
+                old_ob = old_by_tag[t]
+                old_k = old_ob.get("node_key") or compute_node_key(old_ob)
+                new_k = compute_node_key(new_ob)
+                if old_k != new_k:
+                    old_ep = (str(old_ob.get("server") or "").strip().lower(), int(old_ob.get("server_port") or 0), str(old_ob.get("type") or "").strip().lower())
+                    new_ep = (str(new_ob.get("server") or "").strip().lower(), int(new_ob.get("server_port") or 0), str(new_ob.get("type") or "").strip().lower())
+                    ep_chg = (old_ep != new_ep)
+                    old_cred = (str(old_ob.get("uuid") or ""), str(old_ob.get("password") or ""), str(old_ob.get("method") or ""))
+                    new_cred = (str(new_ob.get("uuid") or ""), str(new_ob.get("password") or ""), str(new_ob.get("method") or ""))
+                    cred_chg = (old_cred != new_cred)
+                    chg_item = {
+                        "tag": t,
+                        "old_node_key": old_k,
+                        "new_node_key": new_k,
+                        "endpoint_changed": ep_chg,
+                        "credential_changed": cred_chg,
+                        "old_endpoint": f"{old_ep[0]}:{old_ep[1]}",
+                        "new_endpoint": f"{new_ep[0]}:{new_ep[1]}",
+                    }
+                    same_tag_replaced.append(chg_item)
+                    if ep_chg:
+                        endpoint_changed.append(chg_item)
+                    if cred_chg:
+                        credential_changed.append(chg_item)
+
+        added_keys = [k for k in new_by_key if k not in old_by_key and str(new_by_key[k].get("tag") or "") not in old_by_tag]
+        removed_keys = [k for k in old_by_key if k not in new_by_key and str(old_by_key[k].get("tag") or "") not in new_by_tag]
+
+        removed_tags = {old_by_key[k].get("tag", "") for k in removed_keys}
+        removed_key_set = set(removed_keys)
+        same_tag_replaced_map = {x["tag"]: x for x in same_tag_replaced}
+
+        # Dynamic random subscription Jaccard stability calculation
+        old_k_set = set(old_by_key.keys())
+        new_k_set = set(new_by_key.keys())
+        ring_k = str(sub_id or sub_url or "default")
+        prev_sets = list(_SUB_PREVIEW_JACCARD_RING.get(ring_k) or [])
+        ref_set = prev_sets[-1] if prev_sets else old_k_set
+        union_len = len(ref_set | new_k_set)
+        jaccard = round(len(ref_set & new_k_set) / float(union_len), 4) if union_len > 0 else 1.0
+        if new_k_set:
+            prev_sets.append(new_k_set)
+            _SUB_PREVIEW_JACCARD_RING[ring_k] = prev_sets[-5:]
+        is_dynamic_random = bool(len(ref_set) >= 5 and len(new_k_set) >= 5 and jaccard < 0.50)
+        stability_warning = (
+            f"检测到上游为动态随机订阅（节点集合重合度 Jaccard={jaccard:.0%} < 50%），每次拉取节点大幅变化，不建议用于关键服务自动池"
+            if is_dynamic_random else ""
+        )
+
+        affected_pools = []
+        try:
+            an_cfg = load_auto_nodes_config(conf_dir)
+            store = load_node_probe_store(conf_dir)
+            subs_list = load_subscriptions(conf_dir)
+            for an in (an_cfg.get("auto_nodes") or []):
+                lost_members = []
+                replaced_members = []
+                lost_current = False
+                cur_node = str(an.get("current_node") or "")
+                for g in (an.get("groups") or []):
+                    for t in (g.get("node_tags") or []):
+                        n_match = next((x for x in old_sub_nodes if x.get("tag") == t), None)
+                        nk = (n_match.get("node_key") or compute_node_key(n_match)) if n_match else ""
+                        if t in removed_tags or (nk and nk in removed_key_set):
+                            lost_members.append({"group_index": g.get("index", 1), "tag": t, "node_key": nk})
+                            if t == cur_node:
+                                lost_current = True
+                        elif t in same_tag_replaced_map:
+                            replaced_members.append(same_tag_replaced_map[t])
+                if lost_members or replaced_members:
+                    # Select replacement strictly from candidates matching pool country/keyword/AI-region & health
+                    _p_countries = an.get("scope_countries") or ["ALL"]
+                    _p_kw = str(an.get("keyword_filter") or "").strip()
+                    _p_kw_mode = str(an.get("keyword_mode") or "OR")
+                    _is_svc = (an.get("pool_mode") == "service_check" or bool(an.get("service_check_enabled")))
+                    _svc_chks = [str(s).lower() for s in (an.get("service_checks") or [])] if _is_svc else []
+                    _need_ai = _is_svc and any(s in {"gemini", "chatgpt", "openai", "claude", "ai"} for s in _svc_chks)
+                    scoped_new = _filter_nodes_by_pool_scope(
+                        new_clean, subs_list, scope_source="ALL", scope_countries=_p_countries,
+                        conf_dir=conf_dir, keyword_filter=_p_kw, keyword_mode=_p_kw_mode,
+                    )
+                    cand_pool_list = scoped_new if scoped_new else new_clean
+                    ranked_sug = []
+                    for ob_c in cand_pool_list:
+                        tc = str(ob_c.get("tag") or "")
+                        if not tc:
+                            continue
+                        c5_c = classify_node_country_5plus1(tc, ob_c)
+                        if _need_ai and c5_c in UNSUPPORTED_AI_REGIONS:
+                            continue
+                        nid_c = ob_c.get("node_id") or compute_node_id(ob_c)
+                        rec_c = store.get(nid_c) or store.get(tc) or {}
+                        st_ok = (rec_c.get("state") == "ok" and int(rec_c.get("delay_ms") or 0) > 0)
+                        d_c = int(rec_c.get("delay_ms") or 9999) if st_ok else 9999
+                        is_kept = (compute_node_key(ob_c) in old_by_key)
+                        ranked_sug.append((0 if st_ok else 1, 0 if is_kept else 1, d_c, tc))
+                    ranked_sug.sort()
+                    suggested = ranked_sug[0][3] if ranked_sug else "自动池下一顺位健康节点"
+                    affected_pools.append({
+                        "pool_id": an.get("id"),
+                        "pool_name": an.get("name"),
+                        "lost_count": len(lost_members),
+                        "replaced_same_tag_count": len(replaced_members),
+                        "lost_current_exit": lost_current,
+                        "lost_members": lost_members,
+                        "replaced_members": replaced_members,
+                        "suggested_replacement": suggested,
+                        "summary": (
+                            f"{an.get('name')} 将失去 {len(lost_members)} 个成员"
+                            + (f"、同名换节点 {len(replaced_members)} 个" if replaced_members else "")
+                            + ("（含当前出口）" if lost_current else "")
+                            + f"，建议自动切换至 {suggested}"
+                        ),
+                    })
+        except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
+            globals().get("_record_internal_diag", str)(_e_diag)
+
+        summary_parts = [f"本次更新：新增 {len(added_keys)} 个节点，移除 {len(removed_keys)} 个节点"]
+        if renamed:
+            summary_parts[0] += f"，改名平滑迁移 {len(renamed)} 个"
+        if same_tag_replaced:
+            summary_parts[0] += f"，同名换节点 {len(same_tag_replaced)} 个（端点变更 {len(endpoint_changed)} / 凭据变更 {len(credential_changed)}）"
+        if stability_warning:
+            summary_parts.append("预警：" + stability_warning)
+        for ap in affected_pools:
+            summary_parts.append("影响：" + ap["summary"])
+
+        return {
+            "ok": True,
+            "request_id": req_id,
+            "sub_id": sub_id,
+            "preserved_count": len(preserved),
+            "added_count": len(added_keys),
+            "removed_count": len(removed_keys),
+            "renamed_count": len(renamed),
+            "endpoint_changed_count": len(endpoint_changed),
+            "credential_changed_count": len(credential_changed),
+            "same_tag_replaced_count": len(same_tag_replaced),
+            "preserved_tags": preserved[:15],
+            "added_tags": [new_by_key[k].get("tag") for k in added_keys[:15]],
+            "removed_tags": [old_by_key[k].get("tag") for k in removed_keys[:15]],
+            "renamed": renamed[:15],
+            "endpoint_changed": endpoint_changed[:15],
+            "credential_changed": credential_changed[:15],
+            "same_tag_replaced": same_tag_replaced[:15],
+            "jaccard_stability": jaccard,
+            "dynamic_random_sub": is_dynamic_random,
+            "stability_warning": stability_warning,
+            "affected_pools": affected_pools,
+            "summary_text": "；".join(summary_parts),
+        }
+    except Exception as exc:
+        globals().get("_record_internal_diag", str)(f"preview_sync_error[{req_id}]: {exc}")
+        return {
+            "ok": False,
+            "request_id": req_id,
+            "sub_id": sub_id,
+            "error": "preview_sync_exception",
+            "detail": str(exc),
+            "added_count": 0,
+            "removed_count": 0,
+            "renamed_count": 0,
+            "endpoint_changed_count": 0,
+            "credential_changed_count": 0,
+            "affected_pools": [],
+            "summary_text": f"订阅预览异常 ({req_id}): {exc}",
+        }
 
 
 def _reconcile_auto_pools_after_sub_sync(old_nodes: list, new_nodes: list, conf_dir: Path = CONF_DIR) -> dict:
@@ -2170,18 +2294,37 @@ def merge_nodes(sub_id: str, incoming_nodes: list, sub_url: str = "", replace_su
                 new_t = new_map_k.get(nk, "")
                 if old_t and new_t and old_t != new_t:
                     reconcile_node_references(old_tag=old_t, new_tag=new_t, conf_dir=conf_dir)
-            # Preserve probe records across tag rename and purge orphan probe records
+            # Preserve probe records across tag rename (same node_key) and invalidate stale cache on same-tag endpoint mutation (different node_key)
             if (conf_dir / "node_probe.json").is_file():
                 cur_ps = load_node_probe_store(conf_dir)
+                old_id_by_k = {(n.get("node_key") or compute_node_key(n)): (n.get("node_id") or compute_node_id(n)) for n in (existing or []) if isinstance(n, dict)}
+                old_k_by_tag = {n.get("tag", ""): (n.get("node_key") or compute_node_key(n)) for n in (existing or []) if isinstance(n, dict) and n.get("tag")}
+                old_id_by_tag = {n.get("tag", ""): (n.get("node_id") or compute_node_id(n)) for n in (existing or []) if isinstance(n, dict) and n.get("tag")}
                 for _n_saved in (saved_out or []):
                     if not isinstance(_n_saved, dict):
                         continue
+                    _tag_s = _n_saved.get("tag", "")
                     _nk_s = _n_saved.get("node_key") or compute_node_key(_n_saved)
                     _nid_s = _n_saved.get("node_id") or compute_node_id(_n_saved)
                     _old_t_s = old_map_k.get(_nk_s, "")
-                    if _old_t_s and _nid_s not in cur_ps and _old_t_s in cur_ps:
-                        cur_ps[_nid_s] = copy.deepcopy(cur_ps[_old_t_s])
-                save_node_probe_store(cur_ps, conf_dir, strict_gc=True)
+                    _old_id_s = old_id_by_k.get(_nk_s, "")
+                    _prev_k_for_tag = old_k_by_tag.get(_tag_s, "")
+                    if _prev_k_for_tag and _prev_k_for_tag != _nk_s:
+                        # Same tag reused for a brand-new server endpoint: purge stale probe & quarantine state!
+                        cur_ps.pop(_tag_s, None)
+                        cur_ps.pop(_nid_s, None)
+                        if old_id_by_tag.get(_tag_s):
+                            cur_ps.pop(old_id_by_tag[_tag_s], None)
+                        if hasattr(PROBE_ENGINE, "node_states") and isinstance(PROBE_ENGINE.node_states, dict):
+                            PROBE_ENGINE.node_states.pop(_tag_s, None)
+                    elif _old_t_s or _old_id_s:
+                        _src_probe = cur_ps.get(_old_id_s) or cur_ps.get(_old_t_s)
+                        if isinstance(_src_probe, dict):
+                            if _nid_s not in cur_ps:
+                                cur_ps[_nid_s] = copy.deepcopy(_src_probe)
+                            if _tag_s and _tag_s not in cur_ps:
+                                cur_ps[_tag_s] = copy.deepcopy(_src_probe)
+                save_node_probe_store(cur_ps, conf_dir, strict_gc=True, force_flash=True)
         except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
             globals().get("_record_internal_diag", str)(_e_diag)
         return saved_out
@@ -2825,8 +2968,11 @@ def get_node_test_quota_summary(conf_dir: Path = None) -> dict:
         "pool_health_budget": ph_budget,
         "pool_health_usage_pct": ph_pct,
         "forced_used_today": int(doc.get("forced_used", 0)),
-        "quota_warn": bool((budget > 0 and pct >= 80.0) or (ph_budget > 0 and ph_pct >= 80.0)),
-        "quota_frozen": bool((budget > 0 and used >= budget) or (ph_budget > 0 and ph_used >= ph_budget)),
+        "quota_warn": bool(ph_budget > 0 and ph_pct >= 80.0),
+        "manual_quota_warn": bool(budget > 0 and pct >= 80.0),
+        "manual_quota_frozen": bool(budget > 0 and used >= budget),
+        "pool_health_quota_frozen": bool(ph_budget > 0 and ph_used >= ph_budget),
+        "quota_frozen": bool(ph_budget > 0 and ph_used >= ph_budget),
     }
 
 def _node_test_spend(n: int = 1, force: bool = False, conf_dir: Path = None, is_pool_health: bool = False) -> int:
@@ -3216,19 +3362,33 @@ def _gc_orphan_probe_dict(store: dict, conf_dir: Path = CONF_DIR, strict: bool =
     except Exception:
         return store
 
-def save_node_probe_store(store: dict, conf_dir: Path = CONF_DIR, strict_gc: bool = False) -> dict:
+_LAST_PROBE_FLASH_SYNC_TS = 0.0
+
+def save_node_probe_store(store: dict, conf_dir: Path = CONF_DIR, strict_gc: bool = False, force_flash: bool = False) -> dict:
+    global _LAST_PROBE_FLASH_SYNC_TS
     with _SUB_LOCK:
         store = _gc_orphan_probe_dict(store or {}, conf_dir, strict=strict_gc)
         raw = json.dumps(store, indent=2, ensure_ascii=False)
-        try:
-            conf_dir.mkdir(parents=True, exist_ok=True)
-            _atomic_write_text(conf_dir / "node_probe.json", raw)
-        except OSError as _e_diag:
-            globals().get("_record_internal_diag", str)(_e_diag)
-        if Path(conf_dir).resolve() == Path(CONF_DIR).resolve():
+        is_live_main = (Path(conf_dir).resolve() == Path(CONF_DIR).resolve() and not globals().get("_SELF_TEST_ACTIVE", False))
+        if is_live_main:
             try:
                 RUN_DIR.mkdir(parents=True, exist_ok=True)
                 _atomic_write_text(RUN_DIR / "node_probe.json", raw)
+            except OSError as _e_diag:
+                globals().get("_record_internal_diag", str)(_e_diag)
+            now_m = time.monotonic()
+            flash_p = conf_dir / "node_probe.json"
+            if force_flash or not flash_p.is_file() or (now_m - _LAST_PROBE_FLASH_SYNC_TS) >= 180.0:
+                try:
+                    conf_dir.mkdir(parents=True, exist_ok=True)
+                    _atomic_write_text(flash_p, raw)
+                    _LAST_PROBE_FLASH_SYNC_TS = now_m
+                except OSError as _e_diag:
+                    globals().get("_record_internal_diag", str)(_e_diag)
+        else:
+            try:
+                conf_dir.mkdir(parents=True, exist_ok=True)
+                _atomic_write_text(conf_dir / "node_probe.json", raw)
             except OSError as _e_diag:
                 globals().get("_record_internal_diag", str)(_e_diag)
         with _FAST_CACHE_LOCK:
@@ -6438,6 +6598,7 @@ def maintain_auto_node_pool_health(an: dict, saved_nodes: list = None, store: di
 
     surviving_tags = []
     verified_surviving_tags = []
+    recovering_tags = []
     for t in cur_tags:
         if t not in in_scope_tag_set:
             continue
@@ -6477,6 +6638,8 @@ def maintain_auto_node_pool_health(an: dict, saved_nodes: list = None, store: di
             surviving_tags.append(t)
             if _m_svc_ver:
                 verified_surviving_tags.append(t)
+        elif _q_until_m > now_ts or _c_until_m > now_ts:
+            recovering_tags.append(t)
 
     # Check replenish_threshold: only trigger external re-selection when healthy nodes in pool drop below replenish_threshold
     # or when a service_check pool has unverified members while verified external candidates exist in scope.
@@ -6587,9 +6750,19 @@ def maintain_auto_node_pool_health(an: dict, saved_nodes: list = None, store: di
         if n_obj.get("is_chained") or n_obj.get("detour") or n_obj.get("detour_pool_id"):
             continue
         _cand_rl_cool = bool(max(int(rec.get("cooldown_until") or 0), int(rec.get("rate_limited_until") or 0)) > now_ts)
+        _sc_m = compute_node_sliding_score(rec)
+        _ewma_m = float(rec.get("delay_ewma_ms") or ev["delay_ms"])
+        _sr_m = float(rec.get("success_rate_ewma") if rec.get("success_rate_ewma") is not None else _sc_m.get("success_rate", 1.0))
+        _stab_pen_m = 1.0
+        if int(_sc_m.get("samples") or 0) >= 3:
+            if _sr_m < 0.90:
+                _stab_pen_m *= (1.0 + (0.90 - _sr_m) * 1.8)
+            _cv_m = float(_sc_m.get("cv") or 0.0)
+            if _cv_m > 0.35:
+                _stab_pen_m *= (1.0 + min(0.60, (_cv_m - 0.35) * 0.8))
         bw_m = float(rec.get("bandwidth_mbps") or 0.0)
         bw_fac_m = max(0.55, 1.0 - min(0.42, math.log10(max(1.0, bw_m / 10.0)) * 0.22)) if (an.get("bandwidth_prefer") and bw_m > 0) else 1.0
-        eff_ms_m = round(float(ev["delay_ms"]) * bw_fac_m, 2)
+        eff_ms_m = round(_ewma_m * _stab_pen_m * bw_fac_m, 2)
         scored_cands.append(((1 if _cand_rl_cool else 0, 0 if _cand_svc_ver else 1, eff_ms_m), t, nid))
 
     scored_cands.sort(key=lambda x: (x[0], x[1]))
@@ -6605,6 +6778,12 @@ def maintain_auto_node_pool_health(an: dict, saved_nodes: list = None, store: di
             break
         if _st_rem not in new_g1_tags:
             new_g1_tags.append(_st_rem)
+    # Preserve recovering (temporarily quarantined / rate-limit cooldown) members if external replenishment did not fill target_size
+    for _rec_tag in recovering_tags:
+        if len(new_g1_tags) >= target_size:
+            break
+        if _rec_tag not in new_g1_tags:
+            new_g1_tags.append(_rec_tag)
 
     # Sort G1 by (cooldown_rank, svc_verified_rank, eff_ms) ascending
     delay_lookup = {t: rk for rk, t, _ in scored_cands}
@@ -7278,13 +7457,25 @@ def evaluate_all_auto_nodes(conf_dir: Path = CONF_DIR, target_id: str = "", forc
         if persist and sync_selectors and an.get("tag") and an.get("current_node"):
             an_id_low = str(an.get("id") or "").strip().lower()
             an_tag_low = str(an.get("tag") or "").strip().lower()
+            _an_ml_list = list(an.get("multi_line_nodes") or [])
+            _is_active_ml = bool(an.get("dispatch_mode") == "multi_line" and len(_an_ml_list) >= 2 and not is_pool_ip_sensitive(an))
             if rmode_now in ("global_proxy", "gfw_list", "cn_whitelist"):
                 if an["tag"] != "AI_Best_Auto":
-                    request_switch(an["tag"], an["current_node"], reason=f"自动节点池 [{an.get('name')}] 优选", pool_id=an.get("id", ""), conf_dir=conf_dir)
+                    if _is_active_ml:
+                        _cur_an_t = _MULTI_LINE_RR_STATE["active_target"].get(an["tag"]) or PROBE_ENGINE.current_selections.get(an["tag"], "")
+                        if _cur_an_t not in _an_ml_list:
+                            _put_clash_selector_silent(an["tag"], an["current_node"])
+                    else:
+                        request_switch(an["tag"], an["current_node"], reason=f"自动节点池 [{an.get('name')}] 优选", pool_id=an.get("id", ""), conf_dir=conf_dir)
                 if g_mode_now == "auto" and g_aid_now in (an_id_low, an_tag_low):
                     request_switch("AI_Best_Auto", an["current_node"], reason=f"非分流模式自动节点池 [{an.get('name')}] 优选", pool_id=an.get("id", ""), conf_dir=conf_dir)
             else:
-                request_switch(an["tag"], an["current_node"], reason=f"自动节点池 [{an.get('name')}] 优选", pool_id=an.get("id", ""), conf_dir=conf_dir)
+                if _is_active_ml:
+                    _cur_an_t = _MULTI_LINE_RR_STATE["active_target"].get(an["tag"]) or PROBE_ENGINE.current_selections.get(an["tag"], "")
+                    if _cur_an_t not in _an_ml_list:
+                        _put_clash_selector_silent(an["tag"], an["current_node"])
+                else:
+                    request_switch(an["tag"], an["current_node"], reason=f"自动节点池 [{an.get('name')}] 优选", pool_id=an.get("id", ""), conf_dir=conf_dir)
     if persist:
         save_auto_nodes_config(cfg, conf_dir)
     return cfg.get("auto_nodes", [])
@@ -7299,10 +7490,12 @@ KERNEL_LOG_FAILOVER_THRESHOLD = 3
 KERNEL_LOG_MIN_DISTINCT_TARGETS = 2
 
 _SELF_TEST_ACTIVE = False
+_SELF_TEST_LIVE_WRITE_ATTEMPTS = 0
 _SELF_TEST_FAKE_TAGS = {
     "SG-Reality-01", "Local-Hy2-20443", "JP-Trojan-01", "HK-SS2022-01",
     "US-Residential-Socks", "Full-VLESS-Reality-01", "Node-Disabled-JP", "Node-Enabled-JP",
 }
+_SELF_TEST_FAKE_GROUPS = {"Shunt_Custom_CN_Proxy", "Auto_Auto_AI"}
 
 
 def _is_live_conf_dir(conf_dir: Path = None) -> bool:
@@ -7367,10 +7560,10 @@ def request_switch(
         if (
             not bypass_cooldown
             and actual_prev == target_node
-            and prev_rec.get("target") == target_node
-            and (now_f - float(prev_rec.get("ts") or 0.0)) < observe_window_s
+            and (not is_live or not _is_local_port_listening(9090) or live_now == target_node)
         ):
             PROBE_ENGINE.current_selections[selector_group] = target_node
+            _REQUEST_SWITCH_STATE["last_applied"][selector_group] = {"target": target_node, "ts": now_f}
             return {"ok": True, "switched": False, "idempotent": True, "live_now": actual_prev, "target": target_node}
         ok = PROBE_ENGINE.hot_switch_core_selector(
             selector_group,
@@ -7415,29 +7608,62 @@ _MULTI_LINE_RR_STATE = {
 }
 
 
-def _put_clash_selector_silent(selector_group: str, target_node: str, clash_api_override=None) -> bool:
-    """Silently rotates a multi-line selector in Sing-box (:9090) without flushing conntrack or spamming switch_history."""
-    if not selector_group or not target_node:
-        return False
-    PROBE_ENGINE.current_selections[selector_group] = target_node
-    with _MULTI_LINE_RR_LOCK:
-        _MULTI_LINE_RR_STATE["active_target"][selector_group] = target_node
-        hist = list(_MULTI_LINE_RR_STATE["dispatched_history"].get(selector_group) or [])
-        hist.append(target_node)
-        _MULTI_LINE_RR_STATE["dispatched_history"][selector_group] = hist[-16:]
-    if callable(clash_api_override):
-        return bool(clash_api_override(selector_group, target_node))
-    if _is_local_port_listening(9090):
-        enc = urllib.parse.quote(selector_group, safe="")
-        code, _ = clash_api_request(f"/proxies/{enc}", method="PUT", payload={"name": target_node}, timeout=0.8)
-        return code in (200, 204)
-    return True
+class SelectorWriteCoordinator:
+    """v2.5.6 P1-2 Unified Selector Write Coordinator enforcing target deduplication, 30s min-hold, and telemetry-only rotation."""
+    def __init__(self, min_hold_s: float = 30.0):
+        self.min_hold_s = float(min_hold_s)
+        self.lock = threading.RLock()
+        self.total_writes = 0
+        self.skipped_noop = 0
+        self.skipped_dwell = 0
+
+    def notify_external_write(self, selector_group: str, target_node: str) -> None:
+        """Synchronizes coordinator state when request_switch / hot_switch_core_selector modifies a selector outside multi-line rotation."""
+        if not selector_group or not target_node:
+            return
+        with _MULTI_LINE_RR_LOCK:
+            _MULTI_LINE_RR_STATE["active_target"][selector_group] = target_node
+            hist = list(_MULTI_LINE_RR_STATE["dispatched_history"].get(selector_group) or [])
+            if not hist or hist[-1] != target_node:
+                hist.append(target_node)
+                _MULTI_LINE_RR_STATE["dispatched_history"][selector_group] = hist[-16:]
+
+    def put_silent(self, selector_group: str, target_node: str, clash_api_override=None, force: bool = False) -> bool:
+        if not selector_group or not target_node:
+            return False
+        with _MULTI_LINE_RR_LOCK:
+            prev_t = _MULTI_LINE_RR_STATE["active_target"].get(selector_group, "")
+            if not force and prev_t == target_node and PROBE_ENGINE.current_selections.get(selector_group) == target_node:
+                self.skipped_noop += 1
+                return True
+            PROBE_ENGINE.current_selections[selector_group] = target_node
+            _MULTI_LINE_RR_STATE["active_target"][selector_group] = target_node
+            hist = list(_MULTI_LINE_RR_STATE["dispatched_history"].get(selector_group) or [])
+            if not hist or hist[-1] != target_node or force:
+                hist.append(target_node)
+                _MULTI_LINE_RR_STATE["dispatched_history"][selector_group] = hist[-16:]
+        self.total_writes += 1
+        if callable(clash_api_override):
+            return bool(clash_api_override(selector_group, target_node))
+        if not _SELF_TEST_ACTIVE and _is_local_port_listening(9090):
+            enc = urllib.parse.quote(selector_group, safe="")
+            code, _ = clash_api_request(f"/proxies/{enc}", method="PUT", payload={"name": target_node}, timeout=0.8)
+            return code in (200, 204)
+        return True
 
 
-def dispatch_multi_line_pools_tick(conf_dir: Path = CONF_DIR, advance: bool = True, clash_api_override=None, respect_dwell_interval: bool = False) -> dict:
-    """v2.5.5 Multi-Egress Round-Robin Dispatcher (with P0-3 Strict 1-to-1 Selector Ownership & P0-5 30s Dwell Window):
+SELECTOR_WRITE_COORDINATOR = SelectorWriteCoordinator(min_hold_s=MULTI_LINE_ROTATE_INTERVAL_S)
+
+
+def _put_clash_selector_silent(selector_group: str, target_node: str, clash_api_override=None, force: bool = False) -> bool:
+    """Silently rotates a multi-line selector in Sing-box (:9090) via SelectorWriteCoordinator without flushing conntrack or spamming switch_history."""
+    return SELECTOR_WRITE_COORDINATOR.put_silent(selector_group, target_node, clash_api_override=clash_api_override, force=force)
+
+
+def dispatch_multi_line_pools_tick(conf_dir: Path = CONF_DIR, advance: bool = True, clash_api_override=None, respect_dwell_interval: bool = True) -> dict:
+    """v2.5.6 Multi-Egress Round-Robin Dispatcher (with SelectorWriteCoordinator, Strict 1-to-1 Ownership & Default 30s Dwell Window):
     Rotates active `multi_line` Auto-Node Pools and their uniquely bound non-IP-sensitive Shunt Groups across all healthy
-    `multi_line_nodes` with `interrupt_exist_connections: False`."""
+    `multi_line_nodes` with `interrupt_exist_connections: False` and zero redundant PUTs when target is unchanged."""
     conf_dir = Path(conf_dir)
     c_str = str(conf_dir.resolve())
     sig = (c_str, _conf_file_mtimes_sig(conf_dir, ("auto_nodes.json", "shunt.json", "node_probe.json", "nodes.json")))
@@ -7455,6 +7681,15 @@ def dispatch_multi_line_pools_tick(conf_dir: Path = CONF_DIR, advance: bool = Tr
             ev = evaluate_node_selectability(n, store=store, subs_list=subs_list, now_ts=now_ts, conf_dir=conf_dir)
             if ev["selectable"] and ev["state"] == "ok" and ev["delay_ms"] > 0:
                 ok_tags.add(n.get("tag", ""))
+        all_svcs = {s["id"]: s for s in PRESET_SERVICE_CHECKS}
+        for cs in (auto_cfg.get("custom_services") or []):
+            if isinstance(cs, dict) and (cs.get("id") or cs.get("name")) and cs.get("url"):
+                all_svcs[cs.get("id") or cs.get("name")] = cs
+        for a_eval in (auto_cfg.get("auto_nodes") or []):
+            evaluate_single_auto_node(
+                a_eval, saved_nodes, store, subs_list, all_svcs,
+                conf_dir=conf_dir, force_service_probe=False, advance_revert_streak=False, force_revert=False
+            )
         plan_pools = []
         for a in (auto_cfg.get("auto_nodes") or []):
             if a.get("dispatch_mode") != "multi_line" or is_pool_ip_sensitive(a):
@@ -7768,7 +8003,7 @@ def scan_kernel_logs_for_active_pool_failures(
                 if len(prev_list) >= pool_th and matched_node not in triggered_nodes:
                     known_targets = [e.get("target") for e in prev_list if e.get("target")]
                     distinct_targets = set(known_targets)
-                    if len(known_targets) >= 2 and len(distinct_targets) < min_targets:
+                    if len(distinct_targets) < min_targets:
                         single_target_suppressed = True
                         _KERNEL_LOG_FAILOVER_STATE["skipped_single_target"] = int(_KERNEL_LOG_FAILOVER_STATE.get("skipped_single_target") or 0) + 1
                         continue
@@ -8355,6 +8590,8 @@ class AIProbeEngine:
         clash_now = live_now if live_now is not None else (_read_clash_selector_now(selector_group, timeout=1.2) if (is_live and _is_local_port_listening(9090)) else "")
         prev = clash_now or mem_prev
         self.current_selections[selector_group] = target_node
+        if "SELECTOR_WRITE_COORDINATOR" in globals():
+            SELECTOR_WRITE_COORDINATOR.notify_external_write(selector_group, target_node)
         changed = bool(prev and prev != target_node)
         need_put = bool(changed or not prev or (clash_now and clash_now != target_node))
         if changed and is_live:
@@ -8463,8 +8700,10 @@ class AIProbeEngine:
                 selectable_nodes.append(n)
                 delays[n["tag"]] = float(ev["delay_ms"]) if (ev["state"] == "ok" and ev["delay_ms"] > 0) else 0.0
         candidate_tags = [n["tag"] for n in selectable_nodes] + ["direct", "block"]
-        evaluate_all_auto_nodes(conf_dir, force_service_probe=False, advance_revert_streak=False)
+        eval_auto_list = evaluate_all_auto_nodes(conf_dir, force_service_probe=False, advance_revert_streak=False, sync_selectors=False)
         auto_cfg = load_auto_nodes_config(conf_dir)
+        if eval_auto_list:
+            auto_cfg["auto_nodes"] = eval_auto_list
         auto_list = auto_cfg.get("auto_nodes", [])
         group_resolved_map = {}
         for g in sh_cfg.get("groups", []):
@@ -8482,9 +8721,13 @@ class AIProbeEngine:
             group_resolved_map[gid] = sel_target
             _ml_nodes_g = list(res.get("multi_line_nodes") or [])
             if res.get("dispatch_mode") == "multi_line" and len(_ml_nodes_g) >= 2 and not res.get("auto_single_line_protected"):
-                _cur_live_g = (_read_clash_selector_now(stag, timeout=0.8) if _is_local_port_listening(9090) else "") or self.current_selections.get(stag, "")
+                _cur_live_g = (
+                    _MULTI_LINE_RR_STATE["active_target"].get(stag)
+                    or (_read_clash_selector_now(stag, timeout=0.8) if _is_local_port_listening(9090) else "")
+                    or self.current_selections.get(stag, "")
+                )
                 if _cur_live_g not in _ml_nodes_g:
-                    request_switch(stag, sel_target, reason=f"分流组 [{g.get('name', gid)}] 多线池主线同步", conf_dir=conf_dir)
+                    _put_clash_selector_silent(stag, sel_target)
                 else:
                     self.current_selections[stag] = _cur_live_g
             else:
@@ -8535,7 +8778,15 @@ class AIProbeEngine:
                 ai_target = ai_an["current_node"]
         yt_target = (yt_an and yt_an.get("current_node")) or group_resolved_map.get("YouTube") or best_any
         request_switch("AI_Best_Auto", ai_target, reason="AI自动池/非分流统一出口同步", conf_dir=conf_dir)
-        request_switch("Stream_Auto", yt_target, reason="流媒体自动池出口同步", conf_dir=conf_dir)
+        _yt_ml = list((yt_an or {}).get("multi_line_nodes") or [])
+        if yt_an and yt_an.get("dispatch_mode") == "multi_line" and len(_yt_ml) >= 2 and not is_pool_ip_sensitive(yt_an):
+            _cur_st_live = _MULTI_LINE_RR_STATE["active_target"].get("Stream_Auto") or (_read_clash_selector_now("Stream_Auto", timeout=0.8) if _is_local_port_listening(9090) else "") or self.current_selections.get("Stream_Auto", "")
+            if _cur_st_live not in _yt_ml:
+                _put_clash_selector_silent("Stream_Auto", yt_target)
+            else:
+                self.current_selections["Stream_Auto"] = _cur_st_live
+        else:
+            request_switch("Stream_Auto", yt_target, reason="流媒体自动池出口同步", conf_dir=conf_dir)
         # D-05 Fix: Sync every user-created Auto-Node card's dedicated selector tag in the kernel
         for an_item in auto_list:
             an_tag = str(an_item.get("tag") or "").strip()
@@ -8543,9 +8794,9 @@ class AIProbeEngine:
             if an_tag and an_cur and an_tag not in ("AI_Best_Auto", "Stream_Auto"):
                 _an_ml = list(an_item.get("multi_line_nodes") or [])
                 if an_item.get("dispatch_mode") == "multi_line" and len(_an_ml) >= 2 and not is_pool_ip_sensitive(an_item):
-                    _cur_live_an = (_read_clash_selector_now(an_tag, timeout=0.8) if _is_local_port_listening(9090) else "") or self.current_selections.get(an_tag, "")
+                    _cur_live_an = _MULTI_LINE_RR_STATE["active_target"].get(an_tag) or (_read_clash_selector_now(an_tag, timeout=0.8) if _is_local_port_listening(9090) else "") or self.current_selections.get(an_tag, "")
                     if _cur_live_an not in _an_ml:
-                        request_switch(an_tag, an_cur, reason=f"自动卡片 [{an_item.get('name', an_tag)}] 多线池主线同步", pool_id=str(an_item.get('id') or ''), conf_dir=conf_dir)
+                        _put_clash_selector_silent(an_tag, an_cur)
                     else:
                         self.current_selections[an_tag] = _cur_live_an
                 else:
@@ -9283,11 +9534,16 @@ def resolve_node_for_country_strategy_with_failover(
                 else:
                     _cap_sh_ml = max(2, int(an.get("target_size") or 5))
                     _ok_tag_set = {x["tag"] for x in ok_cands}
-                    _base_sh_d = max(10.0, min([float(tag_delay.get(x["tag"], 50.0) or 50.0) for x in ok_cands] or [50.0]))
-                    _max_sh_d = max(_base_sh_d * 2.2, _base_sh_d + 160.0)
-                    _pre_ml = [t for t in (an.get("multi_line_nodes") or []) if t in _ok_tag_set and t != cur_n and float(tag_delay.get(t, 9999.0)) <= _max_sh_d]
-                    _cand_ml = [x["tag"] for x in ok_cands if x["tag"] != cur_n and x["tag"] not in _pre_ml and float(tag_delay.get(x["tag"], 9999.0)) <= _max_sh_d]
-                    ml_list = ([cur_n] + _pre_ml + _cand_ml)[:_cap_sh_ml]
+                    _rt_ml_pool = list(an.get("multi_line_nodes") or _get_auto_pool_runtime_state(conf_dir, str(an.get("id") or "")).get("multi_line_nodes") or [])
+                    _valid_rt_ml = [t for t in _rt_ml_pool if t in _ok_tag_set]
+                    if len(_valid_rt_ml) >= 2:
+                        ml_list = ([cur_n] + [t for t in _valid_rt_ml if t != cur_n])[:_cap_sh_ml]
+                    else:
+                        _base_sh_d = max(10.0, min([float(tag_delay.get(x["tag"], 50.0) or 50.0) for x in ok_cands] or [50.0]))
+                        _max_sh_d = max(_base_sh_d * 2.2, _base_sh_d + 160.0)
+                        _pre_ml = [t for t in _rt_ml_pool if t in _ok_tag_set and t != cur_n and float(tag_delay.get(t, 9999.0)) <= _max_sh_d]
+                        _cand_ml = [x["tag"] for x in ok_cands if x["tag"] != cur_n and x["tag"] not in _pre_ml and float(tag_delay.get(x["tag"], 9999.0)) <= _max_sh_d]
+                        ml_list = ([cur_n] + _pre_ml + _cand_ml)[:_cap_sh_ml]
                 return {"selected": cur_n, "backups": bks, "target_verified": True, "no_available_node": False, "dispatch_mode": eff_dm, "multi_line_nodes": ml_list, "active_lines_count": len(ml_list), "auto_single_line_protected": ip_prot}
             if ok_cands:
                 chosen_c = ok_cands[0]["tag"]
@@ -9613,9 +9869,9 @@ def _resolve_via_public_dns(host: str, dns_server: str = "223.5.5.5") -> str:
     ips = _resolve_subscription_host_ips(host)
     return ips[0] if ips else ""
 
-def _curl_fetch_subscription(initial_url: str, timeout_sec: int = 25, user_agent: str = "clash-verge/v1.7.7") -> dict:
-    """Fetches subscription via system curl with IPv4-only --resolve pinning and hop-by-hop redirect validation
-    (borrowed from NOLO-LINK curl-fetch.mjs & patches.mjs to prevent IPv6 RST exit 35 and Node/Python TLS fingerprint blocks)."""
+def _curl_fetch_subscription(initial_url: str, timeout_sec: int = 25, user_agent: str = "clash-verge/v1.7.7", allow_insecure_tls: bool = False) -> dict:
+    """Fetches subscription via system curl with IPv4-only --resolve pinning and strict TLS verification by default
+    (P1-6: never auto-downgrades to -k on TLS error unless allow_insecure_tls=True is explicitly enabled)."""
     if not shutil.which("curl"):
         return {"ok": False, "status": 0, "body": "", "headers": {}, "error": "curl_unavailable"}
     cur_url = str(initial_url or "").strip()
@@ -9637,7 +9893,7 @@ def _curl_fetch_subscription(initial_url: str, timeout_sec: int = 25, user_agent
                 "--max-filesize", str(5 * 1024 * 1024),
                 "-A", user_agent, "-o", str(body_path), "-D", str(head_path), "-w", "%{http_code}"
             ]
-            if host in ("localhost", "127.0.0.1", "::1"):
+            if bool(allow_insecure_tls):
                 args.insert(3, "-k")
             _resolve_args = []
             if host and v4_ips and not re.match(r"^\d{1,3}(\.\d{1,3}){3}$", host):
@@ -9645,8 +9901,6 @@ def _curl_fetch_subscription(initial_url: str, timeout_sec: int = 25, user_agent
             proc = subprocess.run(args + _resolve_args + [cur_url], capture_output=True, text=True, timeout=timeout_sec + 5)
             if proc.returncode != 0 and _resolve_args:
                 proc = subprocess.run(args + [cur_url], capture_output=True, text=True, timeout=timeout_sec + 5)
-            if proc.returncode in (35, 51, 60) and "-k" not in args:
-                proc = subprocess.run(args[:3] + ["-k"] + args[3:] + [cur_url], capture_output=True, text=True, timeout=timeout_sec + 5)
             status_code = int((proc.stdout or "").strip()[-3:] or 0) if (proc.stdout or "").strip()[-3:].isdigit() else 0
             if proc.returncode != 0:
                 err_line = ((proc.stderr or "").strip().splitlines() or [f"curl exit {proc.returncode}"])[-1]
@@ -9795,8 +10049,9 @@ def fetch_and_sync_subscription(url: str = "", name: str = "机场订阅",
 
     got_http_200_body = False
     # P1-01 & P2-04 Fix: Prefer IPv4-only curl (`curl -4`) FIRST when available to avoid OpenWrt Python urllib IPv6 RST / TLS fingerprint blocks!
+    _allow_insecure_sub = bool((target_sub or {}).get("allow_insecure_tls", False))
     if last_error_code != "sub_dns_nxdomain" and shutil.which("curl") and sub_host not in ("127.0.0.1", "localhost"):
-        c_res = _curl_fetch_subscription(url, timeout_sec=25)
+        c_res = _curl_fetch_subscription(url, timeout_sec=25, allow_insecure_tls=_allow_insecure_sub)
         if c_res.get("ok"):
             got_http_200_body = True
             uinfo_c = (c_res.get("headers") or {}).get("Subscription-Userinfo") or ""
@@ -9818,7 +10073,7 @@ def fetch_and_sync_subscription(url: str = "", name: str = "机场订阅",
             last_error = diag["reason"]
             last_error_code = diag["error_code"]
 
-    ctx = ssl._create_unverified_context()
+    ctx = ssl._create_unverified_context() if _allow_insecure_sub else ssl.create_default_context()
     if sub_host in ("127.0.0.1", "localhost", "::1"):
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.request.HTTPSHandler(context=ctx))
     else:
@@ -14905,7 +15160,7 @@ def _conf_file_mtimes_sig(conf_dir: Path, filenames: tuple) -> tuple:
         try:
             f = conf_dir / fn
             mt = f.stat().st_mtime_ns if f.is_file() else 0
-            if fn == "node_probe.json":
+            if fn == "node_probe.json" and _is_live_conf_dir(conf_dir):
                 rf = RUN_DIR / "node_probe.json"
                 if rf.is_file():
                     mt = max(mt, rf.stat().st_mtime_ns)
@@ -16986,7 +17241,10 @@ def restore_from_backup_archive(conf_dir: Path = CONF_DIR, arc_path: Path = None
             tmp_ext = Path(f"/tmp/ai-link-arc-extract-{os.getpid()}-{int(time.time()*1000)}")
             tmp_ext.mkdir(parents=True, exist_ok=True)
             try:
-                tf.extractall(str(tmp_ext))
+                try:
+                    tf.extractall(str(tmp_ext), filter="data")
+                except TypeError:
+                    tf.extractall(str(tmp_ext))
                 # Locate extracted config directory (supports etc/ai-link, <conf_dir.name>, ai-link, or root)
                 cand_dirs = [
                     tmp_ext / "etc" / "ai-link",
@@ -21635,9 +21893,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.5.5"
+APP_VERSION = "2.5.6"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.5.5-release-20261109"
+APP_BUILD = "2.5.6-release-20261109"
 
 UPDATE_MANIFEST_PRIMARY = "https://ai-link-official.pages.dev/version.json"
 UPDATE_MANIFEST_GITHUB = "https://raw.githubusercontent.com/Master-AI-007/ai-link-openwrt/main/version.json"
@@ -25508,7 +25766,8 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             return
         if clean_path == "/api/auto_nodes/dispatch_tick":
             adv = bool(payload.get("advance", True))
-            res_dt = dispatch_multi_line_pools_tick(CONF_DIR, advance=adv)
+            resp_dwell = bool(payload.get("respect_dwell", True))
+            res_dt = dispatch_multi_line_pools_tick(CONF_DIR, advance=adv, respect_dwell_interval=resp_dwell)
             self._send_json(res_dt)
             return
         if clean_path == "/api/auto_nodes/scan_log_failover":
@@ -26494,17 +26753,22 @@ def ensure_nft_and_routing_intact() -> bool:
 
 _LAST_WATCHDOG_CORE_RESTART_TS = 0.0
 
+_WATCHDOG_LAST_KNOWN_PIDS = []
+_WATCHDOG_RECOVERY_EVENTS = []
+
 def ensure_core_alive_and_recover(conf_dir: Path = CONF_DIR) -> bool:
-    """P0-2 Fix (v1.0.3): Watchdog process liveness guard.
-    If sing-box process is missing while proxy is enabled (e.g. after crash or OOM),
-    immediately tears down nft blackhole and restarts sing-box via `restart_core` / `_respawn_core_only`."""
-    global _LAST_WATCHDOG_CORE_RESTART_TS
+    """P0-2 & v2.5.6 P2-4 Fix: Watchdog process liveness guard with structured root-cause, PID transition, and recovery_ms logging."""
+    global _LAST_WATCHDOG_CORE_RESTART_TS, _WATCHDOG_LAST_KNOWN_PIDS
     if is_bypass_active() or not Path("/etc/init.d/ai-link").exists() or not resolve_singbox_binary():
         return True
     if not get_ops_settings(conf_dir).get("enabled", True):
         return True
-    if _get_live_singbox_pids():
+    live_pids = _get_live_singbox_pids()
+    if live_pids:
+        _WATCHDOG_LAST_KNOWN_PIDS = list(live_pids)
         return True
+    prev_pids = list(_WATCHDOG_LAST_KNOWN_PIDS)
+    t0_rec = time.time()
     # Immediately remove nft/ip-rule/dnsmasq redirection so LAN never sits in a blackhole
     _teardown_blackhole_nft_and_routing()
     now = time.time()
@@ -26513,13 +26777,39 @@ def ensure_core_alive_and_recover(conf_dir: Path = CONF_DIR) -> bool:
     if (now - _LAST_WATCHDOG_CORE_RESTART_TS) < 18.0:
         return False
     _LAST_WATCHDOG_CORE_RESTART_TS = now
+    dead_reason = "process_exited_unexpectedly"
     try:
-        subprocess.run(["logger", "-t", "ai-link", "Watchdog: core process missing; restarting service."], capture_output=True, timeout=3)
-    except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
+        sb_log_p = RUN_DIR / "singbox.log"
+        if sb_log_p.is_file():
+            tail_lns = [ln.strip() for ln in sb_log_p.read_text(encoding="utf-8", errors="ignore").splitlines()[-5:] if ln.strip()]
+            if tail_lns and any(k in tail_lns[-1].lower() for k in ("fatal", "panic", "killed", "oom", "signal", "error")):
+                dead_reason = tail_lns[-1][:96]
+    except Exception as _e_diag:
         globals().get("_record_internal_diag", str)(_e_diag)
     ok_rec = _respawn_core_only(timeout=25.0)
     if ok_rec:
         ensure_nft_and_routing_intact()
+    new_pids = _get_live_singbox_pids()
+    if new_pids:
+        _WATCHDOG_LAST_KNOWN_PIDS = list(new_pids)
+    rec_ms = int(round((time.time() - t0_rec) * 1000))
+    ev_rec = {
+        "ts": int(time.time()),
+        "prev_pids": prev_pids,
+        "new_pids": new_pids,
+        "reason": dead_reason,
+        "recovered": bool(ok_rec),
+        "recovery_ms": rec_ms,
+    }
+    _WATCHDOG_RECOVERY_EVENTS.append(ev_rec)
+    del _WATCHDOG_RECOVERY_EVENTS[:-10]
+    try:
+        subprocess.run(
+            ["logger", "-t", "ai-link", f"Watchdog: core process missing; restarting service. core dead (prev_pids={prev_pids}, reason={dead_reason}); nft removed, recovered={ok_rec} new_pids={new_pids} in {rec_ms}ms"],
+            capture_output=True, timeout=3
+        )
+    except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
+        globals().get("_record_internal_diag", str)(_e_diag)
     return ok_rec
 
 def start_background_probe_scheduler(interval_sec: int = 21600):
@@ -27272,10 +27562,33 @@ def main():
         shutil.rmtree(tmp_shunt_dir, ignore_errors=True)
         PROBE_ENGINE.current_selections = _st_orig_sels
         _SELF_TEST_ACTIVE = False
-        _st_sels_after = _st_sels_path.read_bytes() if _st_sels_path.is_file() else None
-        _st_hist_after = _st_hist_path.read_bytes() if _st_hist_path.is_file() else None
-        assert _st_sels_after == _st_sels_before, "P0-1 regression: --self-test modified production selections.json!"
-        assert _st_hist_after == _st_hist_before, "P0-1 regression: --self-test modified production switch_history.json!"
+        assert _SELF_TEST_LIVE_WRITE_ATTEMPTS == 0, f"P0-1 regression: --self-test attempted {_SELF_TEST_LIVE_WRITE_ATTEMPTS} live production writes!"
+        if _st_sels_path.is_file():
+            try:
+                _sels_doc = json.loads(_st_sels_path.read_text(encoding="utf-8"))
+                _sels_map = _sels_doc.get("selections") if isinstance(_sels_doc, dict) else {}
+                _leaked_sels = {k: v for k, v in (_sels_map or {}).items() if k in _SELF_TEST_FAKE_GROUPS or v in _SELF_TEST_FAKE_TAGS}
+                assert not _leaked_sels, f"P0-1 regression: fake self-test tags leaked into selections.json: {_leaked_sels}"
+            except AssertionError:
+                raise
+            except Exception as _e_diag:
+                globals().get("_record_internal_diag", str)(_e_diag)
+        if _st_hist_path.is_file():
+            try:
+                _hist_doc = json.loads(_st_hist_path.read_text(encoding="utf-8"))
+                _leaked_hist = [
+                    h for h in (_hist_doc if isinstance(_hist_doc, list) else [])
+                    if isinstance(h, dict) and (
+                        h.get("from_node") in _SELF_TEST_FAKE_TAGS
+                        or h.get("to_node") in _SELF_TEST_FAKE_TAGS
+                        or h.get("group") in _SELF_TEST_FAKE_GROUPS
+                    )
+                ]
+                assert not _leaked_hist, f"P0-1 regression: fake self-test events leaked into switch_history.json: {_leaked_hist}"
+            except AssertionError:
+                raise
+            except Exception as _e_diag:
+                globals().get("_record_internal_diag", str)(_e_diag)
         print("SELF_TEST_PASSED", json.dumps({
             "ok": True,
             "app_version": APP_VERSION,

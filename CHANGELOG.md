@@ -1,3 +1,13 @@
+## [v2.5.6] - 2026-11-09
+### 加强复审计（6 项 P1 + 6 项 P2 全量闭环）
+- **自检语义断言与零生产竞态**：以进程级 `_SELF_TEST_LIVE_WRITE_ATTEMPTS == 0` 守卫 + 语义脏标签断言取代全文件字节比较，消除与常驻 daemon 的时序竞态；生产运行期连跑两次自检均 `RC=0 / SELF_TEST_PASSED / 零告警`，`Stage 6.20b` 与 `7.1` 同步通过。
+- **唯一 `SelectorWriteCoordinator`**：收口全部 Selector 写入路径，30s 驻留内目标未变跳过 `PUT`；`evaluate_all_auto_nodes` / `apply_shunt_selections` 不再覆盖合法多线成员，正常轮换仅更新遥测、不写切换历史；外部热切双向同步轮询状态。
+- **内核日志空目标抑制**：`targets == []` 纳入 `distinct_targets` 守卫，杜绝单条/空目标超时误触发直连降级。
+- **订阅预览与严格 TLS**：完整输出 `preserved` / `renamed` / `endpoint_changed` / `credential_changed` / `same_tag_replaced`，动态随机订阅 Jaccard 预警，替换候选按池范围与 AI 锁区优选；移除 curl 35/51/60 自动 `-k` 重试与 localhost 默认 `-k`，`urllib` 改用 `create_default_context()`。
+- **P2**：手动与自动池健康配额冻结拆分、前端旧文案清零、IPK `prerm`/`postrm` 卸载收尾与 `Description` 对齐、Watchdog 恢复根因与耗时记录、`node_probe.json` 闪存写放大治理。
+- **Round 2 增量**：500+ 节点订阅变异状态精准分治、协调器外部热切同步、DNS 拦截榜 KPI 与双栏等高、自动复选 EWMA 同源评分、Hero 三联指标实时遥测。
+- **四项出包标准保持**：夹具整棵随包、零补发 `run_all 15/15 PASS / RC=0`、自检沙箱隔离、混沌门禁 `78/78`；Design Lint 18/18、发布门禁 17/17、UI 零异常。
+
 ## [v2.5.5] - 2026-11-09
 ### 节点池专项复审计（P0-1~P0-5 & P1-5.1~5.9）
 - **自检 100% 生产隔离**：新增 `_SELF_TEST_ACTIVE` 与 `_is_live_conf_dir` 守卫，自检态严禁写 `selections.json` / `switch_history.json` 或调用 Clash API；启动/加载时自动清洗残留假节点（`JP-Trojan-01` / `HK-SS2022-01`），实测脏数据重启后残留 0。

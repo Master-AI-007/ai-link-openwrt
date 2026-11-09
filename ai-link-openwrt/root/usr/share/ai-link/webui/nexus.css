@@ -3984,3 +3984,5 @@ small {
 .dashboard-grid.three, .bento-settings-grid { align-items: stretch; }
 .dashboard-grid.three > .glass-card, .bento-settings-grid > .glass-card { height: 100%; display: flex; flex-direction: column; justify-content: space-between; }
 .hud-pool-scope { color: var(--text-3); font-size: var(--fs-xs); font-weight: 400; }
+
+#page-dns .dashboard-grid.two-one > .glass-card > .blocked-list { flex: 1; }

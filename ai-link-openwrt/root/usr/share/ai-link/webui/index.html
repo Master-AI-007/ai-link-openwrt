@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="color-scheme" content="dark">
   <title>AI-LINK NEXUS · 全域 3D 智能网关指挥舱</title>
-  <link rel="icon" type="image/svg+xml" href="./favicon.svg?v=2.5.5-8b1d6b14">
-  <link rel="alternate icon" href="./favicon.ico?v=2.5.5-218c306e">
-  <link rel="apple-touch-icon" href="./apple-touch-icon.png?v=2.5.5-89c068d7">
-  <link rel="stylesheet" href="./nexus.css?v=2.5.5-9f731e3d">
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg?v=2.5.6-8b1d6b14">
+  <link rel="alternate icon" href="./favicon.ico?v=2.5.6-218c306e">
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png?v=2.5.6-89c068d7">
+  <link rel="stylesheet" href="./nexus.css?v=2.5.6-69a20ce1">
 </head>
 <body>
   <a class="skip-link" href="#main-stage">跳至主内容</a>
@@ -74,13 +74,13 @@
     <div class="workspace">
       <header class="topbar">
         <div class="page-heading">
-          <span class="eyebrow">AI-LINK / NEXUS 3D · <span class="version-chip">v2.5.5</span></span>
+          <span class="eyebrow">AI-LINK / NEXUS 3D · <span class="version-chip">v2.5.6</span></span>
           <h1 id="page-title">全域星图</h1>
         </div>
         <div class="global-route" style="cursor:pointer" data-page-link="shunt" title="点击进入分流与出口编排">
           <span class="live-dot"></span>
           <div><small id="top-route-label">当前运行模式</small><strong id="top-exit">精细规则分流</strong></div>
-          <span class="route-latency" id="top-latency">13 组策略 · 3 组自动池</span>
+          <span class="route-latency" id="top-latency">16 组策略 · 6 组自动池</span>
         </div>
         <div class="top-telemetry">
           <div style="cursor:pointer" data-action="jump-active-connections" title="点击跳转至「设置与诊断 · 06 / 实时活跃代理连接」查看五元组与按设备筛选"><small>活跃连接</small><b id="top-connections">0</b></div>
@@ -222,7 +222,7 @@
                 <h3 id="ov-hero-node">新加坡 06 <span class="lat-badge mid">--</span></h3>
                 <button type="button" class="hud-help-btn" data-action="show-hud-help" data-help-topic="overview" title="一屏统览出口延迟、核心应用声呐、实时流量波形与分流矩阵" aria-label="全域网络脉搏说明">?</button>
               </div>
-              <p id="ov-hero-desc">当前模式：精细规则分流 · 双组省流自动节点池与防黑洞看门狗实时守护中</p>
+              <p id="ov-hero-desc">当前模式：精细规则分流 · 单组智能节点池与防黑洞看门狗实时守护中</p>
               <div class="shield-stats">
                 <div><b id="ov-pillar-mode">精细规则分流</b><span>全局路由策略</span></div>
                 <div><b id="ov-pillar-bypass">大陆 IP 硬件直通已激活</b><span>大陆流量硬件旁路</span></div>
@@ -331,8 +331,8 @@
               </div>
               <p>国内流量硬件级直通零损耗，海外 AI 与流媒体按自动节点池定时 URL Ping 极速优选切换。</p>
               <div class="shield-stats">
-                <div><b id="shunt-hero-stat-groups">13 组</b><span>活跃分流策略组</span></div>
-                <div><b id="shunt-hero-stat-pools">3 个</b><span>自动节点池</span></div>
+                <div><b id="shunt-hero-stat-groups">15 组</b><span>活跃分流策略组</span></div>
+                <div><b id="shunt-hero-stat-pools">4 个</b><span>自动节点池</span></div>
                 <div><b id="shunt-hero-stat-mode">精细规则分流</b><span>当前运行模式</span></div>
               </div>
             </div>
@@ -492,9 +492,9 @@
               </div>
               <p id="homelink-hero-desc">2 个加密回家入站正在监听，随时可扫码一键接入家庭内网，每个入站可独立指定路由模式。</p>
               <div class="shield-stats">
-                <div><b>VLESS / Hy2</b><span>双协议隐身入站</span></div>
-                <div><b>独立分流</b><span>单节点独立路由策略</span></div>
-                <div><b>TLS 1.3</b><span>端到端加密防护</span></div>
+                <div><b id="hl-hero-stat-tunnels">2 / 2 在线</b><span>监听回家隧道</span></div>
+                <div><b id="hl-hero-stat-clients">0 台 · 0 会话</b><span>在线远程客户端</span></div>
+                <div><b id="hl-hero-stat-traffic">0 B</b><span>累计回家流量</span></div>
               </div>
             </div>
             <div class="hero-side-panel">
@@ -741,7 +741,7 @@
             <article class="glass-card system-card">
               <span class="card-index">01 / CORE LIFECYCLE</span>
               <div class="system-title">
-                <div><h3 id="sys-core-title">sing-box --</h3><p id="sys-core-sub">AI-LINK v2.5.5 · 单一真相源架构</p></div>
+                <div><h3 id="sys-core-title">sing-box --</h3><p id="sys-core-sub">AI-LINK v2.5.6 · 单一真相源架构</p></div>
                 <div class="core-head-right">
                   <span class="status-pill" id="settings-proxy-status-pill">运行正常</span>
                   <button class="button secondary compact" id="btn-check-core-update" data-action="check-core-update">检查内核更新</button>
@@ -771,7 +771,7 @@
               <div class="update-row">
                 <div><b>AI-LINK 插件版本</b><span id="ota-sub">点击「检查更新」获取云端最新版本状态</span></div>
                 <div class="button-row">
-                  <span class="version-chip">v2.5.5</span>
+                  <span class="version-chip">v2.5.6</span>
                   <button class="button secondary compact" data-action="check-update">检查更新</button>
                   <button class="button ghost compact" data-action="ota-status">升级状态</button>
                   <button id="btn-ota-apply" class="button primary compact hidden" data-action="apply-update">立即升级</button>
@@ -945,10 +945,10 @@
     </div>
   </div>
 
-  <script src="./static/qrcode.min.js?v=2.5.5-6e6189e2"></script>
-  <script src="./assets/three.min.js?v=2.5.5-eb854986"></script>
-  <script src="./nexus3d.js?v=2.5.5-c2a8a250"></script>
-  <script src="./nexus.js?v=2.5.5-2eb5ea2d"></script>
+  <script src="./static/qrcode.min.js?v=2.5.6-6e6189e2"></script>
+  <script src="./assets/three.min.js?v=2.5.6-eb854986"></script>
+  <script src="./nexus3d.js?v=2.5.6-c2a8a250"></script>
+  <script src="./nexus.js?v=2.5.6-d1ba43af"></script>
 <!-- NEXUS-UI-CONTRACT: sub-health-box | 仅入池检测达标项 | 免测直接加入池 | delete-custom-group | sub-card-custom | 手动添加节点 | btn-an-auto-screen | btn-an-mode-ping | btn-an-mode-svc | 同步时间: -->
 </body>
 </html>

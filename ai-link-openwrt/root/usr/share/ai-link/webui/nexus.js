@@ -1612,6 +1612,12 @@
     if (heroDesc) {
       heroDesc.textContent = listenCnt + ' 个加密回家入站正在独立监听（每个节点支持独立配置路由边界），当前 ' + (clientCnt > 0 ? (clientCnt + ' 台远程客户端在线 · 活跃会话 ' + activeConnsCnt + ' 条。') : '随时可扫码一键接入家庭内网。');
     }
+    const hlStatTunnels = $('#hl-hero-stat-tunnels');
+    if (hlStatTunnels) hlStatTunnels.textContent = listenCnt + ' / ' + mock.homelinkNodes.length + ' 在线';
+    const hlStatClients = $('#hl-hero-stat-clients');
+    if (hlStatClients) hlStatClients.textContent = clientCnt + ' 台 · ' + activeConnsCnt + ' 会话';
+    const hlStatTraffic = $('#hl-hero-stat-traffic');
+    if (hlStatTraffic) hlStatTraffic.textContent = totalTrafficStr;
 
     const kpiBox = $('#homelink-monitor-kpis');
     if (kpiBox) {
@@ -1699,7 +1705,21 @@
     if (bd) {
       if (mock.blocked && mock.blocked.length) {
         const max = Math.max(1, mock.blocked[0][2] || 1);
-        bd.innerHTML = mock.blocked.map(d => '<div class="blocked-row"><div><b>' + esc(d[0]) + '</b><span>' + esc(d[1]) + '</span></div><i style="--width:' + Math.max(4, Math.min(100, d[2] / max * 100)) + '%"></i><strong>' + Number(d[2] || 0).toLocaleString('zh-CN') + ' 次</strong></div>').join('');
+        const listSum = mock.blocked.reduce((acc, item) => acc + Number(item[2] || 0), 0);
+        const totalIntercepts = Math.max(listSum, Number(mock.blockedTotal || 0), 1);
+        const topSharePct = Math.min(100, (listSum / totalIntercepts) * 100).toFixed(1);
+        const topDom = String(mock.blocked[0][0] || '--');
+        const kpiStrip = '<div id="dns-blocked-kpi-strip" class="traffic-kpi-strip" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:var(--sp-3)">' +
+          '<div class="traffic-kpi-item"><span>24h 拦截总计</span><b class="num">' + totalIntercepts.toLocaleString('zh-CN') + ' 次</b></div>' +
+          '<div class="traffic-kpi-item"><span>榜首拦截源</span><b class="mono" title="' + esc(topDom) + '">' + esc(topDom) + '</b></div>' +
+          '<div class="traffic-kpi-item"><span>Top ' + mock.blocked.length + ' 集中度</span><b class="num">' + topSharePct + '%</b></div>' +
+          '</div>';
+        bd.innerHTML = kpiStrip + mock.blocked.map((d, idx) => {
+          const cnt = Number(d[2] || 0);
+          const pct = ((cnt / totalIntercepts) * 100).toFixed(1);
+          const tip = '#' + (idx + 1) + ' ' + String(d[0] || '') + ' · ' + String(d[1] || '') + ' · 拦截 ' + cnt.toLocaleString('zh-CN') + ' 次 (' + pct + '%)';
+          return '<div class="blocked-row" title="' + esc(tip) + '"><div><b>#' + (idx + 1) + ' ' + esc(d[0]) + '</b><span>' + esc(d[1]) + '</span></div><i style="--width:' + Math.max(4, Math.min(100, cnt / max * 100)) + '%"></i><strong class="num">' + cnt.toLocaleString('zh-CN') + ' 次 (' + pct + '%)</strong></div>';
+        }).join('');
       } else {
         bd.innerHTML = '<div class="trace-stage"><i></i><div><b>今日已拦截 0 次 · 净网规则引擎已就绪</b><span>内置隐私遥测探针库、商业广告联盟库与路由层 REJECT 规则已挂载生效，产生命中后将实时排行展示</span></div><strong>守护中</strong></div>';
       }
@@ -3711,7 +3731,7 @@
     let stages = [
       ['01', '防火墙 TProxy 接管', '命中 AI-LINK nftables 透明代理规则，未触发局域网或保留地址豁免', '已接管'],
       ['02', '双栈 DNS 智能分流', '海外域名进入 :7874 FakeIP 远程解析路径，DNS 防跳重写与广告黑洞已先行复核', 'FakeIP'],
-      ['03', '精细分流规则匹配', '命中高优先级业务策略组，自动绑定对应双组自动节点池', '规则命中'],
+      ['03', '精细分流规则匹配', '命中高优先级业务策略组，自动绑定对应单组智能节点池', '规则命中'],
       ['04', '实际出站节点隧道', '经由 ' + eg.nodeName + ' 出站转发，端到端健康状态正常', eg.latencyText]
     ];
     if (res && res.ok !== false && (res.stage1_firewall || res.stage3_rule)) {
@@ -4750,7 +4770,7 @@
         if (lblMulti) lblMulti.textContent = '多出口轮询（实验，不叠加单流带宽）';
         if (hintEl) {
           hintEl.textContent = dispatchMode === 'multi_line'
-            ? '多线并发已开启：已自动屏蔽 AI 敏感服务勾选项，并要求容量 ≥ 2'
+            ? '多出口轮询已开启：已自动屏蔽 AI 敏感服务勾选项，并要求容量 ≥ 2'
             : '可根据业务类型切换「优选单线」或「多线并发」';
         }
       }

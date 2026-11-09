@@ -1,19 +1,34 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.5.5",
+  "latest": "2.5.6",
   "release_date": "2026-11-09",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.5.5",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.5.6",
   "highlights": [
-    "官方自检 100% 生产隔离：新增 _SELF_TEST_ACTIVE 与 _is_live_conf_dir 守卫，自检态严禁写生产状态文件或调用 Clash API",
-    "启动/加载时自动清洗残留的 JP-Trojan-01 / HK-SS2022-01 等自检假节点，实测脏数据重启后残留为 0",
-    "探测预算双轨拆分（池健康巡检与日常探索分离），500+ 节点库自动扩容；故障复验免配额穿透，不再被旧缓存阻断切换",
-    "真实探测新鲜度：暴露 last_real_probe_ts / probe_stale / fresh_ok_count / quota_status",
-    "多线池 Selector 1 对 1 唯一归属，修复跨池抢占；轮换驻留窗口收敛为 30s，故障仍秒切",
-    "前端文案如实改为「多出口轮询（实验，不叠加单流带宽）」",
-    "四项出包标准保持：夹具整棵随包、四列指纹定稿注入、自检沙箱、零补发 15 套全量回归"
+    "官方自检与后台 daemon 彻底解耦：改用进程级零生产写入守卫 + 语义脏标签断言，生产运行期连跑两次均 RC=0、零告警",
+    "唯一 SelectorWriteCoordinator 收口全部写入路径，30 秒驻留内目标未变跳过冗余 PUT；多线轮换不再污染切换历史",
+    "内核日志故障转移收紧空目标抑制，杜绝单条/空目标超时误触发直连降级",
+    "订阅同步预览完整区分同名换端点/换凭据、动态随机订阅 Jaccard 预警，候选替换按池范围与 AI 锁区优选",
+    "订阅拉取移除自动 -k 降级与默认不校验证书，仅在显式 allow_insecure_tls 时放宽",
+    "IPK 补齐 prerm/postrm 卸载收尾（停服务 / 清理 nft 表 / 恢复 DNS），control 版本描述对齐 2.5.6",
+    "四项出包标准保持：夹具整棵随包、零补发 15 套全量回归、自检沙箱隔离、混沌门禁 78 项全过"
   ],
   "changelog": [
+    {
+      "version": "2.5.6",
+      "date": "2026-11-09",
+      "type": "fix",
+      "title": "加强复审计（6 项 P1 + 6 项 P2 全量闭环）",
+      "items": [
+        "自检语义断言与零生产竞态：进程级 _SELF_TEST_LIVE_WRITE_ATTEMPTS == 0 守卫取代全文件字节比较，消除与常驻 daemon 的时序竞态；统一 Stage 6.20b / 7.1 前置清理",
+        "唯一 SelectorWriteCoordinator + 30s 全局驻留：目标未变跳过 PUT，evaluate_all_auto_nodes / apply_shunt_selections 不再覆盖合法多线成员，正常轮换仅更新遥测",
+        "内核日志空目标抑制：targets == [] 纳入 distinct_targets 守卫，避免误切 direct",
+        "订阅预览完整输出 preserved / renamed / endpoint_changed / credential_changed / same_tag_replaced；动态随机订阅 Jaccard 预警；替换候选按地区与 AI 锁区排序优选",
+        "严格 TLS：移除 curl 35/51/60 自动 -k 重试与 localhost 默认 -k，urllib 改用 create_default_context",
+        "P2：手动与自动池健康配额冻结拆分、前端旧文案清零、IPK prerm/postrm 补齐、Watchdog 恢复根因与耗时记录、node_probe.json 闪存写放大治理",
+        "Round 2 增量：500+ 节点订阅变异状态精准分治、协调器外部热切双向同步、DNS 拦截榜 KPI 等高、EWMA 同源评分、Hero 三联指标实时遥测"
+      ]
+    },
     {
       "version": "2.5.5",
       "date": "2026-11-09",
@@ -339,13 +354,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.5.5/AI-LINK-v2.5.5.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.5.6/AI-LINK-v2.5.6.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.5.5.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.5.6.tar.gz"
       ],
-      "size": 991961,
-      "md5": "20b9d0ca405a07cfd38866bbe63ca357",
-      "sha256": "6dd6969de0e11543ac883e82e0c101d864f108fa47333c55ceaba90586a18729"
+      "size": 1008250,
+      "md5": "45a80b918adbbef159dded8910f16a72",
+      "sha256": "5a4eb5aa97a189528bfc135ed7966606bd1343f5bf5c4f866c63800df87e3aa9"
     }
   }
 }

@@ -1221,7 +1221,7 @@ def main() -> int:
         active_conns_chains0 = []
         yt_And_tk_same_tick_diff = False
         for _tick_i in range(4):
-            dmod.dispatch_multi_line_pools_tick(tmp_v250, advance=True, clash_api_override=_mock_clash_put)
+            dmod.dispatch_multi_line_pools_tick(tmp_v250, advance=True, clash_api_override=_mock_clash_put, respect_dwell_interval=False)
             active_conns_chains0.append(clash_selector_now.get("Shunt_YouTube"))
             if clash_selector_now.get("Shunt_YouTube") != clash_selector_now.get("Shunt_TikTok"):
                 yt_And_tk_diff = True
@@ -1230,7 +1230,7 @@ def main() -> int:
         auto_cfg_250_single["auto_nodes"][0]["dispatch_mode"] = "single_best"
         dmod.save_auto_nodes_config(auto_cfg_250_single, tmp_v250)
         dmod.evaluate_all_auto_nodes(tmp_v250, force_service_probe=False, advance_revert_streak=False)
-        res_single_tick = dmod.dispatch_multi_line_pools_tick(tmp_v250, advance=True, clash_api_override=_mock_clash_put)
+        res_single_tick = dmod.dispatch_multi_line_pools_tick(tmp_v250, advance=True, clash_api_override=_mock_clash_put, respect_dwell_interval=False)
         sb_single_cfg = dmod.ConfigGenerator.generate_singbox_config(enable_dns_section=True, enable_tls_outbounds=True, conf_dir=tmp_v250)
         sh_yt_single = next((o for o in (sb_single_cfg.get("outbounds") or []) if o.get("tag") == "Shunt_YouTube"), {})
         check("Stage 6.19b (v2.5.0 诊断闭环2: 多线并发实时连接分摊 >=2 物理节点且切回 single_best 立即恢复单节点): 并发连接 chains[0] 覆盖全部健康物理节点，YouTube 与 TikTok 同刻错峰分摊，切回 single_best 后恢复单选",
@@ -1284,7 +1284,9 @@ def main() -> int:
           and all(k not in ov_txt_251 for k in ["luci-sel-rmode", "luci-btn-ipv6", "luci-btn-bypass", "luci-btn-up-rules", "luci-btn-up-core", "luci-btn-up-all", "form.Flag", "form.ListValue"]),
           "LuCI overview.js streamlined verified")
 
-    res_st = subprocess.run(["python3", str(DAEMON), "--self-test"], capture_output=True, text=True)
+    dmod.PROBE_ENGINE.load_persisted_selections(dmod.RUN_DIR, dmod.CONF_DIR)
+    dmod.load_switch_history(dmod.RUN_DIR)
+    res_st = subprocess.run([sys.executable, "-B", str(DAEMON), "--self-test"], capture_output=True, text=True)
     cl_txt_251 = (SITE / "CHANGELOG.md").read_text(encoding="utf-8")
     m_cl_251 = re.search(r"^##\s+v?([0-9.]+)", cl_txt_251, re.M)
     check("Stage 6.20b (v2.5.1 FB-250-1/2/5 守护进程自检 urltest 合法键与 CHANGELOG 同步): ai-link-daemon.py --self-test 零报错通过且 CHANGELOG.md 首条版本与 APP_VERSION 对齐",
@@ -1325,8 +1327,8 @@ def main() -> int:
                 clash_calls_251.append((path.rsplit("/", 1)[-1], payload.get("name")))
             return 204, {}
         # Rotate onto ML-Alive-02 first
-        dmod.dispatch_multi_line_pools_tick(tmp_v251, advance=True, clash_api_override=mock_clash_251)
-        dmod.dispatch_multi_line_pools_tick(tmp_v251, advance=True, clash_api_override=mock_clash_251)
+        dmod.dispatch_multi_line_pools_tick(tmp_v251, advance=True, clash_api_override=mock_clash_251, respect_dwell_interval=False)
+        dmod.dispatch_multi_line_pools_tick(tmp_v251, advance=True, clash_api_override=mock_clash_251, respect_dwell_interval=False)
         # Now mark ML-Alive-02 as dead so only 1 healthy node (ML-Alive-01) remains in the multi_line pool
         st_251 = dmod.load_node_probe_store(tmp_v251)
         st_251["nid_ml_a2"]["state"] = "dead"
@@ -1336,7 +1338,7 @@ def main() -> int:
         dmod.save_node_probe_store(st_251, tmp_v251)
         with dmod._MULTI_LINE_RR_LOCK:
             dmod._MULTI_LINE_RR_STATE["memo_sig"] = None
-        tick_deg = dmod.dispatch_multi_line_pools_tick(tmp_v251, advance=True, clash_api_override=mock_clash_251)
+        tick_deg = dmod.dispatch_multi_line_pools_tick(tmp_v251, advance=True, clash_api_override=mock_clash_251, respect_dwell_interval=False)
         check("Stage 6.21a (v2.5.1 多线并发池副线阵亡退化单线立即收敛): 2 线并发池副线 ML-Alive-02 阵亡后，0.5s 调度器立即将 Stream_Auto 与 Shunt_YouTube 从死副线收敛回唯一存活主线 ML-Alive-01 且 active_pools_count=0",
               tick_deg.get("active_pools_count") == 0
               and tick_deg.get("dispatched", {}).get("Stream_Auto") == "ML-Alive-01"
@@ -1567,7 +1569,7 @@ def main() -> int:
         gates_254_txt = (Path(__file__).resolve().parent / "gates_v101.py").read_text(encoding="utf-8")
         check("Stage 6.27a (v2.5.4 FB-253-1/2 Makefile PKG_VERSION/PKG_RELEASE 锚点与报告版本结构门禁): Makefile 含 PKG_VERSION:=2.5.4 与 PKG_RELEASE:=14，且 gates_v101 强制校验报告 PKG_RELEASE 与首节版本号",
               f"PKG_VERSION:={dmod.APP_VERSION}" in mk_254_txt
-              and "PKG_RELEASE:=15" in mk_254_txt
+              and "PKG_RELEASE:=16" in mk_254_txt
               and "FB-253-1: Verify PKG_RELEASE" in gates_254_txt
               and "FB-253-2: Verify report Section 1" in gates_254_txt,
               f"app_ver={dmod.APP_VERSION}")
@@ -1747,7 +1749,7 @@ def main() -> int:
               'sonar-ring-scale r-inner">50ms</span>' in html_254_txt
               and 'sonar-ring-scale r-mid">150ms</span>' in html_254_txt
               and 'sonar-ring-scale r-outer">300ms</span>' in html_254_txt
-              and "AI-LINK v2.5.5 · 单一真相源架构" in html_254_txt
+              and f"AI-LINK v{dmod.APP_VERSION} · 单一真相源架构" in html_254_txt
               and "worstSvc.name" in js_252_txt
               and "AI-LINK v2.5.2" not in js_252_txt,
               "sonar ring scales, peak latency KPI, and dynamic version verified")
@@ -2027,6 +2029,213 @@ def main() -> int:
               and "缓存待刷" in js_77b_txt
               and "L7已验证：" in js_77b_txt,
               "HUD card telemetry & zero-fake-fallback verified")
+
+        # Stage 7.8 (v2.5.6 P1-1 & FB-255-2): Semantic --self-test Assertion & Zero stderr DeprecationWarning
+        st_78_proc = subprocess.run([sys.executable, "-B", str(DAEMON), "--self-test"], capture_output=True, text=True, timeout=45)
+        check("Stage 7.8 (v2.5.6 P1-1 & FB-255-2 语义化自检断言与零 DeprecationWarning 门禁): --self-test 校验进程级零生产写与零假节点残留，不因并发后台选点更新误报失败且 stderr 零告警",
+              st_78_proc.returncode == 0
+              and "SELF_TEST_PASSED" in (st_78_proc.stdout or "")
+              and "DeprecationWarning" not in (st_78_proc.stderr or ""),
+              f"rc={st_78_proc.returncode}, stderr_len={len((st_78_proc.stderr or '').strip())}")
+
+        # Stage 7.9 (v2.5.6 P1-2): SelectorWriteCoordinator Target Deduplication, Default 30s Dwell & Multi-Line Anti-Tug-Of-War
+        put_calls_79 = []
+        dmod._MULTI_LINE_RR_STATE["cursors"].clear()
+        dmod._MULTI_LINE_RR_STATE["last_rotate_ts"].clear()
+        dmod._MULTI_LINE_RR_STATE["active_target"].clear()
+        dmod._MULTI_LINE_RR_STATE["memo_sig"] = None
+        dmod.dispatch_multi_line_pools_tick(tmp_v252, advance=True, clash_api_override=lambda s, t: (put_calls_79.append((s, t)) or True))
+        writes_after_tick1 = len(put_calls_79)
+        dmod.dispatch_multi_line_pools_tick(tmp_v252, advance=True, clash_api_override=lambda s, t: (put_calls_79.append((s, t)) or True))
+        dmod.dispatch_multi_line_pools_tick(tmp_v252, advance=True, clash_api_override=lambda s, t: (put_calls_79.append((s, t)) or True))
+        writes_after_tick3 = len(put_calls_79)
+        dmod.dispatch_multi_line_pools_tick(tmp_v252, advance=True, respect_dwell_interval=False, clash_api_override=lambda s, t: True)
+        rot_yt_target = dmod.PROBE_ENGINE.current_selections.get("Shunt_YouTube")
+        dmod.PROBE_ENGINE.apply_shunt_selections(tmp_v252)
+        after_apply_yt_target = dmod.PROBE_ENGINE.current_selections.get("Shunt_YouTube")
+        check("Stage 7.9 (v2.5.6 P1-2 SelectorWriteCoordinator 默认30s驻留、未变目标零冗余PUT与多线防覆盖门禁): 30s驻留期内连续3次tick仅首次执行PUT(后续0次冗余写入)，且 apply_shunt_selections 绝不将已轮换的多线 Selector 覆盖回主节点",
+              writes_after_tick1 > 0
+              and writes_after_tick3 == writes_after_tick1
+              and rot_yt_target == after_apply_yt_target,
+              f"tick1_writes={writes_after_tick1}, tick3_writes={writes_after_tick3}, yt_sel={rot_yt_target}=={after_apply_yt_target}")
+
+        # Stage 7.10 (v2.5.6 P1-3): Kernel Log Failover Unknown-Target (targets=[]) Suppression
+        dmod._KERNEL_LOG_FAILOVER_STATE["node_err_streaks"].clear()
+        res_unknown_tgt = dmod.scan_kernel_logs_for_active_pool_failures(
+            tmp_v252,
+            log_lines_override=[
+                "ERROR outbound/vless[SubA-JP-01]: context deadline exceeded",
+                "ERROR outbound/vless[SubA-JP-01]: context deadline exceeded",
+                "ERROR outbound/vless[SubA-JP-01]: context deadline exceeded",
+            ],
+            fail_threshold=3,
+            recheck_before_switch=False,
+        )
+        check("Stage 7.10 (v2.5.6 P1-3 内核日志未知目标 targets=[] 抑制防误切门禁): 3 条无明确目标域名的 context deadline exceeded 被目标多样性守卫抑制 (triggered=False, single_target_suppressed=True)，绝不误切 direct",
+              res_unknown_tgt.get("triggered") is False
+              and res_unknown_tgt.get("single_target_suppressed") is True,
+              f"res={res_unknown_tgt}")
+
+        # Stage 7.11 (v2.5.6 P1-4 & P1-5): Subscription Sync Preview Full Identity Diff (Same-Tag Different-Key) & Dynamic Random Jaccard Warning
+        dmod.save_nodes_list([
+            {"tag": "Stable-Name", "type": "vless", "server": "10.0.0.1", "server_port": 443, "uuid": "uuid-old", "_sub_id": "sub_diff_test"},
+            {"tag": "Rand-01", "type": "vless", "server": "10.0.1.1", "server_port": 443, "uuid": "u1", "_sub_id": "sub_diff_test"},
+            {"tag": "Rand-02", "type": "vless", "server": "10.0.1.2", "server_port": 443, "uuid": "u2", "_sub_id": "sub_diff_test"},
+            {"tag": "Rand-03", "type": "vless", "server": "10.0.1.3", "server_port": 443, "uuid": "u3", "_sub_id": "sub_diff_test"},
+            {"tag": "Rand-04", "type": "vless", "server": "10.0.1.4", "server_port": 443, "uuid": "u4", "_sub_id": "sub_diff_test"},
+        ], tmp_v252)
+        prev_res_711 = dmod.preview_subscription_sync_impact("sub_diff_test", [
+            {"tag": "Stable-Name", "type": "vless", "server": "10.0.0.2", "server_port": 443, "uuid": "uuid-new"},
+            {"tag": "NewRand-11", "type": "vless", "server": "10.0.2.1", "server_port": 443, "uuid": "n1"},
+            {"tag": "NewRand-12", "type": "vless", "server": "10.0.2.2", "server_port": 443, "uuid": "n2"},
+            {"tag": "NewRand-13", "type": "vless", "server": "10.0.2.3", "server_port": 443, "uuid": "n3"},
+            {"tag": "NewRand-14", "type": "vless", "server": "10.0.2.4", "server_port": 443, "uuid": "n4"},
+        ], conf_dir=tmp_v252)
+        check("Stage 7.11 (v2.5.6 P1-4/P1-5 订阅预览同名换节点检测与动态随机订阅 Jaccard 预警门禁): 准确识别同名换节点(endpoint_changed=1, credential_changed=1)、计算 Jaccard=0.0 触发 dynamic_random_sub=True 且附带 request_id",
+              prev_res_711.get("ok") is True
+              and prev_res_711.get("same_tag_replaced_count") == 1
+              and prev_res_711.get("endpoint_changed_count") == 1
+              and prev_res_711.get("credential_changed_count") == 1
+              and prev_res_711.get("dynamic_random_sub") is True
+              and bool(prev_res_711.get("request_id")),
+              f"same_tag={prev_res_711.get('same_tag_replaced_count')}, jaccard={prev_res_711.get('jaccard_stability')}, dyn={prev_res_711.get('dynamic_random_sub')}")
+
+        # Stage 7.12 (v2.5.6 P1-6): Strict Subscription TLS Verification (No Auto -k Fallback)
+        daemon_src_712 = DAEMON.read_text(encoding="utf-8")
+        check("Stage 7.12 (v2.5.6 P1-6 订阅拉取严格 TLS 校验防中间人降级门禁): 移除 35/51/60 错误码自动 -k 重试与无条件 unverified context，仅在 allow_insecure_tls=True 时显式放行",
+              'if proc.returncode in (35, 51, 60) and "-k" not in args:' not in daemon_src_712
+              and "allow_insecure_tls: bool = False" in daemon_src_712
+              and "ssl._create_unverified_context() if _allow_insecure_sub else ssl.create_default_context()" in daemon_src_712,
+              "strict TLS verification verified")
+
+        # Stage 7.13 (v2.5.6 P2-1 ~ P2-6): Quota Frozen Split, Legacy Copy Cleanup & Watchdog Recovery Telemetry
+        q_doc_p = dmod._node_test_quota_path()
+        q_orig = q_doc_p.read_text("utf-8") if q_doc_p.is_file() else None
+        try:
+            q_doc_p.parent.mkdir(parents=True, exist_ok=True)
+            q_doc_p.write_text(json.dumps({
+                "date": time.strftime("%Y-%m-%d"),
+                "used": 60000,
+                "pool_health_used": 100,
+                "forced_used": 0,
+                "v236_r10_migrated": True,
+                "v240_budget_migrated": True,
+                "v255_quota_migrated": True,
+            }), encoding="utf-8")
+            q_sum_713 = dmod.get_node_test_quota_summary(tmp_v252)
+        finally:
+            if q_orig is not None:
+                q_doc_p.write_text(q_orig, "utf-8")
+        html_713_txt = (SITE / "root/usr/share/ai-link/webui/index.html").read_text("utf-8")
+        js_713_txt = (SITE / "root/usr/share/ai-link/webui/nexus.js").read_text("utf-8")
+        check("Stage 7.13 (v2.5.6 P2-1/P2-2/P2-4 手动与健康配额冻结独立拆分、前端旧文案清零与看门狗恢复耗时遥测门禁): 手动配额耗尽但健康配额充足时 manual_quota_frozen=True 且 quota_frozen=False；前端无双组/13组旧文案；看门狗记录 prev_pids/new_pids/recovery_ms",
+              q_sum_713.get("manual_quota_frozen") is True
+              and q_sum_713.get("pool_health_quota_frozen") is False
+              and q_sum_713.get("quota_frozen") is False
+              and "13 组策略 · 3 组自动池" not in html_713_txt
+              and "双组省流" not in html_713_txt
+              and "双组自动节点池" not in js_713_txt
+              and "多线并发已开启" not in js_713_txt
+              and "_WATCHDOG_RECOVERY_EVENTS" in daemon_src_712,
+              f"q_sum={q_sum_713}")
+
+        # Stage 7.14: 500+ node subscription mutation (same-key rename probe inheritance vs same-tag endpoint replacement cache purge)
+        #             + SelectorWriteCoordinator external write sync + DNS Interception KPI strip & flex alignment
+        sub500_old = [
+            {"tag": "Sub500-JP-001", "type": "vless", "server": "jp001.example.com", "server_port": 443, "uuid": "uuid-jp-001", "_sub_id": "sub_500"},
+            {"tag": "Sub500-SameTag-Mutated", "type": "vless", "server": "103.1.1.9", "server_port": 443, "uuid": "uuid-old-hk", "_sub_id": "sub_500"},
+        ] + [
+            {"tag": f"Sub500-Bulk-{i:03d}", "type": "vless", "server": f"n{i}.example.com", "server_port": 443, "uuid": f"uuid-bulk-{i:03d}", "_sub_id": "sub_500"}
+            for i in range(3, 521)
+        ]
+        dmod.save_nodes_list(sub500_old, tmp_v252)
+        old_jp_id = dmod.compute_node_id(sub500_old[0])
+        old_mut_id = dmod.compute_node_id(sub500_old[1])
+        ps_714 = dmod.load_node_probe_store(tmp_v252)
+        ps_714[old_jp_id] = {"state": "ok", "delay_ms": 42, "ewma_ms": 42.0, "google_region": "JP", "svc_results": {"chatgpt": {"ok": True, "ms": 80, "code": 200}}, "last_probe_ts": int(time.time())}
+        ps_714["Sub500-SameTag-Mutated"] = {"state": "dead", "delay_ms": -1, "quarantine_until": int(time.time()) + 600, "google_region": "HK", "consecutive_fail": 3}
+        ps_714[old_mut_id] = dict(ps_714["Sub500-SameTag-Mutated"])
+        dmod.save_node_probe_store(ps_714, tmp_v252, strict_gc=False, force_flash=True)
+
+        sub500_new = [
+            {"tag": "Sub500-JP-001-VIP", "type": "vless", "server": "jp001.example.com", "server_port": 443, "uuid": "uuid-jp-001", "_sub_id": "sub_500"},
+            {"tag": "Sub500-SameTag-Mutated", "type": "vless", "server": "45.88.1.9", "server_port": 8443, "uuid": "uuid-new-sg", "_sub_id": "sub_500"},
+        ] + [
+            {"tag": f"Sub500-Bulk-{i:03d}", "type": "vless", "server": f"n{i}.example.com", "server_port": 443, "uuid": f"uuid-bulk-{i:03d}", "_sub_id": "sub_500"}
+            for i in range(3, 521)
+        ]
+        merged_714 = dmod.merge_nodes("sub_500", sub500_new, replace_sub=True, conf_dir=tmp_v252)
+        ps_after_714 = dmod.load_node_probe_store(tmp_v252)
+        new_jp_id = dmod.compute_node_id(sub500_new[0])
+        jp_rec_after = ps_after_714.get(new_jp_id) or ps_after_714.get("Sub500-JP-001-VIP") or {}
+        mut_rec_after = ps_after_714.get("Sub500-SameTag-Mutated") or ps_after_714.get(dmod.compute_node_id(sub500_new[1])) or {}
+
+        dmod.PROBE_ENGINE.hot_switch_core_selector("Shunt_YouTube", "Sub500-JP-001-VIP", reason="test_ext_sync", conf_dir=tmp_v252)
+        w_before_714 = dmod.SELECTOR_WRITE_COORDINATOR.total_writes
+        noop_before_714 = dmod.SELECTOR_WRITE_COORDINATOR.skipped_noop
+        dmod.SELECTOR_WRITE_COORDINATOR.put_silent("Shunt_YouTube", "Sub500-JP-001-VIP")
+        w_after_714 = dmod.SELECTOR_WRITE_COORDINATOR.total_writes
+        noop_after_714 = dmod.SELECTOR_WRITE_COORDINATOR.skipped_noop
+        css_714_txt = (SITE / "root/usr/share/ai-link/webui/nexus.css").read_text("utf-8")
+        check("Stage 7.14 (v2.5.6 500+节点订阅变异同key改名探测继承与同名换服缓存清零 + 协调器外部切换同步 + DNS拦截KPI门禁): 520节点同步中改名节点继承42ms/JP记录、同名换服清空旧HK与隔离态、外部切换同步协调器零冗余PUT、DNS含3-KPI摘要条",
+              len(merged_714) == 520
+              and jp_rec_after.get("delay_ms") == 42
+              and jp_rec_after.get("google_region") == "JP"
+              and int(mut_rec_after.get("quarantine_until") or 0) == 0
+              and mut_rec_after.get("google_region") != "HK"
+              and w_after_714 == w_before_714
+              and noop_after_714 == noop_before_714 + 1
+              and "dns-blocked-kpi-strip" in js_713_txt
+              and "#page-dns .dashboard-grid.two-one > .glass-card > .blocked-list" in css_714_txt,
+              f"merged={len(merged_714)}, jp={jp_rec_after.get('delay_ms')}/{jp_rec_after.get('google_region')}, mut={mut_rec_after}, noop_delta={noop_after_714 - noop_before_714}")
+
+        # Stage 7.15: maintain_auto_node_pool_health EWMA+Loss/CV stability scoring & recovering quarantined member retention
+        #             + #page-homelink Hero live telemetry binding
+        now_715 = int(time.time())
+        nodes_715 = [
+            {"tag": "SubA-JP-Core-01", "type": "vless", "server": "jp-c1.example.com", "server_port": 443, "uuid": "u-715-1", "_sub_id": "sub_715"},
+            {"tag": "SubA-JP-Recovering-02", "type": "vless", "server": "jp-r2.example.com", "server_port": 443, "uuid": "u-715-2", "_sub_id": "sub_715"},
+            {"tag": "SubA-JP-Lossy-58ms", "type": "vless", "server": "jp-l3.example.com", "server_port": 443, "uuid": "u-715-3", "_sub_id": "sub_715"},
+            {"tag": "SubA-JP-Stable-78ms", "type": "vless", "server": "jp-s4.example.com", "server_port": 443, "uuid": "u-715-4", "_sub_id": "sub_715"},
+        ]
+        dmod.save_subscriptions([{"id": "sub_715", "name": "Sub715", "url": "https://example.com/s715", "enabled": True}], tmp_v252)
+        dmod.save_nodes_list(nodes_715, tmp_v252)
+        ps_715 = {
+            "SubA-JP-Core-01": {"state": "ok", "delay_ms": 62, "probe_ts": now_715, "sparkline_20": [{"ok": True, "delay_ms": 62}] * 8},
+            "SubA-JP-Recovering-02": {"state": "ok", "delay_ms": 70, "probe_ts": now_715, "quarantine_until": now_715 + 240, "sparkline_20": [{"ok": True, "delay_ms": 70}] * 6},
+            "SubA-JP-Lossy-58ms": {"state": "ok", "delay_ms": 58, "probe_ts": now_715, "sparkline_20": ([{"ok": True, "delay_ms": 58}, {"ok": False, "delay_ms": -1}] * 5)},
+            "SubA-JP-Stable-78ms": {"state": "ok", "delay_ms": 78, "probe_ts": now_715, "sparkline_20": [{"ok": True, "delay_ms": 78}] * 10},
+        }
+        dmod.save_node_probe_store(ps_715, tmp_v252, strict_gc=False, force_flash=True)
+
+        # Case A: Pool needs 1 external replenishment slot (target_size=2, replenish_threshold=2) -> 78ms 0-loss beats 58ms 50%-loss
+        pool_715_a = {
+            "id": "auto_715_a", "name": "Pool715A", "auto_maintain": True,
+            "target_size": 2, "replenish_threshold": 2,
+            "scope_sources": ["sub_715"], "scope_countries": ["JP"],
+            "groups": [{"index": 1, "name": "主力组 G1", "node_tags": ["SubA-JP-Core-01"], "node_ids": []}],
+        }
+        dmod.maintain_auto_node_pool_health(pool_715_a, saved_nodes=nodes_715, store=ps_715, conf_dir=tmp_v252, allow_live_l7_probe=False)
+        tags_715_a = pool_715_a["groups"][0]["node_tags"]
+
+        # Case B: Pool has 1 healthy + 1 recovering (quarantined) member and 0 external candidates -> recovering member is preserved!
+        pool_715_b = {
+            "id": "auto_715_b", "name": "Pool715B", "auto_maintain": True,
+            "target_size": 3, "replenish_threshold": 2,
+            "scope_sources": ["sub_715"], "scope_countries": ["JP"],
+            "groups": [{"index": 1, "name": "主力组 G1", "node_tags": ["SubA-JP-Core-01", "SubA-JP-Recovering-02"], "node_ids": []}],
+        }
+        dmod.maintain_auto_node_pool_health(pool_715_b, saved_nodes=nodes_715[:2], store=ps_715, conf_dir=tmp_v252, allow_live_l7_probe=False)
+        tags_715_b = pool_715_b["groups"][0]["node_tags"]
+        html_715_txt = (SITE / "root/usr/share/ai-link/webui/index.html").read_text("utf-8")
+        js_715_txt = (SITE / "root/usr/share/ai-link/webui/nexus.js").read_text("utf-8")
+        check("Stage 7.15 (v2.5.6 自动复选 EWMA+丢包/CV 稳定性同源评分 + 恢复中隔离节点防误删 + 回家网关 Hero 实时遥测绑定门禁): 复选补位时 78ms 零丢包胜出 58ms 50%丢包节点；无外部候选替补时保留池内恢复中节点不误删；回家页 Hero 三联指标绑定真值",
+              tags_715_a == ["SubA-JP-Core-01", "SubA-JP-Stable-78ms"]
+              and "SubA-JP-Recovering-02" in tags_715_b
+              and "hl-hero-stat-tunnels" in html_715_txt
+              and "hl-hero-stat-clients" in html_715_txt
+              and "hl-hero-stat-traffic" in js_715_txt,
+              f"tags_a={tags_715_a}, tags_b={tags_715_b}")
     finally:
         shutil.rmtree(tmp_v252, ignore_errors=True)
 

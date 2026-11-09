@@ -110,7 +110,7 @@ _v7 = {
     "webui_badge": (re.search(r'>v([0-9.]+)</span>', html_text) or [None, "?"])[1],
     "luci_fallback": (re.search(r"\|\s*\|\s*'([0-9.]+)'\);", OV.read_text(encoding="utf-8")) or [None, "?"])[1],
 }
-check("Version Alignment: 包内 7 处版本串 100% 对齐为 2.3.2（且 version 文件严格单行）", len(set(_v7.values())) == 1 and _v7["APP_VERSION"] == "2.5.5", str(_v7))
+check("Version Alignment: 包内 7 处版本串 100% 对齐为 2.3.2（且 version 文件严格单行）", len(set(_v7.values())) == 1 and _v7["APP_VERSION"] == "2.5.6", str(_v7))
 
 # Load daemon module in isolated temp environment for runtime & E2E checks
 spec = importlib.util.spec_from_file_location("ailink_daemon_v102", str(DAEMON))
@@ -2514,9 +2514,9 @@ _cur_after_a = next((a for a in (dmod.load_auto_nodes_config(tmp_conf).get("auto
 # Step B: 3 consecutive outbound errors on active pool node JP-Tokyo-VLESS-01 -> must bypass 600s cooldown and switch to SG-AI-Hy2-02 immediately!
 with open(_sb_log_file, "a", encoding="utf-8") as _fh_log:
     _fh_log.write(
-        "ERROR[0004] outbound/vless[JP-Tokyo-VLESS-01]: dial tcp 1.2.3.4:443: i/o timeout\n"
-        "ERROR[0005] outbound/vless[JP-Tokyo-VLESS-01]: dial tcp 1.2.3.4:443: connection refused\n"
-        "ERROR[0006] outbound/vless[JP-Tokyo-VLESS-01]: tls: handshake failed: unexpected EOF\n"
+        "ERROR[0004] outbound/vless[JP-Tokyo-VLESS-01]: dial tcp 1.2.3.4:443 to www.youtube.com:443: i/o timeout\n"
+        "ERROR[0005] outbound/vless[JP-Tokyo-VLESS-01]: dial tcp 1.2.3.5:443 to rr1.googlevideo.com:443: connection refused\n"
+        "ERROR[0006] outbound/vless[JP-Tokyo-VLESS-01]: tls: handshake failed to s.ytimg.com:443: unexpected EOF\n"
     )
 _scan_step_b = dmod.scan_kernel_logs_for_active_pool_failures(tmp_conf, log_path=_sb_log_file, fail_threshold=3)
 _an_after_b = next((a for a in (dmod.load_auto_nodes_config(tmp_conf).get("auto_nodes") or []) if a.get("id") == "auto_youtube"), {})
