@@ -110,7 +110,7 @@ _v7 = {
     "webui_badge": (re.search(r'>v([0-9.]+)</span>', html_text) or [None, "?"])[1],
     "luci_fallback": (re.search(r"\|\s*\|\s*'([0-9.]+)'\);", OV.read_text(encoding="utf-8")) or [None, "?"])[1],
 }
-check("Version Alignment: 包内 7 处版本串 100% 对齐为 2.3.2（且 version 文件严格单行）", len(set(_v7.values())) == 1 and _v7["APP_VERSION"] == "2.5.7", str(_v7))
+check("Version Alignment: 包内 7 处版本串 100% 对齐为 2.3.2（且 version 文件严格单行）", len(set(_v7.values())) == 1 and _v7["APP_VERSION"] == "2.5.8", str(_v7))
 
 # Load daemon module in isolated temp environment for runtime & E2E checks
 spec = importlib.util.spec_from_file_location("ailink_daemon_v102", str(DAEMON))

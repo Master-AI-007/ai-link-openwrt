@@ -1420,7 +1420,10 @@
         const verSvcStr = (p.verified_service_count != null) ? (Number(p.verified_service_count) + '/' + g1Tags.length) : '--';
         const capReasonStr = p.capacity_shortfall ? (p.capacity_shortfall_reason || ('上游符合筛选范围的合格节点不足 (' + healthyCnt + '/' + targetCap + ')')) : '容量充足';
         const l7DegNote = p.l7_degraded ? ('\nL7降级说明：当前 ' + healthyCnt + ' 个可达出口均未经目标服务验证（连通性保底）') : '';
-        const mlRotNote = p.dispatch_mode === 'multi_line' ? '\n轮询机制：同一时刻仅 1 个出口生效，每 30 秒轮换，不叠加单流带宽' : '';
+        const bgtObj = (p.bound_group_targets && typeof p.bound_group_targets === 'object') ? p.bound_group_targets : {};
+        const bgtEntries = Object.entries(bgtObj);
+        const bgtStr = bgtEntries.length ? ('\n绑定分流组出口：' + bgtEntries.map(([gk, gv]) => gk + '→' + cleanNodeDisplayName(gv)).join(' · ')) : '';
+        const mlRotNote = p.dispatch_mode === 'multi_line' ? ('\n轮询机制：每个分流组同一时刻仅 1 个出口生效；不同分流组可能落在不同节点（每 30 秒轮换，仅对新连接生效，不叠加单流带宽）' + bgtStr) : bgtStr;
         const tipDetail = '节点池：' + p.name + '\n来源范围：' + srcLabel + '\n国家区域：' + ctryLabel + '\n检测策略：' + svcTag + '\n三口径统计：入池可达 ' + healthyCnt + ' · 近期实测ok ' + freshOkCnt + ' · L7已验证：' + verSvcStr + l7DegNote + '\n容量说明：' + capReasonStr + ' · 最近实测：' + realProbeStr + '\n巡检配额：' + quotaInfoStr + ' · 复选阈值：低于 ' + repThresh + ' 个自动补齐' + mlRotNote;
         const isMenuOpen = state.openPoolMenuIdx != null && Number(state.openPoolMenuIdx) === idx;
         return '<div class="auto-pool hud-pool-card ' + cardStateCls + (isMenuOpen ? ' menu-open' : '') + '" title="' + esc(tipDetail) + '">' +
@@ -1439,7 +1442,7 @@
               const mlSuffix = p.dispatch_mode === 'multi_line'
                 ? (mlCnt >= 2 ? (' · 多出口轮询(' + mlCnt + '线)') : (mlCnt === 1 ? ' · 多出口轮询(1线·单线降级)' : ' · 多出口轮询(0线·无可用)'))
                 : '';
-              const mlTitleExtra = (p.dispatch_mode === 'multi_line' && mlArr.length) ? (' · 轮询候选：' + mlArr.map(cleanNodeDisplayName).join(' / ') + '（同一时刻仅 1 个出口生效，每 30 秒轮换，不叠加单流带宽）') : '';
+              const mlTitleExtra = (p.dispatch_mode === 'multi_line' && mlArr.length) ? (' · 轮询候选：' + mlArr.map(cleanNodeDisplayName).join(' / ') + '（每个分流组同一时刻仅 1 个出口生效；不同分流组可能落在不同节点（每 30 秒轮换，仅对新连接生效，不叠加单流带宽））') : '';
               return '<strong class="hud-pool-node mono" style="color:' + (isDirectPool ? 'var(--amber)' : 'var(--cyan)') + '" title="当前出口：' + esc(curNode) + ' · 池内 ' + g1Tags.length + ' 个候选' + esc(mlTitleExtra) + '">' + esc(curNode) + ' <small class="hud-pool-scope" style="color:var(--text-3);font-weight:400">· ' + g1Tags.length + ' 候选 · ' + esc(ctryLabel) + '' + mlSuffix + (p.bandwidth_prefer ? ' · 带宽择优' : '') + '</small></strong>';
             })() +
             '<span style="flex-shrink:0">' + latBadgeCompact + '</span>' +
@@ -1473,10 +1476,18 @@
         histEl.innerHTML = '<div class="trace-stage" style="padding:10px 12px"><i></i><div><b>当前全部自动节点池运行稳定 · 零异常抖动</b><span>单组去重省流探测开启中，仅当主组节点连续不可达或劣化超阈值时触发无感热切换</span></div><strong>防抖就绪</strong></div>';
       }
     }
+    const dynGrpCnt = (mock.groups && mock.groups.length) ? mock.groups.length : 16;
+    const dynPoolCnt = (mock.autoPools && mock.autoPools.length) ? mock.autoPools.length : 6;
     const shHeroGrp = $('#shunt-hero-stat-groups');
-    if (shHeroGrp) shHeroGrp.textContent = (mock.groups ? mock.groups.length : 13) + ' 组';
+    if (shHeroGrp) shHeroGrp.textContent = dynGrpCnt + ' 组';
     const shHeroPools = $('#shunt-hero-stat-pools');
-    if (shHeroPools) shHeroPools.textContent = (mock.autoPools ? mock.autoPools.length : 3) + ' 个';
+    if (shHeroPools) shHeroPools.textContent = dynPoolCnt + ' 个';
+    const shHeroTitle = $('#shunt-hero-title-groups');
+    if (shHeroTitle) shHeroTitle.textContent = dynGrpCnt + ' 组精细分流矩阵与自动节点池协同调度';
+    const shHeroHelp = $('#shunt-hero-help-btn');
+    if (shHeroHelp) shHeroHelp.setAttribute('title', '配置全局分流模式、自动节点池与 ' + dynGrpCnt + ' 组精细应用出口策略');
+    const galShuntBadge = $('#galaxy-shunt-groups-badge');
+    if (galShuntBadge) galShuntBadge.textContent = dynGrpCnt + ' 组';
     const shHeroMode = $('#shunt-hero-stat-mode');
     if (shHeroMode) {
       const mInfo = (mock.routingModes || []).find(m => m.id === state.routingMode);
@@ -2018,6 +2029,7 @@
             '<div><b>' + esc(dispCount) + '</b><span style="color:var(--muted);">个节点</span></div>' +
             '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">' +
               autoSyncBtnHtml +
+              (s.dynamic_random_sub ? '<span class="l7-degraded-badge" title="检测到上游为动态随机订阅（节点集合重合度低于 50%），不建议用于关键服务自动池">动态随机</span>' : '') +
               '<span class="status-pill">' + (s.enabled ? '已启用 · 参与选路' : '已停用 · 正交隔离') + '</span>' +
             '</div>' +
           '</div>' +
@@ -3330,6 +3342,8 @@
                 capacity_shortfall: Boolean(a.capacity_shortfall),
                 unbound_pool_warning: Boolean(a.unbound_pool_warning),
                 bound_shunt_groups: Array.isArray(a.bound_shunt_groups) ? a.bound_shunt_groups : [],
+                bound_group_targets: (a.bound_group_targets && typeof a.bound_group_targets === 'object') ? a.bound_group_targets : {},
+                multi_line_rotation_log: Array.isArray(a.multi_line_rotation_log) ? a.multi_line_rotation_log : [],
                 verified_service_count: Number(a.verified_service_count != null ? a.verified_service_count : 0),
                 fresh_ok_count: Number(a.fresh_ok_count != null ? a.fresh_ok_count : 0),
                 last_real_probe_ts: Number(a.last_real_probe_ts || a.last_check_ts || 0),
@@ -4775,7 +4789,7 @@
         if (hintEl) {
           hintEl.textContent = dispatchMode === 'multi_line'
             ? '多出口轮询已开启：已自动屏蔽 AI 敏感服务勾选项，并要求容量 ≥ 2'
-            : '可根据业务类型切换「优选单线」或「多出口轮询（同一时刻仅 1 个出口生效，每 30 秒轮换，不叠加单流带宽）」';
+            : '可根据业务类型切换「优选单线」或「多出口轮询（每个分流组同一时刻仅 1 个出口生效；不同分流组可能落在不同节点（每 30 秒轮换，仅对新连接生效，不叠加单流带宽））」';
         }
       }
       $$('.chk-an-svc').forEach(chk => {
@@ -4991,7 +5005,8 @@
         update_interval_min: Number(s.update_interval_min || 360),
         userinfo: (s.userinfo && typeof s.userinfo === 'object') ? s.userinfo : (prev && prev.userinfo ? prev.userinfo : null),
         last_sync_status: isErr ? 'error' : 'ok',
-        last_error: isErr ? (s.last_error || '') : ''
+        last_error: isErr ? (s.last_error || '') : '',
+        dynamic_random_sub: s.dynamic_random_sub != null ? Boolean(s.dynamic_random_sub) : Boolean(prev && prev.dynamic_random_sub)
       };
     });
     if (Array.isArray(mock.nodes) && mock.nodes.length) {
@@ -5026,7 +5041,7 @@
     } else if (mode === 'single') {
       const sub = mock.subscriptions[opts.subIdx];
       if (sub) {
-        targets = [{ id: sub.id, name: sub.name, url: sub.url, action: 'sync_one' }];
+        targets = [{ id: sub.id, name: sub.name, url: sub.url, action: 'sync_one', previewRequestId: opts.previewRequestId || '', expectedFingerprint: opts.expectedFingerprint || '' }];
       }
     } else if (mode === 'edit') {
       targets = [{ id: opts.payload.id, name: opts.payload.name, url: opts.payload.new_url || opts.payload.old_url || '', action: 'edit', payload: opts.payload }];
@@ -5148,7 +5163,10 @@
             res = await callRouterApi('/api/subscriptions/add', 'POST', t.payload, 45000);
           } else {
             const cleanSyncUrl = (t.url && !String(t.url).includes('***')) ? t.url : '';
-            res = await callRouterApi('/api/subscriptions/sync', 'POST', { id: t.id, name: t.name, url: cleanSyncUrl }, 45000);
+            const syncPayload = { id: t.id, name: t.name, url: cleanSyncUrl };
+            if (t.previewRequestId) syncPayload.preview_request_id = t.previewRequestId;
+            if (t.expectedFingerprint) syncPayload.expected_fingerprint = t.expectedFingerprint;
+            res = await callRouterApi('/api/subscriptions/sync', 'POST', syncPayload, 45000);
           }
         } finally {
           clearInterval(stageTimer);
@@ -7252,11 +7270,73 @@
       }
       case 'quick-bind-pool': {
         const poolId = el && el.dataset.poolId;
-        const targetGrp = (mock.shuntGroups || []).find(g => g.is_custom || ['Netflix', 'YouTube', 'TikTok'].includes(g.id));
+        const allPools = (mock.autoPools && mock.autoPools.length) ? mock.autoPools : (state.rawAutoNodes || []);
+        const poolObj = allPools.find(p => p.id === poolId || p.tag === poolId);
+        const poolHint = ((poolObj ? (poolObj.id + ' ' + (poolObj.name || '') + ' ' + (poolObj.tag || '')) : String(poolId || ''))).toLowerCase();
+        const groups = ((mock.groups && mock.groups.length) ? mock.groups : (mock.shuntGroups || [])).filter(g => !g.locked_bottom && g.id !== 'Domestic_CN');
+        const unboundGroups = groups.filter(g => g.shunt_mode !== 'auto' || !g.auto_node_id);
+        const semPairs = [
+          [['netflix', '奈飞', '网飞', 'disney', '影视'], ['netflix', '奈飞', '网飞']],
+          [['soul', '社交'], ['soul']],
+          [['copilot'], ['copilot']],
+          [['workbuddy'], ['workbuddy']],
+          [['hf', 'huggingface', 'github', '代码'], ['github', 'hf']],
+          [['tiktok', 'tk'], ['tiktok']],
+          [['youtube', 'yt', '流媒体', '视频'], ['youtube']],
+          [['ai', 'gpt', 'claude', 'gemini', '智能'], ['ai']]
+        ];
+        let targetGrp = null;
+        for (let sIdx = 0; sIdx < semPairs.length; sIdx++) {
+          const pKws = semPairs[sIdx][0];
+          const gKws = semPairs[sIdx][1];
+          if (pKws.some(kw => poolHint.includes(kw))) {
+            targetGrp = unboundGroups.find(g => {
+              const gStr = (String(g.id || '') + ' ' + String(g.name || '')).toLowerCase();
+              return gKws.some(gkw => gStr.includes(gkw));
+            }) || groups.find(g => {
+              const gStr = (String(g.id || '') + ' ' + String(g.name || '')).toLowerCase();
+              return gKws.some(gkw => gStr.includes(gkw));
+            });
+            if (targetGrp) break;
+          }
+        }
+        if (!targetGrp) {
+          targetGrp = unboundGroups.find(g => g.is_custom || ['Netflix', 'YouTube', 'TikTok'].includes(g.id))
+            || unboundGroups[0]
+            || groups.find(g => g.is_custom || ['Netflix', 'YouTube', 'TikTok'].includes(g.id))
+            || groups[0];
+        }
         if (poolId && targetGrp) {
-          await callRouterApi('/api/shunt/update', 'POST', { id: targetGrp.id, group_id: targetGrp.id, strategy_mode: 'auto', auto_node_id: poolId });
-          toast('已将节点池「' + poolId + '」一键绑定至分流组「' + (targetGrp.name || targetGrp.id) + '」');
-          await syncBackendStatus(true, true);
+          const pLabel = (poolObj && poolObj.name) ? poolObj.name : poolId;
+          const prevPoolId = (targetGrp.shunt_mode === 'auto' || targetGrp.mode === 'auto') ? String(targetGrp.auto_node_id || '') : '';
+          const prevPoolObj = prevPoolId ? allPools.find(p => p.id === prevPoolId || p.tag === prevPoolId) : null;
+          const prevPoolLabel = (prevPoolObj && prevPoolObj.name) ? prevPoolObj.name : prevPoolId;
+          const execQuickBind = async () => {
+            const bindRes = await callRouterApi('/api/shunt/update', 'POST', {
+              id: targetGrp.id,
+              group_id: targetGrp.id,
+              shunt_mode: 'auto',
+              strategy: 'auto',
+              strategy_mode: 'auto',
+              auto_node_id: poolId
+            });
+            if (!bindRes || bindRes.ok === false) {
+              toast('绑定失败：' + ((bindRes && (bindRes.detail || bindRes.error || bindRes.message)) || '后端未确认更新'), 'warn');
+              return;
+            }
+            toast('已将节点池「' + pLabel + '」一键绑定至分流组「' + (targetGrp.name || targetGrp.id) + '」');
+            await syncBackendStatus(true, true);
+          };
+          if (prevPoolId && prevPoolId !== poolId) {
+            confirmModal(
+              '确认改绑分流组出口',
+              '将把分流组「' + (targetGrp.name || targetGrp.id) + '」的自动池出口从「' + prevPoolLabel + '」改为「' + pLabel + '」，是否确认？',
+              execQuickBind,
+              '确认改绑'
+            );
+          } else {
+            await execQuickBind();
+          }
         }
         break;
       }
@@ -7293,8 +7373,8 @@
         const sameTagCnt = Number(res.same_tag_replaced_count != null ? res.same_tag_replaced_count : 0);
         const epChgCnt = Number(res.endpoint_changed_count != null ? res.endpoint_changed_count : 0);
         const credChgCnt = Number(res.credential_changed_count != null ? res.credential_changed_count : 0);
-        const jaccardPct = (res.jaccard_stability != null) ? (Math.round(Number(res.jaccard_stability) * 100) + '%') : '--';
-        const impactPct = (res.impact_ratio != null) ? (Math.round(Number(res.impact_ratio) * 100) + '%') : '--';
+        const jaccardPct = (res.jaccard_stability != null) ? (Math.min(100, Math.round(Number(res.jaccard_stability) * 100)) + '%') : '--';
+        const impactPct = (res.impact_pct != null) ? (Math.min(100, Math.round(Number(res.impact_pct))) + '%') : ((res.impact_ratio != null) ? (Math.min(100, Math.round(Number(res.impact_ratio) * 100)) + '%') : '--');
         const reqIdStr = String(res.request_id || '-');
         const affPools = Array.isArray(res.affected_pools) ? res.affected_pools : [];
         const warnTxt = String(res.stability_warning || (res.dynamic_random_sub ? '检测到上游为动态随机订阅（节点集合重合度低于 50%），不建议用于关键服务自动池' : '')).trim();
@@ -7340,7 +7420,7 @@
           'SUBSCRIPTION DIFF & IMPACT PREVIEW',
           async () => {
             closeModal();
-            await runSubscriptionSyncWithModal(s ? { mode: 'single', subIdx: idx } : { mode: 'all' });
+            await runSubscriptionSyncWithModal(s ? { mode: 'single', subIdx: idx, previewRequestId: reqIdStr, expectedFingerprint: String(res.nodes_fingerprint || '') } : { mode: 'all' });
           },
           '确认立即同步订阅'
         );

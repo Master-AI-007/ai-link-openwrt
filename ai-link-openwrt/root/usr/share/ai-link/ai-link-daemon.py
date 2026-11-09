@@ -85,6 +85,32 @@ def enforce_sensitive_file_permissions(conf_dir: Path = CONF_DIR) -> None:
     except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
         globals().get("_record_internal_diag", str)(_e_diag)
 
+_ORIG_PATH_WRITE_TEXT = Path.write_text
+_ORIG_PATH_WRITE_BYTES = Path.write_bytes
+
+
+def _guarded_path_write_text(self: Path, data: str, *args, **kwargs):
+    if globals().get("_SELF_TEST_ACTIVE", False):
+        if "_note_live_write_attempt" in globals() and _note_live_write_attempt(self, "Path.write_text"):
+            return 0
+        if "_note_live_write_leak" in globals():
+            _note_live_write_leak(self, "Path.write_text")
+    return _ORIG_PATH_WRITE_TEXT(self, data, *args, **kwargs)
+
+
+def _guarded_path_write_bytes(self: Path, data: bytes, *args, **kwargs):
+    if globals().get("_SELF_TEST_ACTIVE", False):
+        if "_note_live_write_attempt" in globals() and _note_live_write_attempt(self, "Path.write_bytes"):
+            return 0
+        if "_note_live_write_leak" in globals():
+            _note_live_write_leak(self, "Path.write_bytes")
+    return _ORIG_PATH_WRITE_BYTES(self, data, *args, **kwargs)
+
+
+Path.write_text = _guarded_path_write_text
+Path.write_bytes = _guarded_path_write_bytes
+
+
 def _atomic_write_text(target: Path, content: str, encoding: str = "utf-8") -> None:
     target = Path(target)
     if "_note_live_write_attempt" in globals() and _note_live_write_attempt(target, "atomic_write_text"):
@@ -111,7 +137,7 @@ def _atomic_write_text(target: Path, content: str, encoding: str = "utf-8") -> N
                 _enforce_file_0600_if_sensitive(bak_p)
             except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                 globals().get("_record_internal_diag", str)(_e_diag)
-        tmp_p.write_text(content, encoding=encoding)
+        _ORIG_PATH_WRITE_TEXT(tmp_p, content, encoding=encoding)
         if target.name in SENSITIVE_CONF_FILES or target.suffix == ".key":
             try:
                 os.chmod(str(tmp_p), 0o600)
@@ -125,7 +151,7 @@ def _atomic_write_text(target: Path, content: str, encoding: str = "utf-8") -> N
                 tmp_p.unlink()
         except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
             globals().get("_record_internal_diag", str)(_e_diag)
-        target.write_text(content, encoding=encoding)
+        _ORIG_PATH_WRITE_TEXT(target, content, encoding=encoding)
         _enforce_file_0600_if_sensitive(target)
 
 def _read_json_with_backup(target: Path, default_val=None):
@@ -1799,10 +1825,39 @@ def preview_subscription_sync_impact(sub_id: str, incoming_nodes: list, sub_url:
             (len(ref_set) >= 5 and len(new_k_set) >= 5 and jaccard < 0.50)
             or (len(old_k_set) >= 5 and impact_ratio > 0.30 and jaccard < 0.70)
         )
+        clamped_impact_pct = min(100.0, round(impact_ratio * 100.0, 1))
         stability_warning = (
-            f"检测到上游为动态随机或大幅变动订阅（与当前生产集合重合度 Jaccard={jaccard:.0%}，本次变更率 {impact_ratio:.0%}：新增 {len(added_keys)} / 移除 {len(removed_keys)} / 同名换服 {len(same_tag_replaced)}），每次同步节点大幅变化，不建议用于关键服务自动池"
+            f"检测到上游为动态随机或大幅变动订阅（与当前生产集合重合度 Jaccard={jaccard:.0%}，本次变更率 {clamped_impact_pct:.0f}%：新增 {len(added_keys)} / 移除 {len(removed_keys)} / 同名换服 {len(same_tag_replaced)}），每次同步节点大幅变化，不建议用于关键服务自动池"
             if (is_dynamic_random or (len(old_k_set) >= 5 and impact_ratio > 0.30)) else ""
         )
+        nodes_fp = hashlib.sha256(json.dumps(sorted(list(new_k_set)), ensure_ascii=False).encode("utf-8")).hexdigest()[:16]
+        _req_batch_cache = globals().setdefault("_SUB_PREVIEW_BATCH_BY_REQ_ID", {})
+        _now_bc = time.time()
+        for _rk_old in [k for k, v in list(_req_batch_cache.items()) if (_now_bc - float(v.get("ts") or 0)) > 120.0]:
+            _req_batch_cache.pop(_rk_old, None)
+        while len(_req_batch_cache) >= 32:
+            _oldest_rk = min(_req_batch_cache.keys(), key=lambda k: float(_req_batch_cache[k].get("ts") or 0))
+            _req_batch_cache.pop(_oldest_rk, None)
+        _req_batch_cache[req_id] = {
+            "ts": _now_bc,
+            "sub_id": str(sub_id or ""),
+            "sub_url": str(sub_url or ""),
+            "nodes_fingerprint": nodes_fp,
+            "nodes": copy.deepcopy(new_clean),
+        }
+        if not globals().get("_SELF_TEST_ACTIVE", False) and (sub_id or sub_url):
+            try:
+                _subs_p_list = load_subscriptions(conf_dir)
+                _sub_p_mod = False
+                for _sp_item in _subs_p_list:
+                    if (sub_id and _sp_item.get("id") == sub_id) or (sub_url and _sp_item.get("url") == sub_url):
+                        if _sp_item.get("dynamic_random_sub") != is_dynamic_random:
+                            _sp_item["dynamic_random_sub"] = is_dynamic_random
+                            _sub_p_mod = True
+                if _sub_p_mod:
+                    save_subscriptions(_subs_p_list, conf_dir)
+            except Exception as _e_noop:
+                _ = _e_noop
 
         affected_pools = []
         try:
@@ -1900,9 +1955,14 @@ def preview_subscription_sync_impact(sub_id: str, incoming_nodes: list, sub_url:
             "endpoint_changed": endpoint_changed[:15],
             "credential_changed": credential_changed[:15],
             "same_tag_replaced": same_tag_replaced[:15],
+            "endpoint_changed_tags": [x["tag"] for x in endpoint_changed[:15] if isinstance(x, dict) and x.get("tag")],
+            "credential_changed_tags": [x["tag"] for x in credential_changed[:15] if isinstance(x, dict) and x.get("tag")],
+            "same_tag_replaced_tags": [x["tag"] for x in same_tag_replaced[:15] if isinstance(x, dict) and x.get("tag")],
+            "nodes_fingerprint": nodes_fp,
             "jaccard_stability": jaccard,
             "upstream_volatility": upstream_volatility,
             "impact_ratio": impact_ratio,
+            "impact_pct": clamped_impact_pct,
             "dynamic_random_sub": is_dynamic_random,
             "stability_warning": stability_warning,
             "affected_pools": affected_pools,
@@ -2369,8 +2429,8 @@ def merge_nodes(sub_id: str, incoming_nodes: list, sub_url: str = "", replace_su
                         r_doc = {}
                 r_doc[ring_k_m] = [list(x) for x in _SUB_PREVIEW_JACCARD_RING[ring_k_m]]
                 _atomic_write_text(rf_p, json.dumps(r_doc, ensure_ascii=False))
-        except Exception:
-            pass
+        except Exception as _e_noop:
+            _ = _e_noop
         return saved_out
 
 _CLASH_API_DOWN_UNTIL = {"ts": 0.0}
@@ -2483,13 +2543,13 @@ def _record_applied_core_rule_hash(conf_dir: Path = CONF_DIR, rule_hash: str = "
         _LAST_APPLIED_CORE_RULE_HASH = h
         try:
             RUN_DIR.mkdir(parents=True, exist_ok=True)
-            (RUN_DIR / "applied_core_rule_hash.txt").write_text(h, encoding="utf-8")
+            _atomic_write_text(RUN_DIR / "applied_core_rule_hash.txt", h, encoding="utf-8")
         except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
             globals().get("_record_internal_diag", str)(_e_diag)
         try:
             cdir = Path(conf_dir)
             if cdir.is_dir():
-                (cdir / ".applied_core_rule_hash").write_text(h, encoding="utf-8")
+                _atomic_write_text(cdir / ".applied_core_rule_hash", h, encoding="utf-8")
         except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
             globals().get("_record_internal_diag", str)(_e_diag)
 
@@ -2505,7 +2565,7 @@ def _get_applied_core_rule_hash(conf_dir: Path = CONF_DIR) -> str:
                     _LAST_APPLIED_CORE_RULE_HASH = val
                     try:
                         RUN_DIR.mkdir(parents=True, exist_ok=True)
-                        (RUN_DIR / "applied_core_rule_hash.txt").write_text(val, encoding="utf-8")
+                        _atomic_write_text(RUN_DIR / "applied_core_rule_hash.txt", val, encoding="utf-8")
                     except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                         globals().get("_record_internal_diag", str)(_e_diag)
                     return _LAST_APPLIED_CORE_RULE_HASH
@@ -2839,7 +2899,7 @@ def _respawn_core_only(timeout: float = 45.0) -> bool:
             if new_pids:
                 try:
                     RUN_DIR.mkdir(parents=True, exist_ok=True)
-                    (RUN_DIR / "ai-link-core.pid").write_text(str(new_pids[0]), encoding="utf-8")
+                    _atomic_write_text(RUN_DIR / "ai-link-core.pid", str(new_pids[0]), encoding="utf-8")
                 except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                     globals().get("_record_internal_diag", str)(_e_diag)
             try:
@@ -3384,8 +3444,6 @@ def _gc_orphan_probe_dict(store: dict, conf_dir: Path = CONF_DIR, strict: bool =
         saved = json.loads(nodes_file.read_text(encoding="utf-8"))
         if not isinstance(saved, list) or not saved:
             return store
-        if not strict and len(store) <= len(saved) + 8:
-            return store
         valid_ids = set()
         valid_tags = set()
         for n in saved:
@@ -3399,18 +3457,40 @@ def _gc_orphan_probe_dict(store: dict, conf_dir: Path = CONF_DIR, strict: bool =
                     valid_ids.add(nid)
                 if nkey:
                     valid_ids.add(nkey)
+        pool_refs = set()
+        try:
+            an_f = Path(conf_dir) / "auto_nodes.json"
+            if an_f.is_file():
+                an_doc = json.loads(an_f.read_text(encoding="utf-8"))
+                for _an_g in (an_doc.get("auto_nodes") if isinstance(an_doc, dict) else []) or []:
+                    for _grp in (_an_g.get("groups") or []):
+                        pool_refs.update(str(x) for x in (_grp.get("node_tags") or []) if x)
+                        pool_refs.update(str(x) for x in (_grp.get("node_ids") or []) if x)
+        except Exception as _e_noop:
+            _ = _e_noop
         now_gc = int(time.time())
         dead_ttl_s = 7 * 86400
+        non_pool_dead_ttl_s = 86400
         cleaned = {}
+        non_pool_dead_keys = []
+        enforce_orphan = bool(strict or len(store) > max(600, len(saved) * 3))
         for k, v in store.items():
+            if enforce_orphan and not (k in valid_ids or k in valid_tags or (isinstance(v, dict) and (v.get("node_id") in valid_ids or v.get("tag") in valid_tags))):
+                continue
             if isinstance(v, dict) and v.get("state") == "dead":
                 last_p_ts = max(int(v.get("last_probe_ts") or 0), int(v.get("probe_ts") or 0), int(v.get("ts") or 0))
                 if last_p_ts > 0 and (now_gc - last_p_ts) > dead_ttl_s:
                     continue
-            if k in valid_ids or k in valid_tags:
-                cleaned[k] = v
-            elif isinstance(v, dict) and (v.get("node_id") in valid_ids or v.get("tag") in valid_tags):
-                cleaned[k] = v
+                is_in_pool = (k in pool_refs or str(v.get("tag") or "") in pool_refs or str(v.get("node_id") or "") in pool_refs)
+                if pool_refs and not is_in_pool:
+                    if strict or (last_p_ts > 0 and (now_gc - last_p_ts) > non_pool_dead_ttl_s):
+                        continue
+                    non_pool_dead_keys.append((last_p_ts, k))
+            cleaned[k] = v
+        if len(non_pool_dead_keys) > 60:
+            non_pool_dead_keys.sort(key=lambda x: x[0])
+            for _, drop_k in non_pool_dead_keys[:-60]:
+                cleaned.pop(drop_k, None)
         return cleaned
     except Exception:
         return store
@@ -6190,6 +6270,9 @@ def get_auto_node_candidate_pool(an: dict, conf_dir: Path = CONF_DIR,
         _cp_in_scope_tags = {n_s.get("tag", "") for n_s in _cp_scoped if isinstance(n_s, dict) and n_s.get("tag")}
     out = []
     seen = set()
+    is_full_cp = (an.get("mode") == "full" or bool(an.get("service_check_enabled")))
+    cooldown_bg_items = []
+    quarantine_bg_items = []
     for g in groups:
         refs = list(dict.fromkeys(list(g.get("node_ids") or []) + list(g.get("node_tags") or [])))
         g_ok, g_pend = [], []
@@ -6207,11 +6290,11 @@ def get_auto_node_candidate_pool(an: dict, conf_dir: Path = CONF_DIR,
             g_reg_info = get_node_google_region_info(n_obj, rec_raw)
             if is_ai_or_google_pool and g_reg_info["google_region"] in UNSUPPORTED_AI_REGIONS:
                 continue
-            if int(rec_raw.get("quarantine_until") or 0) > now_ts or int(rec_raw.get("cooldown_until") or 0) > now_ts:
-                continue
-            if int((ev.get("score_info") or {}).get("consecutive_fail") or 0) >= 3:
-                continue
-            seen.add(ev["node_id"])
+            q_until = int(rec_raw.get("quarantine_until") or 0)
+            c_fail = int((ev.get("score_info") or {}).get("consecutive_fail") or 0)
+            in_quar = (q_until > now_ts or c_fail >= 3)
+            c_until = max(int(rec_raw.get("cooldown_until") or 0), int(rec_raw.get("rate_limited_until") or 0))
+            in_cool = (c_until > now_ts)
             item = {
                 "node_id": ev["node_id"],
                 "tag": tag_s,
@@ -6222,16 +6305,34 @@ def get_auto_node_candidate_pool(an: dict, conf_dir: Path = CONF_DIR,
                 "score": ev["score"],
                 "score_info": ev["score_info"],
                 "svc": ev["svc"],
-                "country": classify_node_country_5plus1(tag_s, n_obj)
+                "country": classify_node_country_5plus1(tag_s, n_obj),
+                "cdn_tls_ok": _is_node_cdn_tls_healthy(rec_raw),
+                "is_random_region": _is_random_region_node(tag_s),
+                "quarantine_until": q_until,
+                "in_cooldown": in_cool,
             }
-            item["cdn_tls_ok"] = _is_node_cdn_tls_healthy(rec_raw)
-            item["is_random_region"] = _is_random_region_node(tag_s)
+            if in_quar:
+                if ev["state"] == "ok" and ev["delay_ms"] > 0 and c_fail == 0 and not (is_full_cp and svc_ids):
+                    quarantine_bg_items.append(item)
+                continue
+            if in_cool:
+                if ev["state"] == "ok" and ev["delay_ms"] > 0:
+                    cooldown_bg_items.append(item)
+                continue
+            seen.add(ev["node_id"])
             if ev["state"] == "ok" and ev["delay_ms"] > 0:
                 g_ok.append(item)
             elif ev["state"] in ("pending", "untested"):
                 g_pend.append(item)
         g_ok.sort(key=lambda x: (0 if x.get("cdn_tls_ok", True) else 1, round(float(x["delay_ms"]) * (1.28 if x.get("is_random_region") else 1.0), 2), 1 if x.get("is_random_region") else 0, x["delay_ms"]))
         out.extend(g_ok + g_pend)
+    if not out:
+        if cooldown_bg_items:
+            cooldown_bg_items.sort(key=lambda x: (0 if x.get("cdn_tls_ok", True) else 1, round(float(x["delay_ms"]) * (1.28 if x.get("is_random_region") else 1.0), 2), x["delay_ms"], x["tag"]))
+            return cooldown_bg_items
+        if quarantine_bg_items:
+            quarantine_bg_items.sort(key=lambda x: (int(x.get("quarantine_until") or 0), x["delay_ms"], x["tag"]))
+            return quarantine_bg_items
     return out
 
 def _filter_nodes_by_pool_scope(saved_nodes: list, subs_list: list, scope_source = "ALL",
@@ -7440,11 +7541,13 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
         an["multi_line_locked_reason"] = "AI/账号敏感服务自动锁定单线优选（防多IP跳变风控）"
     if an.get("dispatch_mode") == "multi_line":
         _cap_ml = max(2, int(an.get("target_size") or 5))
+        _probed_g_nodes = [x for x in g_nodes if x.get("state") == "ok" and int(x.get("delay_ms") or 0) > 0]
+        _src_ml_nodes = _probed_g_nodes if _probed_g_nodes else g_nodes
         _base_eff = max(10.0, float(fastest.get("eff_rank_ms") or fastest.get("delay_ms") or 50.0))
         _max_allowed_eff = max(_base_eff * 2.2, _base_eff + 160.0)
-        _fast_ml = [x["tag"] for x in g_nodes[:_cap_ml] if float(x.get("eff_rank_ms") or x.get("delay_ms") or 9999.0) <= _max_allowed_eff]
-        if len(_fast_ml) < 2 and len(g_nodes) >= 2:
-            for _cand_ml2 in g_nodes[:_cap_ml]:
+        _fast_ml = [x["tag"] for x in _src_ml_nodes[:_cap_ml] if float(x.get("eff_rank_ms") or x.get("delay_ms") or 9999.0) <= _max_allowed_eff]
+        if len(_fast_ml) < 2 and len(_src_ml_nodes) >= 2:
+            for _cand_ml2 in _src_ml_nodes[:_cap_ml]:
                 _t2 = str(_cand_ml2.get("tag") or "").strip()
                 if _t2 and _t2 not in _fast_ml and int(_cand_ml2.get("delay_ms") or 9999) <= 300 and float(_cand_ml2.get("eff_rank_ms") or 9999.0) <= max(_base_eff * 3.0, _base_eff + 220.0):
                     _fast_ml.append(_t2)
@@ -7453,11 +7556,12 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
         _ch_tag = str(chosen.get("tag") or "").strip()
         if _ch_tag and _ch_tag != "direct":
             _fast_ml = ([_ch_tag] + [t for t in _fast_ml if t != _ch_tag])[:_cap_ml]
-        if not _fast_ml and g_nodes:
-            _fast_ml = [g_nodes[0]["tag"]]
+        if not _fast_ml and _src_ml_nodes:
+            _fast_ml = [_src_ml_nodes[0]["tag"]]
         an["multi_line_nodes"] = _fast_ml
-        an["multi_line_filtered_slow_count"] = max(0, len(g_nodes[:_cap_ml]) - len(_fast_ml))
+        an["multi_line_filtered_slow_count"] = max(0, len(_src_ml_nodes[:_cap_ml]) - len(_fast_ml))
         an["active_lines_count"] = len(an["multi_line_nodes"])
+        an["candidate_nodes_count"] = len(an["multi_line_nodes"])
     else:
         an["multi_line_nodes"] = [chosen["tag"]] if chosen.get("tag") and chosen["tag"] != "direct" else []
         an["multi_line_filtered_slow_count"] = 0
@@ -7578,8 +7682,8 @@ def _note_live_write_attempt(target_path: Path, op: str = "") -> bool:
                 _SELF_TEST_LIVE_WRITE_BLOCKED += 1
                 return True
             return False
-    except Exception:
-        pass
+    except Exception as _e_noop:
+        _ = _e_noop
     return False
 
 
@@ -7595,8 +7699,8 @@ def _note_live_write_leak(target_path: Path, op: str = "") -> bool:
         if rp == c_res or rp == r_res or c_res in rp.parents or r_res in rp.parents:
             _SELF_TEST_LIVE_WRITE_LEAKED += 1
             return True
-    except Exception:
-        pass
+    except Exception as _e_noop:
+        _ = _e_noop
     return False
 
 
@@ -7613,8 +7717,8 @@ def _get_ssl_context(conf_dir: Path = None, allow_insecure: bool = None):
     if Path(cafile).is_file():
         try:
             return ssl.create_default_context(cafile=cafile)
-        except Exception:
-            pass
+        except Exception as _e_noop:
+            _ = _e_noop
     return ssl.create_default_context()
 
 
@@ -7889,7 +7993,10 @@ def dispatch_multi_line_pools_tick(conf_dir: Path = CONF_DIR, advance: bool = Tr
             eff_adv = bool(advance)
             if eff_adv and respect_dwell_interval and prev_c >= 0 and cur_act_node in ml_nodes and (now_rr - last_rot) < MULTI_LINE_ROTATE_INTERVAL_S:
                 eff_adv = False
-            cur_c = (prev_c + 1) % len(ml_nodes) if (eff_adv or prev_c < 0 or cur_act_node not in ml_nodes) else (prev_c % len(ml_nodes))
+            if not eff_adv and cur_act_node in ml_nodes:
+                cur_c = ml_nodes.index(cur_act_node)
+            else:
+                cur_c = (prev_c + 1) % len(ml_nodes) if (eff_adv or prev_c < 0 or cur_act_node not in ml_nodes) else (prev_c % len(ml_nodes))
             if cur_c != prev_c or prev_c < 0:
                 _MULTI_LINE_RR_STATE.setdefault("last_rotate_ts", {})[(c_str, pid)] = now_rr
             _MULTI_LINE_RR_STATE["cursors"][(c_str, pid)] = cur_c
@@ -7901,10 +8008,25 @@ def dispatch_multi_line_pools_tick(conf_dir: Path = CONF_DIR, advance: bool = Tr
         if pid == "auto_youtube" and ptag != "Stream_Auto":
             _put_clash_selector_silent("Stream_Auto", p_target, clash_api_override=clash_api_override)
             dispatched["Stream_Auto"] = p_target
+        _grp_targets_log = {}
         for g_idx, stag in enumerate(p_info["bound_selectors"]):
             g_target = ml_nodes[(cur_c + g_idx) % len(ml_nodes)]
             _put_clash_selector_silent(stag, g_target, clash_api_override=clash_api_override)
             dispatched[stag] = g_target
+            _grp_targets_log[stag] = g_target
+        with _MULTI_LINE_RR_LOCK:
+            _rlog = _MULTI_LINE_RR_STATE.setdefault("rotation_log", [])
+            if not _rlog or _rlog[-1].get("pool_id") != pid or _rlog[-1].get("selected") != p_target:
+                _rlog.append({
+                    "ts": int(now_rr),
+                    "pool_id": pid,
+                    "pool_tag": ptag,
+                    "selected": p_target,
+                    "candidate_nodes_count": len(ml_nodes),
+                    "group_targets": _grp_targets_log,
+                })
+                if len(_rlog) > 50:
+                    del _rlog[:-50]
     return {
         "ok": True,
         "dispatched": dispatched,
@@ -8825,8 +8947,8 @@ class AIProbeEngine:
                     prev_sdoc = json.loads(sel_fp.read_text(encoding="utf-8"))
                     if isinstance(prev_sdoc, dict) and prev_sdoc.get("selections") == sels_out:
                         return
-                except Exception:
-                    pass
+                except Exception as _e_noop:
+                    _ = _e_noop
             _atomic_write_text(sel_fp, json.dumps({
                 "updated_at": int(time.time()),
                 "selections": sels_out,
@@ -10113,7 +10235,8 @@ def parse_subscription_content(raw_text: str, conf_dir: Path = CONF_DIR) -> list
 def fetch_and_sync_subscription(url: str = "", name: str = "机场订阅",
                                 auto_update: bool = True, update_interval_min: int = 360,
                                 conf_dir: Path = CONF_DIR, sub_id: str = "", old_url: str = "",
-                                test_after_add: bool = False) -> dict:
+                                test_after_add: bool = False,
+                                preview_request_id: str = "", expected_fingerprint: str = "") -> dict:
     """Spec §7 #5 & P0-2 Fix: Never auto-injects a hardcoded third-party subscription when URL is empty."""
     url = str(url or "").strip()
     name = str(name or "机场订阅").strip()
@@ -10173,10 +10296,33 @@ def fetch_and_sync_subscription(url: str = "", name: str = "机场订阅",
                 target_sub["update_interval_min"] = int(update_interval_min)
             target_sub.update({"id": sub_id, "name": name or target_sub.get("name", "订阅源"), "url": url, "status": "syncing", "last_error": ""})
         save_subscriptions(subs, conf_dir)
-    parsed_obs = []
+        parsed_obs = []
     sub_userinfo = {}
     last_error = ""
     last_error_code = "sub_fetch_failed"
+    _reused_preview_fp = ""
+    if preview_request_id:
+        _req_b_cache = globals().get("_SUB_PREVIEW_BATCH_BY_REQ_ID") or {}
+        _b_ent = _req_b_cache.get(preview_request_id)
+        if not isinstance(_b_ent, dict) or (time.time() - float(_b_ent.get("ts") or 0)) > 60.0:
+            return {
+                "ok": False, "status": 409, "id": sub_id, "name": name, "fetch_source": "stale_preview",
+                "imported_count": 0, "error": "stale_preview", "request_id": preview_request_id,
+                "message": "预览批次已过期（超过 60 秒），请重新预览后再确认同步",
+                "subscriptions": load_subscriptions(conf_dir),
+            }
+        _cached_fp = str(_b_ent.get("nodes_fingerprint") or "")
+        _up_cache_ent = (globals().get("_SUB_PREVIEW_UPSTREAM_CACHE") or {}).get(url)
+        _latest_up_fp = str((_up_cache_ent or {}).get("nodes_fingerprint") or "")
+        if (expected_fingerprint and expected_fingerprint != _cached_fp) or (_latest_up_fp and _latest_up_fp != _cached_fp):
+            return {
+                "ok": False, "status": 409, "id": sub_id, "name": name, "fetch_source": "stale_preview",
+                "imported_count": 0, "error": "stale_preview", "request_id": preview_request_id,
+                "message": "上游订阅节点批次已发生变化，与预览结果不一致，请重新预览后再确认同步",
+                "subscriptions": load_subscriptions(conf_dir),
+            }
+        parsed_obs = copy.deepcopy(_b_ent.get("nodes") or [])
+        _reused_preview_fp = _cached_fp
     sub_host = (urllib.parse.urlsplit(url).hostname or "").strip().lower()
     # P2-9 Fix: Pre-check DNS via SO_MARK=255 direct UDP DNS before urllib hits local FakeIP (which masks NXDOMAIN as ECONNRESET)
     if sub_host and not re.match(r"^\d{1,3}(\.\d{1,3}){3}$", sub_host) and sub_host not in ("localhost", "127.0.0.1") and ":" not in sub_host:
@@ -10199,7 +10345,7 @@ def fetch_and_sync_subscription(url: str = "", name: str = "机场订阅",
     got_http_200_body = False
     # P1-01 & P2-04 Fix: Prefer IPv4-only curl (`curl -4`) FIRST when available to avoid OpenWrt Python urllib IPv6 RST / TLS fingerprint blocks!
     _allow_insecure_sub = bool((target_sub or {}).get("allow_insecure_tls", False))
-    if last_error_code != "sub_dns_nxdomain" and shutil.which("curl") and sub_host not in ("127.0.0.1", "localhost"):
+    if not parsed_obs and last_error_code != "sub_dns_nxdomain" and shutil.which("curl") and sub_host not in ("127.0.0.1", "localhost"):
         c_res = _curl_fetch_subscription(url, timeout_sec=25, allow_insecure_tls=_allow_insecure_sub)
         if c_res.get("ok"):
             got_http_200_body = True
@@ -10324,7 +10470,10 @@ def fetch_and_sync_subscription(url: str = "", name: str = "机场订阅",
         except Exception:
             _subs_out = load_subscriptions(conf_dir)
         return {
-            "ok": True, "id": sub_id, "name": name, "fetch_source": "direct_https:curl",
+            "ok": True, "id": sub_id, "name": name,
+            "fetch_source": ("preview_cache" if preview_request_id else "direct_https:curl"),
+            "reused_preview_request_id": preview_request_id,
+            "nodes_fingerprint": _reused_preview_fp,
             "imported_count": len(parsed_obs), "total_nodes": len(merged),
             "userinfo": sub_userinfo, "delay_test": delay_res,
             "subscriptions": _subs_out
@@ -10371,7 +10520,7 @@ def fetch_and_sync_subscription(*args, **kwargs):
         if isinstance(res, dict) and res.get("ok"):
             return res
         err_code = str((res or {}).get("error") or "")
-        if err_code in ("sub_dns_nxdomain", "sub_token_invalid", "sub_http_404"):
+        if err_code in ("sub_dns_nxdomain", "sub_token_invalid", "sub_http_404", "stale_preview"):
             return res
         msg_low = str((res or {}).get("message") or "").lower()
         if any(k in msg_low for k in (
@@ -11668,7 +11817,8 @@ def load_dns_rewrite_config(conf_dir: Path = CONF_DIR) -> dict:
 
 def save_dns_rewrite_config(cfg: dict, conf_dir: Path = CONF_DIR) -> dict:
     conf_dir.mkdir(parents=True, exist_ok=True)
-    (conf_dir / "dns_rewrite.json").write_text(
+    _atomic_write_text(
+        conf_dir / "dns_rewrite.json",
         json.dumps(cfg, indent=2, ensure_ascii=False), encoding="utf-8"
     )
     apply_dns_rewrite_system(cfg, conf_dir)
@@ -12012,7 +12162,8 @@ def load_dns_filter_config(conf_dir: Path = CONF_DIR) -> dict:
 
 def save_dns_filter_config(cfg: dict, conf_dir: Path = CONF_DIR) -> dict:
     conf_dir.mkdir(parents=True, exist_ok=True)
-    (conf_dir / "dns_filters.json").write_text(
+    _atomic_write_text(
+        conf_dir / "dns_filters.json",
         json.dumps(cfg, indent=2, ensure_ascii=False), encoding="utf-8"
     )
     return cfg
@@ -14856,7 +15007,7 @@ def write_all_configs(target_dir: Path = CONF_DIR, force_full: bool = False, for
     try:
         v_file = target_dir / "version"
         if not v_file.is_file():
-            v_file.write_text(f"{APP_VERSION}\n", encoding="utf-8")
+            _atomic_write_text(v_file, f"{APP_VERSION}\n", encoding="utf-8")
     except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
         globals().get("_record_internal_diag", str)(_e_diag)
     ensure_hy2_certs(target_dir / "certs")
@@ -14883,7 +15034,7 @@ def write_all_configs(target_dir: Path = CONF_DIR, force_full: bool = False, for
             use_full = False
             reason_str = (chk.stderr or chk.stdout or f"rc={chk.returncode}").strip()
             try:
-                degraded_file.write_text(reason_str, encoding="utf-8")
+                _atomic_write_text(degraded_file, reason_str, encoding="utf-8")
                 subprocess.run(["logger", "-t", "ai-link", f"ALERT: build_mode degraded to lock-compat (Home-Link & DNS disabled): {reason_str}"], capture_output=True, timeout=3)
             except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                 globals().get("_record_internal_diag", str)(_e_diag)
@@ -14892,7 +15043,7 @@ def write_all_configs(target_dir: Path = CONF_DIR, force_full: bool = False, for
                 enable_tls_outbounds=False,
                 conf_dir=target_dir
             )
-            sb_json_path.write_text(json.dumps(sb_cfg, indent=2, ensure_ascii=False), encoding="utf-8")
+            _atomic_write_text(sb_json_path, json.dumps(sb_cfg, indent=2, ensure_ascii=False), encoding="utf-8")
     if use_full and degraded_file.is_file():
         try:
             degraded_file.unlink()
@@ -14915,7 +15066,7 @@ def write_all_configs(target_dir: Path = CONF_DIR, force_full: bool = False, for
             sym.symlink_to(sb_json_path)
         except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
             globals().get("_record_internal_diag", str)(_e_diag)
-    (target_dir / "build_mode.txt").write_text("upstream-full" if use_full else "lock-compat", encoding="utf-8")
+    _atomic_write_text(target_dir / "build_mode.txt", "upstream-full" if use_full else "lock-compat", encoding="utf-8")
     try:
         _ops_macs = get_ops_settings(target_dir).get("lan_direct_macs") or []
         _mac_rdirs = (RUN_DIR, Path("/tmp/ai-link")) if is_live_target else (_effective_run_dir(target_dir),)
@@ -15431,10 +15582,25 @@ def build_auto_nodes_api_response(conf_dir: Path = CONF_DIR, include_sparkline: 
         b_grps = bound_map_an.get(pid_b) or []
         an["bound_shunt_groups"] = b_grps
         an["unbound_pool_warning"] = (len(b_grps) == 0)
+        _ml_cands_b = list(an.get("multi_line_nodes") or [])
+        _bg_targets = []
+        for _gidx_b, _gname_b in enumerate(b_grps):
+            _gn_sel = _ml_cands_b[_gidx_b % len(_ml_cands_b)] if (_ml_cands_b and an.get("dispatch_mode") == "multi_line") else str(an.get("current_node") or "direct")
+            _gn_rtt = get_node_real_delay(_gn_sel, store=store, conf_dir=conf_dir) if _gn_sel not in ("", "direct", "block") else -1
+            _bg_targets.append({
+                "group_name": _gname_b,
+                "current_node": _gn_sel,
+                "delay_ms": _gn_rtt,
+                "shared_exit": bool(len(b_grps) > max(1, len(_ml_cands_b))),
+            })
+        an["bound_group_targets"] = _bg_targets
+        an["candidate_nodes_count"] = len(_ml_cands_b) if an.get("dispatch_mode") == "multi_line" else (1 if an.get("current_node") not in ("", "direct") else 0)
     cfg["quota_status"] = get_node_test_quota_summary(conf_dir)
     cfg["ipv6_governance"] = build_ipv6_governance_summary(conf_dir)
     cfg["log_failover_guard"] = get_kernel_log_failover_status(conf_dir)
     cfg["kernel_log_failover"] = cfg["log_failover_guard"]
+    cfg["dwell_bypass_calls"] = int(getattr(SELECTOR_WRITE_COORDINATOR, "dwell_bypass_calls", 0))
+    cfg["multi_line_rotation_log"] = list(_MULTI_LINE_RR_STATE.get("rotation_log") or [])[-20:]
     res_obj = cfg
     _AUTO_NODES_API_MEMO[an_key] = copy.deepcopy(res_obj)
     return res_obj
@@ -16121,6 +16287,7 @@ def build_status_api_response(conf_dir: Path = CONF_DIR) -> dict:
         "single_group_migrated": True,
         "kernel_log_failover": get_kernel_log_failover_status(conf_dir),
         "log_failover_guard": get_kernel_log_failover_status(conf_dir),
+        "dwell_bypass_calls": int(getattr(SELECTOR_WRITE_COORDINATOR, "dwell_bypass_calls", 0)),
         "has_backup_archive": _has_final_backup_archive(),
         "backup_archive_path": "/root/ai-link-final-backup/etc-ai-link.tgz" if _has_final_backup_archive() else "",
         "backup_info": _get_backup_archive_info(),
@@ -17319,7 +17486,7 @@ def factory_reset_all_configs(conf_dir: Path = CONF_DIR, create_backup_archive: 
         "global_manual_node": "",
         "groups": copy.deepcopy(DEFAULT_SHUNT_GROUPS)
     }, conf_dir)
-    (conf_dir / "homelink_route_mode").write_text("shunt", encoding="utf-8")
+    _atomic_write_text(conf_dir / "homelink_route_mode", "shunt", encoding="utf-8")
     if is_live:
         try:
             for k, v in (
@@ -17536,7 +17703,7 @@ def restore_ops_backup(backup_data: dict, conf_dir: Path = CONF_DIR) -> dict:
             save_alerts_config(backup_data["alerts_config"], conf_dir)
     if "max_outbounds_limit" in backup_data:
         mob_int = int(backup_data["max_outbounds_limit"])
-        (conf_dir / "max_outbounds.txt").write_text(str(mob_int), encoding="utf-8")
+        _atomic_write_text(conf_dir / "max_outbounds.txt", str(mob_int), encoding="utf-8")
         if is_live:
             try:
                 subprocess.run(["uci", "set", f"ai-link.global.max_outbounds={mob_int}"], check=False, timeout=2)
@@ -17719,7 +17886,7 @@ def _save_traffic_ledger(ledger: dict, conf_dir: Path = CONF_DIR, flush_flash: b
     if is_live:
         try:
             RUN_DIR.mkdir(parents=True, exist_ok=True)
-            (RUN_DIR / "traffic_ledger.json").write_text(raw, encoding="utf-8")
+            _atomic_write_text(RUN_DIR / "traffic_ledger.json", raw, encoding="utf-8")
         except Exception as _e_diag:
             globals().get("_record_internal_diag", str)(_e_diag)
         if not flush_flash:
@@ -18925,7 +19092,7 @@ def sync_uci_to_ops_settings(conf_dir: Path = CONF_DIR, force_from_uci: bool = F
     uci_mob = _uci_get_str("global.max_outbounds", "")
     if uci_mob.isdigit() and int(uci_mob) >= 10 and not (Path(conf_dir) / "max_outbounds.txt").is_file():
         try:
-            (Path(conf_dir) / "max_outbounds.txt").write_text(f"{int(uci_mob)}\n", encoding="utf-8")
+            _atomic_write_text(Path(conf_dir) / "max_outbounds.txt", f"{int(uci_mob)}\n", encoding="utf-8")
         except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
             globals().get("_record_internal_diag", str)(_e_diag)
     try:
@@ -19252,7 +19419,7 @@ def _update_ops_settings_locked(payload: dict, conf_dir: Path = CONF_DIR) -> dic
             try:
                 r_dir.mkdir(parents=True, exist_ok=True)
                 mac_list = cur.get("lan_direct_macs") or []
-                (r_dir / "lan_direct_macs.txt").write_text("\n".join(mac_list) + ("\n" if mac_list else ""), encoding="utf-8")
+                _atomic_write_text(r_dir / "lan_direct_macs.txt", "\n".join(mac_list) + ("\n" if mac_list else ""), encoding="utf-8")
             except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                 globals().get("_record_internal_diag", str)(_e_diag)
         sync_ops_settings_to_uci(conf_dir, cur)
@@ -19273,7 +19440,7 @@ def _update_ops_settings_locked(payload: dict, conf_dir: Path = CONF_DIR) -> dic
             for r_dir in (RUN_DIR, Path("/tmp/ai-link-run")):
                 try:
                     r_dir.mkdir(parents=True, exist_ok=True)
-                    (r_dir / "bypass").write_text(str(int(time.time())), encoding="utf-8")
+                    _atomic_write_text(r_dir / "bypass", str(int(time.time())), encoding="utf-8")
                 except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                     globals().get("_record_internal_diag", str)(_e_diag)
         else:
@@ -22047,9 +22214,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.5.7"
+APP_VERSION = "2.5.8"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.5.7-release-20261110"
+APP_BUILD = "2.5.8-release-20261110"
 
 UPDATE_MANIFEST_PRIMARY = "https://ai-link-official.pages.dev/version.json"
 UPDATE_MANIFEST_GITHUB = "https://raw.githubusercontent.com/Master-AI-007/ai-link-openwrt/main/version.json"
@@ -24565,7 +24732,7 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             for r_dir in (RUN_DIR, Path("/tmp/ai-link-run")):
                 try:
                     r_dir.mkdir(parents=True, exist_ok=True)
-                    (r_dir / "bypass").write_text(str(int(time.time())), encoding="utf-8")
+                    _atomic_write_text(r_dir / "bypass", str(int(time.time())), encoding="utf-8")
                 except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                     globals().get("_record_internal_diag", str)(_e_diag)
             update_ops_settings({"enabled": False}, CONF_DIR)
@@ -24791,6 +24958,8 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             })
             return
         if clean_path == "/api/shunt/update":
+            if "strategy_mode" in payload and "shunt_mode" not in payload:
+                payload["shunt_mode"] = payload["strategy_mode"]
             _SHUNT_ENUM_RULES = {
                 "routing_mode": ("rule_shunt", "global_proxy", "cn_whitelist", "gfw_list", "direct_all"),
                 "global_mode": ("auto", "manual", "direct"),
@@ -24870,7 +25039,7 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                                 g["shunt_mode"] = "direct"
                             elif payload.get("strategy") == "manual" and not str(payload.get("manual_node") or "").startswith("auto:"):
                                 g["shunt_mode"] = "manual"
-                            elif payload.get("strategy") in ("auto", "smart", "fastest") or str(payload.get("manual_node") or "").startswith("auto:"):
+                            elif payload.get("strategy") in ("auto", "smart", "fastest") or str(payload.get("manual_node") or "").startswith("auto:") or "auto_node_id" in payload:
                                 g["shunt_mode"] = "auto"
                         sm_n, c_n, st_n, aid_n, m_n = _normalize_group_shunt_params(g)
                         g["shunt_mode"] = sm_n
@@ -25119,6 +25288,11 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 fetch_u = sub_url or (sub_obj.get("url") if isinstance(sub_obj, dict) else "")
                 _cache_map = globals().setdefault("_SUB_PREVIEW_UPSTREAM_CACHE", {})
                 _now_p = time.time()
+                for _ck_old in [k for k, v in list(_cache_map.items()) if (_now_p - float(v.get("ts") or 0)) > 120.0]:
+                    _cache_map.pop(_ck_old, None)
+                while len(_cache_map) >= 32:
+                    _oldest_ck = min(_cache_map.keys(), key=lambda k: float(_cache_map[k].get("ts") or 0))
+                    _cache_map.pop(_oldest_ck, None)
                 if fetch_u and not payload.get("force_refresh") and fetch_u in _cache_map and (_now_p - _cache_map[fetch_u]["ts"]) < 60.0:
                     inc_nodes = copy.deepcopy(_cache_map[fetch_u]["nodes"])
                 elif fetch_u and fetch_u.startswith(("http://", "https://")):
@@ -25129,7 +25303,8 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                             parsed_try = NodeURIParser.parse_subscription_text(c_res_p["body"], conf_dir=CONF_DIR) or parse_subscription_content(c_res_p["body"])
                             if parsed_try:
                                 inc_nodes = parsed_try
-                                _cache_map[fetch_u] = {"ts": _now_p, "nodes": copy.deepcopy(parsed_try)}
+                                _fp_try = hashlib.sha256(json.dumps(sorted([compute_node_key(x) for x in parsed_try if isinstance(x, dict)]), ensure_ascii=False).encode("utf-8")).hexdigest()[:16]
+                                _cache_map[fetch_u] = {"ts": _now_p, "nodes": copy.deepcopy(parsed_try), "nodes_fingerprint": _fp_try}
                     except Exception as _e_diag:
                         globals().get("_record_internal_diag", str)(_e_diag)
                     if inc_nodes is None:
@@ -25140,7 +25315,8 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                                 parsed_try = NodeURIParser.parse_subscription_text(fetched_raw, conf_dir=CONF_DIR) or parse_subscription_content(fetched_raw)
                                 if parsed_try:
                                     inc_nodes = parsed_try
-                                    _cache_map[fetch_u] = {"ts": _now_p, "nodes": copy.deepcopy(parsed_try)}
+                                    _fp_try = hashlib.sha256(json.dumps(sorted([compute_node_key(x) for x in parsed_try if isinstance(x, dict)]), ensure_ascii=False).encode("utf-8")).hexdigest()[:16]
+                                    _cache_map[fetch_u] = {"ts": _now_p, "nodes": copy.deepcopy(parsed_try), "nodes_fingerprint": _fp_try}
                         except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                             globals().get("_record_internal_diag", str)(_e_diag)
                 if inc_nodes is None:
@@ -25294,7 +25470,7 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             return
         if clean_path == "/api/shunt/clear_history":
             try:
-                (RUN_DIR / "switch_history.json").write_text("[]", encoding="utf-8")
+                _atomic_write_text(RUN_DIR / "switch_history.json", "[]", encoding="utf-8")
             except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                 globals().get("_record_internal_diag", str)(_e_diag)
             self._send_json({"ok": True, "history": []})
@@ -25333,7 +25509,7 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             if act in ("stop_proxy", "disable_proxy"):
                 for r_dir in (RUN_DIR, Path("/tmp/ai-link-run")):
                     r_dir.mkdir(parents=True, exist_ok=True)
-                    (r_dir / "bypass").write_text(str(int(time.time())), encoding="utf-8")
+                    _atomic_write_text(r_dir / "bypass", str(int(time.time())), encoding="utf-8")
                 update_ops_settings({"enabled": False}, CONF_DIR)
                 if Path("/etc/init.d/ai-link").exists():
                     subprocess.run(["/etc/init.d/ai-link", "recover_direct"], check=False, timeout=5)
@@ -26003,14 +26179,18 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             else:
                 interval_min = 360
             test_after_add = bool(payload.get("test_after_add", True))
+            _prev_req_id = str(payload.get("preview_request_id") or payload.get("request_id") or "").strip()
+            _exp_fp = str(payload.get("expected_fingerprint") or payload.get("nodes_fingerprint") or "").strip()
             res = fetch_and_sync_subscription(
                 url=url, name=name, auto_update=auto_up, update_interval_min=interval_min,
-                conf_dir=CONF_DIR, sub_id=sub_id, old_url=old_url, test_after_add=test_after_add
+                conf_dir=CONF_DIR, sub_id=sub_id, old_url=old_url, test_after_add=test_after_add,
+                preview_request_id=_prev_req_id, expected_fingerprint=_exp_fp
             )
             if payload.get("reload_core", True) and res.get("imported_count", 0) > 0 and _is_prod_conf_dir(CONF_DIR) and Path("/etc/init.d/ai-link").exists():
                 schedule_async_core_reload(force_respawn=True, hot_only=False)
                 PROBE_ENGINE.apply_shunt_selections(CONF_DIR)
-            self._send_json(res, status=200 if (res.get("ok") or payload.get("async")) else 400)
+            _http_st = 200 if (res.get("ok") or payload.get("async")) else (409 if res.get("error") == "stale_preview" else 400)
+            self._send_json(res, status=_http_st)
             return
         if clean_path in ("/api/subscriptions/update_settings", "/api/subscriptions/edit", "/api/subscriptions/toggle"):
             sub_id = str(payload.get("id") or "").strip()
@@ -26482,7 +26662,7 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 save_homelink_nodes(hl_nodes, CONF_DIR)
             else:
                 CONF_DIR.mkdir(parents=True, exist_ok=True)
-                (CONF_DIR / "homelink_route_mode").write_text(rmode, encoding="utf-8")
+                _atomic_write_text(CONF_DIR / "homelink_route_mode", rmode, encoding="utf-8")
                 if apply_all:
                     hl_nodes = load_homelink_nodes(CONF_DIR)
                     for h in hl_nodes:
@@ -26726,7 +26906,7 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 self._send_json({"ok": False, "error": "out_of_range", "message": "max_outbounds 范围必须在 0（不限）或 1~300 之间"}, status=400)
                 return
             CONF_DIR.mkdir(parents=True, exist_ok=True)
-            (CONF_DIR / "max_outbounds.txt").write_text(str(limit), encoding="utf-8")
+            _atomic_write_text(CONF_DIR / "max_outbounds.txt", str(limit), encoding="utf-8")
             write_all_configs(CONF_DIR)
             PROBE_ENGINE.apply_shunt_selections(CONF_DIR)
             if payload.get("reload_core", True) and Path("/etc/init.d/ai-link").exists():
@@ -27188,7 +27368,7 @@ def main():
         raw_val = sys.argv[idx + 1] if idx + 1 < len(sys.argv) else "60"
         limit = 0 if raw_val.lower() in ("all", "0", "unlimited") else max(5, int(raw_val))
         CONF_DIR.mkdir(parents=True, exist_ok=True)
-        (CONF_DIR / "max_outbounds.txt").write_text(str(limit), encoding="utf-8")
+        _atomic_write_text(CONF_DIR / "max_outbounds.txt", str(limit), encoding="utf-8")
         write_all_configs(CONF_DIR)
         rt = get_core_runtime_info(CONF_DIR)
         print("MAX_NODES_RESULT", json.dumps({
@@ -27317,15 +27497,7 @@ def main():
         _st_hist_path = RUN_DIR / "switch_history.json"
         _st_sels_before = _st_sels_path.read_bytes() if _st_sels_path.is_file() else None
         _st_hist_before = _st_hist_path.read_bytes() if _st_hist_path.is_file() else None
-        _st_immutable_paths = [
-            RUN_DIR / "ai-link.nft",
-            RUN_DIR / "node_test_quota.json",
-            CONF_DIR / "sing-box.json",
-        ]
-        _st_immutable_before = {
-            str(_p): (hashlib.sha256(_p.read_bytes()).hexdigest(), _p.stat().st_size)
-            for _p in _st_immutable_paths if _p.is_file()
-        }
+        # v2.5.8 P1-1 & §5.3 4-Layer Self-Test Architecture: zero cross-process byte comparison on hot files
         eng = AIProbeEngine()
         ok1, msg1 = eng.verify_semantic_payload("openai", 200, {}, "fl=12f\nloc=US\nstatus=normal")
         assert ok1 is True, f"Expected OpenAI US trace to pass: {msg1}"
@@ -27744,35 +27916,44 @@ def main():
         if not UPDATE_PROGRESS_LOG.is_file():
             _ota_prog = read_update_progress()
             assert _ota_prog["running"] is False, f"OTA: 空进度不应标记为运行中，got {_ota_prog}"
-        _st_guard_probe = RUN_DIR / ".selftest_write_guard_probe"
-        try:
-            _st_guard_probe.unlink(missing_ok=True)
-        except Exception:
-            pass
-        _atomic_write_text(_st_guard_probe, "selftest_write_guard_canary")
-        if _st_guard_probe.exists():
-            if _SELF_TEST_LIVE_WRITE_LEAKED == 0:
-                _SELF_TEST_LIVE_WRITE_LEAKED += 1
+        # v2.5.8 P1-1 & P1-4 Multi-Channel Canary Verification (atomic_write_text, direct Path.write_text, record_switch_event)
+        _st_guard_probe1 = RUN_DIR / ".selftest_write_guard_probe_atomic"
+        _st_guard_probe2 = CONF_DIR / ".selftest_write_guard_probe_direct"
+        for _gp in (_st_guard_probe1, _st_guard_probe2):
             try:
-                _st_guard_probe.unlink(missing_ok=True)
-            except Exception:
-                pass
+                _gp.unlink(missing_ok=True)
+            except Exception as _e_noop:
+                _ = _e_noop
+        try:
+            _atomic_write_text(_st_guard_probe1, "selftest_canary_atomic")
+        except Exception as _e_noop:
+            _ = _e_noop
+        try:
+            _st_guard_probe2.write_text("selftest_canary_direct", encoding="utf-8")
+        except Exception as _e_noop:
+            _ = _e_noop
+        try:
+            record_switch_event("Shunt_AI", "Canary-Old", "Canary-New", reason="selftest_canary_event", run_dir=RUN_DIR)
+        except Exception as _e_noop:
+            _ = _e_noop
+        for _gp in (_st_guard_probe1, _st_guard_probe2):
+            if _gp.exists():
+                if _SELF_TEST_LIVE_WRITE_LEAKED == 0:
+                    _SELF_TEST_LIVE_WRITE_LEAKED += 1
+                try:
+                    _gp.unlink(missing_ok=True)
+                except Exception as _e_noop:
+                    _ = _e_noop
         shutil.rmtree(tmp_test_dir, ignore_errors=True)
         shutil.rmtree(tmp_shunt_dir, ignore_errors=True)
         PROBE_ENGINE.current_selections = _st_orig_sels
         _SELF_TEST_ACTIVE = False
-        for _imp_s, (_imp_sha, _imp_sz) in _st_immutable_before.items():
-            _imp_p = Path(_imp_s)
-            if _imp_p.is_file():
-                _now_sha = hashlib.sha256(_imp_p.read_bytes()).hexdigest()
-                if _now_sha != _imp_sha:
-                    _SELF_TEST_LIVE_WRITE_LEAKED += 1
         assert _SELF_TEST_LIVE_WRITE_LEAKED == 0, (
             f"P0-1 regression: --self-test leaked {_SELF_TEST_LIVE_WRITE_LEAKED} live production writes "
             f"(blocked={_SELF_TEST_LIVE_WRITE_BLOCKED})!"
         )
-        assert _SELF_TEST_LIVE_WRITE_BLOCKED >= 1, (
-            f"P0-1 regression: --self-test write-guard choke-point did not intercept canary probe "
+        assert _SELF_TEST_LIVE_WRITE_BLOCKED >= 3, (
+            f"P0-1 regression: --self-test 3-channel write-guard choke-point did not intercept all canary probes "
             f"(blocked={_SELF_TEST_LIVE_WRITE_BLOCKED})!"
         )
         if _st_sels_path.is_file():

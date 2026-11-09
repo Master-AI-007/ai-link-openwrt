@@ -1575,7 +1575,7 @@ def main() -> int:
         gates_254_txt = (Path(__file__).resolve().parent / "gates_v101.py").read_text(encoding="utf-8")
         check("Stage 6.27a (v2.5.4 FB-253-1/2 Makefile PKG_VERSION/PKG_RELEASE 锚点与报告版本结构门禁): Makefile 含 PKG_VERSION:=2.5.4 与 PKG_RELEASE:=14，且 gates_v101 强制校验报告 PKG_RELEASE 与首节版本号",
               f"PKG_VERSION:={dmod.APP_VERSION}" in mk_254_txt
-              and "PKG_RELEASE:=17" in mk_254_txt
+              and "PKG_RELEASE:=18" in mk_254_txt
               and "FB-253-1: Verify PKG_RELEASE" in gates_254_txt
               and "FB-253-2: Verify report Section 1" in gates_254_txt,
               f"app_ver={dmod.APP_VERSION}")
@@ -2306,7 +2306,29 @@ def main() -> int:
             "Prod716-02": {"state": "dead", "delay_ms": -1, "last_probe_ts": stale_dead_ts},
         }
         cleaned_gc_716 = dmod._gc_orphan_probe_dict(ps_gc_716, tmp_v252, strict=True)
-        check("Stage 7.16 (v2.5.7 P0-1/P1-1..P1-5/P2-4 预览全字段UI消费与失败拦截 + Jaccard连续10次只读稳定 + 自检写拦截负向验证 + 全链路严格TLS + 7天dead缓存GC门禁): 前端消费全部10个预览字段且零'多线并发'残留；连续10次预览Jaccard恒定且全触发预警；自检写保护真实拦截并计数=1；超过7天dead缓存自动清理",
+        # Verify get_auto_node_candidate_pool & resolve_node_for_country_strategy_with_failover honor rate_limited_until AND all-cooldown break-glass sync
+        _now_716 = int(time.time())
+        _an_716 = {
+            "id": "auto_yt_716", "tag": "Auto_YT_716", "name": "奈飞", "mode": "semi",
+            "current_node": "Prod716-01", "current_delay_ms": 40,
+            "groups": [{"index": 1, "name": "主力", "node_tags": ["Prod716-01", "Prod716-02"]}],
+        }
+        _st_part_cool = {
+            "Prod716-01": {"state": "ok", "delay_ms": 40, "probe_ts": _now_716, "rate_limited_until": _now_716 + 3600, "svc": {}},
+            "Prod716-02": {"state": "ok", "delay_ms": 85, "probe_ts": _now_716, "svc": {}},
+        }
+        _cands_part_716 = [x["tag"] for x in dmod.get_auto_node_candidate_pool(_an_716, conf_dir=tmp_v252, saved_nodes=prod_716[:2], subs_list=[], store=_st_part_cool)]
+        _st_all_cool = {
+            "Prod716-01": {"state": "ok", "delay_ms": 40, "probe_ts": _now_716, "rate_limited_until": _now_716 + 3600, "svc": {}},
+            "Prod716-02": {"state": "ok", "delay_ms": 85, "probe_ts": _now_716, "rate_limited_until": _now_716 + 3600, "svc": {}},
+        }
+        _res_all_cool_716 = dmod.resolve_node_for_country_strategy_with_failover(
+            "ALL", "auto", "auto:auto_yt_716", ["Prod716-01", "Prod716-02", "direct"],
+            {"Prod716-01": 40.0, "Prod716-02": 85.0},
+            group_id="Netflix", conf_dir=tmp_v252, saved_nodes=prod_716[:2], subs_list=[], store=_st_all_cool, auto_cfg={"auto_nodes": [_an_716]}
+        )
+        _cool_sync_ok_716 = (_cands_part_716 == ["Prod716-02"] and _res_all_cool_716.get("selected") == "Prod716-01" and "semPairs" in js_715_txt)
+        check("Stage 7.16 (v2.5.7 P0-1/P1-1..P1-5/P2-4/FB-257-1 预览全字段UI消费与失败拦截 + Jaccard连续10次只读稳定 + 自检写拦截正负双向验证 + 全链路严格TLS + 7天dead缓存GC + 冷却破冰分流组同源联动门禁): 前端消费全部预览字段且零'多线并发'残留；连续10次预览Jaccard恒定；自检写保护blocked=1/leaked=0且关闭拦截leaked=1；风控冷却节点自动避让且全员冷却破冰时分流组不死锁direct",
               ui_parity_ok_716
               and len(jacc_set_716) == 1
               and warn_all_716
@@ -2314,8 +2336,104 @@ def main() -> int:
               and file_blocked_716
               and strict_tls_ok_716
               and "Prod716-02" not in cleaned_gc_716
-              and "Prod716-01" in cleaned_gc_716,
-              f"ui={ui_parity_ok_716}, jacc={jacc_set_716}, warn={warn_all_716}, attempts={detected_attempts_716}, gc_keys={list(cleaned_gc_716.keys())}")
+              and "Prod716-01" in cleaned_gc_716
+              and _cool_sync_ok_716,
+              f"ui={ui_parity_ok_716}, jacc={jacc_set_716}, warn={warn_all_716}, attempts={detected_attempts_716}, cool_sync={_cool_sync_ok_716}, gc_keys={list(cleaned_gc_716.keys())}")
+
+        # Stage 7.17 (v2.5.8 P1-1..P1-4, P2-1..P2-10 & Appendix A Full Closure Gate):
+        #   (1) P1-4: 0 raw CONF_DIR/RUN_DIR .write_text calls in ai-link-daemon.py + Path.write_text/write_bytes hooked during _SELF_TEST_ACTIVE
+        #   (2) P2 & §5.2: preview_subscription_sync_impact returns endpoint_changed_tags, credential_changed_tags, same_tag_replaced_tags, impact_pct<=100, nodes_fingerprint + tools/check_api_ui_parity.py PASS
+        #   (3) P1-3: preview_request_id batch cache reuse & stale_preview detection
+        #   (4) P2-3: _gc_orphan_probe_dict immediately GCs non-pool dead records while keeping in-pool dead records within 7d
+        #   (5) Appendix A: multi_line_nodes excludes unprobed nodes without RTT, preserves cursor across candidate updates in dwell window, and exposes bound_group_targets & multi_line_rotation_log
+        import subprocess as _sp_717
+        parity_py = SITE / "tools/check_api_ui_parity.py"
+        parity_res_717 = _sp_717.run([sys.executable, "-B", str(parity_py)], capture_output=True, text=True, timeout=15)
+        parity_ok_717 = (parity_res_717.returncode == 0 and "[PASS]" in (parity_res_717.stdout or ""))
+
+        # Verify Path.write_text hook blocks live CONF_DIR writes during _SELF_TEST_ACTIVE
+        _orig_st_717 = dmod._SELF_TEST_ACTIVE
+        _orig_int_717 = dmod._SELF_TEST_INTERCEPT_ENABLED
+        _orig_blk_717 = dmod._SELF_TEST_LIVE_WRITE_BLOCKED
+        _orig_lk_717 = dmod._SELF_TEST_LIVE_WRITE_LEAKED
+        try:
+            dmod._SELF_TEST_ACTIVE = True
+            dmod._SELF_TEST_INTERCEPT_ENABLED = True
+            dmod._SELF_TEST_LIVE_WRITE_BLOCKED = 0
+            dmod._SELF_TEST_LIVE_WRITE_LEAKED = 0
+            _canary_raw_p = dmod.CONF_DIR / "_v258_raw_write_text_canary.tmp"
+            _canary_raw_p.write_text("blocked_by_hook", encoding="utf-8")
+            hook_blocked_ok_717 = (dmod._SELF_TEST_LIVE_WRITE_BLOCKED == 1 and dmod._SELF_TEST_LIVE_WRITE_LEAKED == 0 and not _canary_raw_p.exists())
+        finally:
+            dmod._SELF_TEST_ACTIVE = _orig_st_717
+            dmod._SELF_TEST_INTERCEPT_ENABLED = _orig_int_717
+            dmod._SELF_TEST_LIVE_WRITE_BLOCKED = _orig_blk_717
+            dmod._SELF_TEST_LIVE_WRITE_LEAKED = _orig_lk_717
+
+        # Verify *_tags, impact_pct<=100, and nodes_fingerprint in preview_subscription_sync_impact
+        dmod.save_nodes_list(prod_716, tmp_v252)
+        mut_717 = prod_716[:3] + [{"tag": "Prod716-04", "type": "vless", "server": "changed-ep1.example.com", "server_port": 8443, "uuid": "u-p-4", "_sub_id": "sub_716"}, {"tag": "Prod716-05", "type": "vless", "server": "changed-ep2.example.com", "server_port": 8443, "uuid": "u-p-5", "_sub_id": "sub_716"}, {"tag": "Prod716-06", "type": "vless", "server": "p6.example.com", "server_port": 443, "uuid": "changed-uuid-6", "_sub_id": "sub_716"}]
+        _prev_717 = dmod.preview_subscription_sync_impact("sub_716", mut_717, conf_dir=tmp_v252)
+        tags_contract_ok_717 = (
+            isinstance(_prev_717.get("endpoint_changed_tags"), list)
+            and len(_prev_717.get("endpoint_changed_tags")) == 2
+            and isinstance(_prev_717.get("credential_changed_tags"), list)
+            and len(_prev_717.get("credential_changed_tags")) == 1
+            and isinstance(_prev_717.get("same_tag_replaced_tags"), list)
+            and len(_prev_717.get("same_tag_replaced_tags")) == 3
+            and 0 <= int(_prev_717.get("impact_pct", 999)) <= 100
+            and bool(_prev_717.get("nodes_fingerprint"))
+        )
+
+        # Verify P2-3 immediate GC of non-pool dead records vs retention of in-pool dead records
+        dmod.save_auto_nodes_config({
+            "auto_nodes": [{
+                "id": "auto_ai", "tag": "Auto_AI", "name": "AI池", "mode": "semi",
+                "groups": [{"index": 1, "name": "主力", "node_tags": ["Prod716-01"]}],
+            }]
+        }, tmp_v252)
+        _now_gc_717 = int(time.time())
+        _ps_717 = {
+            "Prod716-01": {"state": "dead", "delay_ms": -1, "last_probe_ts": _now_gc_717 - 60},   # in-pool dead (recent) -> keep
+            "Prod716-02": {"state": "dead", "delay_ms": -1, "last_probe_ts": _now_gc_717 - 60},   # non-pool dead (recent) -> immediate GC
+        }
+        _cleaned_717 = dmod._gc_orphan_probe_dict(_ps_717, tmp_v252, strict=True)
+        gc_nonpool_dead_ok_717 = ("Prod716-01" in _cleaned_717 and "Prod716-02" not in _cleaned_717)
+
+        # Verify Appendix A: unprobed nodes without RTT excluded from multi_line_nodes, and copywriting updated
+        _ml_nodes_717 = [
+            {"tag": "ML717-Probed-01", "node_id": "nid_ml717_1", "type": "vless", "server": "198.51.100.71", "server_port": 443, "uuid": "u717-1"},
+            {"tag": "ML717-Probed-02", "node_id": "nid_ml717_2", "type": "vless", "server": "198.51.100.72", "server_port": 443, "uuid": "u717-2"},
+            {"tag": "ML717-Unprobed-03", "node_id": "nid_ml717_3", "type": "vless", "server": "198.51.100.73", "server_port": 443, "uuid": "u717-3"},
+        ]
+        _ml_store_717 = {
+            "ML717-Probed-01": {"state": "ok", "delay_ms": 45, "ewma_ms": 45.0, "probe_ts": _now_gc_717, "svc": {}},
+            "ML717-Probed-02": {"state": "ok", "delay_ms": 52, "ewma_ms": 52.0, "probe_ts": _now_gc_717, "svc": {}},
+            "ML717-Unprobed-03": {"state": "untested", "delay_ms": 0, "probe_ts": 0, "svc": {}},
+        }
+        _ml_pool_717 = {
+            "id": "auto_yt_ml717", "tag": "Auto_YT_ML717", "name": "视频多出口池", "mode": "semi",
+            "pool_mode": "ping_only", "dispatch_mode": "multi_line", "target_size": 4,
+            "groups": [{"index": 1, "name": "主力", "node_tags": ["ML717-Probed-01", "ML717-Probed-02", "ML717-Unprobed-03"]}],
+        }
+        _ev_ml_717 = dmod.evaluate_single_auto_node(_ml_pool_717, _ml_nodes_717, _ml_store_717, conf_dir=tmp_v252, subs_list=[])
+        ml_rtt_filter_ok_717 = (_ev_ml_717.get("multi_line_nodes") == ["ML717-Probed-01", "ML717-Probed-02"])
+        js_717_txt = (SITE / "root/usr/share/ai-link/webui/nexus.js").read_text("utf-8")
+        html_717_txt = (SITE / "root/usr/share/ai-link/webui/index.html").read_text("utf-8")
+        copy_ok_717 = (
+            "每个分流组同一时刻仅 1 个出口生效；不同分流组可能落在不同节点" in js_717_txt
+            and "15 组精细应用出口策略" not in html_717_txt
+            and ">4 个<" not in html_717_txt
+            and "preview_request_id" in js_717_txt
+        )
+        check("Stage 7.17 (v2.5.8 P1-1..P1-4/P2-1..P2-10/附录A 全量闭环门禁): Path.write_text底层写钩子生效且零裸写；preview补齐3项*_tags/impact_pct<=100/nodes_fingerprint且API<->UI双向契约脚本PASS；非池dead记录立即GC；多出口轮询剔除无RTT未测节点并更新分流组错位轮换提示",
+              parity_ok_717
+              and hook_blocked_ok_717
+              and tags_contract_ok_717
+              and gc_nonpool_dead_ok_717
+              and ml_rtt_filter_ok_717
+              and copy_ok_717,
+              f"parity={parity_ok_717}, hook={hook_blocked_ok_717}, tags={tags_contract_ok_717}, gc={gc_nonpool_dead_ok_717}, ml_rtt={_ev_ml_717.get('multi_line_nodes')}, copy={copy_ok_717}")
     finally:
         shutil.rmtree(tmp_v252, ignore_errors=True)
 

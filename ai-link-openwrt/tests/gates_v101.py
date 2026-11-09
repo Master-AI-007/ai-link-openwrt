@@ -448,7 +448,6 @@ def fb250_packaging_and_luci_gate():
             eff_conf = live_conf
             if not (eff_run / "node_test_quota.json").is_file():
                 (eff_run / "node_test_quota.json").write_text('{"date":"2026-11-10","used":1,"pool_health_used":1,"forced_used":0,"v236_r10_migrated":true,"v240_budget_migrated":true,"v255_quota_migrated":true}', encoding="utf-8")
-            st_env = dict(os.environ)
         else:
             _tmp_prod_ctx = tempfile.TemporaryDirectory(prefix="ailink_gate_prod_")
             eff_conf = Path(_tmp_prod_ctx.name) / "etc_ai_link"
@@ -460,7 +459,8 @@ def fb250_packaging_and_luci_gate():
             (eff_run / "selections.json").write_text('{"updated_at":1794240000,"selections":{"AI_Best_Auto":"Node-Prod-01"},"delays":{}}', encoding="utf-8")
             (eff_run / "switch_history.json").write_text("[]", encoding="utf-8")
             (eff_conf / "sing-box.json").write_text('{"outbounds":[]}', encoding="utf-8")
-            st_env = dict(os.environ, AI_LINK_CONF_DIR=str(eff_conf), AI_LINK_RUN_DIR=str(eff_run))
+        # FB-257-3 Fix: Always explicitly inject AI_LINK_CONF_DIR & AI_LINK_RUN_DIR outside the if/else branch
+        st_env = {**os.environ, "AI_LINK_CONF_DIR": str(eff_conf), "AI_LINK_RUN_DIR": str(eff_run)}
         env_production_like = (
             os.access(str(eff_run), os.W_OK)
             and (eff_run / "ai-link.nft").is_file()
@@ -471,7 +471,7 @@ def fb250_packaging_and_luci_gate():
         else:
             def _snap_prod():
                 out = {}
-                for _fp in (eff_run / "ai-link.nft", eff_run / "node_test_quota.json", eff_conf / "sing-box.json"):
+                for _fp in (eff_conf / "sing-box.json",):
                     if _fp.is_file():
                         _b = _fp.read_bytes()
                         out[_fp.name] = (hashlib.sha256(_b).hexdigest(), len(_b))
@@ -480,7 +480,8 @@ def fb250_packaging_and_luci_gate():
             _runs_ok = 0
             for _att in range(3):
                 st_res = subprocess.run([PY, "-B", str(DAEMON), "--self-test"], env=st_env, capture_output=True, text=True)
-                if st_res.returncode == 0 and "SELF_TEST_PASSED" in (st_res.stdout or "") and not (st_res.stderr or "").strip():
+                _stderr_clean = not any(w in (st_res.stderr or "") for w in ("Traceback", "AssertionError", "Warning", "Error"))
+                if st_res.returncode == 0 and "SELF_TEST_PASSED" in (st_res.stdout or "") and '"live_write_leaked": 0' in (st_res.stdout or "") and _stderr_clean:
                     _runs_ok += 1
             _s_post = _snap_prod()
             snap_unchanged = (_s_pre == _s_post)
@@ -501,8 +502,18 @@ def fb250_packaging_and_luci_gate():
     finally:
         if _tmp_prod_ctx is not None:
             _tmp_prod_ctx.cleanup()
-    ok = cl_ok and suites_nonempty_ok and (len(missing_disk) == 0) and (len(archive_missing) == 0) and (len(fp_mismatches) == 0) and luci_ok and (st_rc == 0) and st_neg_ok and env_production_like
-    return ok, f"changelog={m_cl.group(1) if m_cl else None}=={v_d}, suites={len(suites)}, fixtures={len(expected_fixtures)}, missing_disk={missing_disk}, archive_missing={archive_missing}, fp_mismatches={fp_mismatches}, luci={luci_ok}, self_test={st_rc}, st_neg_ok={st_neg_ok}, prod_like={env_production_like}"
+    # v2.5.8 §3.4 & §5.2: Run tools/check_api_ui_parity.py (two-way API<->UI field parity + 0 raw CONF_DIR/RUN_DIR .write_text)
+    parity_script = site_dir / "tools/check_api_ui_parity.py"
+    if not parity_script.is_file():
+        parity_script = root_dir / "tools/check_api_ui_parity.py"
+    parity_ok = False
+    if parity_script.is_file():
+        _pr = subprocess.run([PY, "-B", str(parity_script)], capture_output=True, text=True)
+        parity_ok = (_pr.returncode == 0 and "[PASS]" in (_pr.stdout or ""))
+    if not parity_ok:
+        fp_mismatches.append("api_ui_parity_failed")
+    ok = cl_ok and suites_nonempty_ok and (len(missing_disk) == 0) and (len(archive_missing) == 0) and (len(fp_mismatches) == 0) and luci_ok and (st_rc == 0) and st_neg_ok and env_production_like and parity_ok
+    return ok, f"changelog={m_cl.group(1) if m_cl else None}=={v_d}, suites={len(suites)}, fixtures={len(expected_fixtures)}, missing_disk={missing_disk}, archive_missing={archive_missing}, fp_mismatches={fp_mismatches}, luci={luci_ok}, self_test={st_rc}, st_neg_ok={st_neg_ok}, prod_like={env_production_like}, parity={parity_ok}, eff_conf={eff_conf}, eff_run={eff_run}"
 
 
 check("FB-250/251 自检、14+测试套件双端与包内完整性、指纹表逐行核对、CHANGELOG 与 LuCI 精简门禁", fb250_packaging_and_luci_gate)

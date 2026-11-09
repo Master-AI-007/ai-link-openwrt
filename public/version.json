@@ -1,19 +1,35 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.5.7",
+  "latest": "2.5.8",
   "release_date": "2026-11-10",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.5.7",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.5.8",
   "highlights": [
-    "官方自检彻底零污染：计数拆分为「成功拦截」与「未拦截泄露」，只断言泄露为 0，并保留金丝雀探针证明拦截生效",
-    "自检期 nft 规则、sing-box 配置与探测配额等衍生文件全部重定向到沙箱，真机生产态连跑 3 次自检零写盘",
-    "新增负向门禁：人为关闭拦截时自检必须报错并检出泄露，防止门禁恒绿",
-    "订阅同步影响预览全字段前端消费与失败硬拦截：不再把失败伪装成「无损更新」，错误详情带追踪 ID",
-    "Jaccard 稳定性基准锚定当前生产集合、预览改为纯只读，连续预览与重启前后结论一致",
-    "8 处外部 HTTPS 请求统一严格校验证书，仅在显式配置时放宽；前端「多线并发」夸大文案清零",
-    "报告 11 行指纹与测试数值均由冻结最终包后实跑后置注入，并明确标注验证环境与口径差异"
+    "官方自检四层架构重构：不再把后台 daemon 高频改写的热文件纳入跨进程哈希比对，彻底消除并发巡检引发的偶发误报",
+    "19 处裸文件写入全量收口至安全写函数，并从底层挂钩文本/字节写入，自检期任何漏网写入都会被拦截",
+    "自检内置 3 路金丝雀写探针，断言「拦截生效且零泄露」；负向关闭拦截时必须报错，门禁不会恒绿",
+    "发布门禁的环境变量注入统一提到分支之外，纯解压目录与标准发版布局连续运行都稳定 17/17",
+    "未绑定节点池一键绑定修复字段契约、增加覆盖前二次确认；订阅预览与正式同步复用同一批节点，避免看到的和同步的不是一批",
+    "新增前后端字段契约双向门禁，订阅预览补齐变更节点明细列表，动态随机订阅风险标记可持久化",
+    "多出口轮询文案如实说明组间错位轮换，成员要求具备实测延迟，候选集刷新时保持轮换游标连续"
   ],
   "changelog": [
+    {
+      "version": "2.5.8",
+      "date": "2026-11-10",
+      "type": "fix",
+      "title": "自检并发误报根治 + 绑定/预览契约闭环 + 多出口轮询治理",
+      "items": [
+        "P1-1 & FB-257-3：移除 `--self-test` 对 `node_test_quota.json` / `ai-link.nft` 的跨进程 SHA 比对（仅保留静态 `sing-box.json`），`gates_v101.py` 把 `AI_LINK_CONF_DIR` / `AI_LINK_RUN_DIR` 注入统一提到 `if/else` 分支外，放宽 stderr 断言并输出诊断字段",
+        "P1-4：19 处针对 CONF_DIR/RUN_DIR 的裸 `.write_text()` 全量收口至 `_atomic_write_text`，模块级挂钩 `Path.write_text` / `Path.write_bytes` 兜底；自检 3 路金丝雀断言 `blocked >= 3` 且 `leaked == 0`",
+        "P1-2：`quick-bind-pool` 同时发送 `shunt_mode` / `strategy` / `strategy_mode` / `auto_node_id`，严格检查 `res.ok`，覆盖已有池绑定时二次确认；后端兼容 `strategy_mode` 别名",
+        "P1-3：订阅预览按 `request_id` 缓存解析批次（32 条 LRU / 300s TTL）并返回指纹；确认同步时复用同一批节点，过期或上游变异返回 409 `stale_preview`",
+        "P2 & §5.2：新增 `tools/check_api_ui_parity.py` 前后端字段双向门禁；补齐 `endpoint_changed_tags` / `credential_changed_tags` / `same_tag_replaced_tags`",
+        "P2-1~P2-10：变更率封顶 100%、默认组数修正为 16 组/6 池、非池成员 dead 记录 24h 清理、动态订阅标记持久化、预览缓存 LRU 上限、API 暴露 `dwell_bypass_calls` 与轮换轨迹",
+        "附录 A：多出口轮询文案说明组间错位且不叠加单流带宽、成员要求实测 RTT>0、30s 驻留内候选刷新保持游标连续",
+        "交付标准保持：11 行指纹逐行校验与 1 字节篡改转红、章节连续编号、HANDOFF 与交接包布局、12 夹具随包、测试数值实跑后置注入"
+      ]
+    },
     {
       "version": "2.5.7",
       "date": "2026-11-10",
@@ -370,13 +386,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.5.7/AI-LINK-v2.5.7.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.5.8/AI-LINK-v2.5.8.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.5.7.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.5.8.tar.gz"
       ],
-      "size": 1010445,
-      "md5": "e0d5305b1905995e51a115d13f81014c",
-      "sha256": "98f00dd9563ee81c8f41f1bb2fa68bcdcdf04ee60a57cb1fb298f6d49252d311"
+      "size": 1020170,
+      "md5": "f69085774bce6725a8a05d5e65ce955c",
+      "sha256": "3407739fe06d059c675c05e923f073fc3bede59ac17d059dceea641f675dec26"
     }
   }
 }

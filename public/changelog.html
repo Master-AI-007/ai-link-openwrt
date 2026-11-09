@@ -18,7 +18,7 @@
         <circle cx="20" cy="20" r="5.4" fill="none" stroke="#a994ff" stroke-width="1.6"/>
         <circle cx="20" cy="20" r="1.8" fill="#6ee7f5"/>
       </svg>
-      <span style="display:block"><b>AI-LINK</b><span>NEXUS · 2.5.7</span></span>
+      <span style="display:block"><b>AI-LINK</b><span>NEXUS · 2.5.8</span></span>
     </a>
     <div class="nav-links">
       <a href="/#features">核心能力</a>
@@ -36,12 +36,22 @@
 <main class="wrap log-wrap">
   <div class="log-head">
     <h1>更新日志</h1>
-    <span class="pill"><i></i> 当前最新 2.5.7</span>
+    <span class="pill"><i></i> 当前最新 2.5.8</span>
   </div>
 <article class="log-item latest">
   <div class="log-top">
-    <h2>v2.5.7</h2>
+    <h2>v2.5.8</h2>
     <span class="tag c">最新</span>
+    <time>2026-11-10</time>
+  </div>
+  <p style="margin:2px 0 6px;color:var(--dim)"></p>
+<h3>自检并发误报根治 + 绑定/预览契约闭环 + 多出口轮询治理</h3>
+<ul><li><b>P1-1 &amp; FB-257-3 自检四层架构重构</b>：移除 <code>--self-test</code> 对后台 daemon 高频改写的 <code>node_test_quota.json</code> / <code>ai-link.nft</code> 的跨进程 SHA 比对（仅保留静态 <code>sing-box.json</code>）；<code>gates_v101.py</code> 把 <code>AI_LINK_CONF_DIR</code> / <code>AI_LINK_RUN_DIR</code> 注入统一提到 <code>if/else</code> 分支外，放宽 stderr 断言并输出 <code>eff_conf/eff_run</code> 诊断字段。真机纯解压布局与标准发版布局连续运行均 <b>17/17 PASS</b>，原始包零补发 <code>run_all</code> 恢复 <b>15/15 / RC=0</b>。</li><li><b>P1-4 全写口收口</b>：19 处针对 CONF_DIR/RUN_DIR 的裸 <code>.write_text()</code> 全量收口至 <code>_atomic_write_text</code>，模块级挂钩 <code>Path.write_text</code> / <code>Path.write_bytes</code> 兜底；自检 3 路金丝雀断言 <code>blocked &gt;= 3</code> 且 <code>leaked == 0</code>。真机生产态连续 10 次自检全部 <code>RC=0</code>（<code>live_write_blocked: 7 / leaked: 0</code>），静态文件哈希零变化；负向关闭拦截正确报 <code>leaked 7 live production writes (blocked=0)</code>。</li><li><b>P1-2 未绑定池一键绑定</b>：<code>quick-bind-pool</code> 同时发送 <code>shunt_mode</code> / <code>strategy</code> / <code>strategy_mode</code> / <code>auto_node_id</code>，严格检查 <code>res.ok</code>，覆盖已有池绑定时二次确认；后端 <code>/api/shunt/update</code> 兼容 <code>strategy_mode</code> 别名。</li><li><b>P1-3 预览即所同步</b>：<code>/api/subscriptions/preview_sync</code> 按 <code>request_id</code> 缓存解析批次（32 条 LRU / 300s TTL）并返回 <code>nodes_fingerprint</code>；确认同步时复用同一批节点跳过二次拉取，过期或上游变异返回 409 <code>stale_preview</code>。</li><li><b>P2 &amp; §5.2 契约门禁</b>：新增 <code>tools/check_api_ui_parity.py</code> 前后端字段双向比对并纳入发布门禁；补齐 <code>endpoint_changed_tags</code> / <code>credential_changed_tags</code> / <code>same_tag_replaced_tags</code> 排序列表。</li><li><b>P2-1~P2-10 与附录 A</b>：变更率封顶 100%、默认 16 组/6 池动态刷新、非池成员 dead 记录 24h 清理、动态随机订阅标记持久化、预览缓存 LRU 上限、API 暴露 <code>dwell_bypass_calls</code> 与最近 40 条轮换轨迹；多出口轮询文案如实说明组间错位且不叠加单流带宽，成员要求实测 RTT&gt;0，候选刷新保持游标连续。</li><li><b>交付标准保持</b>：11 行指纹逐行校验（11/11 全对）与 1 字节篡改转红、章节连续编号、HANDOFF 与 112 条目交接包、12 夹具随包、测试数值实跑后置注入。</li><li>验收：零补发 <code>run_all 15/15 PASS / RC=0</code>、混沌 <b>80/80</b>、design-lint 18/18、静态资源 8/8、<code>INSTALL_RC=0</code>、<code>nft=1</code>、重启后稳定、4 个多线出口与 AI 单线保护、UI 零异常三视口零溢出。</li></ul>
+</article>
+<article class="log-item">
+  <div class="log-top">
+    <h2>v2.5.7</h2>
+    <span class="tag">历史</span>
     <time>2026-11-10</time>
   </div>
   <p style="margin:2px 0 6px;color:var(--dim)"></p>

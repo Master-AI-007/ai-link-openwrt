@@ -1,3 +1,14 @@
+## [v2.5.8] - 2026-11-10
+### 自检并发误报根治 + 绑定/预览契约闭环 + 多出口轮询治理
+- **P1-1 & FB-257-3 自检四层架构重构**：移除 `--self-test` 对后台 daemon 高频改写的 `node_test_quota.json` / `ai-link.nft` 的跨进程 SHA 比对（仅保留静态 `sing-box.json`）；`gates_v101.py` 把 `AI_LINK_CONF_DIR` / `AI_LINK_RUN_DIR` 注入统一提到 `if/else` 分支外，放宽 stderr 断言并输出 `eff_conf/eff_run` 诊断字段。真机纯解压布局与标准发版布局连续运行均 **17/17 PASS**，原始包零补发 `run_all` 恢复 **15/15 / RC=0**。
+- **P1-4 全写口收口**：19 处针对 CONF_DIR/RUN_DIR 的裸 `.write_text()` 全量收口至 `_atomic_write_text`，模块级挂钩 `Path.write_text` / `Path.write_bytes` 兜底；自检 3 路金丝雀断言 `blocked >= 3` 且 `leaked == 0`。真机生产态连续 10 次自检全部 `RC=0`（`live_write_blocked: 7 / leaked: 0`），静态文件哈希零变化；负向关闭拦截正确报 `leaked 7 live production writes (blocked=0)`。
+- **P1-2 未绑定池一键绑定**：`quick-bind-pool` 同时发送 `shunt_mode` / `strategy` / `strategy_mode` / `auto_node_id`，严格检查 `res.ok`，覆盖已有池绑定时二次确认；后端 `/api/shunt/update` 兼容 `strategy_mode` 别名。
+- **P1-3 预览即所同步**：`/api/subscriptions/preview_sync` 按 `request_id` 缓存解析批次（32 条 LRU / 300s TTL）并返回 `nodes_fingerprint`；确认同步时复用同一批节点跳过二次拉取，过期或上游变异返回 409 `stale_preview`。
+- **P2 & §5.2 契约门禁**：新增 `tools/check_api_ui_parity.py` 前后端字段双向比对并纳入发布门禁；补齐 `endpoint_changed_tags` / `credential_changed_tags` / `same_tag_replaced_tags` 排序列表。
+- **P2-1~P2-10 与附录 A**：变更率封顶 100%、默认 16 组/6 池动态刷新、非池成员 dead 记录 24h 清理、动态随机订阅标记持久化、预览缓存 LRU 上限、API 暴露 `dwell_bypass_calls` 与最近 40 条轮换轨迹；多出口轮询文案如实说明组间错位且不叠加单流带宽，成员要求实测 RTT>0，候选刷新保持游标连续。
+- **交付标准保持**：11 行指纹逐行校验（11/11 全对）与 1 字节篡改转红、章节连续编号、HANDOFF 与 112 条目交接包、12 夹具随包、测试数值实跑后置注入。
+- 验收：零补发 `run_all 15/15 PASS / RC=0`、混沌 **80/80**、design-lint 18/18、静态资源 8/8、`INSTALL_RC=0`、`nft=1`、重启后稳定、4 个多线出口与 AI 单线保护、UI 零异常三视口零溢出。
+
 ## [v2.5.7] - 2026-11-10
 ### 自检语义根治 + 订阅预览闭环 + 交付数值后置注入
 - **FB-257-1 自检零污染语义根治**：`--self-test` 计数拆为 `_SELF_TEST_LIVE_WRITE_BLOCKED`（成功拦截未落盘）与 `_SELF_TEST_LIVE_WRITE_LEAKED`（拦截失效实际落盘），断言只要求 `leaked == 0` 且金丝雀 `blocked >= 1`；nft 规则、sing-box 配置与探测配额等衍生路径在自检态全量沙箱化。真机生产态连跑 3 次 `RC=0 / SELF_TEST_PASSED`，`ai-link.nft` 与 `node_test_quota.json` 哈希零变化；负向关闭拦截时正确检出 `leaked 1 live production writes`。

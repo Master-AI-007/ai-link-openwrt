@@ -23,7 +23,7 @@ return view.extend({
 		var pwdIsCustom = (pwdCustFlag === '1') || (uciSecretRaw !== '' && (uciSecretRaw === '__custom__' || /^sha256:/i.test(uciSecretRaw) || uciSecretRaw !== 'ai-link-2026'));
 		var uciSecret = pwdIsCustom ? '' : (uciSecretRaw || '请见 /etc/ai-link/initial_password 或执行 ai-link password');
 		var luciToken = (function() { try { return String(localStorage.getItem('ailink_panel_token') || ''); } catch(e) { return ''; } })();
-		var currentVer = String(uci.get('ai-link', 'global', 'app_version') || '2.5.7');
+		var currentVer = String(uci.get('ai-link', 'global', 'app_version') || '2.5.8');
 		var pwdFieldHtml = pwdIsCustom
 			? '<span style="font-size:12px; color:#94a3b8; display:inline-flex; align-items:center; gap:6px;">面板密码: <code id="luci-panel-pwd-mask" style="background:#0f172a; padding:2px 7px; border-radius:5px; color:#e2e8f0; border:1px solid rgba(148,163,184,0.2);">已自定义 · 不回显</code> <span style="font-size:11px; color:#64748b;">（忘记可执行 ai-link password 重置）</span></span>'
 			: '<span style="font-size:12px; color:#94a3b8; display:inline-flex; align-items:center; gap:6px;">面板密码: <code id="luci-panel-pwd-mask" style="background:#0f172a; padding:2px 7px; border-radius:5px; color:#e2e8f0; border:1px solid rgba(148,163,184,0.2);">••••••••</code> <button type="button" id="luci-btn-toggle-pwd" style="padding:2px 8px; border-radius:5px; border:1px solid rgba(148,163,184,0.3); background:rgba(30,41,59,0.8); color:#cbd5e1; font-size:11px; cursor:pointer;">查看</button></span>';

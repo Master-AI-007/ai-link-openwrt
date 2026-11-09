@@ -4,7 +4,7 @@
 
 **NEXUS 全域 3D 智能网关 · 运行在 OpenWrt 上的智能分流系统**
 
-[![version](https://img.shields.io/badge/version-2.5.7-6ee7f5?style=flat-square)](https://github.com/Master-AI-007/ai-link-openwrt/releases/tag/v2.5.7)
+[![version](https://img.shields.io/badge/version-2.5.8-6ee7f5?style=flat-square)](https://github.com/Master-AI-007/ai-link-openwrt/releases/tag/v2.5.8)
 [![platform](https://img.shields.io/badge/OpenWrt-23.05%20%7C%2024.10%20%7C%20ImmortalWrt-a994ff?style=flat-square)](#环境要求)
 [![core](https://img.shields.io/badge/sing--box-1.14.1-54e6b5?style=flat-square)](#技术架构)
 [![license](https://img.shields.io/badge/license-MIT-f9a8d4?style=flat-square)](#许可与免责)
@@ -30,9 +30,9 @@ AI-LINK 是一套面向 OpenWrt 的**智能分流网关**：用 sing-box 单内�
 
 ---
 
-## 核心能力总览（v2.5.7）
+## 核心能力总览（v2.5.8）
 
-> **v2.5.7 增量**：自检计数语义根治（拦截/泄露拆分 + 衍生路径沙箱化 + 负向门禁）、订阅预览全字段消费与失败硬拦截、Jaccard 只读生产基准、8 处外部请求严格 TLS、夸大文案清零；报告指纹与测试数值改为冻结最终包后实跑回填。
+> **v2.5.8 增量**：自检并发误报根治（移除热文件跨进程比对 + 19 处写口收口 + 门禁统一注入）、未绑定池一键绑定与订阅预览字段契约对齐、预览与同步复用同一批节点、前后端字段双向门禁、多出口轮询文案与游标治理；延续 11 行指纹后置回填与零补发 15 套全量回归。
 
 
 | | 能力 | 说明 |
@@ -185,7 +185,8 @@ sing-box 1.14.1（单内核）
 
 | 版本 | 日期 | 主题 |
 |---|---|---|
-| **2.5.7** | 2026-11-10 | 自检语义根治 + 订阅预览闭环 + 交付数值后置注入 |
+| **2.5.8** | 2026-11-10 | 自检并发误报根治 + 绑定/预览契约闭环 + 多出口轮询治理 |
+| 2.5.7 | 2026-11-10 | 自检语义根治 + 订阅预览闭环 + 交付数值后置注入 |
 | 2.5.6 | 2026-11-09 | 加强复审计（6 项 P1 + 6 项 P2 闭环）|
 | 2.5.5 | 2026-11-09 | 节点池专项复审计（自检隔离 / 预算双轨 / Selector 归属）|
 | 2.5.4 | 2026-11-09 | 出包标准固化 + 报告结构化 + 节点池破冰自愈 |
@@ -224,10 +225,10 @@ sing-box 1.14.1（单内核）
 ## 包指纹
 
 ```
-AI-LINK-v2.5.7.tar.gz
-size   1,010,445 B
-md5    e0d5305b1905995e51a115d13f81014c
-sha256 98f00dd9563ee81c8f41f1bb2fa68bcdcdf04ee60a57cb1fb298f6d49252d311
+AI-LINK-v2.5.8.tar.gz
+size   1,020,170 B
+md5    f69085774bce6725a8a05d5e65ce955c
+sha256 3407739fe06d059c675c05e923f073fc3bede59ac17d059dceea641f675dec26
 ```
 
 在线清单：<https://ai-link-official.pages.dev/version.json>
