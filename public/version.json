@@ -1,19 +1,35 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.5.6",
-  "release_date": "2026-11-09",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.5.6",
+  "latest": "2.5.7",
+  "release_date": "2026-11-10",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.5.7",
   "highlights": [
-    "官方自检与后台 daemon 彻底解耦：改用进程级零生产写入守卫 + 语义脏标签断言，生产运行期连跑两次均 RC=0、零告警",
-    "唯一 SelectorWriteCoordinator 收口全部写入路径，30 秒驻留内目标未变跳过冗余 PUT；多线轮换不再污染切换历史",
-    "内核日志故障转移收紧空目标抑制，杜绝单条/空目标超时误触发直连降级",
-    "订阅同步预览完整区分同名换端点/换凭据、动态随机订阅 Jaccard 预警，候选替换按池范围与 AI 锁区优选",
-    "订阅拉取移除自动 -k 降级与默认不校验证书，仅在显式 allow_insecure_tls 时放宽",
-    "IPK 补齐 prerm/postrm 卸载收尾（停服务 / 清理 nft 表 / 恢复 DNS），control 版本描述对齐 2.5.6",
-    "四项出包标准保持：夹具整棵随包、零补发 15 套全量回归、自检沙箱隔离、混沌门禁 78 项全过"
+    "官方自检彻底零污染：计数拆分为「成功拦截」与「未拦截泄露」，只断言泄露为 0，并保留金丝雀探针证明拦截生效",
+    "自检期 nft 规则、sing-box 配置与探测配额等衍生文件全部重定向到沙箱，真机生产态连跑 3 次自检零写盘",
+    "新增负向门禁：人为关闭拦截时自检必须报错并检出泄露，防止门禁恒绿",
+    "订阅同步影响预览全字段前端消费与失败硬拦截：不再把失败伪装成「无损更新」，错误详情带追踪 ID",
+    "Jaccard 稳定性基准锚定当前生产集合、预览改为纯只读，连续预览与重启前后结论一致",
+    "8 处外部 HTTPS 请求统一严格校验证书，仅在显式配置时放宽；前端「多线并发」夸大文案清零",
+    "报告 11 行指纹与测试数值均由冻结最终包后实跑后置注入，并明确标注验证环境与口径差异"
   ],
   "changelog": [
+    {
+      "version": "2.5.7",
+      "date": "2026-11-10",
+      "type": "fix",
+      "title": "自检语义根治 + 订阅预览闭环 + 交付数值后置注入",
+      "items": [
+        "FB-257-1：`--self-test` 计数语义拆为 `_SELF_TEST_LIVE_WRITE_BLOCKED` / `_SELF_TEST_LIVE_WRITE_LEAKED`，断言只要求 `leaked == 0` 且 `blocked >= 1`；自检态 nft/singbox/配额衍生路径沙箱化，真机生产态 3 连跑 RC=0 且文件哈希零变化",
+        "新增 `AI_LINK_SELFTEST_DISABLE_INTERCEPT=1` 负向泄露检出门禁；发布门禁强制构造含真实 `ai-link.nft` / `node_test_quota.json` 的生产态环境",
+        "FB-257-2：报告测试数值改为实跑 `run_all.py` 后置注入并附汇总原文；明确标注构建容器验证环境与 `test_v102` 152/152（含 Chromium）对路由器 115/115 的口径差异",
+        "P0-1 / P1-5：订阅预览全字段前端渲染、点击 `aria-busy` 防连点、`res.ok === false` 硬拦截并提示 `request_id`，后端 60 秒上游预览缓存",
+        "P1-1：Jaccard 稳定性基准固定对比当前生产节点集合，预览纯只读，环形缓冲仅由真实同步写入",
+        "P1-3：8 处外部 HTTPS 请求统一 `_get_ssl_context` 严格校验证书；P1-4 前端夸大文案清零，改述「多出口轮询，不叠加单流带宽」",
+        "P2-1~P2-10：动态分流组数徽标、三口径悬停说明、容量不足原因细分、7 天 dead 记录 GC、L7 待验证徽标、未绑定池一键绑定、语义未变跳过写盘等",
+        "FB-256-1..4 保持：11 行指纹逐行校验与 1 字节篡改转红、章节连续编号、HANDOFF 与交接包布局声明、夹具随包"
+      ]
+    },
     {
       "version": "2.5.6",
       "date": "2026-11-09",
@@ -354,13 +370,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.5.6/AI-LINK-v2.5.6.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.5.7/AI-LINK-v2.5.7.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.5.6.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.5.7.tar.gz"
       ],
-      "size": 1008250,
-      "md5": "45a80b918adbbef159dded8910f16a72",
-      "sha256": "5a4eb5aa97a189528bfc135ed7966606bd1343f5bf5c4f866c63800df87e3aa9"
+      "size": 1010445,
+      "md5": "e0d5305b1905995e51a115d13f81014c",
+      "sha256": "98f00dd9563ee81c8f41f1bb2fa68bcdcdf04ee60a57cb1fb298f6d49252d311"
     }
   }
 }

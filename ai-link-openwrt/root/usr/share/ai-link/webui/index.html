@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="color-scheme" content="dark">
   <title>AI-LINK NEXUS · 全域 3D 智能网关指挥舱</title>
-  <link rel="icon" type="image/svg+xml" href="./favicon.svg?v=2.5.6-8b1d6b14">
-  <link rel="alternate icon" href="./favicon.ico?v=2.5.6-218c306e">
-  <link rel="apple-touch-icon" href="./apple-touch-icon.png?v=2.5.6-89c068d7">
-  <link rel="stylesheet" href="./nexus.css?v=2.5.6-69a20ce1">
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg?v=2.5.7-8b1d6b14">
+  <link rel="alternate icon" href="./favicon.ico?v=2.5.7-218c306e">
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png?v=2.5.7-89c068d7">
+  <link rel="stylesheet" href="./nexus.css?v=2.5.7-69a20ce1">
 </head>
 <body>
   <a class="skip-link" href="#main-stage">跳至主内容</a>
@@ -74,7 +74,7 @@
     <div class="workspace">
       <header class="topbar">
         <div class="page-heading">
-          <span class="eyebrow">AI-LINK / NEXUS 3D · <span class="version-chip">v2.5.6</span></span>
+          <span class="eyebrow">AI-LINK / NEXUS 3D · <span class="version-chip">v2.5.7</span></span>
           <h1 id="page-title">全域星图</h1>
         </div>
         <div class="global-route" style="cursor:pointer" data-page-link="shunt" title="点击进入分流与出口编排">
@@ -170,7 +170,7 @@
                     <div><span>运行模式</span><b>精细规则分流</b></div>
                     <div><span>活跃出站</span><b>200 / 200</b></div>
                     <div><span>可用节点</span><b>6 (100%)</b></div>
-                    <div><span>分流策略</span><b>13 组</b></div>
+                    <div><span>分流策略</span><b id="galaxy-shunt-groups-badge">16 组</b></div>
                   </div>
                   <div class="inspector-chart">
                     <div><span>出口延迟轨迹</span><b id="inspector-rtt">156 ms</b></div>
@@ -326,12 +326,12 @@
             <div class="shield-copy">
               <span class="eyebrow">POLICY ORCHESTRATION · TACTICAL SHUNT MATRIX</span>
               <div class="hero-title-line">
-                <h3>15 组精细分流矩阵与自动节点池协同调度</h3>
+                <h3 id="shunt-hero-title-groups">16 组精细分流矩阵与自动节点池协同调度</h3>
                 <button type="button" class="hud-help-btn" data-action="show-hud-help" data-help-topic="shunt" title="配置全局分流模式、自动节点池与 15 组精细应用出口策略" aria-label="代理与分流说明">?</button>
               </div>
               <p>国内流量硬件级直通零损耗，海外 AI 与流媒体按自动节点池定时 URL Ping 极速优选切换。</p>
               <div class="shield-stats">
-                <div><b id="shunt-hero-stat-groups">15 组</b><span>活跃分流策略组</span></div>
+                <div><b id="shunt-hero-stat-groups">16 组</b><span>活跃分流策略组</span></div>
                 <div><b id="shunt-hero-stat-pools">4 个</b><span>自动节点池</span></div>
                 <div><b id="shunt-hero-stat-mode">精细规则分流</b><span>当前运行模式</span></div>
               </div>
@@ -741,7 +741,7 @@
             <article class="glass-card system-card">
               <span class="card-index">01 / CORE LIFECYCLE</span>
               <div class="system-title">
-                <div><h3 id="sys-core-title">sing-box --</h3><p id="sys-core-sub">AI-LINK v2.5.6 · 单一真相源架构</p></div>
+                <div><h3 id="sys-core-title">sing-box --</h3><p id="sys-core-sub">AI-LINK v2.5.7 · 单一真相源架构</p></div>
                 <div class="core-head-right">
                   <span class="status-pill" id="settings-proxy-status-pill">运行正常</span>
                   <button class="button secondary compact" id="btn-check-core-update" data-action="check-core-update">检查内核更新</button>
@@ -771,7 +771,7 @@
               <div class="update-row">
                 <div><b>AI-LINK 插件版本</b><span id="ota-sub">点击「检查更新」获取云端最新版本状态</span></div>
                 <div class="button-row">
-                  <span class="version-chip">v2.5.6</span>
+                  <span class="version-chip">v2.5.7</span>
                   <button class="button secondary compact" data-action="check-update">检查更新</button>
                   <button class="button ghost compact" data-action="ota-status">升级状态</button>
                   <button id="btn-ota-apply" class="button primary compact hidden" data-action="apply-update">立即升级</button>
@@ -945,10 +945,10 @@
     </div>
   </div>
 
-  <script src="./static/qrcode.min.js?v=2.5.6-6e6189e2"></script>
-  <script src="./assets/three.min.js?v=2.5.6-eb854986"></script>
-  <script src="./nexus3d.js?v=2.5.6-c2a8a250"></script>
-  <script src="./nexus.js?v=2.5.6-d1ba43af"></script>
+  <script src="./static/qrcode.min.js?v=2.5.7-6e6189e2"></script>
+  <script src="./assets/three.min.js?v=2.5.7-eb854986"></script>
+  <script src="./nexus3d.js?v=2.5.7-c2a8a250"></script>
+  <script src="./nexus.js?v=2.5.7-b94c740b"></script>
 <!-- NEXUS-UI-CONTRACT: sub-health-box | 仅入池检测达标项 | 免测直接加入池 | delete-custom-group | sub-card-custom | 手动添加节点 | btn-an-auto-screen | btn-an-mode-ping | btn-an-mode-svc | 同步时间: -->
 </body>
 </html>

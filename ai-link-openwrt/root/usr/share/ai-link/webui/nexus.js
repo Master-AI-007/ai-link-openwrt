@@ -1416,8 +1416,12 @@
           : (curMs != null && curMs > 0 ? formatLatencyBadge(curMs, 'ok', false) : '<span class="lat-badge pending">--</span>');
         const realProbeStr = (p.last_real_probe_ts && Number(p.last_real_probe_ts) > 0) ? new Date(Number(p.last_real_probe_ts) * 1000).toLocaleTimeString('zh-CN', { hour12: false }) : '待探测';
         const quotaInfoStr = (p.quota_status && p.quota_status.pool_health_budget) ? (Number(p.quota_status.pool_health_used || 0) + '/' + Number(p.quota_status.pool_health_budget)) : '充裕';
+        const freshOkCnt = (p.fresh_ok_count != null) ? Number(p.fresh_ok_count) : healthyCnt;
         const verSvcStr = (p.verified_service_count != null) ? (Number(p.verified_service_count) + '/' + g1Tags.length) : '--';
-        const tipDetail = '节点池：' + p.name + '\n来源范围：' + srcLabel + '\n国家区域：' + ctryLabel + '\n检测策略：' + svcTag + '\nL7已验证：' + verSvcStr + ' · 最近实测：' + realProbeStr + '\n巡检配额：' + quotaInfoStr + ' · 复选阈值：低于 ' + repThresh + ' 个自动补齐';
+        const capReasonStr = p.capacity_shortfall ? (p.capacity_shortfall_reason || ('上游符合筛选范围的合格节点不足 (' + healthyCnt + '/' + targetCap + ')')) : '容量充足';
+        const l7DegNote = p.l7_degraded ? ('\nL7降级说明：当前 ' + healthyCnt + ' 个可达出口均未经目标服务验证（连通性保底）') : '';
+        const mlRotNote = p.dispatch_mode === 'multi_line' ? '\n轮询机制：同一时刻仅 1 个出口生效，每 30 秒轮换，不叠加单流带宽' : '';
+        const tipDetail = '节点池：' + p.name + '\n来源范围：' + srcLabel + '\n国家区域：' + ctryLabel + '\n检测策略：' + svcTag + '\n三口径统计：入池可达 ' + healthyCnt + ' · 近期实测ok ' + freshOkCnt + ' · L7已验证：' + verSvcStr + l7DegNote + '\n容量说明：' + capReasonStr + ' · 最近实测：' + realProbeStr + '\n巡检配额：' + quotaInfoStr + ' · 复选阈值：低于 ' + repThresh + ' 个自动补齐' + mlRotNote;
         const isMenuOpen = state.openPoolMenuIdx != null && Number(state.openPoolMenuIdx) === idx;
         return '<div class="auto-pool hud-pool-card ' + cardStateCls + (isMenuOpen ? ' menu-open' : '') + '" title="' + esc(tipDetail) + '">' +
           '<div class="hud-pool-top">' +
@@ -1426,16 +1430,16 @@
               '<b title="' + esc(p.name) + '">' + esc(p.name) + '</b>' +
               '<button type="button" class="hud-help-btn" data-action="show-pool-help" data-pool-idx="' + idx + '" title="' + esc(tipDetail) + '" aria-label="查看节点池规则详情">?</button>' +
             '</div>' +
-            (p.l7_degraded ? '<span class="l7-degraded-badge" title="L7 目标服务尚未全部验证通过，当前使用连通性保底">L7 待验证</span>' : '') + (p.quarantine_break_glass ? '<span class="l7-degraded-badge" title="半开破冰恢复：已启用恢复连通的原隔离节点">半开破冰</span>' : '') + (p.cooldown_break_glass ? '<span class="l7-degraded-badge" title="冷却破冰恢复：池内节点均处于风控冷却，已临时启用连通节点">冷却破冰</span>' : '') + (p.probe_stale ? '<span class="l7-degraded-badge" title="池内节点最近一次真实探测已超过 1 小时，等待后台巡检刷新">缓存待刷</span>' : '') + (p.unbound_pool_warning ? '<span class="l7-degraded-badge" title="该专用池尚未被任何自动分流策略组绑定">未绑定</span>' : '') + '<span class="' + pillCls + '" style="flex-shrink:0">' + esc(shortPillTxt) + '</span>' +
+            (p.l7_degraded ? '<span class="l7-degraded-badge" title="当前 ' + healthyCnt + ' 个可达出口均未经目标服务验证，使用连通性保底">L7 待验证(0/' + healthyCnt + ')</span>' : '') + (p.quarantine_break_glass ? '<span class="l7-degraded-badge" title="半开破冰恢复：已启用恢复连通的原隔离节点">半开破冰</span>' : '') + (p.cooldown_break_glass ? '<span class="l7-degraded-badge" title="冷却破冰恢复：池内节点均处于风控冷却，已临时启用连通节点">冷却破冰</span>' : '') + (p.probe_stale ? '<span class="l7-degraded-badge" title="池内节点最近一次真实探测已超过 1 小时，等待后台巡检刷新">缓存待刷</span>' : '') + (p.unbound_pool_warning ? '<span class="l7-degraded-badge" data-action="quick-bind-pool" data-pool-id="' + esc(p.id) + '" style="cursor:pointer" title="该专用池尚未被任何自动分流策略组绑定，点击一键绑定">未绑定·绑定</span>' : '') + '<span class="' + pillCls + '" style="flex-shrink:0">' + esc(shortPillTxt) + '</span>' +
           '</div>' +
           '<div class="hud-pool-mid">' +
             (function() {
               const mlArr = Array.isArray(p.multi_line_nodes) ? p.multi_line_nodes : [];
               const mlCnt = mlArr.length || Number(p.active_lines_count != null ? p.active_lines_count : 0);
               const mlSuffix = p.dispatch_mode === 'multi_line'
-                ? (mlCnt >= 2 ? (' · 多线并发(' + mlCnt + '线)') : (mlCnt === 1 ? ' · 多线并发(1线·单线降级)' : ' · 多线并发(0线·无可用)'))
+                ? (mlCnt >= 2 ? (' · 多出口轮询(' + mlCnt + '线)') : (mlCnt === 1 ? ' · 多出口轮询(1线·单线降级)' : ' · 多出口轮询(0线·无可用)'))
                 : '';
-              const mlTitleExtra = (p.dispatch_mode === 'multi_line' && mlArr.length) ? (' · 并发在线：' + mlArr.map(cleanNodeDisplayName).join(' / ')) : '';
+              const mlTitleExtra = (p.dispatch_mode === 'multi_line' && mlArr.length) ? (' · 轮询候选：' + mlArr.map(cleanNodeDisplayName).join(' / ') + '（同一时刻仅 1 个出口生效，每 30 秒轮换，不叠加单流带宽）') : '';
               return '<strong class="hud-pool-node mono" style="color:' + (isDirectPool ? 'var(--amber)' : 'var(--cyan)') + '" title="当前出口：' + esc(curNode) + ' · 池内 ' + g1Tags.length + ' 个候选' + esc(mlTitleExtra) + '">' + esc(curNode) + ' <small class="hud-pool-scope" style="color:var(--text-3);font-weight:400">· ' + g1Tags.length + ' 候选 · ' + esc(ctryLabel) + '' + mlSuffix + (p.bandwidth_prefer ? ' · 带宽择优' : '') + '</small></strong>';
             })() +
             '<span style="flex-shrink:0">' + latBadgeCompact + '</span>' +
@@ -4302,7 +4306,7 @@
             '<span class="an-wizard-step-title">1. 节点池名称</span>' +
             '<span class="an-wizard-step-sub">可在智能分流组或非分流模式（白名单 / GFW / 全局）中直接选用</span>' +
           '</div>' +
-          '<div class="modal-field" style="margin:0"><input id="mdl-an-name" value="' + esc(p ? p.name : '高速自动节点池') + '" placeholder="如：流媒体多线并发池 / 主力高速池"></div>' +
+          '<div class="modal-field" style="margin:0"><input id="mdl-an-name" value="' + esc(p ? p.name : '高速自动节点池') + '" placeholder="如：流媒体多出口轮询池 / 主力高速池"></div>' +
         '</div>' +
 
         /* Step 2: Multi-Select Subscriptions (including Custom) */
@@ -4361,7 +4365,7 @@
         /* Step 5: Target Node Count (1-10), Replenish Threshold, Multi-Line Concurrency & Bandwidth Preference */
         '<div class="an-wizard-step">' +
           '<div class="an-wizard-step-head">' +
-            '<span class="an-wizard-step-title">5. 设定节点容量、出站调度模式（优选单线 / 多线并发）与带宽择优</span>' +
+            '<span class="an-wizard-step-title">5. 设定节点容量、出站调度模式（优选单线 / 多出口轮询）与带宽择优</span>' +
             '<span class="an-wizard-step-sub" id="mdl-an-dispatch-guard-hint">系统根据所选目标服务自动启用防风控互斥保护</span>' +
           '</div>' +
           '<div class="modal-grid-2" style="gap:10px">' +
@@ -4757,7 +4761,7 @@
           btnMulti.style.cursor = 'not-allowed';
         }
         if (btnSingle) btnSingle.classList.add('active');
-        if (lblMulti) lblMulti.textContent = '多线并发（已自动锁定单线：AI/账号服务防跳IP）';
+        if (lblMulti) lblMulti.textContent = '多出口轮询（已自动锁定单线：AI/账号服务防跳IP）';
         if (hintEl) hintEl.textContent = '已启用 AI/账号防风控互斥保护：自动锁定为「优选单线」';
       } else {
         if (btnMulti) {
@@ -4771,7 +4775,7 @@
         if (hintEl) {
           hintEl.textContent = dispatchMode === 'multi_line'
             ? '多出口轮询已开启：已自动屏蔽 AI 敏感服务勾选项，并要求容量 ≥ 2'
-            : '可根据业务类型切换「优选单线」或「多线并发」';
+            : '可根据业务类型切换「优选单线」或「多出口轮询（同一时刻仅 1 个出口生效，每 30 秒轮换，不叠加单流带宽）」';
         }
       }
       $$('.chk-an-svc').forEach(chk => {
@@ -7246,24 +7250,92 @@
         await syncBackendStatus(false, true);
         break;
       }
+      case 'quick-bind-pool': {
+        const poolId = el && el.dataset.poolId;
+        const targetGrp = (mock.shuntGroups || []).find(g => g.is_custom || ['Netflix', 'YouTube', 'TikTok'].includes(g.id));
+        if (poolId && targetGrp) {
+          await callRouterApi('/api/shunt/update', 'POST', { id: targetGrp.id, group_id: targetGrp.id, strategy_mode: 'auto', auto_node_id: poolId });
+          toast('已将节点池「' + poolId + '」一键绑定至分流组「' + (targetGrp.name || targetGrp.id) + '」');
+          await syncBackendStatus(true, true);
+        }
+        break;
+      }
       case 'sub-preview-sync': {
         const idx = Number(el && el.dataset.sub);
         const s = mock.subscriptions[idx];
-        const res = await callRouterApi('/api/subscriptions/preview_sync', 'POST', { id: s ? s.id : '', url: s ? s.url : '' });
-        const addedCnt = (res && res.added_count != null) ? res.added_count : 0;
-        const remCnt = (res && res.removed_count != null) ? res.removed_count : 0;
-        const renCnt = (res && res.renamed_count != null) ? res.renamed_count : 0;
-        const affPools = (res && Array.isArray(res.affected_pools)) ? res.affected_pools : [];
+        if (el) {
+          el.setAttribute('aria-busy', 'true');
+          el.disabled = true;
+        }
+        toast('正在拉取上游订阅并计算节点全身份 Diff 预览…');
+        let res = null;
+        try {
+          res = await callRouterApi('/api/subscriptions/preview_sync', 'POST', { id: s ? s.id : '', url: s ? s.url : '' }, 30000);
+        } finally {
+          if (el) {
+            el.setAttribute('aria-busy', 'false');
+            el.disabled = false;
+          }
+        }
+        if (!res || res.ok === false) {
+          const failMsg = (res && (res.detail || res.error || res.summary_text)) || '上游订阅拉取超时或无法连接';
+          const failReqId = (res && res.request_id) || '-';
+          toast('预览失败：' + failMsg + '（追踪 ID ' + failReqId + '）', 'warn');
+          break;
+        }
+        if (s && res.dynamic_random_sub != null) {
+          s.dynamic_random_sub = Boolean(res.dynamic_random_sub);
+        }
+        const preservedCnt = Number(res.preserved_count != null ? res.preserved_count : 0);
+        const addedCnt = Number(res.added_count != null ? res.added_count : 0);
+        const remCnt = Number(res.removed_count != null ? res.removed_count : 0);
+        const renCnt = Number(res.renamed_count != null ? res.renamed_count : 0);
+        const sameTagCnt = Number(res.same_tag_replaced_count != null ? res.same_tag_replaced_count : 0);
+        const epChgCnt = Number(res.endpoint_changed_count != null ? res.endpoint_changed_count : 0);
+        const credChgCnt = Number(res.credential_changed_count != null ? res.credential_changed_count : 0);
+        const jaccardPct = (res.jaccard_stability != null) ? (Math.round(Number(res.jaccard_stability) * 100) + '%') : '--';
+        const impactPct = (res.impact_ratio != null) ? (Math.round(Number(res.impact_ratio) * 100) + '%') : '--';
+        const reqIdStr = String(res.request_id || '-');
+        const affPools = Array.isArray(res.affected_pools) ? res.affected_pools : [];
+        const warnTxt = String(res.stability_warning || (res.dynamic_random_sub ? '检测到上游为动态随机订阅（节点集合重合度低于 50%），不建议用于关键服务自动池' : '')).trim();
+        const riskBannerHtml = warnTxt
+          ? ('<div class="a-alert a-alert--danger" style="padding:var(--sp-3);margin-bottom:var(--sp-3);border:1px solid var(--danger);border-radius:var(--r-md);color:var(--danger)"><b>动态随机/大变动订阅预警：</b>' + esc(warnTxt) + '</div>')
+          : '';
+        const idDiffStripHtml =
+          '<div class="traffic-kpi-strip" style="grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:var(--sp-3)">' +
+            '<div class="traffic-kpi-item"><span>原样保留 / 同服改名</span><b class="num">' + preservedCnt + ' / ' + renCnt + '</b></div>' +
+            '<div class="traffic-kpi-item"><span>同名换端点 / 换凭据</span><b class="num">' + epChgCnt + ' / ' + credChgCnt + ' (共' + sameTagCnt + ')</b></div>' +
+            '<div class="traffic-kpi-item"><span>新增 / 移除节点</span><b class="num">+' + addedCnt + ' / -' + remCnt + '</b></div>' +
+            '<div class="traffic-kpi-item"><span>集合重合度 / 变更率</span><b class="num">' + jaccardPct + ' / ' + impactPct + '</b></div>' +
+          '</div>';
+        const chgTags = []
+          .concat(Array.isArray(res.endpoint_changed_tags) ? res.endpoint_changed_tags : [])
+          .concat(Array.isArray(res.credential_changed_tags) ? res.credential_changed_tags : [])
+          .concat(Array.isArray(res.same_tag_replaced_tags) ? res.same_tag_replaced_tags : []);
+        const uniqChgTags = Array.from(new Set(chgTags)).slice(0, 6);
+        const sameTagNoteHtml = sameTagCnt > 0
+          ? ('<div class="trace-stage" style="margin-bottom:var(--sp-2)"><i></i><div><b>检测到 ' + sameTagCnt + ' 个同名换节点（标签未变但底层服务器/凭据已变更）</b><span>涉及节点：' + esc(uniqChgTags.join('、') || '见明细') + '；同步后将自动清理旧探测与隔离缓存并重新验证 L7。</span></div><strong>需重验 L7</strong></div>')
+          : '';
+        const poolsImpactHtml = affPools.length
+          ? ('<div class="trace-stages">' + affPools.map(ap => {
+              const repSame = Number(ap.replaced_same_tag_count || 0);
+              const badgeTxt = repSame > 0 ? ('含同名替换 ' + repSame + ' 个 · 需重验 L7') : '自动容灾';
+              return '<div class="trace-stage"><i></i><div><b>' + esc(ap.pool_name) + '</b><span>' + esc(ap.summary) + '</span></div><strong>' + esc(badgeTxt) + '</strong></div>';
+            }).join('') + '</div>')
+          : ((sameTagCnt === 0 && remCnt === 0 && !res.dynamic_random_sub)
+              ? '<div class="trace-stage"><i></i><div><b>所有自动节点池成员完整率 100%</b><span>本次订阅更新不会导致任何正在使用的自动节点池失去活跃出口。</span></div><strong>无损更新</strong></div>'
+              : '<div class="trace-stage"><i></i><div><b>部分节点发生轮换（活跃池具备充足备份）</b><span>本次更新包含节点增删或同名替换，同步后将自动触发增量健康探测。</span></div><strong>增量重算</strong></div>');
         openModal(
           '订阅更新影响预览 · ' + (s ? s.name : '全部订阅'),
           '<div class="modal-form">' +
-            '<div class="doctor-summary-banner">' +
-              '<div><b>本次更新预计变更：新增 ' + addedCnt + ' 个节点 · 移除 ' + remCnt + ' 个节点 · 改名平滑迁移 ' + renCnt + ' 个</b>' +
-              '<small style="display:block;color:var(--muted);margin-top:4px">基于稳定身份指纹 node_key = sha1(protocol|server|port|cred|sni|pbk)[:16] 比对，改名节点将 100% 无损保留在原节点池中；消失节点将保留 7 天 missing 占位并自动切至下一合格节点。</small></div>' +
+            riskBannerHtml +
+            '<div class="doctor-summary-banner" style="margin-bottom:var(--sp-3)">' +
+              '<div><b>本次更新预计变更：保留 ' + preservedCnt + ' 个 · 新增 ' + addedCnt + ' 个 · 移除 ' + remCnt + ' 个 · 改名迁移 ' + renCnt + ' 个 · 同名替换 ' + sameTagCnt + ' 个</b>' +
+              '<small style="display:block;color:var(--muted);margin-top:4px">基于稳定身份指纹 node_key = sha1(protocol|server|port|cred|sni|pbk)[:16] 比对 · 追踪 ID：' + esc(reqIdStr) + '</small></div>' +
             '</div>' +
-            (affPools.length
-              ? ('<div class="trace-stages">' + affPools.map(ap => '<div class="trace-stage"><i></i><div><b>' + esc(ap.pool_name) + '</b><span>' + esc(ap.summary) + '</span></div><strong>自动容灾</strong></div>').join('') + '</div>')
-              : '<div class="trace-stage"><i></i><div><b>所有自动节点池成员完整率 100%</b><span>本次订阅更新不会导致任何正在使用的自动节点池失去活跃出口。</span></div><strong>无损更新</strong></div>') +
+            idDiffStripHtml +
+            sameTagNoteHtml +
+            poolsImpactHtml +
           '</div>',
           'SUBSCRIPTION DIFF & IMPACT PREVIEW',
           async () => {
@@ -7908,7 +7980,7 @@
           const pCur = (!p.current_node || p.current_node === 'direct') ? '直连/待选优' : cleanNodeDisplayName(p.current_node);
           const optMlCnt = (Array.isArray(p.multi_line_nodes) && p.multi_line_nodes.length) ? p.multi_line_nodes.length : Number(p.active_lines_count != null ? p.active_lines_count : 0);
           const mlTag = p.dispatch_mode === 'multi_line'
-            ? (isGrpIpSens ? ' · 自动锁定单线防风控' : (optMlCnt >= 2 ? (' · 多线并发 ' + optMlCnt + ' 线') : (optMlCnt === 1 ? ' · 多线并发 1线(单线降级)' : ' · 多线并发 0线(无可用)')))
+            ? (isGrpIpSens ? ' · 自动锁定单线防风控' : (optMlCnt >= 2 ? (' · 多出口轮询 ' + optMlCnt + ' 线') : (optMlCnt === 1 ? ' · 多出口轮询 1线(单线降级)' : ' · 多出口轮询 0线(无可用)')))
             : '';
           return '<option value="' + esc(p.id) + '" ' + (g.auto_node_id === p.id ? 'selected' : '') + '>' + esc(p.name) + ' (当前: ' + esc(pCur) + esc(mlTag) + ')</option>';
         }).join('');

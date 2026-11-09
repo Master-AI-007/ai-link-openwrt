@@ -1,3 +1,12 @@
+## v2.5.7 (2026-11-10) — 2.5.6-r16 节点池复审计 P0/P1/P2 与 FB-256-1..4 全量闭环 (PKG_RELEASE=17)
+
+- **P0-1 & P1-5 订阅差异预览前端全字段消费、失败态硬拦截与 60s 缓存**：`nexus.js` 完整渲染 `/api/subscriptions/preview_sync` 返回的 `stability_warning`、`dynamic_random_sub`、`jaccard_stability`、`impact_ratio`、`preserved_count`、`same_tag_replaced_count`、`endpoint_changed_count`、`credential_changed_count`、`replaced_same_tag_count` 与 `request_id`；点击后立即进入 `aria-busy` 加载保护；当 `res.ok === false` 时严格拦截并提示含 `request_id` 的错误详情，绝不伪装成“无损更新”；后端增加 60s 上游预览缓存与 `_curl_fetch_subscription` 统一拉取。
+- **P1-1 Jaccard 稳定性基准锚定当前生产集合与预览只读化**：`preview_subscription_sync_impact` 改为纯只读，基准固定对比当前生产已保存节点集合 `old_k_set` 并结合 `impact_ratio > 0.30` 触发预警；历史环形缓冲持久化至 `sub_jaccard_ring.json` 且仅由真实同步（`merge_nodes`）写入，保证连续 10 次预览与重启前后结论 100% 稳定一致。
+- **P1-2 & FB-257-1 `--self-test` 计数语义拆分（`blocked` vs `leaked`）、衍生路径沙箱化与真机生产态 3 连跑零写盘闭环**：将 `_note_live_write_attempt` 拆分为拦截成功计数 `_SELF_TEST_LIVE_WRITE_BLOCKED` 与未拦截泄露计数 `_SELF_TEST_LIVE_WRITE_LEAKED`（由 `_note_live_write_leak` 记录），断言 `leaked == 0` 且金丝雀探针 `blocked >= 1`；同时将 `write_all_configs` (`ai-link.nft`/`lan_direct_macs.txt`)、`generate_singbox_config` (`homelink_ports`/`node_ips.txt`) 与 `_node_test_quota_path` (`node_test_quota.json`) 在自检/沙箱态下全量重定向至临时沙箱目录并隔离 `:9090` 端口后台探测，彻底解决真机存在 `/var/run/ai-link` 时的 15 次误触发回归。
+- **P1-3 外部 HTTPS 请求全面收口至 `allow_insecure_tls`**：消除 L7 服务验证、规则/SRS 下载、DoH 与健康探测等其余 8 处硬编码 `-k` 与 `_create_unverified_context()`，默认严格校验证书。
+- **P1-4 多出口轮询文案全面诚实化**：清理 `nexus.js` 全部 6 处残留“多线并发”文案，统一为“多出口轮询”并在池卡片提示中明确标注“同一时刻仅 1 个出口生效，每 30 秒轮换，不叠加单流带宽”。
+- **P2-1 ~ P2-10 & FB-256-1..4 & FB-257-2 全量加固**：运行时动态注入全站分流组/节点池数量；澄清节点池三口径统计、容量不足原因与 L7 降级说明；支持未绑定节点池一键绑定；`node_probe.json` 增加 7 天 dead 记录 TTL GC；`selections.json` 语义无变化时跳过重写；最终包冻结后解压回填报告 11 行指纹表、实跑后置注入 `run_all.py` 汇总原文与容器/真机验证环境说明，并在 `gates_v101.py` 强制生产态 `RUN_DIR` 连续 3 次 `--self-test` 与负向关闭拦截转红门禁。
+
 ## v2.5.6 (2026-11-09) — 2.5.5-r15 加强复审计 6 项 P1 & 6 项 P2 全量闭环 (PKG_RELEASE=16)
 
 - **P1-1 & FB-255-2 自检语义断言与零生产竞态**：将 `--self-test` (`ai-link probe`) 末尾全文件字节比较升级为进程级 `_SELF_TEST_LIVE_WRITE_ATTEMPTS == 0` 守卫与语义脏标签断言，彻底消除与后台常驻 daemon 正常选点写入的时序竞态；为 `tarfile.extractall` 注入 `filter="data"` 兼容参数。

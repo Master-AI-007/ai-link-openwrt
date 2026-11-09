@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """v1.0.1 发布前全量门禁。全部通过才允许打包。"""
-import re, subprocess, sys, tempfile
+import os, re, subprocess, sys, tempfile
 from pathlib import Path
 
 from _paths import ROOT, PY, NODE, BASH, app_version
@@ -364,43 +364,145 @@ def fb250_packaging_and_luci_gate():
                     archive_missing.append(f"zip:site/subscription_formats/{fx}")
 
     mk_rel_m = re.search(r"^PKG_RELEASE:=(\d+)", (site_dir / "Makefile").read_text(encoding="utf-8"), re.M) if (site_dir / "Makefile").is_file() else None
-    exp_pkg_rel = mk_rel_m.group(1) if mk_rel_m else "14"
+    exp_pkg_rel = mk_rel_m.group(1) if mk_rel_m else "17"
     fp_mismatches = []
+    search_dirs = [
+        root_dir,
+        site_dir,
+        root_dir.parent,
+        Path("/working_dir/c_6b82a05156135b2c/artifacts/file_generation/ttl=63d/output"),
+    ]
+    def _resolve_f_cand(fname: str):
+        for sdir in search_dirs:
+            for sub in (fname, f"tests/{fname}", f"root/usr/share/ai-link/{fname}", f"root/usr/share/ai-link/webui/{fname}"):
+                cand = sdir / sub
+                if cand.is_file():
+                    return cand
+        return None
+
+    def _verify_fp_rows_against_disk(doc_name: str, rows_list: list) -> list:
+        errs = []
+        for fname, exp_sz, exp_md5, exp_sha in rows_list:
+            f_cand = _resolve_f_cand(fname)
+            if not f_cand:
+                errs.append(f"{doc_name}:{fname}:missing")
+                continue
+            b = f_cand.read_bytes()
+            if str(len(b)) != exp_sz or hashlib.md5(b).hexdigest() != exp_md5 or hashlib.sha256(b).hexdigest() != exp_sha:
+                errs.append(f"{doc_name}:{fname}:mismatch(real_sz={len(b)},exp_sz={exp_sz})")
+        return errs
+
     for doc_name in [f"AI-LINK-v{v_d}-全量检查与重构验收报告.md", "HANDOFF.md"]:
-        doc_p = root_dir / doc_name
-        if doc_p.is_file():
+        doc_p = _resolve_f_cand(doc_name)
+        if doc_p and doc_p.is_file():
             doc_txt = doc_p.read_text(encoding="utf-8")
             # FB-253-1: Verify PKG_RELEASE in report/handoff matches Makefile and ipk rN
             doc_rels = set(re.findall(r"PKG_RELEASE:=(\d+)", doc_txt))
             if doc_rels and doc_rels != {exp_pkg_rel}:
                 fp_mismatches.append(f"{doc_name}:PKG_RELEASE={doc_rels}!=Makefile({exp_pkg_rel})")
-            # FB-253-2: Verify report Section 1 is dedicated to current version v{v_d}
+            # FB-253-2: Verify report Section 1 is dedicated to current version
             if doc_name.startswith("AI-LINK-v"):
                 sec1_m = re.search(r"^##\s+一、([^\n]+)", doc_txt, re.M)
                 if not sec1_m or f"v{v_d}" not in sec1_m.group(1):
                     fp_mismatches.append(f"{doc_name}:sec1_not_v{v_d}")
-            rows = re.findall(r"^\|\s*`([^`]+)`\s*\|\s*`(\d+)`\s*\|\s*`([0-9a-f]{32})`\s*\|\s*`([0-9a-f]{64})`\s*\|", doc_txt, re.M)
-            if len(rows) < 3:
-                fp_mismatches.append(f"{doc_name}:rows={len(rows)}<3")
-            for fname, exp_sz, exp_md5, exp_sha in rows:
-                f_cand = (root_dir / fname) if (root_dir / fname).is_file() else (root_dir / "tests" / fname)
-                if not f_cand.is_file():
-                    fp_mismatches.append(f"{doc_name}:{fname}:missing")
-                    continue
-                b = f_cand.read_bytes()
-                if str(len(b)) != exp_sz or hashlib.md5(b).hexdigest() != exp_md5 or hashlib.sha256(b).hexdigest() != exp_sha:
-                    fp_mismatches.append(f"{doc_name}:{fname}:mismatch")
+                # FB-256-2: Verify consecutive Chinese section numbering and zero mixed ## N. headings
+                cn_nums = ["一", "二", "三", "四", "五", "六", "七", "八", "九"]
+                h2_matches = re.findall(r"^##\s+([^\n]+)", doc_txt, re.M)
+                if any(re.match(r"^\d+\.", h) for h in h2_matches):
+                    fp_mismatches.append(f"{doc_name}:mixed_numeric_h2")
+                actual_cn = [h.split("、", 1)[0].strip() for h in h2_matches if "、" in h]
+                if actual_cn != cn_nums[:len(actual_cn)] or len(actual_cn) < 5:
+                    fp_mismatches.append(f"{doc_name}:non_consecutive_h2={actual_cn}")
+                # FB-257-2: Verify report contains post-injected run_all summary and environment note
+                for _req_tok in ("验证环境", "合计 15 套，通过 15，失败 0", "115/115", "152/152", "live_write_leaked"):
+                    if _req_tok not in doc_txt:
+                        fp_mismatches.append(f"{doc_name}:missing_fb257_2_token({_req_tok})")
+            rows = re.findall(r"^\|\s*`([^`]+)`\s*\|\s*[^|]*?`(\d+)`[^|]*\|\s*`([0-9a-f]{32})`\s*\|\s*`([0-9a-f]{64})`\s*\|", doc_txt, re.M)
+            min_rows = 7 if doc_name.startswith("AI-LINK-v") else 3
+            if len(rows) < min_rows:
+                fp_mismatches.append(f"{doc_name}:rows={len(rows)}<{min_rows}")
+            else:
+                fp_mismatches.extend(_verify_fp_rows_against_disk(doc_name, rows))
+                # FB-256-1 Negative Self-Test: Corrupting 1 byte in memory MUST trigger a mismatch
+                f0, sz0, md5_0, sha0 = rows[0]
+                bad_sha0 = ("0" if sha0[0] != "0" else "1") + sha0[1:]
+                if not _verify_fp_rows_against_disk(doc_name, [(f0, sz0, md5_0, bad_sha0)]):
+                    fp_mismatches.append(f"{doc_name}:negative_self_test_failed")
 
     ov_t = OV.read_text(encoding="utf-8")
     luci_ok = ("handleSaveApply: null" in ov_t) and ("luci-btn-ota-check" in ov_t) and ("luci-btn-ota-apply" in ov_t) and ("luci-btn-svc-restart" in ov_t) and ("luci-sel-rmode" not in ov_t) and ("form.Flag" not in ov_t)
+    # FB-257-1 & FB-257-2 Gate: --self-test MUST run in a production-like environment with real CONF_DIR & RUN_DIR
+    # files (ai-link.nft, node_test_quota.json, selections.json, switch_history.json, sing-box.json) 3 consecutive times
+    # with zero file mutation, PLUS 1 negative test with write-interception disabled that MUST detect leaked > 0 and fail!
+    import tempfile
     st_rc = 1
-    for _att in range(2):
-        st_res = subprocess.run([PY, "-B", str(DAEMON), "--self-test"], capture_output=True, text=True)
-        if st_res.returncode == 0:
-            st_rc = 0
-            break
-    ok = cl_ok and suites_nonempty_ok and (len(missing_disk) == 0) and (len(archive_missing) == 0) and (len(fp_mismatches) == 0) and luci_ok and (st_rc == 0)
-    return ok, f"changelog={m_cl.group(1) if m_cl else None}=={v_d}, suites={len(suites)}, fixtures={len(expected_fixtures)}, missing_disk={missing_disk}, archive_missing={archive_missing}, fp_mismatches={fp_mismatches}, luci={luci_ok}, self_test={st_rc}"
+    st_neg_ok = False
+    snap_unchanged = False
+    env_production_like = False
+    _tmp_prod_ctx = None
+    try:
+        live_run = Path(os.environ.get("AI_LINK_RUN_DIR", "/var/run/ai-link"))
+        live_conf = Path(os.environ.get("AI_LINK_CONF_DIR", "/etc/ai-link"))
+        if live_run.is_dir() and os.access(str(live_run), os.W_OK) and (live_run / "ai-link.nft").is_file():
+            eff_run = live_run
+            eff_conf = live_conf
+            if not (eff_run / "node_test_quota.json").is_file():
+                (eff_run / "node_test_quota.json").write_text('{"date":"2026-11-10","used":1,"pool_health_used":1,"forced_used":0,"v236_r10_migrated":true,"v240_budget_migrated":true,"v255_quota_migrated":true}', encoding="utf-8")
+            st_env = dict(os.environ)
+        else:
+            _tmp_prod_ctx = tempfile.TemporaryDirectory(prefix="ailink_gate_prod_")
+            eff_conf = Path(_tmp_prod_ctx.name) / "etc_ai_link"
+            eff_run = Path(_tmp_prod_ctx.name) / "var_run_ai_link"
+            eff_conf.mkdir(parents=True, exist_ok=True)
+            eff_run.mkdir(parents=True, exist_ok=True)
+            (eff_run / "ai-link.nft").write_text("# production-like nft ruleset\ntable inet ai_link {}\n", encoding="utf-8")
+            (eff_run / "node_test_quota.json").write_text('{"date":"2026-11-10","used":12,"pool_health_used":4,"forced_used":0,"v236_r10_migrated":true,"v240_budget_migrated":true,"v255_quota_migrated":true}', encoding="utf-8")
+            (eff_run / "selections.json").write_text('{"updated_at":1794240000,"selections":{"AI_Best_Auto":"Node-Prod-01"},"delays":{}}', encoding="utf-8")
+            (eff_run / "switch_history.json").write_text("[]", encoding="utf-8")
+            (eff_conf / "sing-box.json").write_text('{"outbounds":[]}', encoding="utf-8")
+            st_env = dict(os.environ, AI_LINK_CONF_DIR=str(eff_conf), AI_LINK_RUN_DIR=str(eff_run))
+        env_production_like = (
+            os.access(str(eff_run), os.W_OK)
+            and (eff_run / "ai-link.nft").is_file()
+            and (eff_run / "node_test_quota.json").is_file()
+        )
+        if not env_production_like:
+            fp_mismatches.append("env_not_production_like")
+        else:
+            def _snap_prod():
+                out = {}
+                for _fp in (eff_run / "ai-link.nft", eff_run / "node_test_quota.json", eff_conf / "sing-box.json"):
+                    if _fp.is_file():
+                        _b = _fp.read_bytes()
+                        out[_fp.name] = (hashlib.sha256(_b).hexdigest(), len(_b))
+                return out
+            _s_pre = _snap_prod()
+            _runs_ok = 0
+            for _att in range(3):
+                st_res = subprocess.run([PY, "-B", str(DAEMON), "--self-test"], env=st_env, capture_output=True, text=True)
+                if st_res.returncode == 0 and "SELF_TEST_PASSED" in (st_res.stdout or "") and not (st_res.stderr or "").strip():
+                    _runs_ok += 1
+            _s_post = _snap_prod()
+            snap_unchanged = (_s_pre == _s_post)
+            if _runs_ok == 3 and snap_unchanged:
+                st_rc = 0
+            with tempfile.TemporaryDirectory(prefix="ailink_gate_neg_") as _neg_td:
+                _neg_c = Path(_neg_td) / "c"
+                _neg_r = Path(_neg_td) / "r"
+                _neg_c.mkdir(parents=True, exist_ok=True)
+                _neg_r.mkdir(parents=True, exist_ok=True)
+                (_neg_r / "ai-link.nft").write_text("# neg nft\n", encoding="utf-8")
+                (_neg_r / "node_test_quota.json").write_text('{"date":"2026-11-10","used":1}', encoding="utf-8")
+                _neg_env = dict(os.environ, AI_LINK_CONF_DIR=str(_neg_c), AI_LINK_RUN_DIR=str(_neg_r), AI_LINK_SELFTEST_DISABLE_INTERCEPT="1")
+                _neg_res = subprocess.run([PY, "-B", str(DAEMON), "--self-test"], env=_neg_env, capture_output=True, text=True)
+                st_neg_ok = (_neg_res.returncode != 0 and "leaked" in (_neg_res.stderr or ""))
+                if not st_neg_ok:
+                    fp_mismatches.append("selftest_negative_intercept_check_failed")
+    finally:
+        if _tmp_prod_ctx is not None:
+            _tmp_prod_ctx.cleanup()
+    ok = cl_ok and suites_nonempty_ok and (len(missing_disk) == 0) and (len(archive_missing) == 0) and (len(fp_mismatches) == 0) and luci_ok and (st_rc == 0) and st_neg_ok and env_production_like
+    return ok, f"changelog={m_cl.group(1) if m_cl else None}=={v_d}, suites={len(suites)}, fixtures={len(expected_fixtures)}, missing_disk={missing_disk}, archive_missing={archive_missing}, fp_mismatches={fp_mismatches}, luci={luci_ok}, self_test={st_rc}, st_neg_ok={st_neg_ok}, prod_like={env_production_like}"
 
 
 check("FB-250/251 自检、14+测试套件双端与包内完整性、指纹表逐行核对、CHANGELOG 与 LuCI 精简门禁", fb250_packaging_and_luci_gate)

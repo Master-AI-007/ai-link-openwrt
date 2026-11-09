@@ -74,20 +74,40 @@ def _wait_local_daemon_ready(max_wait_s: float = 8.0) -> None:
 
 
 def self_test():
-    """daemon 内置契约自检（--self-test），支持瞬态重试守卫。"""
+    """daemon 内置契约自检（--self-test），支持瞬态重试守卫与生产态 RUN_DIR 仿真。"""
     if not DAEMON.is_file():
         return False, f"找不到 {DAEMON}", False
+    import tempfile
     last = ""
     out = ""
-    for _attempt in range(2):
-        r = subprocess.run([PY, "-B", str(DAEMON), "--self-test"], capture_output=True,
-                           text=True, encoding="utf-8", errors="replace", env=ENV, timeout=900)
-        out = ((r.stdout or "") + (r.stderr or "")).strip()
-        ok = r.returncode == 0 and "SELF_TEST_PASSED" in out
-        last = out.splitlines()[-1] if out else ""
-        if ok:
-            return True, last[:160], False
-        time.sleep(0.3)
+    live_run = Path(ENV.get("AI_LINK_RUN_DIR", "/var/run/ai-link"))
+    _tmp_ctx = None
+    st_env = dict(ENV)
+    if not (live_run.is_dir() and os.access(str(live_run), os.W_OK) and (live_run / "ai-link.nft").is_file()):
+        _tmp_ctx = tempfile.TemporaryDirectory(prefix="ailink_runall_prod_")
+        _c = Path(_tmp_ctx.name) / "etc_ai_link"
+        _r = Path(_tmp_ctx.name) / "var_run_ai_link"
+        _c.mkdir(parents=True, exist_ok=True)
+        _r.mkdir(parents=True, exist_ok=True)
+        (_r / "ai-link.nft").write_text("# prod nft\n", encoding="utf-8")
+        (_r / "node_test_quota.json").write_text('{"date":"2026-11-10","used":10,"pool_health_used":2,"forced_used":0,"v236_r10_migrated":true,"v240_budget_migrated":true,"v255_quota_migrated":true}', encoding="utf-8")
+        (_r / "selections.json").write_text('{"selections":{"AI_Best_Auto":"Node-01"}}', encoding="utf-8")
+        (_r / "switch_history.json").write_text("[]", encoding="utf-8")
+        (_c / "sing-box.json").write_text('{"outbounds":[]}', encoding="utf-8")
+        st_env.update({"AI_LINK_CONF_DIR": str(_c), "AI_LINK_RUN_DIR": str(_r)})
+    try:
+        for _attempt in range(2):
+            r = subprocess.run([PY, "-B", str(DAEMON), "--self-test"], capture_output=True,
+                               text=True, encoding="utf-8", errors="replace", env=st_env, timeout=900)
+            out = ((r.stdout or "") + (r.stderr or "")).strip()
+            ok = r.returncode == 0 and "SELF_TEST_PASSED" in out
+            last = out.splitlines()[-1] if out else ""
+            if ok:
+                return True, last[:160], False
+            time.sleep(0.3)
+    finally:
+        if _tmp_ctx is not None:
+            _tmp_ctx.cleanup()
     env_limited = "Cross-bucket" in out and not _local_ports_listening()
     return False, last[:200], env_limited
 

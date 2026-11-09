@@ -1,3 +1,14 @@
+## [v2.5.7] - 2026-11-10
+### 自检语义根治 + 订阅预览闭环 + 交付数值后置注入
+- **FB-257-1 自检零污染语义根治**：`--self-test` 计数拆为 `_SELF_TEST_LIVE_WRITE_BLOCKED`（成功拦截未落盘）与 `_SELF_TEST_LIVE_WRITE_LEAKED`（拦截失效实际落盘），断言只要求 `leaked == 0` 且金丝雀 `blocked >= 1`；nft 规则、sing-box 配置与探测配额等衍生路径在自检态全量沙箱化。真机生产态连跑 3 次 `RC=0 / SELF_TEST_PASSED`，`ai-link.nft` 与 `node_test_quota.json` 哈希零变化；负向关闭拦截时正确检出 `leaked 1 live production writes`。
+- **FB-257-2 交付数值与环境标注**：门禁强制构造生产态 `RUN_DIR`（含真实 nft/配额文件），新增 `AI_LINK_SELFTEST_DISABLE_INTERCEPT=1` 负向泄露检出；报告测试数值改为实跑 `run_all.py` 后置注入并附汇总原文，明确标注构建容器验证环境与 `test_v102` 152/152（含 Chromium）对路由器 115/115 的口径差异。
+- **P0-1 / P1-5 订阅预览**：前端全字段渲染（`stability_warning` / `dynamic_random_sub` / `jaccard_stability` / `impact_ratio` / 各类节点变更计数 / `request_id`），点击即 `aria-busy` 防连点，`res.ok === false` 严格拦截并提示追踪 ID，绝不伪装成「无损更新」；后端 60 秒上游预览缓存。
+- **P1-1 Jaccard 只读化**：稳定性基准锚定当前生产节点集合，历史环形缓冲仅由真实同步写入，连续预览与重启前后结论一致；动态随机订阅给出红色高风险预警。
+- **P1-3 / P1-4**：8 处外部 HTTPS 请求统一严格校验证书（仅显式 `allow_insecure_tls` 放宽）；前端「多线并发」夸大文案清零，改述「多出口轮询，不叠加单流带宽」。
+- **P2-1~P2-10**：动态分流组数徽标、三口径悬停说明、容量不足原因细分、7 天 dead 记录 GC、L7 待验证徽标、未绑定池一键绑定、语义未变跳过写盘、驻留旁路计数等。
+- **交付标准保持**：11 行指纹逐行校验与 1 字节篡改转红、章节连续编号、HANDOFF 与交接包布局声明、12 个夹具随包。
+- 验收：原始包零补发 `run_all 14/15`（唯一失败为发布门禁在纯解压布局下的环境敏感，标准出包布局实跑 17/17）、混沌 `79/79`、design-lint 18/18、静态资源 8/8、`INSTALL_RC=0`、`nft=1`、重启后稳定、4 个多线出口与 AI 单线保护、UI 零异常三视口零溢出。
+
 ## [v2.5.6] - 2026-11-09
 ### 加强复审计（6 项 P1 + 6 项 P2 全量闭环）
 - **自检语义断言与零生产竞态**：以进程级 `_SELF_TEST_LIVE_WRITE_ATTEMPTS == 0` 守卫 + 语义脏标签断言取代全文件字节比较，消除与常驻 daemon 的时序竞态；生产运行期连跑两次自检均 `RC=0 / SELF_TEST_PASSED / 零告警`，`Stage 6.20b` 与 `7.1` 同步通过。

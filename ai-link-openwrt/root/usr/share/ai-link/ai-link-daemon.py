@@ -86,6 +86,11 @@ def enforce_sensitive_file_permissions(conf_dir: Path = CONF_DIR) -> None:
         globals().get("_record_internal_diag", str)(_e_diag)
 
 def _atomic_write_text(target: Path, content: str, encoding: str = "utf-8") -> None:
+    target = Path(target)
+    if "_note_live_write_attempt" in globals() and _note_live_write_attempt(target, "atomic_write_text"):
+        return
+    if "_note_live_write_leak" in globals():
+        _note_live_write_leak(target, "atomic_write_text")
     target.parent.mkdir(parents=True, exist_ok=True)
     if target.name not in ("traffic_ledger.json",):
         for _m_name in ("_SHUNT_API_MEMO", "_NODES_API_MEMO", "_AUTO_NODES_API_MEMO", "_STATUS_API_MEMO", "_HOMELINK_API_MEMO", "_DNS_TELEM_MEMO", "_MTIMES_FAST_CACHE", "_JSON_WIRE_MEMO", "_FAST_FILE_CACHE"):
@@ -1768,21 +1773,35 @@ def preview_subscription_sync_impact(sub_id: str, incoming_nodes: list, sub_url:
         removed_key_set = set(removed_keys)
         same_tag_replaced_map = {x["tag"]: x for x in same_tag_replaced}
 
-        # Dynamic random subscription Jaccard stability calculation
+        # v2.5.7 P1-1 Fix: Read-only Jaccard stability calculation anchored to current production node set (old_k_set)
+        # and persistent sync history ring (never mutated by read-only preview calls!)
         old_k_set = set(old_by_key.keys())
         new_k_set = set(new_by_key.keys())
         ring_k = str(sub_id or sub_url or "default")
-        prev_sets = list(_SUB_PREVIEW_JACCARD_RING.get(ring_k) or [])
-        ref_set = prev_sets[-1] if prev_sets else old_k_set
+        ring_file = _effective_run_dir(conf_dir) / "sub_jaccard_ring.json"
+        persisted_ring = {}
+        if ring_file.is_file():
+            try:
+                persisted_ring = json.loads(ring_file.read_text(encoding="utf-8")) or {}
+            except Exception:
+                persisted_ring = {}
+        prev_sets = [set(s) for s in (persisted_ring.get(ring_k) or _SUB_PREVIEW_JACCARD_RING.get(ring_k) or []) if s]
+        ref_set = old_k_set if old_k_set else (prev_sets[-1] if prev_sets else set())
         union_len = len(ref_set | new_k_set)
         jaccard = round(len(ref_set & new_k_set) / float(union_len), 4) if union_len > 0 else 1.0
-        if new_k_set:
-            prev_sets.append(new_k_set)
-            _SUB_PREVIEW_JACCARD_RING[ring_k] = prev_sets[-5:]
-        is_dynamic_random = bool(len(ref_set) >= 5 and len(new_k_set) >= 5 and jaccard < 0.50)
+        upstream_volatility = jaccard
+        if prev_sets:
+            u_v = len(prev_sets[-1] | new_k_set)
+            upstream_volatility = round(len(prev_sets[-1] & new_k_set) / float(u_v), 4) if u_v > 0 else 1.0
+        changed_total_cnt = len(set(added_keys) | set(removed_keys) | set(same_tag_replaced_map.keys()))
+        impact_ratio = round(changed_total_cnt / float(max(1, len(old_k_set))), 4) if old_k_set else 0.0
+        is_dynamic_random = bool(
+            (len(ref_set) >= 5 and len(new_k_set) >= 5 and jaccard < 0.50)
+            or (len(old_k_set) >= 5 and impact_ratio > 0.30 and jaccard < 0.70)
+        )
         stability_warning = (
-            f"检测到上游为动态随机订阅（节点集合重合度 Jaccard={jaccard:.0%} < 50%），每次拉取节点大幅变化，不建议用于关键服务自动池"
-            if is_dynamic_random else ""
+            f"检测到上游为动态随机或大幅变动订阅（与当前生产集合重合度 Jaccard={jaccard:.0%}，本次变更率 {impact_ratio:.0%}：新增 {len(added_keys)} / 移除 {len(removed_keys)} / 同名换服 {len(same_tag_replaced)}），每次同步节点大幅变化，不建议用于关键服务自动池"
+            if (is_dynamic_random or (len(old_k_set) >= 5 and impact_ratio > 0.30)) else ""
         )
 
         affected_pools = []
@@ -1882,6 +1901,8 @@ def preview_subscription_sync_impact(sub_id: str, incoming_nodes: list, sub_url:
             "credential_changed": credential_changed[:15],
             "same_tag_replaced": same_tag_replaced[:15],
             "jaccard_stability": jaccard,
+            "upstream_volatility": upstream_volatility,
+            "impact_ratio": impact_ratio,
             "dynamic_random_sub": is_dynamic_random,
             "stability_warning": stability_warning,
             "affected_pools": affected_pools,
@@ -2327,6 +2348,29 @@ def merge_nodes(sub_id: str, incoming_nodes: list, sub_url: str = "", replace_su
                 save_node_probe_store(cur_ps, conf_dir, strict_gc=True, force_flash=True)
         except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
             globals().get("_record_internal_diag", str)(_e_diag)
+        try:
+            ring_k_m = str(sub_id or sub_url or "default")
+            new_sub_keys = [
+                (n.get("node_key") or compute_node_key(n))
+                for n in (saved_out or [])
+                if isinstance(n, dict) and ((sub_id and n.get("_sub_id") == sub_id) or (sub_url and n.get("_sub_url") == sub_url))
+            ]
+            if new_sub_keys:
+                prev_r = list(_SUB_PREVIEW_JACCARD_RING.get(ring_k_m) or [])
+                prev_r.append(sorted(set(new_sub_keys)))
+                _SUB_PREVIEW_JACCARD_RING[ring_k_m] = prev_r[-5:]
+                rf_p = _effective_run_dir(conf_dir) / "sub_jaccard_ring.json"
+                rf_p.parent.mkdir(parents=True, exist_ok=True)
+                r_doc = {}
+                if rf_p.is_file():
+                    try:
+                        r_doc = json.loads(rf_p.read_text(encoding="utf-8")) or {}
+                    except Exception:
+                        r_doc = {}
+                r_doc[ring_k_m] = [list(x) for x in _SUB_PREVIEW_JACCARD_RING[ring_k_m]]
+                _atomic_write_text(rf_p, json.dumps(r_doc, ensure_ascii=False))
+        except Exception:
+            pass
         return saved_out
 
 _CLASH_API_DOWN_UNTIL = {"ts": 0.0}
@@ -2856,7 +2900,9 @@ PRESET_SERVICE_CHECKS = [
     {"id": "baidu",       "name": "百度",                    "url": "https://www.baidu.com"},
 ]
 
-def _node_test_quota_path() -> Path:
+def _node_test_quota_path(conf_dir: Path = None) -> Path:
+    if globals().get("_SELF_TEST_ACTIVE", False):
+        return Path(f"/tmp/ai-link-selftest-{os.getpid()}") / "node_test_quota.json"
     return RUN_DIR / "node_test_quota.json"
 
 def _get_effective_node_test_budget(conf_dir: Path = None) -> int:
@@ -2898,7 +2944,8 @@ def _get_effective_pool_health_budget(conf_dir: Path = None) -> int:
         return 45000
 
 def _read_quota_doc(conf_dir: Path = None) -> dict:
-    p = _node_test_quota_path()
+    cdir = conf_dir if conf_dir is not None else CONF_DIR
+    p = _node_test_quota_path(cdir)
     today = time.strftime("%Y-%m-%d")
     if p.is_file():
         try:
@@ -2976,10 +3023,10 @@ def get_node_test_quota_summary(conf_dir: Path = None) -> dict:
     }
 
 def _node_test_spend(n: int = 1, force: bool = False, conf_dir: Path = None, is_pool_health: bool = False) -> int:
-    p = _node_test_quota_path()
+    cdir = conf_dir if conf_dir is not None else CONF_DIR
+    p = _node_test_quota_path(cdir)
     today = time.strftime("%Y-%m-%d")
     with _SUB_LOCK:
-        cdir = conf_dir if conf_dir is not None else CONF_DIR
         doc = dict(_read_quota_doc(cdir))
         cur_used = int(doc.get("used", 0))
         cur_ph = int(doc.get("pool_health_used", 0))
@@ -3008,7 +3055,7 @@ def _node_test_spend(n: int = 1, force: bool = False, conf_dir: Path = None, is_
         doc["v240_budget_migrated"] = True
         doc["v255_quota_migrated"] = True
         try:
-            RUN_DIR.mkdir(parents=True, exist_ok=True)
+            p.parent.mkdir(parents=True, exist_ok=True)
             _atomic_write_text(p, json.dumps(doc))
         except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
             globals().get("_record_internal_diag", str)(_e_diag)
@@ -3352,8 +3399,14 @@ def _gc_orphan_probe_dict(store: dict, conf_dir: Path = CONF_DIR, strict: bool =
                     valid_ids.add(nid)
                 if nkey:
                     valid_ids.add(nkey)
+        now_gc = int(time.time())
+        dead_ttl_s = 7 * 86400
         cleaned = {}
         for k, v in store.items():
+            if isinstance(v, dict) and v.get("state") == "dead":
+                last_p_ts = max(int(v.get("last_probe_ts") or 0), int(v.get("probe_ts") or 0), int(v.get("ts") or 0))
+                if last_p_ts > 0 and (now_gc - last_p_ts) > dead_ttl_s:
+                    continue
             if k in valid_ids or k in valid_tags:
                 cleaned[k] = v
             elif isinstance(v, dict) and (v.get("node_id") in valid_ids or v.get("tag") in valid_tags):
@@ -4249,7 +4302,7 @@ def _probe_real_node_http_region(tag: str, fallback_region: str = "US", timeout_
             body_snippet = ""
             if shutil.which("curl") and (proxy_arg != "urllib"):
                 cmd = [
-                    "curl", "-4", "-sS", "-k", "-D", "-", "--max-redirs", "0",
+                    "curl", "-4", "-sS", *_curl_tls_flags(), "-D", "-", "--max-redirs", "0",
                     "--connect-timeout", "3", "--max-time", str(max(2, int(timeout_sec))),
                     "-H", f"X-AI-Link-Probe-Node: {tag}",
                     "-A", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -4277,7 +4330,7 @@ def _probe_real_node_http_region(tag: str, fallback_region: str = "US", timeout_
                 class _NoRedirect(urllib.request.HTTPRedirectHandler):
                     def redirect_request(self, req, fp, code, msg, headers, newurl):
                         return None
-                handlers = [_NoRedirect(), urllib.request.HTTPSHandler(context=ssl._create_unverified_context())]
+                handlers = [_NoRedirect(), urllib.request.HTTPSHandler(context=_get_ssl_context())]
                 if proxy_arg and proxy_arg not in ("direct", "urllib"):
                     handlers.insert(0, urllib.request.ProxyHandler({"http": proxy_arg, "https": proxy_arg}))
                 opener = urllib.request.build_opener(*handlers)
@@ -4300,7 +4353,7 @@ def _probe_real_node_http_region(tag: str, fallback_region: str = "US", timeout_
             if status_code in (200, 204) and not location_raw and "google.com.hk" not in body_snippet.lower() and not custom_probe_url and shutil.which("curl") and proxy_arg and proxy_arg != "direct":
                 try:
                     tr_cmd = [
-                        "curl", "-4", "-sS", "-k", "--connect-timeout", "2", "--max-time", "3",
+                        "curl", "-4", "-sS", *_curl_tls_flags(), "--connect-timeout", "2", "--max-time", "3",
                         "-x", proxy_arg, "https://www.google.com/cdn-cgi/trace"
                     ]
                     tr_proc = subprocess.run(tr_cmd, capture_output=True, text=True, errors="replace", timeout=4)
@@ -4394,7 +4447,7 @@ def probe_node_service_l7(node_or_id, service_id: str, custom_url: str = "", tim
     detected_svc_region = cached_g_reg or c_node
 
     if isinstance(mock_http, dict):
-        _node_test_spend(1)
+        _node_test_spend(1, conf_dir=conf_dir)
         st_code = int(mock_http.get("status", 200))
         body_s = str(mock_http.get("body") or "")
         hdrs = mock_http.get("headers") or {}
@@ -5445,7 +5498,7 @@ def _strip_auto_node_runtime_fields(an: dict) -> dict:
     """B2-9 Fix: Strips volatile per-tick probe telemetry (members sparklines, quality_ranking, last_check_ts, current_delay_ms)
     before writing /etc/ai-link/auto_nodes.json so the persisted configuration file is deterministic and free of real-time probe noise."""
     clean = dict(an or {})
-    for vk in ("quality_ranking", "pool_reachable_count", "pool_candidate_tags", "last_check_ts", "current_delay_ms", "verified_nodes", "all_groups_dead_alert", "alert_message", "last_revert_ts", "last_smart_switch_ts", "last_switch_ts", "selection_explain", "current_google_region", "current_node_key", "l7_degraded_fallback", "quarantine_break_glass", "last_real_probe_ts", "fresh_ok_count", "verified_service_count", "probe_age_sec", "probe_stale", "quota_frozen", "capacity_shortfall", "bound_shunt_groups", "unbound_pool_warning", "multi_line_nodes", "active_lines_count", "multi_line_locked", "multi_line_locked_reason", "estimated_daily_bw_mib"):
+    for vk in ("quality_ranking", "pool_reachable_count", "pool_candidate_tags", "last_check_ts", "current_delay_ms", "verified_nodes", "all_groups_dead_alert", "alert_message", "last_revert_ts", "last_smart_switch_ts", "last_switch_ts", "selection_explain", "current_google_region", "current_node_key", "l7_degraded_fallback", "quarantine_break_glass", "last_real_probe_ts", "fresh_ok_count", "verified_service_count", "probe_age_sec", "probe_stale", "quota_frozen", "capacity_shortfall", "capacity_shortfall_reason", "bound_shunt_groups", "unbound_pool_warning", "multi_line_nodes", "active_lines_count", "multi_line_locked", "multi_line_locked_reason", "estimated_daily_bw_mib"):
         clean.pop(vk, None)
     if int(clean.get("active_group_index") or 1) <= 1:
         clean.pop("primary_recover_streak", None)
@@ -7344,7 +7397,14 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
     an["probe_stale"] = bool(_last_real_pts > 0 and (now_sec - _last_real_pts) > 3600)
     an["quota_frozen"] = bool(_is_node_test_budget_exceeded(conf_dir, is_pool_health=True))
     _t_cap_eval = max(1, min(10, int(an.get("target_size") or 10)))
+    _rep_th_eval = max(1, min(_t_cap_eval, int(an.get("replenish_threshold") if an.get("replenish_threshold") is not None else _t_cap_eval)))
     an["capacity_shortfall"] = bool(len(all_ok_tags) < _t_cap_eval)
+    if not an["capacity_shortfall"]:
+        an["capacity_shortfall_reason"] = ""
+    elif len(all_ok_tags) < _rep_th_eval:
+        an["capacity_shortfall_reason"] = f"池内可用节点 ({len(all_ok_tags)}/{_rep_th_eval}) 低于硬复选阈值，且上游合格候选不足"
+    else:
+        an["capacity_shortfall_reason"] = f"已满足复选阈值 ({len(all_ok_tags)}>={_rep_th_eval})，上游订阅符合范围的合格节点不足软目标 {_t_cap_eval} 个"
     an["verified_nodes"] = [x["tag"] for x in g_nodes if (not (is_full and svc_ids)) or x.get("svc_verified")]
     if an.get("quarantine_break_glass"):
         an["alert_message"] = f"⚡ 半开破冰恢复：已临时启用已恢复节点 {chosen['tag']}（原隔离冷却中）"
@@ -7490,12 +7550,82 @@ KERNEL_LOG_FAILOVER_THRESHOLD = 3
 KERNEL_LOG_MIN_DISTINCT_TARGETS = 2
 
 _SELF_TEST_ACTIVE = False
+_SELF_TEST_INTERCEPT_ENABLED = True
 _SELF_TEST_LIVE_WRITE_ATTEMPTS = 0
+_SELF_TEST_LIVE_WRITE_BLOCKED = 0
+_SELF_TEST_LIVE_WRITE_LEAKED = 0
 _SELF_TEST_FAKE_TAGS = {
     "SG-Reality-01", "Local-Hy2-20443", "JP-Trojan-01", "HK-SS2022-01",
     "US-Residential-Socks", "Full-VLESS-Reality-01", "Node-Disabled-JP", "Node-Enabled-JP",
 }
 _SELF_TEST_FAKE_GROUPS = {"Shunt_Custom_CN_Proxy", "Auto_Auto_AI"}
+
+
+def _note_live_write_attempt(target_path: Path, op: str = "") -> bool:
+    """v2.5.7 P1-2 & FB-257-1 Fix: Split counter semantics between intercepted writes (blocked) and unintercepted writes (leaked).
+    When interception is enabled, increments _SELF_TEST_LIVE_WRITE_BLOCKED (and _SELF_TEST_LIVE_WRITE_ATTEMPTS) and returns True to abort the write.
+    When interception is disabled (negative test mode), returns False so _note_live_write_leak records leaked > 0."""
+    global _SELF_TEST_LIVE_WRITE_ATTEMPTS, _SELF_TEST_LIVE_WRITE_BLOCKED
+    if not globals().get("_SELF_TEST_ACTIVE", False) or target_path is None:
+        return False
+    try:
+        rp = Path(target_path).resolve()
+        c_res = Path(CONF_DIR).resolve()
+        r_res = Path(RUN_DIR).resolve()
+        if rp == c_res or rp == r_res or c_res in rp.parents or r_res in rp.parents:
+            _SELF_TEST_LIVE_WRITE_ATTEMPTS += 1
+            if bool(globals().get("_SELF_TEST_INTERCEPT_ENABLED", True)) and os.environ.get("AI_LINK_SELFTEST_DISABLE_INTERCEPT") != "1" and ("--self-test-disable-intercept" not in sys.argv):
+                _SELF_TEST_LIVE_WRITE_BLOCKED += 1
+                return True
+            return False
+    except Exception:
+        pass
+    return False
+
+
+def _note_live_write_leak(target_path: Path, op: str = "") -> bool:
+    """v2.5.7 FB-257-1 Fix: Increments _SELF_TEST_LIVE_WRITE_LEAKED when a write to CONF_DIR/RUN_DIR bypasses interception during --self-test."""
+    global _SELF_TEST_LIVE_WRITE_LEAKED
+    if not globals().get("_SELF_TEST_ACTIVE", False) or target_path is None:
+        return False
+    try:
+        rp = Path(target_path).resolve()
+        c_res = Path(CONF_DIR).resolve()
+        r_res = Path(RUN_DIR).resolve()
+        if rp == c_res or rp == r_res or c_res in rp.parents or r_res in rp.parents:
+            _SELF_TEST_LIVE_WRITE_LEAKED += 1
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def _get_ssl_context(conf_dir: Path = None, allow_insecure: bool = None):
+    """v2.5.7 P1-3 Fix: Unified TLS context factory. Enforces certificate verification by default unless allow_insecure_tls is explicitly enabled."""
+    if allow_insecure is None:
+        try:
+            allow_insecure = bool(get_ops_settings(conf_dir or CONF_DIR).get("allow_insecure_tls", False))
+        except Exception:
+            allow_insecure = False
+    if allow_insecure:
+        return ssl._create_unverified_context()
+    cafile = "/etc/ssl/certs/ca-certificates.crt"
+    if Path(cafile).is_file():
+        try:
+            return ssl.create_default_context(cafile=cafile)
+        except Exception:
+            pass
+    return ssl.create_default_context()
+
+
+def _curl_tls_flags(conf_dir: Path = None, allow_insecure: bool = None) -> list:
+    """v2.5.7 P1-3 Fix: Returns ['-k'] ONLY when allow_insecure_tls is explicitly enabled; otherwise [] (strict TLS check)."""
+    if allow_insecure is None:
+        try:
+            allow_insecure = bool(get_ops_settings(conf_dir or CONF_DIR).get("allow_insecure_tls", False))
+        except Exception:
+            allow_insecure = False
+    return ["-k"] if allow_insecure else []
 
 
 def _is_live_conf_dir(conf_dir: Path = None) -> bool:
@@ -7616,6 +7746,7 @@ class SelectorWriteCoordinator:
         self.total_writes = 0
         self.skipped_noop = 0
         self.skipped_dwell = 0
+        self.dwell_bypass_calls = 0
 
     def notify_external_write(self, selector_group: str, target_node: str) -> None:
         """Synchronizes coordinator state when request_switch / hot_switch_core_selector modifies a selector outside multi-line rotation."""
@@ -7661,6 +7792,8 @@ def _put_clash_selector_silent(selector_group: str, target_node: str, clash_api_
 
 
 def dispatch_multi_line_pools_tick(conf_dir: Path = CONF_DIR, advance: bool = True, clash_api_override=None, respect_dwell_interval: bool = True) -> dict:
+    if not respect_dwell_interval and "SELECTOR_WRITE_COORDINATOR" in globals():
+        SELECTOR_WRITE_COORDINATOR.dwell_bypass_calls += 1
     """v2.5.6 Multi-Egress Round-Robin Dispatcher (with SelectorWriteCoordinator, Strict 1-to-1 Ownership & Default 30s Dwell Window):
     Rotates active `multi_line` Auto-Node Pools and their uniquely bound non-IP-sensitive Shunt Groups across all healthy
     `multi_line_nodes` with `interrupt_exist_connections: False` and zero redundant PUTs when target is unchanged."""
@@ -8538,7 +8671,9 @@ def record_switch_event(group_name: str, old_node: str, new_node: str, reason: s
     if not new_node or old_node == new_node:
         return
     if _SELF_TEST_ACTIVE and Path(run_dir).resolve() == Path(RUN_DIR).resolve():
-        return
+        if _note_live_write_attempt(run_dir, "record_switch_event"):
+            return
+        _note_live_write_leak(run_dir, "record_switch_event")
     if Path(run_dir).resolve() == Path(RUN_DIR).resolve() and (
         new_node in _SELF_TEST_FAKE_TAGS or old_node in _SELF_TEST_FAKE_TAGS or group_name == "Shunt_Custom_CN_Proxy"
     ):
@@ -8667,9 +8802,15 @@ class AIProbeEngine:
         self.last_probe_ts = max_ts
         self._last_lp_sig = lp_sig
     def save_persisted_selections(self, run_dir: Path = RUN_DIR, record_history: bool = True, conf_dir: Path = CONF_DIR):
+        if _SELF_TEST_ACTIVE and run_dir is not None and Path(run_dir).resolve() == Path(RUN_DIR).resolve() and Path(conf_dir).resolve() == Path(CONF_DIR).resolve():
+            if _note_live_write_attempt(run_dir, "save_persisted_selections"):
+                return
+            _note_live_write_leak(run_dir, "save_persisted_selections")
         eff_rdir = _effective_run_dir(conf_dir, run_dir)
         if _SELF_TEST_ACTIVE and Path(eff_rdir).resolve() == Path(RUN_DIR).resolve():
-            return
+            if _note_live_write_attempt(eff_rdir, "save_persisted_selections"):
+                return
+            _note_live_write_leak(eff_rdir, "save_persisted_selections")
         try:
             eff_rdir.mkdir(parents=True, exist_ok=True)
             sels_out = dict(self.current_selections)
@@ -8678,7 +8819,15 @@ class AIProbeEngine:
                     k: v for k, v in sels_out.items()
                     if v not in _SELF_TEST_FAKE_TAGS and k not in ("Shunt_Custom_CN_Proxy", "Auto_Auto_AI")
                 }
-            _atomic_write_text(eff_rdir / "selections.json", json.dumps({
+            sel_fp = eff_rdir / "selections.json"
+            if sel_fp.is_file():
+                try:
+                    prev_sdoc = json.loads(sel_fp.read_text(encoding="utf-8"))
+                    if isinstance(prev_sdoc, dict) and prev_sdoc.get("selections") == sels_out:
+                        return
+                except Exception:
+                    pass
+            _atomic_write_text(sel_fp, json.dumps({
                 "updated_at": int(time.time()),
                 "selections": sels_out,
                 "delays": self.last_delays
@@ -9844,10 +9993,10 @@ def _resolve_subscription_host_ips(host: str) -> list:
     # 2. Fallback to AliDNS / DNSPod DoH
     if not ips:
         q = urllib.parse.quote(h)
-        for ep in (f"https://223.5.5.5/resolve?name={q}&type=A", f"https://1.12.12.12/resolve?name={q}&type=A"):
+        for ep in (f"https://dns.alidns.com/resolve?name={q}&type=A", f"https://doh.pub/dns-query?name={q}&type=A"):
             try:
                 req = urllib.request.Request(ep, headers={"Accept": "application/dns-json"})
-                with urllib.request.urlopen(req, timeout=4, context=ssl._create_unverified_context()) as r:
+                with urllib.request.urlopen(req, timeout=4, context=_get_ssl_context()) as r:
                     d = json.loads(r.read().decode("utf-8", "ignore"))
                 if int(d.get("Status") or 0) == 3:
                     with _SUB_DNS_LOCK:
@@ -10073,7 +10222,7 @@ def fetch_and_sync_subscription(url: str = "", name: str = "机场订阅",
             last_error = diag["reason"]
             last_error_code = diag["error_code"]
 
-    ctx = ssl._create_unverified_context() if _allow_insecure_sub else ssl.create_default_context()
+    ctx = _get_ssl_context(conf_dir, allow_insecure=_allow_insecure_sub)
     if sub_host in ("127.0.0.1", "localhost", "::1"):
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.request.HTTPSHandler(context=ctx))
     else:
@@ -11565,7 +11714,7 @@ def apply_dns_rewrite_system(cfg: dict = None, conf_dir: Path = CONF_DIR) -> dic
     """Write dnsmasq CNAME/address rewrite rules so LAN clients honour rewrites. Hermetic when conf_dir != CONF_DIR."""
     if cfg is None:
         cfg = load_dns_rewrite_config(conf_dir)
-    is_live = (Path(conf_dir).resolve() == CONF_DIR.resolve() and Path(conf_dir).resolve() == Path("/etc/ai-link").resolve())
+    is_live = (_is_live_conf_dir(conf_dir) and Path(conf_dir).resolve() == Path("/etc/ai-link").resolve())
     dnsmasq_dir = _detect_dnsmasq_confdir(create=is_live) if is_live else Path(conf_dir)
     conf_path = dnsmasq_dir / "ai-link-rewrite.conf"
     status = {"ok": False, "path": str(conf_path), "rules": 0, "reason": ""}
@@ -11704,7 +11853,7 @@ def restore_resolv_conf_to_local():
 def rollback_dnsmasq_and_resolv(conf_dir: Path = CONF_DIR) -> bool:
     """Removes ai-link-adblock.conf (`no-resolv` + `server=127.0.0.1#7874`), restores direct /etc/resolv.conf fallback,
     and restarts dnsmasq if upstream was mounted."""
-    is_live = (Path(conf_dir).resolve() == CONF_DIR.resolve() and Path(conf_dir).resolve() == Path("/etc/ai-link").resolve())
+    is_live = (_is_live_conf_dir(conf_dir) and Path(conf_dir).resolve() == Path("/etc/ai-link").resolve())
     dnsmasq_dir = _detect_dnsmasq_confdir(create=False) if is_live else Path(conf_dir)
     conf_path = dnsmasq_dir / "ai-link-adblock.conf"
     removed_any = False
@@ -11737,7 +11886,7 @@ def apply_dns_adblock_system(conf_dir: Path = CONF_DIR, force_live_mount: bool =
     2. Writes high-frequency blocked domains (`address=/domain/0.0.0.0` + `address=/domain/::`) when AdBlock is enabled.
     3. Remains 100% hermetic when `conf_dir != CONF_DIR` (never mutates live dnsmasq during `--self-test`)."""
     flt_cfg = load_dns_filter_config(conf_dir)
-    is_live = (Path(conf_dir).resolve() == CONF_DIR.resolve() and Path(conf_dir).resolve() == Path("/etc/ai-link").resolve())
+    is_live = (_is_live_conf_dir(conf_dir) and Path(conf_dir).resolve() == Path("/etc/ai-link").resolve())
     dnsmasq_dir = _detect_dnsmasq_confdir(create=is_live) if is_live else Path(conf_dir)
     conf_path = dnsmasq_dir / "ai-link-adblock.conf"
     status = {"ok": False, "path": str(conf_path), "rules": 0, "upstream_7874": False}
@@ -12007,7 +12156,7 @@ def sync_dns_filter_lists(conf_dir: Path = CONF_DIR) -> dict:
         if nd0 and nd0 not in seen_doms:
             seen_doms.add(nd0)
             pulled_domains.append(nd0)
-    ctx = ssl._create_unverified_context()
+    ctx = _get_ssl_context(conf_dir)
     https_h = urllib.request.HTTPSHandler(context=ctx)
     openers = [urllib.request.build_opener(https_h)]
     if _is_local_port_listening(7890):
@@ -13333,16 +13482,19 @@ class ConfigGenerator:
                 if tag.startswith("homelink-"):
                     proto = "udp" if ib.get("type") == "hysteria2" else "tcp"
                     hl_ports.append("%s %s" % (proto, ib.get("listen_port")))
-            run_dir = Path(os.environ.get("AI_LINK_RUN_DIR", "/var/run/ai-link"))
+            run_dir = _effective_run_dir(conf_dir, RUN_DIR)
             run_dir.mkdir(parents=True, exist_ok=True)
-            (run_dir / "homelink_ports").write_text(
+            _atomic_write_text(
+                run_dir / "homelink_ports",
                 "\n".join(hl_ports) + ("\n" if hl_ports else ""), encoding="utf-8")
             node_ips = []
             for ob in saved_nodes:
                 srv = str(ob.get("server") or "").strip()
                 if re.match(r"^\d{1,3}(\.\d{1,3}){3}$", srv) and not srv.startswith("127."):
                     node_ips.append(srv)
-            (run_dir / "node_ips.txt").write_text("\n".join(sorted(set(node_ips))) + ("\n" if node_ips else ""), encoding="utf-8")
+            _atomic_write_text(
+                run_dir / "node_ips.txt",
+                "\n".join(sorted(set(node_ips))) + ("\n" if node_ips else ""), encoding="utf-8")
         except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
             globals().get("_record_internal_diag", str)(_e_diag)
         if local_rule_sets and enable_tls_outbounds:
@@ -13903,7 +14055,7 @@ def ensure_srs_rulesets(conf_dir: Path = CONF_DIR, timeout_per_file: float = 6.0
     missing = [k for k in SRS_CORE_MAP if k not in existing]
     if not missing:
         return {"ok": True, "installed": existing, "downloaded": [], "missing": []}
-    ctx = ssl._create_unverified_context()
+    ctx = _get_ssl_context(conf_dir)
     https_h = urllib.request.HTTPSHandler(context=ctx)
     openers = [urllib.request.build_opener(https_h)]
     if _is_local_port_listening(7890):
@@ -14173,7 +14325,7 @@ def generate_nft_rules_file(conf_dir: Path = CONF_DIR, run_dir: Path = RUN_DIR,
 
     # Collect upstream node IPs
     node_ips = set()
-    is_live = (Path(conf_dir).resolve() == CONF_DIR.resolve() and Path(conf_dir).resolve() == Path("/etc/ai-link").resolve())
+    is_live = (_is_live_conf_dir(conf_dir) and Path(conf_dir).resolve() == Path("/etc/ai-link").resolve())
     r_dirs = (run_dir, Path("/var/run/ai-link"), Path("/tmp/ai-link")) if is_live else (run_dir,)
     for r_d in r_dirs:
         f_nip = r_d / "node_ips.txt"
@@ -14752,7 +14904,8 @@ def write_all_configs(target_dir: Path = CONF_DIR, force_full: bool = False, for
         except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
             globals().get("_record_internal_diag", str)(_e_diag)
     # Maintain compatibility symlink /var/etc/ai-link/sing-box.json -> /etc/ai-link/sing-box.json
-    if target_dir == CONF_DIR:
+    is_live_target = _is_live_conf_dir(target_dir)
+    if is_live_target:
         try:
             var_etc = Path("/var/etc/ai-link")
             var_etc.mkdir(parents=True, exist_ok=True)
@@ -14765,9 +14918,10 @@ def write_all_configs(target_dir: Path = CONF_DIR, force_full: bool = False, for
     (target_dir / "build_mode.txt").write_text("upstream-full" if use_full else "lock-compat", encoding="utf-8")
     try:
         _ops_macs = get_ops_settings(target_dir).get("lan_direct_macs") or []
-        for _rd in (RUN_DIR, Path("/tmp/ai-link")):
+        _mac_rdirs = (RUN_DIR, Path("/tmp/ai-link")) if is_live_target else (_effective_run_dir(target_dir),)
+        for _rd in _mac_rdirs:
             _rd.mkdir(parents=True, exist_ok=True)
-            (_rd / "lan_direct_macs.txt").write_text("\n".join(_ops_macs) + ("\n" if _ops_macs else ""), encoding="utf-8")
+            _atomic_write_text(_rd / "lan_direct_macs.txt", "\n".join(_ops_macs) + ("\n" if _ops_macs else ""), encoding="utf-8")
     except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
         globals().get("_record_internal_diag", str)(_e_diag)
     try:
@@ -14776,7 +14930,7 @@ def write_all_configs(target_dir: Path = CONF_DIR, force_full: bool = False, for
     except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
         globals().get("_record_internal_diag", str)(_e_diag)
     try:
-        generate_nft_rules_file(conf_dir=target_dir, run_dir=RUN_DIR)
+        generate_nft_rules_file(conf_dir=target_dir, run_dir=(RUN_DIR if is_live_target else Path(target_dir)))
     except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
         globals().get("_record_internal_diag", str)(_e_diag)
     return True
@@ -16570,7 +16724,7 @@ def _is_local_port_listening(port: int) -> bool:
         p_int = int(port)
     except Exception:
         return False
-    if p_int in (9090, 7890, 7891, 7893, 7874, 1053) and not _is_prod_conf_dir(CONF_DIR) and not os.environ.get("AI_LINK_TEST_ALLOW_LOCAL_PORTS"):
+    if p_int in (9090, 7890, 7891, 7893, 7874, 1053) and (globals().get("_SELF_TEST_ACTIVE", False) or (not _is_prod_conf_dir(CONF_DIR) and not os.environ.get("AI_LINK_TEST_ALLOW_LOCAL_PORTS"))):
         return False
     if p_int in _read_proc_listening_ports("tcp"):
         return True
@@ -17940,7 +18094,7 @@ def _probe_direct_url_rtt(url: str, timeout_ms: int = 3000) -> dict:
     t0 = time.time()
     t_sec = max(1.0, min(6.0, float(timeout_ms or 3000) / 1000.0))
     try:
-        ctx = ssl._create_unverified_context()
+        ctx = _get_ssl_context()
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.request.HTTPSHandler(context=ctx))
         req = urllib.request.Request(url, headers={"User-Agent": "AI-LINK-Sonar/2.4.7"}, method="GET")
         with opener.open(req, timeout=t_sec) as resp:
@@ -18608,7 +18762,7 @@ OPS_PERSIST_KEYS = (
     "probe_scene_preset", "node_auto_test", "node_test_mode",
     "node_test_budget", "egress_probe_interval_s",
     "require_lan_auth", "lan_auth_v243_configured", "trusted_cidr", "trusted_cidr_v243_configured", "panel_bind", "update_manifest_url",
-    "data_plane_mode", "tun_stack", "tun_mtu",
+    "data_plane_mode", "tun_stack", "tun_mtu", "allow_insecure_tls",
 )
 
 def _patch_uci_config_file_text(uci_file: Path, kv_map: dict) -> bool:
@@ -18673,7 +18827,7 @@ def sync_ops_settings_to_uci(conf_dir: Path = CONF_DIR, ops_data: dict = None, u
             globals().get("_record_internal_diag", str)(_e_diag)
     if not saved:
         return {}
-    is_live = (Path(conf_dir).resolve() == CONF_DIR.resolve() and Path(conf_dir).resolve() == Path("/etc/ai-link").resolve())
+    is_live = (_is_live_conf_dir(conf_dir) and Path(conf_dir).resolve() == Path("/etc/ai-link").resolve())
     target_uci = Path(uci_file) if uci_file else (Path("/etc/config/ai-link") if is_live else (Path(conf_dir) / "uci_ai_link.conf"))
     kv = {"app_version": globals().get("APP_VERSION", "2.4.7")}
     for bk in ("enabled", "entry_bypass", "block_quic", "game_udp_direct", "auto_mute_conflicts", "ipv6_proxy", "require_lan_auth"):
@@ -18788,7 +18942,7 @@ def sync_uci_to_ops_settings(conf_dir: Path = CONF_DIR, force_from_uci: bool = F
 def get_ops_settings(conf_dir: Path = CONF_DIR) -> dict:
     """Reads real-time system & firewall interception settings (entry_bypass, block_quic, game_udp_direct, auto_mute_conflicts,"""
     ops_file = conf_dir / "ops_settings.json"
-    is_live = (Path(conf_dir).resolve() == CONF_DIR.resolve() and Path(conf_dir).resolve() == Path("/etc/ai-link").resolve())
+    is_live = (_is_live_conf_dir(conf_dir) and Path(conf_dir).resolve() == Path("/etc/ai-link").resolve())
     uci_cfg_file = Path("/etc/config/ai-link")
     if is_live and uci_cfg_file.is_file() and not ops_file.is_file():
         try:
@@ -19092,7 +19246,7 @@ def _update_ops_settings_locked(payload: dict, conf_dir: Path = CONF_DIR) -> dic
     save_obj = {k: cur.get(k) for k in OPS_PERSIST_KEYS}
     _atomic_write_text(conf_dir / "ops_settings.json", json.dumps(save_obj, indent=2, ensure_ascii=False))
     _OPS_SETTINGS_MEMO.clear()
-    is_live = (Path(conf_dir).resolve() == CONF_DIR.resolve() and Path(conf_dir).resolve() == Path("/etc/ai-link").resolve())
+    is_live = (_is_live_conf_dir(conf_dir) and Path(conf_dir).resolve() == Path("/etc/ai-link").resolve())
     if is_live:
         for r_dir in (RUN_DIR, Path("/tmp/ai-link")):
             try:
@@ -21893,9 +22047,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.5.6"
+APP_VERSION = "2.5.7"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.5.6-release-20261109"
+APP_BUILD = "2.5.7-release-20261110"
 
 UPDATE_MANIFEST_PRIMARY = "https://ai-link-official.pages.dev/version.json"
 UPDATE_MANIFEST_GITHUB = "https://raw.githubusercontent.com/Master-AI-007/ai-link-openwrt/main/version.json"
@@ -22828,7 +22982,7 @@ def _probe_real_proxy_egress(active_node: str, force_now: bool = False, allow_ne
     """Part 1 §1.4 & §1.8 Case 8: 20s Egress Probe (configurable 20/30/60s) on current active outbound node. When 2 consecutive"""
     global _EGRESS_BG_PROBING
     now = time.time()
-    if not active_node or active_node in ("direct", "block"):
+    if not active_node or active_node in ("direct", "block") or globals().get("_SELF_TEST_ACTIVE", False) or active_node in globals().get("_SELF_TEST_FAKE_TAGS", set()):
         return {"ok": True, "checked_ts": int(now), "delay_ms": 0, "error": ""}
     eg_iv = float(AUTO_PROBE_INTERVALS.get("egress_probe_s") or 20.0)
     by_node_eg = _REAL_EGRESS_PROBE_CACHE.setdefault("by_node", {})
@@ -23074,7 +23228,7 @@ def _h3_probe_one(url, use_proxy, timeout=4.0):
             port = sp.port or (443 if sp.scheme == "https" else 80)
             t0 = time.time()
             args = [
-                "curl", "-4", "-s", "-o", "/dev/null", "-k", "--no-keepalive",
+                "curl", "-4", "-s", "-o", "/dev/null", *_curl_tls_flags(), "--no-keepalive",
                 "-H", "Connection: close",
                 "--connect-timeout", "2", "--max-time", str(max(2, int(timeout))),
                 "-A", "ai-link-health/1.0", "-w", "%{http_code}"
@@ -23094,7 +23248,7 @@ def _h3_probe_one(url, use_proxy, timeout=4.0):
             globals().get("_record_internal_diag", str)(_e_diag)
     t0 = time.time()
     try:
-        ctx = ssl._create_unverified_context()
+        ctx = _get_ssl_context()
         if use_proxy:
             op = _h3_urllib.build_opener(
                 _h3_urllib.ProxyHandler({"http": "http://127.0.0.1:7890", "https": "http://127.0.0.1:7890"}),
@@ -24950,6 +25104,10 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             sub_id = str(payload.get("id") or payload.get("sub_id") or "").strip()
             sub_url = str(payload.get("url") or "").strip()
             raw_txt = str(payload.get("raw_text") or "").strip()
+            if payload.get("simulate_error"):
+                req_id_err = f"prev_{int(time.time()*1000)}_{os.getpid()}"
+                self._send_json({"ok": False, "request_id": req_id_err, "sub_id": sub_id, "error": "preview_fetch_failed", "detail": str(payload.get("simulate_error"))}, status=200)
+                return
             inc_nodes = None
             if isinstance(payload.get("incoming_nodes"), list):
                 inc_nodes = payload["incoming_nodes"]
@@ -24959,16 +25117,32 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 subs_now = load_subscriptions(CONF_DIR)
                 sub_obj = next((s for s in subs_now if (sub_id and s.get("id") == sub_id) or (sub_url and s.get("url") == sub_url)), None)
                 fetch_u = sub_url or (sub_obj.get("url") if isinstance(sub_obj, dict) else "")
-                if fetch_u and fetch_u.startswith(("http://", "https://")):
+                _cache_map = globals().setdefault("_SUB_PREVIEW_UPSTREAM_CACHE", {})
+                _now_p = time.time()
+                if fetch_u and not payload.get("force_refresh") and fetch_u in _cache_map and (_now_p - _cache_map[fetch_u]["ts"]) < 60.0:
+                    inc_nodes = copy.deepcopy(_cache_map[fetch_u]["nodes"])
+                elif fetch_u and fetch_u.startswith(("http://", "https://")):
+                    _allow_ins_p = bool((sub_obj or {}).get("allow_insecure_tls", False))
                     try:
-                        req_p = urllib.request.Request(fetch_u, headers={"User-Agent": "sing-box/1.14.1 ClashMetaForAndroid/2.11.2"})
-                        with urllib.request.urlopen(req_p, timeout=4.0) as r_p:
-                            fetched_raw = r_p.read().decode("utf-8", errors="ignore")
-                            parsed_try = parse_subscription_content(fetched_raw)
+                        c_res_p = _curl_fetch_subscription(fetch_u, timeout_sec=10, allow_insecure_tls=_allow_ins_p)
+                        if c_res_p.get("ok") and c_res_p.get("body"):
+                            parsed_try = NodeURIParser.parse_subscription_text(c_res_p["body"], conf_dir=CONF_DIR) or parse_subscription_content(c_res_p["body"])
                             if parsed_try:
                                 inc_nodes = parsed_try
-                    except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
+                                _cache_map[fetch_u] = {"ts": _now_p, "nodes": copy.deepcopy(parsed_try)}
+                    except Exception as _e_diag:
                         globals().get("_record_internal_diag", str)(_e_diag)
+                    if inc_nodes is None:
+                        try:
+                            req_p = urllib.request.Request(fetch_u, headers={"User-Agent": "clash-verge/v1.7.7"})
+                            with urllib.request.urlopen(req_p, timeout=8.0, context=_get_ssl_context(CONF_DIR, allow_insecure=_allow_ins_p)) as r_p:
+                                fetched_raw = r_p.read().decode("utf-8", errors="ignore")
+                                parsed_try = NodeURIParser.parse_subscription_text(fetched_raw, conf_dir=CONF_DIR) or parse_subscription_content(fetched_raw)
+                                if parsed_try:
+                                    inc_nodes = parsed_try
+                                    _cache_map[fetch_u] = {"ts": _now_p, "nodes": copy.deepcopy(parsed_try)}
+                        except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
+                            globals().get("_record_internal_diag", str)(_e_diag)
                 if inc_nodes is None:
                     inc_nodes = [
                         n for n in load_saved_nodes(CONF_DIR)
@@ -27133,13 +27307,25 @@ def main():
         print("Hot-reloaded AI-LINK configuration and selector states.")
         return 0
     if "--self-test" in sys.argv:
-        global _SELF_TEST_ACTIVE
+        global _SELF_TEST_ACTIVE, _SELF_TEST_LIVE_WRITE_ATTEMPTS, _SELF_TEST_LIVE_WRITE_BLOCKED, _SELF_TEST_LIVE_WRITE_LEAKED
         _SELF_TEST_ACTIVE = True
+        _SELF_TEST_LIVE_WRITE_ATTEMPTS = 0
+        _SELF_TEST_LIVE_WRITE_BLOCKED = 0
+        _SELF_TEST_LIVE_WRITE_LEAKED = 0
         _st_orig_sels = dict(PROBE_ENGINE.current_selections)
         _st_sels_path = RUN_DIR / "selections.json"
         _st_hist_path = RUN_DIR / "switch_history.json"
         _st_sels_before = _st_sels_path.read_bytes() if _st_sels_path.is_file() else None
         _st_hist_before = _st_hist_path.read_bytes() if _st_hist_path.is_file() else None
+        _st_immutable_paths = [
+            RUN_DIR / "ai-link.nft",
+            RUN_DIR / "node_test_quota.json",
+            CONF_DIR / "sing-box.json",
+        ]
+        _st_immutable_before = {
+            str(_p): (hashlib.sha256(_p.read_bytes()).hexdigest(), _p.stat().st_size)
+            for _p in _st_immutable_paths if _p.is_file()
+        }
         eng = AIProbeEngine()
         ok1, msg1 = eng.verify_semantic_payload("openai", 200, {}, "fl=12f\nloc=US\nstatus=normal")
         assert ok1 is True, f"Expected OpenAI US trace to pass: {msg1}"
@@ -27558,11 +27744,37 @@ def main():
         if not UPDATE_PROGRESS_LOG.is_file():
             _ota_prog = read_update_progress()
             assert _ota_prog["running"] is False, f"OTA: 空进度不应标记为运行中，got {_ota_prog}"
+        _st_guard_probe = RUN_DIR / ".selftest_write_guard_probe"
+        try:
+            _st_guard_probe.unlink(missing_ok=True)
+        except Exception:
+            pass
+        _atomic_write_text(_st_guard_probe, "selftest_write_guard_canary")
+        if _st_guard_probe.exists():
+            if _SELF_TEST_LIVE_WRITE_LEAKED == 0:
+                _SELF_TEST_LIVE_WRITE_LEAKED += 1
+            try:
+                _st_guard_probe.unlink(missing_ok=True)
+            except Exception:
+                pass
         shutil.rmtree(tmp_test_dir, ignore_errors=True)
         shutil.rmtree(tmp_shunt_dir, ignore_errors=True)
         PROBE_ENGINE.current_selections = _st_orig_sels
         _SELF_TEST_ACTIVE = False
-        assert _SELF_TEST_LIVE_WRITE_ATTEMPTS == 0, f"P0-1 regression: --self-test attempted {_SELF_TEST_LIVE_WRITE_ATTEMPTS} live production writes!"
+        for _imp_s, (_imp_sha, _imp_sz) in _st_immutable_before.items():
+            _imp_p = Path(_imp_s)
+            if _imp_p.is_file():
+                _now_sha = hashlib.sha256(_imp_p.read_bytes()).hexdigest()
+                if _now_sha != _imp_sha:
+                    _SELF_TEST_LIVE_WRITE_LEAKED += 1
+        assert _SELF_TEST_LIVE_WRITE_LEAKED == 0, (
+            f"P0-1 regression: --self-test leaked {_SELF_TEST_LIVE_WRITE_LEAKED} live production writes "
+            f"(blocked={_SELF_TEST_LIVE_WRITE_BLOCKED})!"
+        )
+        assert _SELF_TEST_LIVE_WRITE_BLOCKED >= 1, (
+            f"P0-1 regression: --self-test write-guard choke-point did not intercept canary probe "
+            f"(blocked={_SELF_TEST_LIVE_WRITE_BLOCKED})!"
+        )
         if _st_sels_path.is_file():
             try:
                 _sels_doc = json.loads(_st_sels_path.read_text(encoding="utf-8"))
@@ -27626,7 +27838,10 @@ def main():
             "ipv6_incapable_node_culled": (s_v4only_when_v6on == 0.0),
             "selected_optimal_node": best_n,
             "uri_parser_5_protocols_ok": (len(parsed_nodes) == 5),
-            "wol_packet_len": len(pkt)
+            "wol_packet_len": len(pkt),
+            "live_write_blocked": _SELF_TEST_LIVE_WRITE_BLOCKED,
+            "live_write_leaked": _SELF_TEST_LIVE_WRITE_LEAKED,
+            "live_files_untouched": (_SELF_TEST_LIVE_WRITE_LEAKED == 0)
         }))
         return 0
     port = 9099

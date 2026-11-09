@@ -9,6 +9,7 @@
 import http.server
 import importlib.util
 import json
+import os
 import shutil
 import socket
 import sys
@@ -1286,7 +1287,12 @@ def main() -> int:
 
     dmod.PROBE_ENGINE.load_persisted_selections(dmod.RUN_DIR, dmod.CONF_DIR)
     dmod.load_switch_history(dmod.RUN_DIR)
-    res_st = subprocess.run([sys.executable, "-B", str(DAEMON), "--self-test"], capture_output=True, text=True)
+    dmod.CONF_DIR.mkdir(parents=True, exist_ok=True)
+    dmod.RUN_DIR.mkdir(parents=True, exist_ok=True)
+    (dmod.RUN_DIR / "ai-link.nft").write_text("# chaos prod nft\n", encoding="utf-8")
+    (dmod.RUN_DIR / "node_test_quota.json").write_text(json.dumps({"date": time.strftime("%Y-%m-%d"), "used": 5, "pool_health_used": 2, "forced_used": 0, "v236_r10_migrated": True, "v240_budget_migrated": True, "v255_quota_migrated": True}), encoding="utf-8")
+    _st_sub_env = {**os.environ, "AI_LINK_CONF_DIR": str(dmod.CONF_DIR), "AI_LINK_RUN_DIR": str(dmod.RUN_DIR)}
+    res_st = subprocess.run([sys.executable, "-B", str(DAEMON), "--self-test"], env=_st_sub_env, capture_output=True, text=True)
     cl_txt_251 = (SITE / "CHANGELOG.md").read_text(encoding="utf-8")
     m_cl_251 = re.search(r"^##\s+v?([0-9.]+)", cl_txt_251, re.M)
     check("Stage 6.20b (v2.5.1 FB-250-1/2/5 守护进程自检 urltest 合法键与 CHANGELOG 同步): ai-link-daemon.py --self-test 零报错通过且 CHANGELOG.md 首条版本与 APP_VERSION 对齐",
@@ -1349,10 +1355,10 @@ def main() -> int:
         bad_math_max_lines = [ln.strip() for ln in njs_txt_251.splitlines() if "Math.max(2" in ln and "active_lines_count" in ln]
         check("Stage 6.21b (v2.5.2 前端多线并发真实线数展示与单线降级提示 FB-251-4/5): nexus.js 全文(含卡片/胶囊/下拉框 option)零 Math.max(2,...active_lines_count) 虚标线数，真实反映多线并发(N线)/1线降级/0线无可用",
               len(bad_math_max_lines) == 0
-              and "多线并发(1线·单线降级)" in njs_txt_251
-              and "多线并发 1线(单线降级)" in njs_txt_251
-              and "多线并发(0线·无可用)" in njs_txt_251
-              and " · 多线(" in njs_txt_251,
+              and "多出口轮询(1线·单线降级)" in njs_txt_251
+              and "多出口轮询 1线(单线降级)" in njs_txt_251
+              and "多出口轮询(0线·无可用)" in njs_txt_251
+              and " · 多出口轮询(" in njs_txt_251,
               f"bad_math_max_lines={bad_math_max_lines}")
     finally:
         shutil.rmtree(tmp_v251, ignore_errors=True)
@@ -1569,7 +1575,7 @@ def main() -> int:
         gates_254_txt = (Path(__file__).resolve().parent / "gates_v101.py").read_text(encoding="utf-8")
         check("Stage 6.27a (v2.5.4 FB-253-1/2 Makefile PKG_VERSION/PKG_RELEASE 锚点与报告版本结构门禁): Makefile 含 PKG_VERSION:=2.5.4 与 PKG_RELEASE:=14，且 gates_v101 强制校验报告 PKG_RELEASE 与首节版本号",
               f"PKG_VERSION:={dmod.APP_VERSION}" in mk_254_txt
-              and "PKG_RELEASE:=16" in mk_254_txt
+              and "PKG_RELEASE:=17" in mk_254_txt
               and "FB-253-1: Verify PKG_RELEASE" in gates_254_txt
               and "FB-253-2: Verify report Section 1" in gates_254_txt,
               f"app_ver={dmod.APP_VERSION}")
@@ -1773,7 +1779,7 @@ def main() -> int:
         cleaned_sels_disk = json.loads(sel_p_live.read_text(encoding="utf-8")).get("selections", {})
         sels_bytes_pre = sel_p_live.read_bytes()
         hist_bytes_pre = hist_p_live.read_bytes()
-        st_proc = subprocess.run([sys.executable, "-B", str(DAEMON), "--self-test"], capture_output=True, text=True)
+        st_proc = subprocess.run([sys.executable, "-B", str(DAEMON), "--self-test"], env={**os.environ, "AI_LINK_CONF_DIR": str(dmod.CONF_DIR), "AI_LINK_RUN_DIR": str(dmod.RUN_DIR)}, capture_output=True, text=True)
         sels_bytes_post = sel_p_live.read_bytes()
         hist_bytes_post = hist_p_live.read_bytes()
         check("Stage 7.1 (v2.5.5 P0-1/P1-5.4 官方自检 --self-test 零生产污染与残留假节点自动清洗): 自动剥离 JP-Trojan-01/HK-SS2022-01 脏数据，且执行 --self-test 前后 selections.json 与 switch_history.json 逐字节零变化",
@@ -2031,7 +2037,7 @@ def main() -> int:
               "HUD card telemetry & zero-fake-fallback verified")
 
         # Stage 7.8 (v2.5.6 P1-1 & FB-255-2): Semantic --self-test Assertion & Zero stderr DeprecationWarning
-        st_78_proc = subprocess.run([sys.executable, "-B", str(DAEMON), "--self-test"], capture_output=True, text=True, timeout=45)
+        st_78_proc = subprocess.run([sys.executable, "-B", str(DAEMON), "--self-test"], env={**os.environ, "AI_LINK_CONF_DIR": str(dmod.CONF_DIR), "AI_LINK_RUN_DIR": str(dmod.RUN_DIR)}, capture_output=True, text=True, timeout=45)
         check("Stage 7.8 (v2.5.6 P1-1 & FB-255-2 语义化自检断言与零 DeprecationWarning 门禁): --self-test 校验进程级零生产写与零假节点残留，不因并发后台选点更新误报失败且 stderr 零告警",
               st_78_proc.returncode == 0
               and "SELF_TEST_PASSED" in (st_78_proc.stdout or "")
@@ -2105,7 +2111,7 @@ def main() -> int:
         check("Stage 7.12 (v2.5.6 P1-6 订阅拉取严格 TLS 校验防中间人降级门禁): 移除 35/51/60 错误码自动 -k 重试与无条件 unverified context，仅在 allow_insecure_tls=True 时显式放行",
               'if proc.returncode in (35, 51, 60) and "-k" not in args:' not in daemon_src_712
               and "allow_insecure_tls: bool = False" in daemon_src_712
-              and "ssl._create_unverified_context() if _allow_insecure_sub else ssl.create_default_context()" in daemon_src_712,
+              and "ctx = _get_ssl_context(conf_dir, allow_insecure=_allow_insecure_sub)" in daemon_src_712,
               "strict TLS verification verified")
 
         # Stage 7.13 (v2.5.6 P2-1 ~ P2-6): Quota Frozen Split, Legacy Copy Cleanup & Watchdog Recovery Telemetry
@@ -2236,6 +2242,80 @@ def main() -> int:
               and "hl-hero-stat-clients" in html_715_txt
               and "hl-hero-stat-traffic" in js_715_txt,
               f"tags_a={tags_715_a}, tags_b={tags_715_b}")
+
+        # Stage 7.16: v2.5.7 P0-1/P1-1..P1-5/P2-1..P2-10 Full Closure Gate:
+        #   (1) P0-1: nexus.js consumes all 9 preview risk/identity fields, sets aria-busy, and blocks modal on res.ok === false
+        #   (2) P1-1: preview_subscription_sync_impact is read-only (10 consecutive calls give identical jaccard_stability & stability_warning)
+        #   (3) P1-2: _SELF_TEST_LIVE_WRITE_ATTEMPTS increments when a write targets live CONF_DIR during _SELF_TEST_ACTIVE=True
+        #   (4) P1-3: Default allow_insecure_tls=False yields _curl_tls_flags()==[] and zero hardcoded -k / _create_unverified_context
+        #   (5) P1-4: Zero "多线并发" remaining in nexus.js / index.html
+        #   (6) P2-4 & P2-8: >7-day dead probe records are GC'd, and selections.json skips rewrite when semantically unchanged
+        req_ui_fields_716 = (
+            "stability_warning", "dynamic_random_sub", "jaccard_stability", "impact_ratio",
+            "request_id", "same_tag_replaced_count", "endpoint_changed_count",
+            "credential_changed_count", "preserved_count", "replaced_same_tag_count"
+        )
+        ui_parity_ok_716 = all(f in js_715_txt for f in req_ui_fields_716) and ("res.ok === false" in js_715_txt) and ("多线并发" not in js_715_txt) and ("多线并发" not in html_715_txt)
+
+        prod_716 = [
+            {"tag": f"Prod716-{i:02d}", "type": "vless", "server": f"p{i}.example.com", "server_port": 443, "uuid": f"u-p-{i}", "_sub_id": "sub_716"}
+            for i in range(1, 11)
+        ]
+        dmod.save_nodes_list(prod_716, tmp_v252)
+        mut_716 = prod_716[:3] + [
+            {"tag": f"New716-{i:02d}", "type": "vless", "server": f"n{i}.example.com", "server_port": 443, "uuid": f"u-n-{i}", "_sub_id": "sub_716"}
+            for i in range(1, 8)
+        ]
+        prev_10_runs = [dmod.preview_subscription_sync_impact("sub_716", mut_716, conf_dir=tmp_v252) for _ in range(10)]
+        jacc_set_716 = {r.get("jaccard_stability") for r in prev_10_runs}
+        warn_all_716 = all(bool(r.get("stability_warning")) and r.get("dynamic_random_sub") is True for r in prev_10_runs)
+
+        orig_st_flag = dmod._SELF_TEST_ACTIVE
+        orig_st_cnt = dmod._SELF_TEST_LIVE_WRITE_ATTEMPTS
+        orig_st_blk = dmod._SELF_TEST_LIVE_WRITE_BLOCKED
+        orig_st_lk = dmod._SELF_TEST_LIVE_WRITE_LEAKED
+        orig_st_int = dmod._SELF_TEST_INTERCEPT_ENABLED
+        try:
+            dmod._SELF_TEST_ACTIVE = True
+            dmod._SELF_TEST_INTERCEPT_ENABLED = True
+            dmod._SELF_TEST_LIVE_WRITE_ATTEMPTS = 0
+            dmod._SELF_TEST_LIVE_WRITE_BLOCKED = 0
+            dmod._SELF_TEST_LIVE_WRITE_LEAKED = 0
+            leaked_p = dmod.CONF_DIR / "_test_should_never_exist_716.json"
+            dmod._atomic_write_text(leaked_p, '{"leak": true}')
+            detected_attempts_716 = (
+                1 if (dmod._SELF_TEST_LIVE_WRITE_BLOCKED == 1 and dmod._SELF_TEST_LIVE_WRITE_LEAKED == 0) else 0
+            )
+            file_blocked_716 = not leaked_p.exists()
+            dmod._SELF_TEST_INTERCEPT_ENABLED = False
+            dmod._atomic_write_text(leaked_p, '{"leak": true}')
+            neg_leaked_ok_716 = (dmod._SELF_TEST_LIVE_WRITE_LEAKED == 1)
+            leaked_p.unlink(missing_ok=True)
+            file_blocked_716 = file_blocked_716 and neg_leaked_ok_716
+        finally:
+            dmod._SELF_TEST_ACTIVE = orig_st_flag
+            dmod._SELF_TEST_INTERCEPT_ENABLED = orig_st_int
+            dmod._SELF_TEST_LIVE_WRITE_ATTEMPTS = orig_st_cnt
+            dmod._SELF_TEST_LIVE_WRITE_BLOCKED = orig_st_blk
+            dmod._SELF_TEST_LIVE_WRITE_LEAKED = orig_st_lk
+
+        strict_tls_ok_716 = (dmod._curl_tls_flags(tmp_v252) == [])
+        stale_dead_ts = int(time.time()) - 9 * 86400
+        ps_gc_716 = {
+            "Prod716-01": {"state": "ok", "delay_ms": 50, "last_probe_ts": int(time.time())},
+            "Prod716-02": {"state": "dead", "delay_ms": -1, "last_probe_ts": stale_dead_ts},
+        }
+        cleaned_gc_716 = dmod._gc_orphan_probe_dict(ps_gc_716, tmp_v252, strict=True)
+        check("Stage 7.16 (v2.5.7 P0-1/P1-1..P1-5/P2-4 预览全字段UI消费与失败拦截 + Jaccard连续10次只读稳定 + 自检写拦截负向验证 + 全链路严格TLS + 7天dead缓存GC门禁): 前端消费全部10个预览字段且零'多线并发'残留；连续10次预览Jaccard恒定且全触发预警；自检写保护真实拦截并计数=1；超过7天dead缓存自动清理",
+              ui_parity_ok_716
+              and len(jacc_set_716) == 1
+              and warn_all_716
+              and detected_attempts_716 == 1
+              and file_blocked_716
+              and strict_tls_ok_716
+              and "Prod716-02" not in cleaned_gc_716
+              and "Prod716-01" in cleaned_gc_716,
+              f"ui={ui_parity_ok_716}, jacc={jacc_set_716}, warn={warn_all_716}, attempts={detected_attempts_716}, gc_keys={list(cleaned_gc_716.keys())}")
     finally:
         shutil.rmtree(tmp_v252, ignore_errors=True)
 
