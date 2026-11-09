@@ -18,7 +18,7 @@
         <circle cx="20" cy="20" r="5.4" fill="none" stroke="#a994ff" stroke-width="1.6"/>
         <circle cx="20" cy="20" r="1.8" fill="#6ee7f5"/>
       </svg>
-      <span style="display:block"><b>AI-LINK</b><span>NEXUS · 2.5.5</span></span>
+      <span style="display:block"><b>AI-LINK</b><span>NEXUS · v2.5.5</span></span>
     </a>
     <div class="nav-links">
       <a href="/#features">核心能力</a>
@@ -36,7 +36,7 @@
 <main class="wrap log-wrap">
   <div class="log-head">
     <h1>更新日志</h1>
-    <span class="pill"><i></i> 当前最新 2.5.5</span>
+    <span class="pill"><i></i> 当前最新 v2.5.5</span>
   </div>
 <article class="log-item latest">
   <div class="log-top">
@@ -46,7 +46,7 @@
   </div>
   <p style="margin:2px 0 6px;color:var(--dim)"></p>
 <h3>节点池专项复审计（P0-1~P0-5 &amp; P1-5.1~5.9）</h3>
-<ul><li><b>自检 100% 生产隔离</b>：新增 <code>_SELF_TEST_ACTIVE</code> 与 <code>_is_live_conf_dir</code> 守卫，自检态严禁写 <code>selections.json</code> / <code>switch_history.json</code> 或调用 Clash API；启动/加载时自动清洗残留假节点（<code>JP-Trojan-01</code> / <code>HK-SS2022-01</code>），实测脏数据重启后残留 0。</li><li><b>探测预算双轨拆分</b>：池健康巡检与日常探索分开记账，500+ 节点库自动扩容；<code>on_egress_fail()</code> 故障复验 <code>force=True</code> 免配额穿透，不再被旧缓存阻断切换。</li><li><b>真实探测新鲜度</b>：新增 <code>last_real_probe_ts</code> / <code>probe_stale</code> / <code>fresh_ok_count</code> / <code>quota_status</code>，池内延迟不再可能是过期数据。</li><li><b>多线池 Selector 1 对 1 唯一归属</b>：修复跨池抢占；轮换驻留收敛为 30s（故障仍秒切）。</li><li><b>文案如实</b>：前端改为「多出口轮询（实验，不叠加单流带宽）」；<code>Auto_Auto_AI</code> 归一为 <code>Auto_AI</code>。</li><li><b>四项出包标准保持</b>：夹具整棵随包、四列指纹定稿注入、自检沙箱、零补发 15 套全量回归；Design Lint 18/18、门禁 17/17。</li><li>已知边界：设备若存在历史残留假节点，<b>直接</b>跑自检可能报错一次（自愈与零污染断言冲突），重启服务或再跑一次即恢复，不影响代理与面板。</li></ul>
+<ul><li><b>自检 100% 生产隔离</b>：新增 <code>_SELF_TEST_ACTIVE</code> 与 <code>_is_live_conf_dir</code> 守卫，自检态严禁写 <code>selections.json</code> / <code>switch_history.json</code> 或调用 Clash API；启动/加载时自动清洗残留假节点（<code>JP-Trojan-01</code> / <code>HK-SS2022-01</code>），实测脏数据重启后残留 0。</li><li><b>探测预算双轨拆分</b>：池健康巡检与日常探索分开记账，500+ 节点库自动扩容；<code>on_egress_fail()</code> 故障复验 <code>force=True</code> 免配额穿透，不再被旧缓存阻断切换。</li><li><b>真实探测新鲜度</b>：新增 <code>last_real_probe_ts</code> / <code>probe_stale</code> / <code>fresh_ok_count</code> / <code>quota_status</code>，池内延迟不再可能是过期数据。</li><li><b>多线池 Selector 1 对 1 唯一归属</b>：修复跨池抢占；轮换驻留收敛为 30s（故障仍秒切）。</li><li><b>文案如实</b>：前端改为「多出口轮询（实验，不叠加单流带宽）」；<code>Auto_Auto_AI</code> 归一为 <code>Auto_AI</code>。</li><li><b>四项出包标准保持</b>：夹具整棵随包、四列指纹定稿注入、自检沙箱、零补发 15 套全量回归；Design Lint 18/18、门禁 17/17。</li><li>已知边界：设备若存在历史残留假节点，<b>直接</b>跑自检可能报错一次（自愈与零污染断言冲突），重启服务或再跑一次即恢复，不影响代理与面板。</li><li>同版本热修（2026-11-09 18:55）：修复 P0-1「脏数据自愈」与「--self-test 零污染断言」互斥（设备存在历史残留假节点时直接跑自检会报错一次）；静态资源指纹同步更新。版本号未变，现网 2.5.5 设备需手动重装以获取修订包（OTA 不会提示）。</li></ul>
 </article>
 <article class="log-item">
   <div class="log-top">

@@ -1371,7 +1371,7 @@
         const g1Tags = (p.groups && p.groups[0] && Array.isArray(p.groups[0].node_tags)) ? p.groups[0].node_tags : [];
         const targetCap = Math.max(1, Math.min(10, Number(p.target_size || g1Tags.length || 5)));
         const repThresh = Math.max(1, Math.min(targetCap, Number(p.replenish_threshold != null ? p.replenish_threshold : Math.max(1, Math.ceil(targetCap / 2)))));
-        const healthyCnt = Math.min(targetCap, Number(p.healthy_count != null ? p.healthy_count : (g1Tags.length || 4)));
+        const healthyCnt = Math.min(targetCap, Number(p.healthy_count != null ? p.healthy_count : (p.pool_reachable_count != null ? p.pool_reachable_count : g1Tags.length)));
         const hasSvcCheck = Boolean(p.service_check_enabled && p.service_checks && p.service_checks.length);
         const svcTag = hasSvcCheck
           ? ('建池/复选验证: ' + p.service_checks.join('/').toUpperCase())
@@ -1414,7 +1414,10 @@
         const latBadgeCompact = isDirectPool
           ? '<span class="lat-badge direct">直连 WAN</span>'
           : (curMs != null && curMs > 0 ? formatLatencyBadge(curMs, 'ok', false) : '<span class="lat-badge pending">--</span>');
-        const tipDetail = '节点池：' + p.name + '\n来源范围：' + srcLabel + '\n国家区域：' + ctryLabel + '\n检测策略：' + svcTag + '\n复选阈值：健康低于 ' + repThresh + ' 个自动补齐';
+        const realProbeStr = (p.last_real_probe_ts && Number(p.last_real_probe_ts) > 0) ? new Date(Number(p.last_real_probe_ts) * 1000).toLocaleTimeString('zh-CN', { hour12: false }) : '待探测';
+        const quotaInfoStr = (p.quota_status && p.quota_status.pool_health_budget) ? (Number(p.quota_status.pool_health_used || 0) + '/' + Number(p.quota_status.pool_health_budget)) : '充裕';
+        const verSvcStr = (p.verified_service_count != null) ? (Number(p.verified_service_count) + '/' + g1Tags.length) : '--';
+        const tipDetail = '节点池：' + p.name + '\n来源范围：' + srcLabel + '\n国家区域：' + ctryLabel + '\n检测策略：' + svcTag + '\nL7已验证：' + verSvcStr + ' · 最近实测：' + realProbeStr + '\n巡检配额：' + quotaInfoStr + ' · 复选阈值：低于 ' + repThresh + ' 个自动补齐';
         const isMenuOpen = state.openPoolMenuIdx != null && Number(state.openPoolMenuIdx) === idx;
         return '<div class="auto-pool hud-pool-card ' + cardStateCls + (isMenuOpen ? ' menu-open' : '') + '" title="' + esc(tipDetail) + '">' +
           '<div class="hud-pool-top">' +
@@ -1423,7 +1426,7 @@
               '<b title="' + esc(p.name) + '">' + esc(p.name) + '</b>' +
               '<button type="button" class="hud-help-btn" data-action="show-pool-help" data-pool-idx="' + idx + '" title="' + esc(tipDetail) + '" aria-label="查看节点池规则详情">?</button>' +
             '</div>' +
-            (p.l7_degraded ? '<span class="l7-degraded-badge" title="L7 目标服务尚未全部验证通过，当前使用连通性保底">L7 待验证</span>' : '') + (p.quarantine_break_glass ? '<span class="l7-degraded-badge" title="半开破冰恢复：已启用恢复连通的原隔离节点">半开破冰</span>' : '') + (p.unbound_pool_warning ? '<span class="l7-degraded-badge" title="该专用池尚未被任何自动分流策略组绑定">未绑定</span>' : '') + '<span class="' + pillCls + '" style="flex-shrink:0">' + esc(shortPillTxt) + '</span>' +
+            (p.l7_degraded ? '<span class="l7-degraded-badge" title="L7 目标服务尚未全部验证通过，当前使用连通性保底">L7 待验证</span>' : '') + (p.quarantine_break_glass ? '<span class="l7-degraded-badge" title="半开破冰恢复：已启用恢复连通的原隔离节点">半开破冰</span>' : '') + (p.cooldown_break_glass ? '<span class="l7-degraded-badge" title="冷却破冰恢复：池内节点均处于风控冷却，已临时启用连通节点">冷却破冰</span>' : '') + (p.probe_stale ? '<span class="l7-degraded-badge" title="池内节点最近一次真实探测已超过 1 小时，等待后台巡检刷新">缓存待刷</span>' : '') + (p.unbound_pool_warning ? '<span class="l7-degraded-badge" title="该专用池尚未被任何自动分流策略组绑定">未绑定</span>' : '') + '<span class="' + pillCls + '" style="flex-shrink:0">' + esc(shortPillTxt) + '</span>' +
           '</div>' +
           '<div class="hud-pool-mid">' +
             (function() {

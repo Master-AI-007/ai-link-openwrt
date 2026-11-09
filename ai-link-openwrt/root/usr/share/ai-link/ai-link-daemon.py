@@ -6437,6 +6437,7 @@ def maintain_auto_node_pool_health(an: dict, saved_nodes: list = None, store: di
     in_scope_tag_set = {n_c.get("tag", "") for n_c in cands if isinstance(n_c, dict) and n_c.get("tag")}
 
     surviving_tags = []
+    verified_surviving_tags = []
     for t in cur_tags:
         if t not in in_scope_tag_set:
             continue
@@ -6447,31 +6448,66 @@ def maintain_auto_node_pool_health(an: dict, saved_nodes: list = None, store: di
         rec = store.get(nid) or store.get(t) or {}
         ev = evaluate_node_selectability(n_obj, store=store, subs_list=subs_list, now_ts=now_ts, conf_dir=conf_dir)
         _q_until_m = int(rec.get("quarantine_until") or 0)
-        in_quar = bool(_q_until_m > now_ts or int(rec.get("cooldown_until") or 0) > now_ts or (_q_until_m == 0 and int(rec.get("consecutive_fail") or 0) >= 3))
+        _c_until_m = max(int(rec.get("cooldown_until") or 0), int(rec.get("rate_limited_until") or 0))
+        in_quar = bool(_q_until_m > now_ts or _c_until_m > now_ts or (_q_until_m == 0 and int(rec.get("consecutive_fail") or 0) >= 3))
         c5_s = classify_node_country_5plus1(t, n_obj)
         g_reg_s = get_node_google_region_info(n_obj, rec)
         if need_ai_region and (g_reg_s["region_blocked"] or c5_s in UNSUPPORTED_AI_REGIONS):
             continue
+        _m_svc_ver = True
         if is_svc_mode and svc_checks:
             rec_svc_s = rec.get("svc") if isinstance(rec.get("svc"), dict) else {}
             _svc_logic_m = "any" if (an.get("service_logic") == "any" or an.get("match_mode") == "any") else "all"
-            _s_tested = [rec_svc_s.get(sid) for sid in svc_checks if isinstance(rec_svc_s.get(sid), dict) and "HTTP_204_NOT_IN_" not in str(rec_svc_s.get(sid).get("reason") or "")]
+            _s_tested = []
+            for sid in svc_checks:
+                _se = rec_svc_s.get(sid) or (rec_svc_s.get("openai") if sid == "chatgpt" else (rec_svc_s.get("chatgpt") if sid == "openai" else None))
+                if isinstance(_se, dict) and "HTTP_204_NOT_IN_" not in str(_se.get("reason") or ""):
+                    _sts = int(_se.get("ts") or _se.get("probe_ts") or 0)
+                    if _sts <= 0 or (now_ts - _sts) <= 86400:
+                        _s_tested.append(_se)
             if _svc_logic_m == "any":
                 if _s_tested and not any(x.get("ok") is True for x in _s_tested) and all(x.get("ok") is False for x in _s_tested):
                     continue
+                _m_svc_ver = bool(any(x.get("ok") is True for x in _s_tested))
             else:
                 if any(x.get("ok") is False for x in _s_tested):
                     continue
+                _m_svc_ver = bool(len(_s_tested) == len(svc_checks) and all(x.get("ok") is True for x in _s_tested))
         if ev["state"] == "ok" and ev["delay_ms"] > 0 and not in_quar:
             surviving_tags.append(t)
+            if _m_svc_ver:
+                verified_surviving_tags.append(t)
 
     # Check replenish_threshold: only trigger external re-selection when healthy nodes in pool drop below replenish_threshold
-    # (if replenish_threshold was not explicitly set on legacy pool dict, default to target_size so any dead node triggers replenishment)
+    # or when a service_check pool has unverified members while verified external candidates exist in scope.
     rep_thresh = int(an.get("replenish_threshold") if an.get("replenish_threshold") is not None else target_size)
     rep_thresh = max(1, min(target_size, rep_thresh))
-    if len(surviving_tags) >= rep_thresh and len(surviving_tags) == len(cur_tags):
+    _has_ext_verified = False
+    if is_svc_mode and svc_checks and len(verified_surviving_tags) < len(surviving_tags):
+        _svc_logic_ext = "any" if (an.get("service_logic") == "any" or an.get("match_mode") == "any") else "all"
+        for _nc in cands:
+            _tc = _nc.get("tag", "")
+            if not _tc or _tc in cur_tags:
+                continue
+            _nidc = _nc.get("node_id") or compute_node_id(_nc)
+            _recc = store.get(_nidc) or store.get(_tc) or {}
+            _evc = evaluate_node_selectability(_nc, store=store, subs_list=subs_list, now_ts=now_ts, conf_dir=conf_dir)
+            if _evc["state"] != "ok" or _evc["delay_ms"] <= 0:
+                continue
+            _rsvcc = _recc.get("svc") if isinstance(_recc.get("svc"), dict) else {}
+            _t_ext = []
+            for sid in svc_checks:
+                _se2 = _rsvcc.get(sid) or (_rsvcc.get("openai") if sid == "chatgpt" else (_rsvcc.get("chatgpt") if sid == "openai" else None))
+                if isinstance(_se2, dict) and "HTTP_204_NOT_IN_" not in str(_se2.get("reason") or ""):
+                    _sts2 = int(_se2.get("ts") or _se2.get("probe_ts") or 0)
+                    if _sts2 <= 0 or (now_ts - _sts2) <= 86400:
+                        _t_ext.append(_se2)
+            if (_svc_logic_ext == "any" and any(x.get("ok") is True for x in _t_ext)) or (_svc_logic_ext == "all" and len(_t_ext) == len(svc_checks) and all(x.get("ok") is True for x in _t_ext)):
+                _has_ext_verified = True
+                break
+    if len(surviving_tags) >= rep_thresh and len(surviving_tags) == len(cur_tags) and not _has_ext_verified:
         return False
-    if len(surviving_tags) >= rep_thresh and len(surviving_tags) > 0 and an.get("replenish_threshold") is not None:
+    if len(surviving_tags) >= rep_thresh and len(surviving_tags) > 0 and an.get("replenish_threshold") is not None and not _has_ext_verified:
         # Healthy node count is still >= replenish_threshold: prune explicitly dead/deleted nodes in-place without triggering heavy external re-screening,
         # while preserving state=="ok" nodes that are only in temporary quarantine/cooldown!
         non_dead_tags = []
@@ -6531,34 +6567,48 @@ def maintain_auto_node_pool_health(an: dict, saved_nodes: list = None, store: di
                 g_reg = get_node_google_region_info(n_obj, rec)
                 if need_ai_region and g_reg["region_blocked"]:
                     continue
-            _tested_c = [
-                rec_svc.get(sid) for sid in svc_checks
-                if isinstance(rec_svc.get(sid), dict) and "HTTP_204_NOT_IN_" not in str(rec_svc.get(sid).get("reason") or "")
-            ]
+            _tested_c = []
+            for sid in svc_checks:
+                _sec = rec_svc.get(sid) or (rec_svc.get("openai") if sid == "chatgpt" else (rec_svc.get("chatgpt") if sid == "openai" else None))
+                if isinstance(_sec, dict) and "HTTP_204_NOT_IN_" not in str(_sec.get("reason") or ""):
+                    _stsc = int(_sec.get("ts") or _sec.get("probe_ts") or 0)
+                    if _stsc <= 0 or (now_ts - _stsc) <= 86400:
+                        _tested_c.append(_sec)
             if _svc_logic_c == "any":
                 if _tested_c and not any(x.get("ok") is True for x in _tested_c) and all(x.get("ok") is False for x in _tested_c):
                     continue
+                _cand_svc_ver = bool(any(x.get("ok") is True for x in _tested_c))
             else:
                 if any(x.get("ok") is False for x in _tested_c):
                     continue
+                _cand_svc_ver = bool(len(_tested_c) == len(svc_checks) and all(x.get("ok") is True for x in _tested_c))
+        else:
+            _cand_svc_ver = True
         if n_obj.get("is_chained") or n_obj.get("detour") or n_obj.get("detour_pool_id"):
             continue
+        _cand_rl_cool = bool(max(int(rec.get("cooldown_until") or 0), int(rec.get("rate_limited_until") or 0)) > now_ts)
         bw_m = float(rec.get("bandwidth_mbps") or 0.0)
         bw_fac_m = max(0.55, 1.0 - min(0.42, math.log10(max(1.0, bw_m / 10.0)) * 0.22)) if (an.get("bandwidth_prefer") and bw_m > 0) else 1.0
         eff_ms_m = round(float(ev["delay_ms"]) * bw_fac_m, 2)
-        scored_cands.append((eff_ms_m, t, nid))
+        scored_cands.append(((1 if _cand_rl_cool else 0, 0 if _cand_svc_ver else 1, eff_ms_m), t, nid))
 
     scored_cands.sort(key=lambda x: (x[0], x[1]))
-    new_g1_tags = list(surviving_tags)
+    # Keep verified surviving members first; if external verified candidates exist, let them fill before unverified members
+    new_g1_tags = list(verified_surviving_tags) if (is_svc_mode and svc_checks and _has_ext_verified) else list(surviving_tags)
     for _, t, _ in scored_cands:
         if len(new_g1_tags) >= target_size:
             break
         if t not in new_g1_tags:
             new_g1_tags.append(t)
+    for _st_rem in surviving_tags:
+        if len(new_g1_tags) >= target_size:
+            break
+        if _st_rem not in new_g1_tags:
+            new_g1_tags.append(_st_rem)
 
-    # Sort G1 by fastest delay_ms ascending
-    delay_lookup = {t: d for d, t, _ in scored_cands}
-    new_g1_tags.sort(key=lambda t: (delay_lookup.get(t, 9999), t))
+    # Sort G1 by (cooldown_rank, svc_verified_rank, eff_ms) ascending
+    delay_lookup = {t: rk for rk, t, _ in scored_cands}
+    new_g1_tags.sort(key=lambda t: (delay_lookup.get(t, (1, 1, 9999.0)), t))
     new_g1_tags = new_g1_tags[:target_size]
 
     # WAN Blackout Anti-Wipeout Guard: if ALL in-scope candidates are temporarily unreachable (new_g1_tags is empty),
@@ -6747,7 +6797,7 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
 
             quarantine_until = int(rec_raw.get("quarantine_until") or 0)
             in_quarantine = bool(quarantine_until > now_sec or int(sc_info.get("consecutive_fail") or 0) >= 3)
-            cooldown_until = int(rec_raw.get("cooldown_until") or 0)
+            cooldown_until = max(int(rec_raw.get("cooldown_until") or 0), int(rec_raw.get("rate_limited_until") or 0))
             in_cooldown = bool(cooldown_until > now_sec)
 
             score_passed = True
@@ -6893,30 +6943,37 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
     cur_nid = str(an.get("current_node_id") or "")
     # Case: No group has any qualified `ok` node
     an["quarantine_break_glass"] = False
+    an["cooldown_break_glass"] = False
     an["l7_degraded_fallback"] = False
     if cand_group_idx == 0:
-        # D-01 Safety Guard: If L7 service check was unverified or temporary cooldown rejected all nodes,
-        # fallback to reachable non-failed nodes while explicitly flagging l7_degraded=True!
+        # D-01 Safety Guard: If L7 service check was unverified (svc_passed==True, svc_verified==False) or temporary rate-limit cooldown rejected all nodes,
+        # fallback to reachable non-failed nodes (NEVER selecting verified_fail / svc_passed==False nodes in service_check mode!)
         for g in groups:
             g_reach = [
                 m for m in (g.get("members") or [])
-                if m.get("selectable") and not m.get("out_of_scope") and m.get("state") == "ok" and int(m.get("delay_ms") or 0) > 0 and m.get("score_passed", True) and not m.get("region_blocked") and not m.get("in_quarantine") and m.get("svc_passed", True)
+                if m.get("selectable") and not m.get("out_of_scope") and m.get("state") == "ok" and int(m.get("delay_ms") or 0) > 0 and m.get("score_passed", True) and not m.get("region_blocked") and not m.get("in_quarantine") and not m.get("in_cooldown") and m.get("svc_passed", True)
             ]
+            _used_cooldown_bg = False
             if not g_reach:
                 g_reach = [
                     m for m in (g.get("members") or [])
-                    if m.get("selectable") and not m.get("out_of_scope") and m.get("state") == "ok" and int(m.get("delay_ms") or 0) > 0 and m.get("score_passed", True) and not m.get("region_blocked") and not m.get("in_quarantine")
+                    if m.get("selectable") and not m.get("out_of_scope") and m.get("state") == "ok" and int(m.get("delay_ms") or 0) > 0 and m.get("score_passed", True) and not m.get("region_blocked") and not m.get("in_quarantine") and m.get("svc_passed", True)
                 ]
+                if g_reach:
+                    _used_cooldown_bg = True
             if g_reach:
-                g_reach.sort(key=lambda x: (0 if x.get("cdn_tls_ok", True) else 1, x.get("eff_rank_ms", x["delay_ms"]), 1 if x.get("is_random_region", False) else 0, x["delay_ms"], x["tag"]))
+                g_reach.sort(key=lambda x: (1 if x.get("in_cooldown") else 0, 0 if x.get("svc_verified", True) else 1, 0 if x.get("cdn_tls_ok", True) else 1, x.get("eff_rank_ms", x["delay_ms"]), 1 if x.get("is_random_region", False) else 0, x["delay_ms"], x["tag"]))
                 qualified_by_group[g["index"]] = g_reach
                 g["ok_count"] = len(g_reach)
                 for _mr in g_reach:
                     if _mr["tag"] not in all_ok_tags:
                         all_ok_tags.append(_mr["tag"])
                 cand_group_idx = g["index"]
-                an["l7_degraded_fallback"] = True
-                an["l7_degraded"] = True
+                if _used_cooldown_bg:
+                    an["cooldown_break_glass"] = True
+                if any(not x.get("svc_verified", True) for x in g_reach):
+                    an["l7_degraded_fallback"] = True
+                    an["l7_degraded"] = True
                 break
         # Stage 6.31a & P1-5.3 Half-Open Break-Glass Recovery:
         # Restricted to ping_only pools OR service_check pools where the node has svc_verified==True (never bypass L7 on service pools!)
@@ -7029,7 +7086,17 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
         sticky_expired = (last_sw <= 0) or ((now_sec - last_sw) >= cool_s)
         weekly_rot_due = bool(an.get("auto_rotate_weekly", False)) and last_sw > 0 and ((now_sec - last_sw) >= 7 * 86400) and len(g_nodes) >= 2
 
-        if fastest["node_id"] != cur_in_group["node_id"] and not cur_in_group.get("cdn_tls_ok", True) and fastest.get("cdn_tls_ok", True):
+        if fastest["node_id"] != cur_in_group["node_id"] and (is_full and svc_ids) and not cur_in_group.get("svc_verified", True) and fastest.get("svc_verified", True):
+            chosen = fastest
+            an["last_smart_switch_ts"] = now_sec
+            an["last_switch_ts"] = now_sec
+            switch_reason = f"L7服务验证通过接管 ({cur_in_group['tag']} -> {fastest['tag']})"
+        elif fastest["node_id"] != cur_in_group["node_id"] and cur_in_group.get("in_cooldown", False) and not fastest.get("in_cooldown", False):
+            chosen = fastest
+            an["last_smart_switch_ts"] = now_sec
+            an["last_switch_ts"] = now_sec
+            switch_reason = f"风控冷却规避切换 ({cur_in_group['tag']} -> {fastest['tag']})"
+        elif fastest["node_id"] != cur_in_group["node_id"] and not cur_in_group.get("cdn_tls_ok", True) and fastest.get("cdn_tls_ok", True):
             chosen = fastest
             an["last_smart_switch_ts"] = now_sec
             an["last_switch_ts"] = now_sec

@@ -1742,7 +1742,7 @@ def main() -> int:
               f"bg_cur={an_31a_bg.get('current_node')} bg_flag={an_31a_bg.get('quarantine_break_glass')} ml={an_31a_ml.get('multi_line_nodes')}")
 
         # Stage 6.31b: Sonar Radar 3-Ring Latency Scale (50ms/150ms/300ms) + Peak KPI + Dynamic Version Single Source of Truth
-        html_254_txt = (Path(__file__).resolve().parent.parent / "root/usr/share/ai-link/webui/index.html").read_text(encoding="utf-8")
+        html_254_txt = (SITE / "root/usr/share/ai-link/webui/index.html").read_text(encoding="utf-8")
         check("Stage 6.31b (v2.5.4 声呐三环延迟坐标刻度 50ms/150ms/300ms + 峰值延迟摘要 + 全站动态版本号单一真相源)",
               'sonar-ring-scale r-inner">50ms</span>' in html_254_txt
               and 'sonar-ring-scale r-mid">150ms</span>' in html_254_txt
@@ -1912,6 +1912,121 @@ def main() -> int:
               and "服务待验证 (仅连通)" in js_252_txt
               and "多线并发（池内健康节点叠加吞吐）" not in js_252_txt,
               f"tag={norm_ai_item.get('tag')}, has_quota={isinstance(an_api_75.get('quota_status'), dict)}")
+
+        # Stage 7.6a: maintain_auto_node_pool_health L7-Verified Priority Replenishment & Upgrade
+        st_76 = dmod.load_node_probe_store(tmp_v252)
+        st_76["nid_a_jp1"] = {"state": "ok", "delay_ms": 42, "last_probe_ts": now_73, "probe_ts": now_73, "quarantine_until": 0, "consecutive_fail": 0, "svc": {}}
+        st_76["SubA-JP-01"] = st_76["nid_a_jp1"]
+        st_76["nid_a_jp3"] = {"state": "ok", "delay_ms": 96, "last_probe_ts": now_73, "probe_ts": now_73, "quarantine_until": 0, "consecutive_fail": 0, "svc": {"netflix": {"ok": True, "ms": 105, "code": 200, "ts": now_73}}}
+        st_76["SubA-JP-03"] = st_76["nid_a_jp3"]
+        dmod.save_node_probe_store(st_76, tmp_v252)
+        pool_76a = {
+            "id": "auto_nf_maint",
+            "tag": "Auto_NF_Maint",
+            "name": "网飞自愈优先池",
+            "pool_mode": "service_check",
+            "service_check_enabled": True,
+            "service_checks": ["netflix"],
+            "scope_sources": ["sub_A"],
+            "scope_countries": ["JP"],
+            "target_size": 1,
+            "replenish_threshold": 1,
+            "auto_maintain": True,
+            "groups": [{"index": 1, "name": "G1", "node_tags": ["SubA-JP-01"]}],
+        }
+        changed_76a = dmod.maintain_auto_node_pool_health(pool_76a, conf_dir=tmp_v252, allow_live_l7_probe=False)
+        g1_76a = list(pool_76a["groups"][0]["node_tags"])
+        check("Stage 7.6a (v2.5.5 节点池健康自愈 L7 已验证优先补位与自动提纯门禁): service_check 模式下外部存在已通过 L7 验证的 SubA-JP-03 时自动替换池内未验证的 SubA-JP-01，实现 100% L7 验证成员收敛",
+              changed_76a is True and g1_76a == ["SubA-JP-03"],
+              f"changed={changed_76a}, g1={g1_76a}")
+
+        # Stage 7.6b: evaluate_single_auto_node Strict verified_fail Rejection & L7-Verified Sticky Bypass
+        st_76b = dmod.load_node_probe_store(tmp_v252)
+        st_76b["nid_a_jp1"] = {"state": "ok", "delay_ms": 40, "last_probe_ts": now_73, "probe_ts": now_73, "quarantine_until": 0, "consecutive_fail": 0, "svc": {"netflix": {"ok": False, "ms": 0, "code": 403, "ts": now_73}}}
+        st_76b["SubA-JP-01"] = st_76b["nid_a_jp1"]
+        st_76b["nid_a_jp3"] = {"state": "ok", "delay_ms": 50, "last_probe_ts": now_73, "probe_ts": now_73, "quarantine_until": 0, "consecutive_fail": 0, "svc": {"netflix": {"ok": False, "ms": 0, "code": 403, "ts": now_73}}}
+        st_76b["SubA-JP-03"] = st_76b["nid_a_jp3"]
+        dmod.save_node_probe_store(st_76b, tmp_v252)
+        pool_76b_fail = {
+            "id": "auto_nf_allfail",
+            "tag": "Auto_NF_AllFail",
+            "name": "网飞全拒服测试池",
+            "pool_mode": "service_check",
+            "service_check_enabled": True,
+            "service_checks": ["netflix"],
+            "groups": [{"index": 1, "name": "G1", "node_tags": ["SubA-JP-01", "SubA-JP-03"]}],
+        }
+        dmod.evaluate_single_auto_node(pool_76b_fail, conf_dir=tmp_v252)
+        # Also test sticky bypass when current_node is unverified and a newly verified node is in pool
+        st_76b["nid_a_jp1"]["svc"] = {}
+        st_76b["nid_a_jp3"]["svc"] = {"netflix": {"ok": True, "ms": 88, "code": 200, "ts": now_73}}
+        dmod.save_node_probe_store(st_76b, tmp_v252)
+        pool_76b_sticky = {
+            "id": "auto_nf_sticky",
+            "tag": "Auto_NF_Sticky",
+            "name": "网飞粘性穿透池",
+            "pool_mode": "service_check",
+            "service_check_enabled": True,
+            "service_checks": ["netflix"],
+            "current_node": "SubA-JP-01",
+            "current_node_id": "nid_a_jp1",
+            "last_switch_ts": now_73 - 30,
+            "last_smart_switch_ts": now_73 - 30,
+            "switch_cooldown_s": 600,
+            "groups": [{"index": 1, "name": "G1", "node_tags": ["SubA-JP-01", "SubA-JP-03"]}],
+        }
+        dmod.evaluate_single_auto_node(pool_76b_sticky, conf_dir=tmp_v252)
+        check("Stage 7.6b (v2.5.5 D-01 严禁回退 verified_fail 拒服节点 & L7 验证通过突破 10m 粘性立即接管门禁): 全员 L7 明确失败(403)时绝不回退拒服节点而是告警 direct；原未验证出口遇到新通过 L7 验证节点时立即突破粘性窗口秒切",
+              pool_76b_fail.get("current_node") == "direct"
+              and pool_76b_fail.get("all_groups_dead_alert") is True
+              and pool_76b_sticky.get("current_node") == "SubA-JP-03",
+              f"allfail_cur={pool_76b_fail.get('current_node')}, sticky_cur={pool_76b_sticky.get('current_node')}")
+
+        # Stage 7.7a: L3 60m Rate-Limit Cooldown Hierarchy & Cooldown Break-Glass
+        st_77 = dmod.load_node_probe_store(tmp_v252)
+        st_77["nid_a_jp1"] = {"state": "ok", "delay_ms": 38, "last_probe_ts": now_73, "probe_ts": now_73, "quarantine_until": 0, "rate_limited_until": now_73 + 1800, "consecutive_fail": 0, "svc": {}}
+        st_77["SubA-JP-01"] = st_77["nid_a_jp1"]
+        st_77["nid_a_jp3"] = {"state": "ok", "delay_ms": 92, "last_probe_ts": now_73, "probe_ts": now_73, "quarantine_until": 0, "rate_limited_until": 0, "consecutive_fail": 0, "svc": {}}
+        st_77["SubA-JP-03"] = st_77["nid_a_jp3"]
+        dmod.save_node_probe_store(st_77, tmp_v252)
+        pool_77a = {
+            "id": "auto_rl_test",
+            "tag": "Auto_RL_Test",
+            "name": "风控冷却分层池",
+            "pool_mode": "service_check",
+            "service_check_enabled": True,
+            "service_checks": ["netflix"],
+            "groups": [{"index": 1, "name": "G1", "node_tags": ["SubA-JP-01", "SubA-JP-03"]}],
+        }
+        dmod.evaluate_single_auto_node(pool_77a, conf_dir=tmp_v252)
+        cur_prefer_non_cool = pool_77a.get("current_node")
+        # Now put both in rate-limit cooldown -> should set cooldown_break_glass=True and pick fastest SubA-JP-01 (38ms)
+        st_77["nid_a_jp3"]["rate_limited_until"] = now_73 + 1800
+        dmod.save_node_probe_store(st_77, tmp_v252)
+        pool_77a_bg = {
+            "id": "auto_rl_test_bg",
+            "tag": "Auto_RL_Test_BG",
+            "name": "风控冷却破冰池",
+            "pool_mode": "service_check",
+            "service_check_enabled": True,
+            "service_checks": ["netflix"],
+            "groups": [{"index": 1, "name": "G1", "node_tags": ["SubA-JP-01", "SubA-JP-03"]}],
+        }
+        dmod.evaluate_single_auto_node(pool_77a_bg, conf_dir=tmp_v252)
+        check("Stage 7.7a (v2.5.5 60m 风控冷却 rate_limited_until 避让与全员冷却破冰保底门禁): 优先选用非风控冷却节点 SubA-JP-03(92ms) 规避 429 限流节点 SubA-JP-01(38ms)；全员风控冷却时自动标记 cooldown_break_glass=True 保底连通",
+              cur_prefer_non_cool == "SubA-JP-03"
+              and pool_77a_bg.get("cooldown_break_glass") is True
+              and pool_77a_bg.get("current_node") == "SubA-JP-01",
+              f"non_cool={cur_prefer_non_cool}, bg={pool_77a_bg.get('cooldown_break_glass')}/{pool_77a_bg.get('current_node')}")
+
+        # Stage 7.7b: Frontend Auto-Pool HUD Card Zero-Fabricated-Fallback & Telemetry Badges Contract
+        js_77b_txt = (SITE / "root/usr/share/ai-link/webui/nexus.js").read_text("utf-8")
+        check("Stage 7.7b (v2.5.5 节点池 HUD 卡片零虚构兜底与冷却破冰/缓存待刷/配额详情契约门禁): 移除 (g1Tags.length || 4) 虚构兜底，完整支持冷却破冰、缓存待刷徽标与 L7已验证/巡检配额悬停明细",
+              "(g1Tags.length || 4)" not in js_77b_txt
+              and "p.cooldown_break_glass" in js_77b_txt
+              and "缓存待刷" in js_77b_txt
+              and "L7已验证：" in js_77b_txt,
+              "HUD card telemetry & zero-fake-fallback verified")
     finally:
         shutil.rmtree(tmp_v252, ignore_errors=True)
 

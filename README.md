@@ -223,9 +223,9 @@ sing-box 1.14.1（单内核）
 
 ```
 AI-LINK-v2.5.5.tar.gz
-size   989,400 B
-md5    32995b4cde320f0bff34018b9858820f
-sha256 496d5d16d5c61ff59a0245e764a2ae2d9f771abfa33b7cf25f938fb26c96037b
+size   991,961 B
+md5    20b9d0ca405a07cfd38866bbe63ca357
+sha256 6dd6969de0e11543ac883e82e0c101d864f108fa47333c55ceaba90586a18729
 ```
 
 在线清单：<https://ai-link-official.pages.dev/version.json>

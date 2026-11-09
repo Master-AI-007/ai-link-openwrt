@@ -25,7 +25,8 @@
         "探测预算双轨拆分与 500+ 节点库扩容；on_egress_fail 故障复验 force=True 免配额穿透",
         "真实探测新鲜度遥测：last_real_probe_ts / probe_stale / fresh_ok_count / quota_status",
         "多线池 Selector 1 对 1 唯一归属，修复跨池抢占；轮换驻留 30s、故障秒切",
-        "前端文案改为「多出口轮询（实验，不叠加单流带宽）」；Auto_Auto_AI 归一为 Auto_AI"
+        "前端文案改为「多出口轮询（实验，不叠加单流带宽）」；Auto_Auto_AI 归一为 Auto_AI",
+        "同版本热修（2026-11-09 18:55）：修复 P0-1「脏数据自愈」与「--self-test 零污染断言」互斥（设备存在历史残留假节点时直接跑自检会报错一次）；静态资源指纹同步更新。版本号未变，现网 2.5.5 设备需手动重装以获取修订包（OTA 不会提示）。"
       ]
     },
     {
@@ -342,9 +343,9 @@
       "mirrors": [
         "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.5.5.tar.gz"
       ],
-      "size": 989400,
-      "md5": "32995b4cde320f0bff34018b9858820f",
-      "sha256": "496d5d16d5c61ff59a0245e764a2ae2d9f771abfa33b7cf25f938fb26c96037b"
+      "size": 991961,
+      "md5": "20b9d0ca405a07cfd38866bbe63ca357",
+      "sha256": "6dd6969de0e11543ac883e82e0c101d864f108fa47333c55ceaba90586a18729"
     }
   }
 }
