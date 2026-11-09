@@ -99,7 +99,7 @@ def _atomic_write_text(target: Path, content: str, encoding: str = "utf-8") -> N
             globals().get("_record_internal_diag", str)(_e_diag)
     tmp_p = target.parent / f".{target.name}.tmp.{os.getpid()}.{threading.get_ident()}"
     try:
-        if target.is_file() and target.suffix == ".json" and target.stat().st_size > 2:
+        if target.is_file() and target.suffix == ".json" and target.name not in ("traffic_ledger.json", "node_probe.json", "selections.json", "switch_history.json", "auto_probe_rounds.json", "auto_pool_runtime.json", "node_test_quota.json") and target.stat().st_size > 2:
             bak_p = target.with_suffix(target.suffix + ".bak")
             try:
                 shutil.copy2(target, bak_p)
@@ -1707,14 +1707,16 @@ def preview_subscription_sync_impact(sub_id: str, incoming_nodes: list, sub_url:
         if (sub_id and n.get("_sub_id") == sub_id) or (sub_url and n.get("_sub_url") == sub_url) or (not sub_id and not sub_url)
     ]
     old_by_key = {(n.get("node_key") or compute_node_key(n)): n for n in old_sub_nodes}
+    old_by_tag = {str(n.get("tag") or ""): n for n in old_sub_nodes if n.get("tag")}
     new_clean = [
         ob for ob in (incoming_nodes or [])
         if isinstance(ob, dict) and ob.get("tag") and ob.get("type") and not is_subscription_info_node(ob)
     ]
     new_by_key = {compute_node_key(ob): ob for ob in new_clean}
+    new_by_tag = {str(ob.get("tag") or ""): ob for ob in new_clean if ob.get("tag")}
 
-    added_keys = [k for k in new_by_key if k not in old_by_key]
-    removed_keys = [k for k in old_by_key if k not in new_by_key]
+    added_keys = [k for k in new_by_key if k not in old_by_key and str(new_by_key[k].get("tag") or "") not in old_by_tag]
+    removed_keys = [k for k in old_by_key if k not in new_by_key and str(old_by_key[k].get("tag") or "") not in new_by_tag]
     kept_keys = [k for k in new_by_key if k in old_by_key]
     renamed = []
     for k in kept_keys:
@@ -2724,51 +2726,80 @@ def _get_effective_node_test_budget(conf_dir: Path = None) -> int:
             budget = int(d.get("node_test_budget", 3000))
         if budget <= 0:
             return 0
-        # v2.4.0 Adaptive Budget: When using default 3000 budget on large node libraries (>50 nodes),
-        # automatically scale daily budget to max(30000, node_count * 40) so 500+ node libraries never lock out probing.
-        if budget == 3000:
+        # v2.5.5 Adaptive Budget: On large node libraries (>50 nodes), automatically scale legacy default budgets
+        # (3000 / 10000 / 15000 / 20000) to max(60000, node_count * 120) so 500+ node libraries never freeze mid-day.
+        if budget in (3000, 10000, 15000, 20000):
             try:
                 node_cnt = len(load_saved_nodes(cdir))
                 if node_cnt > 50:
-                    return max(30000, node_cnt * 40)
+                    return max(60000, node_cnt * 120)
             except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                 globals().get("_record_internal_diag", str)(_e_diag)
         return budget
     except Exception:
-        return 30000
+        return 60000
 
-def _node_test_used(conf_dir: Path = None) -> int:
+def _get_effective_pool_health_budget(conf_dir: Path = None) -> int:
+    """v2.5.5 Independent Auto-Pool Health Probe Budget:
+    Ensures scheduled Auto-Pool health probes have their own dedicated daily quota (>= 45,000 or 2x daily pool cycle demand)
+    that cannot be exhausted by manual/batch node exploration."""
+    try:
+        cdir = conf_dir if conf_dir is not None else CONF_DIR
+        base_b = _get_effective_node_test_budget(cdir)
+        if base_b <= 0:
+            return 0
+        if base_b < 500:
+            return base_b
+        return max(45000, base_b)
+    except Exception:
+        return 45000
+
+def _read_quota_doc(conf_dir: Path = None) -> dict:
     p = _node_test_quota_path()
     today = time.strftime("%Y-%m-%d")
     if p.is_file():
         try:
             d = json.loads(p.read_text(encoding="utf-8"))
-            if d.get("date") == today:
+            if isinstance(d, dict) and d.get("date") == today:
                 used_val = int(d.get("used", 0))
-                # P0-2 Upgrade Migration Guard: If legacy quota counter accumulated >= 500 before v236_r10 skip-semantics,
-                # automatically reset it to 0 once on upgrade so existing devices never lock out probing on upgrade day.
                 if not d.get("v236_r10_migrated") and used_val >= 500:
+                    new_d = {"date": today, "used": 0, "pool_health_used": 0, "forced_used": 0, "v236_r10_migrated": True, "v240_budget_migrated": True, "v255_quota_migrated": True}
                     try:
-                        _atomic_write_text(p, json.dumps({"date": today, "used": 0, "v236_r10_migrated": True, "v240_budget_migrated": True}))
-                    except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
+                        _atomic_write_text(p, json.dumps(new_d))
+                    except Exception as _e_diag:
                         globals().get("_record_internal_diag", str)(_e_diag)
-                    return 0
+                    return new_d
                 cdir = conf_dir if conf_dir is not None else CONF_DIR
-                if not d.get("v240_budget_migrated") and 2500 <= used_val < 90000:
+                if (not d.get("v240_budget_migrated") or not d.get("v255_quota_migrated")) and 2500 <= used_val < 90000:
                     try:
                         if len(load_saved_nodes(cdir)) > 50:
-                            _atomic_write_text(p, json.dumps({"date": today, "used": 0, "v236_r10_migrated": True, "v240_budget_migrated": True}))
-                            return 0
-                    except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
+                            new_d = {"date": today, "used": 0, "pool_health_used": 0, "forced_used": 0, "v236_r10_migrated": True, "v240_budget_migrated": True, "v255_quota_migrated": True}
+                            _atomic_write_text(p, json.dumps(new_d))
+                            return new_d
+                    except Exception as _e_diag:
                         globals().get("_record_internal_diag", str)(_e_diag)
-                return used_val
-        except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
+                return d
+        except Exception as _e_diag:
             globals().get("_record_internal_diag", str)(_e_diag)
-    return 0
+    return {"date": today, "used": 0, "pool_health_used": 0, "forced_used": 0, "v236_r10_migrated": True, "v240_budget_migrated": True, "v255_quota_migrated": True}
 
-def _is_node_test_budget_exceeded(conf_dir: Path = None) -> bool:
+def _node_test_used(conf_dir: Path = None) -> int:
+    return int(_read_quota_doc(conf_dir).get("used", 0))
+
+def _pool_health_test_used(conf_dir: Path = None) -> int:
+    return int(_read_quota_doc(conf_dir).get("pool_health_used", 0))
+
+def _is_node_test_budget_exceeded(conf_dir: Path = None, is_pool_health: bool = False) -> bool:
     try:
         cdir = conf_dir if conf_dir is not None else CONF_DIR
+        if is_pool_health:
+            hb = _get_effective_pool_health_budget(cdir)
+            if hb <= 0:
+                return False
+            doc = _read_quota_doc(cdir)
+            if int(doc.get("used", 0)) >= 90000 and int(doc.get("pool_health_used", 0)) == 0:
+                return True
+            return int(doc.get("pool_health_used", 0)) >= hb
         budget = _get_effective_node_test_budget(cdir)
         if budget <= 0:
             return False
@@ -2776,22 +2807,66 @@ def _is_node_test_budget_exceeded(conf_dir: Path = None) -> bool:
     except Exception:
         return False
 
-def _node_test_spend(n: int = 1, force: bool = False, conf_dir: Path = None) -> int:
+def get_node_test_quota_summary(conf_dir: Path = None) -> dict:
+    cdir = conf_dir if conf_dir is not None else CONF_DIR
+    doc = _read_quota_doc(cdir)
+    used = int(doc.get("used", 0))
+    budget = _get_effective_node_test_budget(cdir)
+    ph_used = int(doc.get("pool_health_used", 0))
+    ph_budget = _get_effective_pool_health_budget(cdir)
+    pct = round((used / budget) * 100.0, 1) if budget > 0 else 0.0
+    ph_pct = round((ph_used / ph_budget) * 100.0, 1) if ph_budget > 0 else 0.0
+    return {
+        "date": doc.get("date", time.strftime("%Y-%m-%d")),
+        "used_today": used,
+        "budget": budget,
+        "usage_pct": pct,
+        "pool_health_used_today": ph_used,
+        "pool_health_budget": ph_budget,
+        "pool_health_usage_pct": ph_pct,
+        "forced_used_today": int(doc.get("forced_used", 0)),
+        "quota_warn": bool((budget > 0 and pct >= 80.0) or (ph_budget > 0 and ph_pct >= 80.0)),
+        "quota_frozen": bool((budget > 0 and used >= budget) or (ph_budget > 0 and ph_used >= ph_budget)),
+    }
+
+def _node_test_spend(n: int = 1, force: bool = False, conf_dir: Path = None, is_pool_health: bool = False) -> int:
     p = _node_test_quota_path()
     today = time.strftime("%Y-%m-%d")
     with _SUB_LOCK:
         cdir = conf_dir if conf_dir is not None else CONF_DIR
-        cur_used = _node_test_used(cdir)
+        doc = dict(_read_quota_doc(cdir))
+        cur_used = int(doc.get("used", 0))
+        cur_ph = int(doc.get("pool_health_used", 0))
+        cur_forced = int(doc.get("forced_used", 0))
         budget = _get_effective_node_test_budget(cdir)
-        if not force and budget > 0 and cur_used >= budget:
-            return cur_used
-        used = cur_used + int(n)
+        ph_budget = _get_effective_pool_health_budget(cdir)
+        if is_pool_health:
+            if not force and ph_budget > 0 and cur_ph >= ph_budget:
+                return cur_ph
+            doc["pool_health_used"] = cur_ph + int(n)
+            ret_val = doc["pool_health_used"]
+        elif force:
+            if budget > 0 and cur_used >= budget:
+                doc["forced_used"] = cur_forced + int(n)
+                ret_val = cur_used
+            else:
+                doc["used"] = cur_used + int(n)
+                ret_val = doc["used"]
+        else:
+            if budget > 0 and cur_used >= budget:
+                return cur_used
+            doc["used"] = cur_used + int(n)
+            ret_val = doc["used"]
+        doc["date"] = today
+        doc["v236_r10_migrated"] = True
+        doc["v240_budget_migrated"] = True
+        doc["v255_quota_migrated"] = True
         try:
             RUN_DIR.mkdir(parents=True, exist_ok=True)
-            _atomic_write_text(p, json.dumps({"date": today, "used": used, "v236_r10_migrated": True, "v240_budget_migrated": True}))
+            _atomic_write_text(p, json.dumps(doc))
         except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
             globals().get("_record_internal_diag", str)(_e_diag)
-        return used
+        return ret_val
 
 
 def cleanup_temp_and_rotate_backups(max_backups: int = 5) -> dict:
@@ -3560,14 +3635,15 @@ def _sync_global_url_ping_state(conf_dir: Path = CONF_DIR, trigger_auto_eval: bo
             globals().get("_record_internal_diag", str)(_e_diag)
 
 def clash_test_delay(node_name: str, test_url: str = DEFAULT_URL_PING_TARGET, timeout_ms: int = 5000,
-                     force: bool = False, allow_fallback: bool = True, conf_dir: Path = CONF_DIR) -> dict:
+                     force: bool = False, allow_fallback: bool = True, conf_dir: Path = CONF_DIR,
+                     is_pool_health: bool = False) -> dict:
     """v2.2.0 Audited URL Ping via Clash API:
     - Uses 5000ms default timeout (matching Clash Verge / Mihomo / v2rayN) so Reality/Hy2/VMess cold handshakes never false-timeout.
     - Dual-target witness fallback: if primary HTTPS generate_204 times out or resets on first packet, verifies against
       http://cp.cloudflare.com/generate_204 before declaring the node unreachable."""
     if not node_name or node_name in ("direct", "block"):
         return {"ok": False, "delay": -1, "http_status": 0, "status_known": False, "error": "invalid_node"}
-    if not force and _is_node_test_budget_exceeded(conf_dir):
+    if not force and _is_node_test_budget_exceeded(conf_dir, is_pool_health=is_pool_health):
         store_q = load_node_probe_store(conf_dir)
         rec_q = store_q.get(node_name)
         if not isinstance(rec_q, dict):
@@ -3581,7 +3657,7 @@ def clash_test_delay(node_name: str, test_url: str = DEFAULT_URL_PING_TARGET, ti
         if isinstance(rec_q, dict) and int(rec_q.get("delay_ms") or -1) > 0 and rec_q.get("state") == "ok":
             return {"ok": True, "delay": int(rec_q["delay_ms"]), "http_status": 204, "status_known": True, "reason": "quota_cached", "quota_capped": True, "skipped": True}
         return {"ok": False, "delay": -1, "http_status": 0, "status_known": False, "error": "daily_test_budget_exceeded", "quota_capped": True, "skipped": True}
-    _node_test_spend(1, force=force, conf_dir=conf_dir)
+    _node_test_spend(1, force=force, conf_dir=conf_dir, is_pool_health=is_pool_health)
     enc = urllib.parse.quote(node_name, safe="")
     primary_url = test_url or DEFAULT_URL_PING_TARGET
     q_url = urllib.parse.quote(primary_url, safe="")
@@ -3706,7 +3782,8 @@ def _build_node_probe_record(prev: dict, node_obj: dict, ok_final: bool, d_ms: i
     return out_rec
 
 def url_ping_single_node(node_or_tag, target_url: str = DEFAULT_URL_PING_TARGET, timeout_ms: int = 3000,
-                         conf_dir: Path = CONF_DIR, mock_result: dict = None, persist: bool = True, force: bool = False) -> dict:
+                         conf_dir: Path = CONF_DIR, mock_result: dict = None, persist: bool = True, force: bool = False,
+                         is_pool_health: bool = False) -> dict:
     """Spec §1.1–1.4: Executes 1 single URL ping for 1 node (no retry amplification!). When persist=False (batch mode),
     skips per-node disk fsync under _SUB_LOCK so :9099 panel requests never stall (P1-1 Fix)."""
     node_obj = None
@@ -3725,7 +3802,7 @@ def url_ping_single_node(node_or_tag, target_url: str = DEFAULT_URL_PING_TARGET,
     tag = node_obj.get("tag", nid)
     now_ts = int(time.time())
     if isinstance(mock_result, dict):
-        _node_test_spend(1)
+        _node_test_spend(1, force=force, conf_dir=conf_dir, is_pool_health=is_pool_health)
         http_st = int(mock_result.get("http_status", 204 if mock_result.get("ok") else 502))
         body_s = str(mock_result.get("body") or "")
         ok_p, reason = verify_url_ping_payload(http_st, body_s, mock_result.get("headers") or {})
@@ -3733,7 +3810,7 @@ def url_ping_single_node(node_or_tag, target_url: str = DEFAULT_URL_PING_TARGET,
         d_ms = int(mock_result.get("delay_ms", 120)) if ok_final else -1
         quota_skipped = False
     else:
-        res = clash_test_delay(tag, test_url=target_url, timeout_ms=timeout_ms, force=force, conf_dir=conf_dir)
+        res = clash_test_delay(tag, test_url=target_url, timeout_ms=timeout_ms, force=force, conf_dir=conf_dir, is_pool_health=is_pool_health)
         quota_skipped = bool(res.get("quota_capped") or res.get("skipped") or res.get("error") == "daily_test_budget_exceeded")
         ok_final = bool(res.get("ok") and int(res.get("delay") or 0) > 0)
         d_ms = int(res["delay"]) if ok_final else -1
@@ -4366,10 +4443,10 @@ def on_egress_fail(node_or_id, conf_dir: Path = CONF_DIR, bypass_debounce: bool 
         evaluate_all_auto_nodes(conf_dir, force_service_probe=False, advance_revert_streak=False)
         PROBE_ENGINE.apply_shunt_selections(conf_dir)
         return {"ok": False, "debounced": True, "node_id": nid, "tag": tag, "state": "suspect"}
-    # 3. Perform 1 single URL ping re-verification
+    # 3. Perform 1 single URL ping re-verification (P0-2: force=True bypasses daily quota so failover is NEVER blocked by cached ok!)
     _EVENT_REVERIFY_STATE["last_verify_ts"][nid] = now_ts
-    ping_res = url_ping_single_node(node_obj, timeout_ms=3000, conf_dir=conf_dir, mock_result=mock_ping_result)
-    if ping_res.get("ok") and ping_res.get("state") == "ok":
+    ping_res = url_ping_single_node(node_obj, timeout_ms=3000, conf_dir=conf_dir, mock_result=mock_ping_result, force=True, is_pool_health=True)
+    if ping_res.get("ok") and ping_res.get("state") == "ok" and not ping_res.get("quota_capped") and not ping_res.get("skipped"):
         _EVENT_REVERIFY_STATE["egress_fail_streak"][nid] = 0
         return {"ok": True, "node_id": nid, "tag": tag, "state": "ok", "delay_ms": ping_res["delay_ms"], "switched": False}
     # 4. Re-verification failed -> node is now 'dead', set 10min cooldown, probe active working group if needed, and switch immediately!
@@ -4766,6 +4843,7 @@ def _enrich_auto_node_groups_members(item: dict, saved_nodes: list = None, subs_
             country = classify_node_country_5plus1(t, n_obj)
             svc_passed = True
             svc_verified = True
+            svc_state = "verified_pass"
             if is_full and svc_ids:
                 rec_svc = rec_raw.get("svc") if isinstance(rec_raw.get("svc"), dict) else {}
                 tested_cnt = 0
@@ -4803,6 +4881,7 @@ def _enrich_auto_node_groups_members(item: dict, saved_nodes: list = None, subs_
                     else:
                         svc_passed = True
                         svc_verified = False
+                svc_state = "verified_pass" if (svc_passed and svc_verified) else ("verified_fail" if not svc_passed else "unverified")
             g_reg_info = get_node_google_region_info(n_obj, rec_raw)
             google_reg = g_reg_info["google_region"]
             pool_id_l = str(item.get("id") or "").lower()
@@ -4857,6 +4936,7 @@ def _enrich_auto_node_groups_members(item: dict, saved_nodes: list = None, subs_
                 "selectable": ev["selectable"],
                 "svc_passed": svc_passed,
                 "svc_verified": svc_verified,
+                "svc_state": ("verified_fail" if node_region_blocked else svc_state),
                 "score_passed": score_passed,
                 "qualified": is_qual_ok,
                 "score": sc_info["score"],
@@ -4896,7 +4976,14 @@ def _enrich_auto_node_groups_members(item: dict, saved_nodes: list = None, subs_
 def _normalize_auto_node_item(an: dict, conf_dir: Path = CONF_DIR, saved_nodes: list = None, subs_list: list = None, store: dict = None) -> dict:
     item = dict(an or {})
     item["id"] = str(item.get("id") or "auto_pool").strip()
-    item["tag"] = str(item.get("tag") or f"Auto_{re.sub(r'[^a-zA-Z0-9_]', '_', item['id'])}").strip()
+    _raw_an_tag = str(item.get("tag") or f"Auto_{re.sub(r'^(?:auto_|Auto_)+', '', item['id'])}").strip()
+    while _raw_an_tag.lower().startswith("auto_auto_"):
+        _raw_an_tag = "Auto_" + _raw_an_tag[10:]
+    if item["id"] == "auto_ai" and _raw_an_tag.lower() in ("auto_auto_ai", "auto_ai"):
+        _raw_an_tag = "Auto_AI"
+    elif item["id"] == "auto_youtube" and _raw_an_tag.lower() in ("auto_auto_youtube", "auto_youtube"):
+        _raw_an_tag = "Auto_YouTube"
+    item["tag"] = _raw_an_tag
     item["name"] = str(item.get("name") or "自动节点").strip()
     if "pool_mode" in item and item.get("pool_mode") in ("ping_only", "service_check"):
         svc_en = (item.get("pool_mode") == "service_check")
@@ -5198,7 +5285,7 @@ def _strip_auto_node_runtime_fields(an: dict) -> dict:
     """B2-9 Fix: Strips volatile per-tick probe telemetry (members sparklines, quality_ranking, last_check_ts, current_delay_ms)
     before writing /etc/ai-link/auto_nodes.json so the persisted configuration file is deterministic and free of real-time probe noise."""
     clean = dict(an or {})
-    for vk in ("quality_ranking", "pool_reachable_count", "pool_candidate_tags", "last_check_ts", "current_delay_ms", "verified_nodes", "all_groups_dead_alert", "alert_message", "last_revert_ts", "last_smart_switch_ts", "last_switch_ts", "selection_explain", "current_google_region", "current_node_key", "l7_degraded_fallback", "quarantine_break_glass", "multi_line_nodes", "active_lines_count", "multi_line_locked", "multi_line_locked_reason", "estimated_daily_bw_mib"):
+    for vk in ("quality_ranking", "pool_reachable_count", "pool_candidate_tags", "last_check_ts", "current_delay_ms", "verified_nodes", "all_groups_dead_alert", "alert_message", "last_revert_ts", "last_smart_switch_ts", "last_switch_ts", "selection_explain", "current_google_region", "current_node_key", "l7_degraded_fallback", "quarantine_break_glass", "last_real_probe_ts", "fresh_ok_count", "verified_service_count", "probe_age_sec", "probe_stale", "quota_frozen", "capacity_shortfall", "bound_shunt_groups", "unbound_pool_warning", "multi_line_nodes", "active_lines_count", "multi_line_locked", "multi_line_locked_reason", "estimated_daily_bw_mib"):
         clean.pop(vk, None)
     if int(clean.get("active_group_index") or 1) <= 1:
         clean.pop("primary_recover_streak", None)
@@ -5742,7 +5829,7 @@ def probe_auto_node_dual_groups(an_or_id, probe_services: bool = False, conf_dir
         m_res = None
         if isinstance(mock_ping_map, dict):
             m_res = mock_ping_map.get(nid) or mock_ping_map.get(tag)
-        r = url_ping_single_node(n_obj, timeout_ms=timeout_ms, conf_dir=conf_dir, mock_result=m_res)
+        r = url_ping_single_node(n_obj, timeout_ms=timeout_ms, conf_dir=conf_dir, mock_result=m_res, is_pool_health=True)
         probed_counts[nid] = probed_counts.get(nid, 0) + 1
         probed_results[nid] = r
         return r
@@ -5771,13 +5858,19 @@ def probe_auto_node_dual_groups(an_or_id, probe_services: bool = False, conf_dir
                     c_url = (all_svcs.get(sid) or {}).get("url", "")
                     m_http = (mock_svc_map.get(nid, {}).get(sid) or mock_svc_map.get(r.get("tag", ""), {}).get(sid)) if isinstance(mock_svc_map, dict) else None
                     probe_node_service_l7(nid, sid, custom_url=c_url, timeout_ms=timeout_ms, conf_dir=conf_dir, mock_http=m_http)
+    real_probed_ids = [nid for nid, r in probed_results.items() if not r.get("quota_capped") and not r.get("skipped")]
+    skipped_ids = [nid for nid, r in probed_results.items() if r.get("quota_capped") or r.get("skipped")]
     round_log = {
         "ts": int(time.time()),
         "auto_node_id": an.get("id"),
         "group_indices": scope["group_indices"],
         "probed_node_ids": list(probed_counts.keys()),
+        "real_probed_node_ids": real_probed_ids,
+        "quota_skipped_node_ids": skipped_ids,
+        "quota_skipped_count": len(skipped_ids),
         "probed_counts": dict(probed_counts),
         "unique_probed_count": len(probed_counts),
+        "real_probed_count": len(real_probed_ids),
         "dedup_saved": scope["dedup_saved"],
     }
     LAST_DUAL_PROBE_LOG[an.get("id", "default")] = round_log
@@ -6584,9 +6677,10 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
             rec_raw = store.get(nid) or store.get(t) or {}
             sc_info = compute_node_sliding_score(rec_raw, svc_checks=(svc_ids if is_full else None))
             country = classify_node_country_5plus1(t, n_obj)
-            # Check service qualification if full mode
+            # P0-4 Strict L7 Tri-State Verification (verified_pass / verified_fail / unverified) with TTL check
             svc_passed = True
             svc_verified = True
+            svc_state = "verified_pass"
             if is_full and svc_ids:
                 rec_svc = rec_raw.get("svc") if isinstance(rec_raw.get("svc"), dict) else {}
                 tested_cnt = 0
@@ -6596,8 +6690,10 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
                     s_ent = rec_svc.get(sid) or (rec_svc.get("openai") if sid == "chatgpt" else (rec_svc.get("chatgpt") if sid == "openai" else None))
                     if isinstance(s_ent, dict):
                         s_reason = str(s_ent.get("reason") or "")
-                        # Ignore legacy v17 false-negative 'HTTP_204_NOT_IN_' bug records as untested ('unknown')
                         if "HTTP_204_NOT_IN_" in s_reason:
+                            continue
+                        s_ts = int(s_ent.get("ts") or s_ent.get("probe_ts") or 0)
+                        if s_ts > 0 and (now_sec - s_ts) > 86400:
                             continue
                         tested_cnt += 1
                         if s_ent.get("ok"):
@@ -6608,22 +6704,28 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
                     if fail_cnt > 0:
                         svc_passed = False
                         svc_verified = False
+                        svc_state = "verified_fail"
                     elif pass_cnt == len(svc_ids):
                         svc_passed = True
                         svc_verified = True
+                        svc_state = "verified_pass"
                     else:
                         svc_passed = True
                         svc_verified = False
+                        svc_state = "unverified"
                 else:
                     if pass_cnt > 0:
                         svc_passed = True
                         svc_verified = True
+                        svc_state = "verified_pass"
                     elif tested_cnt > 0 and fail_cnt == tested_cnt:
                         svc_passed = False
                         svc_verified = False
+                        svc_state = "verified_fail"
                     else:
                         svc_passed = True
                         svc_verified = False
+                        svc_state = "unverified" 
             cdn_tls_ok = _is_node_cdn_tls_healthy(rec_raw)
             is_rand_node = _is_random_region_node(t)
             # BUG-006 & Auto Node Pool v2 §3-§6: Check Google Region & Quarantine & Cooldown
@@ -6657,6 +6759,7 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
                 and ev["state"] == "ok"
                 and ev["delay_ms"] > 0
                 and svc_passed
+                and (svc_verified if (is_full and svc_ids) else True)
                 and score_passed
                 and not node_region_blocked
                 and not in_quarantine
@@ -6717,6 +6820,7 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
                 "selectable": ev["selectable"],
                 "svc_passed": svc_passed,
                 "svc_verified": svc_verified,
+                "svc_state": ("verified_fail" if node_region_blocked else svc_state),
                 "cdn_tls_ok": cdn_tls_ok,
                 "is_random_region": is_rand_node,
                 "score_passed": score_passed,
@@ -6789,16 +6893,22 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
     cur_nid = str(an.get("current_node_id") or "")
     # Case: No group has any qualified `ok` node
     an["quarantine_break_glass"] = False
+    an["l7_degraded_fallback"] = False
     if cand_group_idx == 0:
-        # D-01 Safety Guard: If L7 service check or temporary cooldown rejected all nodes,
-        # never deadlock to 'direct' when reachable (state=='ok', delay_ms>0, not region_blocked, not out_of_scope) nodes exist in the pool!
+        # D-01 Safety Guard: If L7 service check was unverified or temporary cooldown rejected all nodes,
+        # fallback to reachable non-failed nodes while explicitly flagging l7_degraded=True!
         for g in groups:
             g_reach = [
                 m for m in (g.get("members") or [])
-                if m.get("selectable") and not m.get("out_of_scope") and m.get("state") == "ok" and int(m.get("delay_ms") or 0) > 0 and m.get("score_passed", True) and not m.get("region_blocked") and not m.get("in_quarantine")
+                if m.get("selectable") and not m.get("out_of_scope") and m.get("state") == "ok" and int(m.get("delay_ms") or 0) > 0 and m.get("score_passed", True) and not m.get("region_blocked") and not m.get("in_quarantine") and m.get("svc_passed", True)
             ]
+            if not g_reach:
+                g_reach = [
+                    m for m in (g.get("members") or [])
+                    if m.get("selectable") and not m.get("out_of_scope") and m.get("state") == "ok" and int(m.get("delay_ms") or 0) > 0 and m.get("score_passed", True) and not m.get("region_blocked") and not m.get("in_quarantine")
+                ]
             if g_reach:
-                g_reach.sort(key=lambda x: (x["delay_ms"], x["tag"]))
+                g_reach.sort(key=lambda x: (0 if x.get("cdn_tls_ok", True) else 1, x.get("eff_rank_ms", x["delay_ms"]), 1 if x.get("is_random_region", False) else 0, x["delay_ms"], x["tag"]))
                 qualified_by_group[g["index"]] = g_reach
                 g["ok_count"] = len(g_reach)
                 for _mr in g_reach:
@@ -6808,9 +6918,8 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
                 an["l7_degraded_fallback"] = True
                 an["l7_degraded"] = True
                 break
-        # Stage 6.31a Half-Open Break-Glass Recovery: If all in-scope nodes are in quarantine or low-score filtered,
-        # but at least one in-scope node has already recovered connectivity (state=="ok", delay_ms>0, consecutive_fail==0),
-        # break glass instead of deadlocking to direct for 60 minutes!
+        # Stage 6.31a & P1-5.3 Half-Open Break-Glass Recovery:
+        # Restricted to ping_only pools OR service_check pools where the node has svc_verified==True (never bypass L7 on service pools!)
         if cand_group_idx == 0:
             for g in groups:
                 g_bg = [
@@ -6822,6 +6931,7 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
                     and int(m.get("delay_ms") or 0) > 0
                     and int(m.get("consecutive_fail") or 0) == 0
                     and m.get("svc_passed", True)
+                    and (not (is_full and svc_ids) or m.get("svc_verified", False))
                 ]
                 if g_bg:
                     g_bg.sort(key=lambda x: (int(x.get("quarantine_until") or 0), x.get("eff_rank_ms", x["delay_ms"]), x["delay_ms"], x["tag"]))
@@ -6964,13 +7074,38 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
     an["current_node_key"] = chosen.get("node_key") or ""
     an["current_delay_ms"] = chosen["delay_ms"]
     an["current_google_region"] = chosen.get("google_region") or chosen.get("country") or "US"
-    an["verified_nodes"] = [x["tag"] for x in g_nodes]
-    an["last_check_ts"] = now_sec
+    all_pool_m = [m for g in groups for m in (g.get("members") or [])]
+    _m_probe_ts_vals = []
+    _fresh_win_s = max(900, int(an.get("interval_s") or 600) * 2)
+    _fresh_ok_cnt = 0
+    _ver_svc_cnt = 0
+    for _m_p in all_pool_m:
+        _r_p = store.get(_m_p["node_id"]) or store.get(_m_p["tag"]) or {}
+        _pts = int(_r_p.get("last_probe_ts") or _r_p.get("probe_ts") or 0)
+        if _pts > 0:
+            _m_probe_ts_vals.append(_pts)
+        if _m_p.get("state") == "ok" and int(_m_p.get("delay_ms") or 0) > 0:
+            if _pts > 0 and (now_sec - _pts) <= _fresh_win_s:
+                _fresh_ok_cnt += 1
+            if (not (is_full and svc_ids)) or _m_p.get("svc_verified"):
+                _ver_svc_cnt += 1
+    _last_real_pts = max(_m_probe_ts_vals) if _m_probe_ts_vals else 0
+    an["last_real_probe_ts"] = _last_real_pts
+    an["last_check_ts"] = _last_real_pts if _last_real_pts > 0 else int(an.get("last_check_ts") or now_sec)
+    an["fresh_ok_count"] = _fresh_ok_cnt
+    an["verified_service_count"] = _ver_svc_cnt
+    an["probe_age_sec"] = (now_sec - _last_real_pts) if _last_real_pts > 0 else -1
+    an["probe_stale"] = bool(_last_real_pts > 0 and (now_sec - _last_real_pts) > 3600)
+    an["quota_frozen"] = bool(_is_node_test_budget_exceeded(conf_dir, is_pool_health=True))
+    _t_cap_eval = max(1, min(10, int(an.get("target_size") or 10)))
+    an["capacity_shortfall"] = bool(len(all_ok_tags) < _t_cap_eval)
+    an["verified_nodes"] = [x["tag"] for x in g_nodes if (not (is_full and svc_ids)) or x.get("svc_verified")]
+    if an.get("quarantine_break_glass"):
+        an["alert_message"] = f"⚡ 半开破冰恢复：已临时启用已恢复节点 {chosen['tag']}（原隔离冷却中）"
     # Build human-readable selection explanation (DESIGN-auto-node-pool-v2 §7 & NEXT-SUBMISSION-2 A-1)
-    svc_badges = [f"{sid.upper()} ✓" for sid in (svc_ids or ["ping"])]
+    svc_badges = [f"{sid.upper()} " + ("✓" if chosen.get("svc_verified", True) else "待验") for sid in (svc_ids or ["ping"])]
     g_reg_str = chosen.get("google_region") or chosen.get("country") or "US"
     c_ok_cnt = max(1, int(chosen.get("samples") or chosen.get("consecutive_ok") or 1))
-    all_pool_m = [m for g in groups for m in (g.get("members") or [])]
     reg_blk_cnt = sum(1 for m in all_pool_m if m.get("region_blocked"))
     quar_cnt = sum(1 for m in all_pool_m if m.get("in_quarantine"))
     dead_cnt_p = sum(1 for m in all_pool_m if m.get("state") == "dead")
@@ -6982,16 +7117,17 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
     if dead_cnt_p:
         elim_notes.append(f"不可达 {dead_cnt_p}")
     elim_suffix = f"（淘汰: {', '.join(elim_notes)}）" if elim_notes else ""
+    _bg_note = " · 半开破冰恢复" if an.get("quarantine_break_glass") else ""
     an["selection_explain"] = (
-        f"候选 {len(all_ok_tags)}/{max(1, len(all_pool_m))} 达标{elim_suffix} · "
+        f"候选 {len(all_ok_tags)}/{max(1, len(all_pool_m))} 达标{elim_suffix}{_bg_note} · "
         f"{' / '.join(svc_badges[:2])} · Google:{g_reg_str} · "
         f"评分 {chosen.get('v2_score', 1.8)} · EWMA {int(chosen.get('delay_ewma_ms') or chosen['delay_ms'])}ms · "
         f"连续成功 {c_ok_cnt} 次"
     )
-    rep_th_eval = max(1, min(int(an.get("target_size") or 10), int(an.get("replenish_threshold") or 2)))
+    rep_th_eval = max(1, min(_t_cap_eval, int(an.get("replenish_threshold") or 2)))
     an["pool_degraded_alert"] = bool(an.get("auto_maintain", True) and len(all_ok_tags) < rep_th_eval)
     an["degraded_reason"] = f"池内可用节点 ({len(all_ok_tags)}/{max(1, len(all_pool_m))}) 低于补位阈值 {rep_th_eval}" if an["pool_degraded_alert"] else ""
-    an["l7_degraded"] = bool(an.get("l7_degraded_fallback", False))
+    an["l7_degraded"] = bool(an.get("l7_degraded_fallback", False) or ((is_full and svc_ids) and _ver_svc_cnt == 0))
     if is_pool_ip_sensitive(an):
         an["dispatch_mode"] = "single_best"
         an["multi_line_locked"] = True
@@ -7095,6 +7231,31 @@ KERNEL_LOG_FAILOVER_WINDOW_S = 30.0
 KERNEL_LOG_FAILOVER_THRESHOLD = 3
 KERNEL_LOG_MIN_DISTINCT_TARGETS = 2
 
+_SELF_TEST_ACTIVE = False
+_SELF_TEST_FAKE_TAGS = {
+    "SG-Reality-01", "Local-Hy2-20443", "JP-Trojan-01", "HK-SS2022-01",
+    "US-Residential-Socks", "Full-VLESS-Reality-01", "Node-Disabled-JP", "Node-Enabled-JP",
+}
+
+
+def _is_live_conf_dir(conf_dir: Path = None) -> bool:
+    if _SELF_TEST_ACTIVE:
+        return False
+    if conf_dir is None:
+        return True
+    try:
+        return Path(conf_dir).resolve() == Path(CONF_DIR).resolve()
+    except Exception:
+        return False
+
+
+def _effective_run_dir(conf_dir: Path = None, run_dir: Path = None) -> Path:
+    if _is_live_conf_dir(conf_dir):
+        return Path(run_dir) if run_dir is not None else RUN_DIR
+    base = Path(conf_dir) if conf_dir is not None else (Path("/tmp/ailink_sandbox_run"))
+    return base / "_run"
+
+
 _REQUEST_SWITCH_LOCK = threading.RLock()
 _REQUEST_SWITCH_STATE = {
     "last_applied": {},  # selector_group -> {"target": str, "ts": float}
@@ -7103,7 +7264,7 @@ _REQUEST_SWITCH_STATE = {
 
 def _read_clash_selector_now(selector_group: str, timeout: float = 1.2) -> str:
     """Reads the live kernel selector state (`now`) from sing-box Clash API `:9090/proxies/<selector_group>`."""
-    if not selector_group or not _is_local_port_listening(9090):
+    if _SELF_TEST_ACTIVE or not selector_group or not _is_local_port_listening(9090):
         return ""
     enc = urllib.parse.quote(str(selector_group), safe="")
     code, data = clash_api_request(f"/proxies/{enc}", method="GET", timeout=timeout)
@@ -7125,9 +7286,14 @@ def request_switch(
     """Unified single-flight switch coordinator with observation window deduplication and live Clash selector readback."""
     if not selector_group or not target_node:
         return {"ok": False, "switched": False, "idempotent": False}
+    is_live = _is_live_conf_dir(conf_dir)
+    if not is_live and _SELF_TEST_ACTIVE:
+        if pool_id:
+            _set_auto_pool_runtime_state(conf_dir, pool_id, {"current_node": target_node})
+        return {"ok": True, "switched": False, "idempotent": True, "live_now": target_node, "target": target_node, "dry_run": True}
     now_f = time.time()
     with _REQUEST_SWITCH_LOCK:
-        live_now = _read_clash_selector_now(selector_group, timeout=1.2)
+        live_now = _read_clash_selector_now(selector_group, timeout=1.2) if is_live else ""
         mem_prev = PROBE_ENGINE.current_selections.get(selector_group, "")
         actual_prev = live_now or mem_prev
         prev_rec = _REQUEST_SWITCH_STATE["last_applied"].get(selector_group) or {}
@@ -7145,12 +7311,13 @@ def request_switch(
             reason=reason,
             live_now=live_now,
             rtt_ms=rtt_ms,
+            conf_dir=conf_dir,
         )
         _REQUEST_SWITCH_STATE["last_applied"][selector_group] = {"target": target_node, "ts": now_f}
         if pool_id:
             _set_auto_pool_runtime_state(conf_dir, pool_id, {"current_node": target_node})
         ct_flush_res = None
-        if ok and actual_prev and actual_prev != target_node and actual_prev not in ("direct", "block"):
+        if is_live and ok and actual_prev and actual_prev != target_node and actual_prev not in ("direct", "block"):
             ct_flush_res = flush_conntrack_for_switch(
                 selector_tag=selector_group,
                 old_node=actual_prev,
@@ -7168,9 +7335,11 @@ def request_switch(
 
 
 
+MULTI_LINE_ROTATE_INTERVAL_S = 30.0
 _MULTI_LINE_RR_LOCK = threading.Lock()
 _MULTI_LINE_RR_STATE = {
     "cursors": {},            # (conf_dir_str, pool_id) -> int
+    "last_rotate_ts": {},     # (conf_dir_str, pool_id) -> float
     "active_target": {},      # selector_tag -> current dispatched node tag
     "dispatched_history": {}, # selector_tag -> list of last 16 dispatched node tags
     "total_ticks": 0,
@@ -7198,11 +7367,10 @@ def _put_clash_selector_silent(selector_group: str, target_node: str, clash_api_
     return True
 
 
-def dispatch_multi_line_pools_tick(conf_dir: Path = CONF_DIR, advance: bool = True, clash_api_override=None) -> dict:
-    """v2.5.0 Kernel-Level Multi-Line Concurrent Dispatcher:
-    Rotates active `multi_line` Auto-Node Pools and their bound non-IP-sensitive Shunt Groups across all healthy
-    `multi_line_nodes` with `interrupt_exist_connections: False` so existing streams stay pinned to their assigned
-    physical node while incoming connections distribute across all healthy lines in the pool."""
+def dispatch_multi_line_pools_tick(conf_dir: Path = CONF_DIR, advance: bool = True, clash_api_override=None, respect_dwell_interval: bool = False) -> dict:
+    """v2.5.5 Multi-Egress Round-Robin Dispatcher (with P0-3 Strict 1-to-1 Selector Ownership & P0-5 30s Dwell Window):
+    Rotates active `multi_line` Auto-Node Pools and their uniquely bound non-IP-sensitive Shunt Groups across all healthy
+    `multi_line_nodes` with `interrupt_exist_connections: False`."""
     conf_dir = Path(conf_dir)
     c_str = str(conf_dir.resolve())
     sig = (c_str, _conf_file_mtimes_sig(conf_dir, ("auto_nodes.json", "shunt.json", "node_probe.json", "nodes.json")))
@@ -7239,6 +7407,7 @@ def dispatch_multi_line_pools_tick(conf_dir: Path = CONF_DIR, advance: bool = Tr
             if not ml_nodes:
                 cur_fb = str(a.get("current_node") or "direct").strip()
                 ml_nodes = [cur_fb if (cur_fb and cur_fb != "direct" and (not ok_tags or cur_fb in ok_tags)) else "direct"]
+            all_pools_for_owner = list(auto_cfg.get("auto_nodes") or [])
             bound_shunt_selectors = []
             for sg in (sh_cfg.get("groups") or []):
                 gid = str(sg.get("id") or "")
@@ -7246,7 +7415,10 @@ def dispatch_multi_line_pools_tick(conf_dir: Path = CONF_DIR, advance: bool = Tr
                 sm, _, _, aid_sg, _ = _normalize_group_shunt_params(sg)
                 if sm != "auto" or is_ip_sensitive_shunt_group(sg):
                     continue
-                if _match_auto_node_pool([a], aid_sg) is not None:
+                owner_p = _match_auto_node_pool(all_pools_for_owner, aid_sg, allow_fallback=False)
+                if owner_p is None:
+                    owner_p = _match_auto_node_pool(all_pools_for_owner, aid_sg, allow_fallback=True)
+                if owner_p is not None and str(owner_p.get("id") or "").strip() == pid:
                     bound_shunt_selectors.append(stag)
             plan_pools.append({
                 "pool_id": pid,
@@ -7274,9 +7446,17 @@ def dispatch_multi_line_pools_tick(conf_dir: Path = CONF_DIR, advance: bool = Tr
                     dispatched[sel_t] = sole_target
             continue
         active_multi_cnt += 1
+        now_rr = time.time()
         with _MULTI_LINE_RR_LOCK:
             prev_c = _MULTI_LINE_RR_STATE["cursors"].get((c_str, pid), -1)
-            cur_c = (prev_c + 1) % len(ml_nodes) if advance or prev_c < 0 else (prev_c % len(ml_nodes))
+            last_rot = float(_MULTI_LINE_RR_STATE.get("last_rotate_ts", {}).get((c_str, pid)) or 0.0)
+            cur_act_node = _MULTI_LINE_RR_STATE.get("active_target", {}).get(ptag, "")
+            eff_adv = bool(advance)
+            if eff_adv and respect_dwell_interval and prev_c >= 0 and cur_act_node in ml_nodes and (now_rr - last_rot) < MULTI_LINE_ROTATE_INTERVAL_S:
+                eff_adv = False
+            cur_c = (prev_c + 1) % len(ml_nodes) if (eff_adv or prev_c < 0 or cur_act_node not in ml_nodes) else (prev_c % len(ml_nodes))
+            if cur_c != prev_c or prev_c < 0:
+                _MULTI_LINE_RR_STATE.setdefault("last_rotate_ts", {})[(c_str, pid)] = now_rr
             _MULTI_LINE_RR_STATE["cursors"][(c_str, pid)] = cur_c
             _MULTI_LINE_RR_STATE["total_ticks"] = int(_MULTI_LINE_RR_STATE.get("total_ticks") or 0) + 1
         p_target = ml_nodes[cur_c]
@@ -8033,6 +8213,20 @@ def load_switch_history(run_dir: Path = RUN_DIR) -> list:
         try:
             d = json.loads(f.read_text(encoding="utf-8"))
             if isinstance(d, list):
+                if Path(run_dir).resolve() == Path(RUN_DIR).resolve():
+                    cleaned = [
+                        e for e in d
+                        if isinstance(e, dict)
+                        and e.get("to_node") not in _SELF_TEST_FAKE_TAGS
+                        and e.get("from_node") not in _SELF_TEST_FAKE_TAGS
+                        and e.get("group") != "Shunt_Custom_CN_Proxy"
+                    ]
+                    if len(cleaned) != len(d):
+                        try:
+                            _atomic_write_text(f, json.dumps(cleaned[:60], ensure_ascii=False, indent=2))
+                        except Exception as _e_diag:
+                            globals().get("_record_internal_diag", str)(_e_diag)
+                        return cleaned
                 return d
         except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
             globals().get("_record_internal_diag", str)(_e_diag)
@@ -8040,6 +8234,12 @@ def load_switch_history(run_dir: Path = RUN_DIR) -> list:
 
 def record_switch_event(group_name: str, old_node: str, new_node: str, reason: str = "", rtt_ms: float = 0.0, run_dir: Path = RUN_DIR):
     if not new_node or old_node == new_node:
+        return
+    if _SELF_TEST_ACTIVE and Path(run_dir).resolve() == Path(RUN_DIR).resolve():
+        return
+    if Path(run_dir).resolve() == Path(RUN_DIR).resolve() and (
+        new_node in _SELF_TEST_FAKE_TAGS or old_node in _SELF_TEST_FAKE_TAGS or group_name == "Shunt_Custom_CN_Proxy"
+    ):
         return
     try:
         run_dir.mkdir(parents=True, exist_ok=True)
@@ -8078,27 +8278,31 @@ class AIProbeEngine:
     def get_effective_rtt(self, tag: str) -> float:
         d = get_node_real_delay(tag, conf_dir=CONF_DIR)
         return float(d) if d > 0 else 0.0
-    def hot_switch_core_selector(self, selector_group: str, target_node: str, reason: str = "", live_now: str = None, rtt_ms: float = None) -> bool:
+    def hot_switch_core_selector(self, selector_group: str, target_node: str, reason: str = "", live_now: str = None, rtt_ms: float = None, conf_dir: Path = CONF_DIR) -> bool:
         if not selector_group or not target_node:
             return False
+        is_live = _is_live_conf_dir(conf_dir)
+        if not is_live and _SELF_TEST_ACTIVE:
+            return True
         mem_prev = self.current_selections.get(selector_group, "")
-        clash_now = live_now if live_now is not None else (_read_clash_selector_now(selector_group, timeout=1.2) if _is_local_port_listening(9090) else "")
+        clash_now = live_now if live_now is not None else (_read_clash_selector_now(selector_group, timeout=1.2) if (is_live and _is_local_port_listening(9090)) else "")
         prev = clash_now or mem_prev
         self.current_selections[selector_group] = target_node
         changed = bool(prev and prev != target_node)
         need_put = bool(changed or not prev or (clash_now and clash_now != target_node))
-        if changed:
-            d_ms = float(rtt_ms) if rtt_ms is not None else float(get_node_real_delay(target_node, conf_dir=CONF_DIR))
+        if changed and is_live:
+            d_ms = float(rtt_ms) if rtt_ms is not None else float(get_node_real_delay(target_node, conf_dir=conf_dir))
             record_switch_event(selector_group, prev, target_node, reason=reason, rtt_ms=max(0.0, d_ms))
-        if need_put and _is_local_port_listening(9090):
+        if is_live and need_put and _is_local_port_listening(9090):
             enc = urllib.parse.quote(selector_group, safe="")
             code, _ = clash_api_request(f"/proxies/{enc}", method="PUT", payload={"name": target_node}, timeout=2.0)
             return code in (200, 204)
         return True
     def load_persisted_selections(self, run_dir: Path = RUN_DIR, conf_dir: Path = CONF_DIR):
-        sel_f = run_dir / "selections.json"
+        eff_rdir = _effective_run_dir(conf_dir, run_dir)
+        sel_f = eff_rdir / "selections.json"
         lp_sig = (
-            str(run_dir),
+            str(eff_rdir),
             str(conf_dir),
             _conf_file_mtimes_sig_q(conf_dir, ("shunt.json", "nodes.json", "node_probe.json", "subscriptions.json"), 30),
             _CORE_RELOAD_STATE["config_seq"],
@@ -8109,7 +8313,26 @@ class AIProbeEngine:
             try:
                 data = json.loads(sel_f.read_text(encoding="utf-8"))
                 if isinstance(data.get("selections"), dict):
-                    self.current_selections.update(data["selections"])
+                    raw_sels = dict(data["selections"])
+                    if _is_live_conf_dir(conf_dir):
+                        clean_sels = {
+                            k: v for k, v in raw_sels.items()
+                            if v not in _SELF_TEST_FAKE_TAGS
+                            and k not in ("Shunt_Custom_CN_Proxy", "Auto_Auto_AI")
+                        }
+                        if len(clean_sels) != len(raw_sels):
+                            data["selections"] = clean_sels
+                            try:
+                                _atomic_write_text(sel_f, json.dumps(data, ensure_ascii=False, indent=2))
+                            except Exception as _e_diag:
+                                globals().get("_record_internal_diag", str)(_e_diag)
+                        raw_sels = clean_sels
+                    for _bad_k in ("Shunt_Custom_CN_Proxy", "Auto_Auto_AI"):
+                        self.current_selections.pop(_bad_k, None)
+                    for _k_cur, _v_cur in list(self.current_selections.items()):
+                        if _v_cur in _SELF_TEST_FAKE_TAGS and _is_live_conf_dir(conf_dir):
+                            self.current_selections.pop(_k_cur, None)
+                    self.current_selections.update(raw_sels)
             except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                 globals().get("_record_internal_diag", str)(_e_diag)
         store = load_node_probe_store(conf_dir)
@@ -8139,12 +8362,21 @@ class AIProbeEngine:
         self.last_availability_pct = round((alive_cnt / total_cnt) * 100.0, 1) if total_cnt > 0 else 0.0
         self.last_probe_ts = max_ts
         self._last_lp_sig = lp_sig
-    def save_persisted_selections(self, run_dir: Path = RUN_DIR, record_history: bool = True):
+    def save_persisted_selections(self, run_dir: Path = RUN_DIR, record_history: bool = True, conf_dir: Path = CONF_DIR):
+        eff_rdir = _effective_run_dir(conf_dir, run_dir)
+        if _SELF_TEST_ACTIVE and Path(eff_rdir).resolve() == Path(RUN_DIR).resolve():
+            return
         try:
-            run_dir.mkdir(parents=True, exist_ok=True)
-            _atomic_write_text(run_dir / "selections.json", json.dumps({
+            eff_rdir.mkdir(parents=True, exist_ok=True)
+            sels_out = dict(self.current_selections)
+            if _is_live_conf_dir(conf_dir):
+                sels_out = {
+                    k: v for k, v in sels_out.items()
+                    if v not in _SELF_TEST_FAKE_TAGS and k not in ("Shunt_Custom_CN_Proxy", "Auto_Auto_AI")
+                }
+            _atomic_write_text(eff_rdir / "selections.json", json.dumps({
                 "updated_at": int(time.time()),
-                "selections": self.current_selections,
+                "selections": sels_out,
                 "delays": self.last_delays
             }, ensure_ascii=False, indent=2))
         except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
@@ -8251,8 +8483,9 @@ class AIProbeEngine:
                         self.current_selections[an_tag] = _cur_live_an
                 else:
                     request_switch(an_tag, an_cur, reason=f"自动卡片 [{an_item.get('name', an_tag)}] 选优同步", pool_id=str(an_item.get('id') or ''), conf_dir=conf_dir)
-        self.save_persisted_selections(RUN_DIR, record_history=False)
-        self.load_persisted_selections(RUN_DIR, conf_dir)
+        eff_rdir = _effective_run_dir(conf_dir)
+        self.save_persisted_selections(eff_rdir, record_history=False, conf_dir=conf_dir)
+        self.load_persisted_selections(eff_rdir, conf_dir)
         return dict(self.current_selections)
     def verify_group_target_and_failover(self, group_id: str, conf_dir: Path = CONF_DIR, simulate_fail_current: bool = False) -> dict:
         sh_cfg = load_shunt_config(conf_dir)
@@ -9332,17 +9565,21 @@ def _curl_fetch_subscription(initial_url: str, timeout_sec: int = 25, user_agent
         head_path = tmp_dir / "head"
         try:
             args = [
-                "curl", "-4", "-sS", "-k", "--proto", "=http,https", "--max-redirs", "0",
+                "curl", "-4", "-sS", "--proto", "=http,https", "--max-redirs", "0",
                 "--connect-timeout", "10", "--max-time", str(max(5, int(timeout_sec))),
                 "--max-filesize", str(5 * 1024 * 1024),
                 "-A", user_agent, "-o", str(body_path), "-D", str(head_path), "-w", "%{http_code}"
             ]
+            if host in ("localhost", "127.0.0.1", "::1"):
+                args.insert(3, "-k")
             _resolve_args = []
             if host and v4_ips and not re.match(r"^\d{1,3}(\.\d{1,3}){3}$", host):
                 _resolve_args = ["--resolve", f"{host}:{port}:{','.join(v4_ips)}"]
             proc = subprocess.run(args + _resolve_args + [cur_url], capture_output=True, text=True, timeout=timeout_sec + 5)
             if proc.returncode != 0 and _resolve_args:
                 proc = subprocess.run(args + [cur_url], capture_output=True, text=True, timeout=timeout_sec + 5)
+            if proc.returncode in (35, 51, 60) and "-k" not in args:
+                proc = subprocess.run(args[:3] + ["-k"] + args[3:] + [cur_url], capture_output=True, text=True, timeout=timeout_sec + 5)
             status_code = int((proc.stdout or "").strip()[-3:] or 0) if (proc.stdout or "").strip()[-3:].isdigit() else 0
             if proc.returncode != 0:
                 err_line = ((proc.stderr or "").strip().splitlines() or [f"curl exit {proc.returncode}"])[-1]
@@ -9744,7 +9981,13 @@ def import_subscription_text(payload: dict, conf_dir: Path = CONF_DIR) -> dict:
     }
 
 def get_max_outbounds_limit(conf_dir: Path = CONF_DIR) -> int:
-    """v2.2.0: Outbound count cap removed — returns 0 (unlimited) so 100% of enabled nodes enter sing-box kernel."""
+    """v2.5.5: Outbound count cap removed — returns 0 (unlimited) and normalizes any legacy max_outbounds.txt to 0."""
+    try:
+        m_f = Path(conf_dir) / "max_outbounds.txt"
+        if m_f.is_file() and m_f.read_text(encoding="utf-8", errors="ignore").strip() != "0":
+            m_f.write_text("0\n", encoding="utf-8")
+    except Exception as _e_diag:
+        globals().get("_record_internal_diag", str)(_e_diag)
     return 0
 
 _SB_OUTBOUND_KEYS = {
@@ -14325,19 +14568,22 @@ _LAST_SYNCED_SHUNT_MTIME = 0
 def build_shunt_api_response(conf_dir: Path = CONF_DIR) -> dict:
     """Builds 3-mode Shunt status (`direct` | `manual` | `auto`), enforcing Subscription Orthogonal Gate & 4-State Machine."""
     global _LAST_SYNCED_SHUNT_MTIME
-    try:
-        sf_p = conf_dir / "shunt.json"
-        if sf_p.is_file():
-            cur_sh_mt = sf_p.stat().st_mtime_ns
-            if _LAST_SYNCED_SHUNT_MTIME != 0 and cur_sh_mt != _LAST_SYNCED_SHUNT_MTIME:
-                _LAST_SYNCED_SHUNT_MTIME = cur_sh_mt
-                PROBE_ENGINE.apply_shunt_selections(conf_dir)
-            else:
-                _LAST_SYNCED_SHUNT_MTIME = cur_sh_mt
-    except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
-        globals().get("_record_internal_diag", str)(_e_diag)
-    PROBE_ENGINE.load_persisted_selections(RUN_DIR, conf_dir)
-    sync_selections_from_clash(conf_dir)
+    if _is_live_conf_dir(conf_dir):
+        try:
+            sf_p = conf_dir / "shunt.json"
+            if sf_p.is_file():
+                cur_sh_mt = sf_p.stat().st_mtime_ns
+                if _LAST_SYNCED_SHUNT_MTIME != 0 and cur_sh_mt != _LAST_SYNCED_SHUNT_MTIME:
+                    _LAST_SYNCED_SHUNT_MTIME = cur_sh_mt
+                    PROBE_ENGINE.apply_shunt_selections(conf_dir)
+                else:
+                    _LAST_SYNCED_SHUNT_MTIME = cur_sh_mt
+        except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
+            globals().get("_record_internal_diag", str)(_e_diag)
+        PROBE_ENGINE.load_persisted_selections(RUN_DIR, conf_dir)
+        sync_selections_from_clash(conf_dir)
+    else:
+        PROBE_ENGINE.load_persisted_selections(_effective_run_dir(conf_dir), conf_dir)
     sels_tup = tuple(sorted((PROBE_ENGINE.current_selections or {}).items()))
     sh_key = (
         str(conf_dir),
@@ -14622,7 +14868,7 @@ def _conf_file_mtimes_sig_q(conf_dir: Path, filenames: tuple, quantum_s: int = 3
 
 def _slim_auto_nodes_for_status(auto_nodes_list: list) -> list:
     """P1-1 Fix: Slims status.shunt.auto_nodes so /api/status stays fast and compact (<35KB raw, <7KB gzipped) even with 244+ nodes."""
-    _KEEP_M_KEYS = ("node_id", "node_key", "tag", "country", "google_region", "google_region_label", "gemini_supported", "region_blocked", "in_quarantine", "state", "delay_ms", "delay_ewma_ms", "v2_score", "selectable", "qualified", "score", "display_score", "grade", "badge", "color", "suggest_remove")
+    _KEEP_M_KEYS = ("node_id", "node_key", "tag", "country", "google_region", "google_region_label", "gemini_supported", "region_blocked", "out_of_scope", "in_quarantine", "state", "delay_ms", "delay_ewma_ms", "v2_score", "selectable", "svc_passed", "svc_verified", "svc_state", "qualified", "score", "display_score", "grade", "badge", "color", "suggest_remove")
     out = []
     for an in (auto_nodes_list or []):
         if not isinstance(an, dict):
@@ -14693,6 +14939,23 @@ def build_auto_nodes_api_response(conf_dir: Path = CONF_DIR, include_sparkline: 
             for m in (g.get("members") or []):
                 rec_m = store.get(m.get("node_id") or "") or store.get(m.get("tag") or "") or {}
                 m["ipv6_ok"] = rec_m.get("ipv6_ok") if "ipv6_ok" in rec_m else None
+    sh_for_bind = load_shunt_config(conf_dir)
+    all_an_list = cfg.get("auto_nodes") or []
+    bound_map_an = {str(a.get("id") or ""): [] for a in all_an_list if isinstance(a, dict)}
+    for sg_b in (sh_for_bind.get("groups") or []):
+        if not isinstance(sg_b, dict):
+            continue
+        sm_b, _, _, aid_b, _ = _normalize_group_shunt_params(sg_b)
+        if sm_b == "auto":
+            op_b = _match_auto_node_pool(all_an_list, aid_b, allow_fallback=False) or _match_auto_node_pool(all_an_list, aid_b, allow_fallback=True)
+            if op_b and str(op_b.get("id") or "") in bound_map_an:
+                bound_map_an[str(op_b.get("id") or "")].append(str(sg_b.get("name") or sg_b.get("title") or sg_b.get("id") or ""))
+    for an in all_an_list:
+        pid_b = str(an.get("id") or "")
+        b_grps = bound_map_an.get(pid_b) or []
+        an["bound_shunt_groups"] = b_grps
+        an["unbound_pool_warning"] = (len(b_grps) == 0)
+    cfg["quota_status"] = get_node_test_quota_summary(conf_dir)
     cfg["ipv6_governance"] = build_ipv6_governance_summary(conf_dir)
     cfg["log_failover_guard"] = get_kernel_log_failover_status(conf_dir)
     cfg["kernel_log_failover"] = cfg["log_failover_guard"]
@@ -16952,7 +17215,16 @@ def _read_dhcp_and_arp_devices(lan_ip: str) -> dict:
     return hosts
 
 def _load_traffic_ledger(conf_dir: Path = CONF_DIR) -> dict:
-    for p_cand in (conf_dir / "traffic_ledger.json", Path("/tmp/ai-link-traffic-ledger.json")):
+    is_live = _is_live_conf_dir(conf_dir)
+    cands = [conf_dir / "traffic_ledger.json"]
+    if is_live:
+        r_tl = RUN_DIR / "traffic_ledger.json"
+        c_tl = conf_dir / "traffic_ledger.json"
+        if r_tl.is_file() and c_tl.is_file():
+            cands = [r_tl, c_tl] if r_tl.stat().st_mtime_ns >= c_tl.stat().st_mtime_ns else [c_tl, r_tl]
+        else:
+            cands = [r_tl, c_tl, Path("/tmp/ai-link-traffic-ledger.json")]
+    for p_cand in cands:
         if p_cand.is_file():
             try:
                 data = json.loads(p_cand.read_text(encoding="utf-8"))
@@ -16962,11 +17234,21 @@ def _load_traffic_ledger(conf_dir: Path = CONF_DIR) -> dict:
                 globals().get("_record_internal_diag", str)(_e_diag)
     return {"days": {}, "hours": {}, "devices": {}, "nodes": {}, "targets": {}}
 
-def _save_traffic_ledger(ledger: dict, conf_dir: Path = CONF_DIR):
+def _save_traffic_ledger(ledger: dict, conf_dir: Path = CONF_DIR, flush_flash: bool = True):
+    is_live = _is_live_conf_dir(conf_dir)
+    raw = json.dumps(ledger, ensure_ascii=False)
+    if is_live:
+        try:
+            RUN_DIR.mkdir(parents=True, exist_ok=True)
+            (RUN_DIR / "traffic_ledger.json").write_text(raw, encoding="utf-8")
+        except Exception as _e_diag:
+            globals().get("_record_internal_diag", str)(_e_diag)
+        if not flush_flash:
+            return
     for p_cand in (conf_dir / "traffic_ledger.json", Path("/tmp/ai-link-traffic-ledger.json")):
         try:
             p_cand.parent.mkdir(parents=True, exist_ok=True)
-            p_cand.write_text(json.dumps(ledger, ensure_ascii=False), encoding="utf-8")
+            p_cand.write_text(raw, encoding="utf-8")
             break
         except Exception:
             continue
@@ -17191,9 +17473,12 @@ def sample_live_overview_telemetry(conf_dir: Path = CONF_DIR, force_sample: bool
         for ip_k, lbl_v in list(host_map.items())[:8]:
             dev_ledger.setdefault(ip_k, {"name": lbl_v, "in_bytes": 0, "out_bytes": 0})
         _OVERVIEW_RT["cached_ledger"] = ledger
-        if force_sample or (now - _OVERVIEW_RT.get("last_disk_save_ts", 0)) >= 9.0:
+        if force_sample or (now - _OVERVIEW_RT.get("last_disk_save_ts", 0)) >= 15.0:
             _OVERVIEW_RT["last_disk_save_ts"] = now
-            _save_traffic_ledger(ledger, conf_dir)
+            do_flash = bool(force_sample or (now - _OVERVIEW_RT.get("last_flash_save_ts", 0)) >= 180.0 or not _is_live_conf_dir(conf_dir))
+            if do_flash:
+                _OVERVIEW_RT["last_flash_save_ts"] = now
+            _save_traffic_ledger(ledger, conf_dir, flush_flash=do_flash)
     return ledger
 
 def _lan_ip_from_uci() -> str:
@@ -21283,9 +21568,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.5.4"
+APP_VERSION = "2.5.5"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.5.4-release-20261109"
+APP_BUILD = "2.5.5-release-20261109"
 
 UPDATE_MANIFEST_PRIMARY = "https://ai-link-official.pages.dev/version.json"
 UPDATE_MANIFEST_GITHUB = "https://raw.githubusercontent.com/Master-AI-007/ai-link-openwrt/main/version.json"
@@ -26314,10 +26599,10 @@ def start_background_probe_scheduler(interval_sec: int = 21600):
         while True:
             try:
                 if _is_local_port_listening(9090):
-                    dispatch_multi_line_pools_tick(CONF_DIR, advance=True)
+                    dispatch_multi_line_pools_tick(CONF_DIR, advance=True, respect_dwell_interval=True)
             except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                 globals().get("_record_internal_diag", str)(_e_diag)
-            time.sleep(0.5)
+            time.sleep(2.0)
     t = threading.Thread(target=_full_and_service_loop, daemon=True)
     t.start()
     t2 = threading.Thread(target=_telemetry_and_watchdog_loop, daemon=True)
@@ -26491,6 +26776,13 @@ def main():
         print("Hot-reloaded AI-LINK configuration and selector states.")
         return 0
     if "--self-test" in sys.argv:
+        global _SELF_TEST_ACTIVE
+        _SELF_TEST_ACTIVE = True
+        _st_orig_sels = dict(PROBE_ENGINE.current_selections)
+        _st_sels_path = RUN_DIR / "selections.json"
+        _st_hist_path = RUN_DIR / "switch_history.json"
+        _st_sels_before = _st_sels_path.read_bytes() if _st_sels_path.is_file() else None
+        _st_hist_before = _st_hist_path.read_bytes() if _st_hist_path.is_file() else None
         eng = AIProbeEngine()
         ok1, msg1 = eng.verify_semantic_payload("openai", 200, {}, "fl=12f\nloc=US\nstatus=normal")
         assert ok1 is True, f"Expected OpenAI US trace to pass: {msg1}"
@@ -26911,6 +27203,12 @@ def main():
             assert _ota_prog["running"] is False, f"OTA: 空进度不应标记为运行中，got {_ota_prog}"
         shutil.rmtree(tmp_test_dir, ignore_errors=True)
         shutil.rmtree(tmp_shunt_dir, ignore_errors=True)
+        PROBE_ENGINE.current_selections = _st_orig_sels
+        _SELF_TEST_ACTIVE = False
+        _st_sels_after = _st_sels_path.read_bytes() if _st_sels_path.is_file() else None
+        _st_hist_after = _st_hist_path.read_bytes() if _st_hist_path.is_file() else None
+        assert _st_sels_after == _st_sels_before, "P0-1 regression: --self-test modified production selections.json!"
+        assert _st_hist_after == _st_hist_before, "P0-1 regression: --self-test modified production switch_history.json!"
         print("SELF_TEST_PASSED", json.dumps({
             "ok": True,
             "app_version": APP_VERSION,

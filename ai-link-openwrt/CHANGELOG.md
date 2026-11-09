@@ -1,3 +1,10 @@
+## v2.5.5 (2026-11-09)
+- **官方自检 (`ai-link probe` / `--self-test`) 100% 生产隔离与脏数据自愈 (`P0-1` & `P1-5.4`)**：全链路增加 `_SELF_TEST_ACTIVE` 与 `_is_live_conf_dir` 守卫，非生产目录或自检态严禁写 `/var/run/ai-link/selections.json`、`/var/run/ai-link/switch_history.json` 或发起 Clash API `PUT /proxies/*`；启动/加载时自动清洗残留的 `JP-Trojan-01`、`HK-SS2022-01` 等自检假节点，并在 `--self-test` 末尾强制执行字节级零变化断言。
+- **探测预算双轨拆分、故障复验免配额穿透与真实探测新鲜度 (`P0-2` & `P1-5.1`)**：将自动池健康巡检预算 (`pool_health_budget >= 45,000`) 与日常探索测速预算分离，500+ 节点库自动扩容至 `>= 60,000` 并迁移清零旧超限计数；`on_egress_fail()` 故障复验强制 `force=True` 免配额穿透，杜绝配额耗尽时因读取旧缓存 `state=ok` 而阻断故障切换；`last_check_ts` 严格反映池成员真实探测时间 (`last_real_probe_ts`)，暴露 `probe_stale`、`fresh_ok_count` 与 `quota_status`。
+- **多线池 Selector 1对1 唯一归属与 30s 稳定驻留轮询 (`P0-3` & `P0-5`)**：修复 `dispatch_multi_line_pools_tick` 中因 `_match_auto_node_pool([a], aid_sg)` 默认 `allow_fallback=True` 导致跨池抢占 `Shunt_*` 的问题，确保每个分流组 Selector 唯一归属其绑定池；将后台轮换驻留窗口收敛为 `30s`（故障时仍秒切），并将前端文案如实更新为「多出口轮询（实验，不叠加单流带宽）」。
+- **L7 服务可用性严格三态验证与半开恢复防绕过 (`P0-4` & `P1-5.3`)**：在 `service_check` (`full`) 模式下，仅当节点具备 24h TTL 内的真实 L7 通过记录（`svc_verified=True`）时才纳入合格队列；0 验证通过时强制标记 `l7_degraded=True` 并在 UI 显示「L7 待验证」，同时禁止服务池通过 `quarantine_break_glass` 绕过 L7 验证。
+- **配置与存储写放大治理 (`P1-5.2` / `5.5` / `5.6` / `5.7` / `5.8` / `5.9`)**：修复 `Auto_Auto_AI` 双重前缀、专用池未绑定告警、订阅预览 `node_key+tag` 双重匹配、自动选点 30s 轮询与缓存透明提示、订阅拉取优先校验证书、`max_outbounds.txt` 归一为 `0`、IPK `control` 描述同步，以及 `traffic_ledger.json` tmpfs 主写 + 180s 节流落盘（降低 90%+ 闪存写放大）。
+
 ## v2.5.4 (2026-11-09)
 - **验收报告版本锚点与 `Makefile` 动态注入闭环 (`FB-253-1`)**：打包与报告生成脚本直接从 `Makefile` 读取 `PKG_VERSION:=2.5.4` 与 `PKG_RELEASE:=14`，自动注入报告与 `HANDOFF.md`，并在 `gates_v101.py` 增加 `Makefile == ipk 文件名 r14 == 报告 PKG_RELEASE:=14` 的三方一致性门禁。
 - **验收报告按版本结构化重构 (`FB-253-2`)**：验收报告首节固定为本轮 `v2.5.4` 增量改动与反馈闭环清单，剥离上一版本专属旧章节，历史版本（`v2.5.0`~`v2.5.3`）统一收敛为状态总表，并在 `gates_v101.py` 增加报告首节版本号校验门禁。

@@ -4,7 +4,7 @@
 
 **NEXUS 全域 3D 智能网关 · 运行在 OpenWrt 上的智能分流系统**
 
-[![version](https://img.shields.io/badge/version-2.5.4-6ee7f5?style=flat-square)](https://github.com/Master-AI-007/ai-link-openwrt/releases/tag/v2.5.4)
+[![version](https://img.shields.io/badge/version-2.5.5-6ee7f5?style=flat-square)](https://github.com/Master-AI-007/ai-link-openwrt/releases/tag/v2.5.5)
 [![platform](https://img.shields.io/badge/OpenWrt-23.05%20%7C%2024.10%20%7C%20ImmortalWrt-a994ff?style=flat-square)](#环境要求)
 [![core](https://img.shields.io/badge/sing--box-1.14.1-54e6b5?style=flat-square)](#技术架构)
 [![license](https://img.shields.io/badge/license-MIT-f9a8d4?style=flat-square)](#许可与免责)
@@ -30,9 +30,9 @@ AI-LINK 是一套面向 OpenWrt 的**智能分流网关**：用 sing-box 单内�
 
 ---
 
-## 核心能力总览（v2.5.4）
+## 核心能力总览（v2.5.5）
 
-> **v2.5.4 增量**：四项出包标准固化进门禁、报告版本锚点自动注入与结构化、节点池全员隔离半开破冰自愈与手动移除防回弹、D-01 兜底越界拦截、多线双通道保底、声呐三环刻度与全站动态版本号；延续范围强约束与多线出口。
+> **v2.5.5 增量**：节点池专项复审计——自检 100% 生产隔离与假节点自愈、探测预算双轨拆分与故障复验免配额、真实探测新鲜度遥测、多线池 Selector 唯一归属与 30s 驻留、诚实的轮询文案；延续四项出包标准与范围强约束。
 
 
 | | 能力 | 说明 |
@@ -185,7 +185,8 @@ sing-box 1.14.1（单内核）
 
 | 版本 | 日期 | 主题 |
 |---|---|---|
-| **2.5.4** | 2026-11-09 | 出包标准固化 + 报告结构化 + 节点池破冰自愈 |
+| **2.5.5** | 2026-11-09 | 节点池专项复审计（自检隔离 / 预算双轨 / Selector 归属）|
+| 2.5.4 | 2026-11-09 | 出包标准固化 + 报告结构化 + 节点池破冰自愈 |
 | 2.5.3 | 2026-11-09 | 测试集自包含 + 交付指纹机制化 |
 | 2.5.2 | 2026-11-09 | 节点池订阅源/地区强约束闭环 + 测试集随包内置 |
 | 2.5.1 | 2026-11-08 | LuCI 极简重构 + 多线并发退化收敛 + 上轮反馈闭环 |
@@ -221,10 +222,10 @@ sing-box 1.14.1（单内核）
 ## 包指纹
 
 ```
-AI-LINK-v2.5.4.tar.gz
-size   955,544 B
-md5    8098a22008d81d5a6dc83291ea5349f1
-sha256 de785847e8f0c8e22e88422d1ab1c83e983b64c8f882095f670dc7c63ecbed20
+AI-LINK-v2.5.5.tar.gz
+size   989,400 B
+md5    32995b4cde320f0bff34018b9858820f
+sha256 496d5d16d5c61ff59a0245e764a2ae2d9f771abfa33b7cf25f938fb26c96037b
 ```
 
 在线清单：<https://ai-link-official.pages.dev/version.json>

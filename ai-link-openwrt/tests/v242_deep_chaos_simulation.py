@@ -1567,7 +1567,7 @@ def main() -> int:
         gates_254_txt = (Path(__file__).resolve().parent / "gates_v101.py").read_text(encoding="utf-8")
         check("Stage 6.27a (v2.5.4 FB-253-1/2 Makefile PKG_VERSION/PKG_RELEASE 锚点与报告版本结构门禁): Makefile 含 PKG_VERSION:=2.5.4 与 PKG_RELEASE:=14，且 gates_v101 强制校验报告 PKG_RELEASE 与首节版本号",
               f"PKG_VERSION:={dmod.APP_VERSION}" in mk_254_txt
-              and "PKG_RELEASE:=14" in mk_254_txt
+              and "PKG_RELEASE:=15" in mk_254_txt
               and "FB-253-1: Verify PKG_RELEASE" in gates_254_txt
               and "FB-253-2: Verify report Section 1" in gates_254_txt,
               f"app_ver={dmod.APP_VERSION}")
@@ -1747,10 +1747,171 @@ def main() -> int:
               'sonar-ring-scale r-inner">50ms</span>' in html_254_txt
               and 'sonar-ring-scale r-mid">150ms</span>' in html_254_txt
               and 'sonar-ring-scale r-outer">300ms</span>' in html_254_txt
-              and "AI-LINK v2.5.4 · 单一真相源架构" in html_254_txt
+              and "AI-LINK v2.5.5 · 单一真相源架构" in html_254_txt
               and "worstSvc.name" in js_252_txt
               and "AI-LINK v2.5.2" not in js_252_txt,
               "sonar ring scales, peak latency KPI, and dynamic version verified")
+
+        # Stage 7.1 (P0-1 & P1-5.4): Self-test 100% production isolation & polluted fake tag auto-purge
+        dmod.RUN_DIR.mkdir(parents=True, exist_ok=True)
+        sel_p_live = dmod.RUN_DIR / "selections.json"
+        hist_p_live = dmod.RUN_DIR / "switch_history.json"
+        dmod._atomic_write_text(sel_p_live, json.dumps({
+            "updated_at": int(time.time()),
+            "selections": {"AI_Best_Auto": "SubA-JP-01", "Auto_AI": "JP-Trojan-01", "Shunt_Custom_CN_Proxy": "HK-SS2022-01", "Auto_Auto_AI": "JP-Trojan-01"},
+            "delays": {}
+        }))
+        dmod._atomic_write_text(hist_p_live, json.dumps([
+            {"ts": int(time.time()), "time_str": "16:44:45", "group": "Auto_AI", "from_node": "SubA-JP-01", "to_node": "JP-Trojan-01", "reason": "fake", "rtt_ms": 10.0},
+            {"ts": int(time.time()), "time_str": "16:40:00", "group": "Auto_YouTube", "from_node": "SubA-JP-03", "to_node": "SubA-JP-01", "reason": "real", "rtt_ms": 24.0}
+        ]))
+        dmod.PROBE_ENGINE._last_lp_sig = None
+        dmod.PROBE_ENGINE.load_persisted_selections(dmod.RUN_DIR, dmod.CONF_DIR)
+        cleaned_hist = dmod.load_switch_history(dmod.RUN_DIR)
+        cleaned_sels_disk = json.loads(sel_p_live.read_text(encoding="utf-8")).get("selections", {})
+        sels_bytes_pre = sel_p_live.read_bytes()
+        hist_bytes_pre = hist_p_live.read_bytes()
+        st_proc = subprocess.run([sys.executable, "-B", str(DAEMON), "--self-test"], capture_output=True, text=True)
+        sels_bytes_post = sel_p_live.read_bytes()
+        hist_bytes_post = hist_p_live.read_bytes()
+        check("Stage 7.1 (v2.5.5 P0-1/P1-5.4 官方自检 --self-test 零生产污染与残留假节点自动清洗): 自动剥离 JP-Trojan-01/HK-SS2022-01 脏数据，且执行 --self-test 前后 selections.json 与 switch_history.json 逐字节零变化",
+              "JP-Trojan-01" not in cleaned_sels_disk.values()
+              and "Shunt_Custom_CN_Proxy" not in cleaned_sels_disk
+              and len(cleaned_hist) == 1 and cleaned_hist[0].get("to_node") == "SubA-JP-01"
+              and st_proc.returncode == 0
+              and sels_bytes_pre == sels_bytes_post
+              and hist_bytes_pre == hist_bytes_post,
+              f"rc={st_proc.returncode}, sels={cleaned_sels_disk}, hist_len={len(cleaned_hist)}")
+
+        # Stage 7.2 (P0-2): Independent Pool Health Budget + Emergency Failover Quota Bypass + Real Probe Freshness/Stale Telemetry
+        dmod._atomic_write_text(dmod._node_test_quota_path(), json.dumps({
+            "date": time.strftime("%Y-%m-%d"), "used": 99999, "pool_health_used": 10, "forced_used": 0,
+            "v236_r10_migrated": True, "v240_budget_migrated": True, "v255_quota_migrated": True
+        }))
+        an_72 = {
+            "id": "auto_failover_quota",
+            "tag": "Auto_Failover_Quota",
+            "name": "配额穿透容灾池",
+            "pool_mode": "ping_only",
+            "scope_sources": ["sub_A"],
+            "scope_source": "sub_A",
+            "scope_countries": ["JP"],
+            "current_node": "SubA-JP-01",
+            "groups": [{"index": 1, "name": "节点池成员", "node_tags": ["SubA-JP-01", "SubA-JP-03"]}],
+        }
+        dmod.save_auto_nodes_config({"auto_nodes": [an_72]}, tmp_v252)
+        oef_res = dmod.on_egress_fail("SubA-JP-01", conf_dir=tmp_v252, bypass_debounce=True, mock_ping_result={"ok": False, "delay_ms": -1, "http_status": 502})
+        an_72_after = (dmod.load_auto_nodes_config(tmp_v252).get("auto_nodes") or [{}])[0]
+        # Verify stale probe detection (>1h old probe_ts)
+        stale_ts_72 = int(time.time()) - 7200
+        st_72 = dmod.load_node_probe_store(tmp_v252)
+        for _k72 in ("nid_a_jp1", "SubA-JP-01", "nid_a_jp3", "SubA-JP-03"):
+            if _k72 in st_72:
+                st_72[_k72]["last_probe_ts"] = stale_ts_72
+                st_72[_k72]["probe_ts"] = stale_ts_72
+        dmod.save_node_probe_store(st_72, tmp_v252)
+        dmod.evaluate_single_auto_node(an_72_after, conf_dir=tmp_v252)
+        dmod._atomic_write_text(dmod._node_test_quota_path(), json.dumps({
+            "date": time.strftime("%Y-%m-%d"), "used": 0, "pool_health_used": 0, "forced_used": 0,
+            "v236_r10_migrated": True, "v240_budget_migrated": True, "v255_quota_migrated": True
+        }))
+        check("Stage 7.2 (v2.5.5 P0-2 探测配额耗尽下故障复验免配额穿透与真实探测时间/过期感知门禁): 常规配额耗尽时 on_egress_fail 依然强制复验并切换至 SubA-JP-03，且准确标记 last_real_probe_ts 与 probe_stale=True",
+              oef_res.get("state") == "dead"
+              and an_72_after.get("current_node") == "SubA-JP-03"
+              and an_72_after.get("last_real_probe_ts") == stale_ts_72
+              and an_72_after.get("last_check_ts") == stale_ts_72
+              and an_72_after.get("probe_stale") is True,
+              f"oef={oef_res.get('state')}, cur={an_72_after.get('current_node')}, stale={an_72_after.get('probe_stale')}")
+
+        # Stage 7.3 (P0-3 & P0-5): Multi-Line Strict 1-to-1 Selector Ownership & 30s Dwell Window
+        now_73 = int(time.time())
+        st_73 = dmod.load_node_probe_store(tmp_v252)
+        for _k73, _d73 in [("nid_a_jp1", 28), ("SubA-JP-01", 28), ("nid_a_jp3", 42), ("SubA-JP-03", 42), ("nid_b_jp1", 19), ("SubB-JP-UltraFast", 19)]:
+            st_73[_k73] = {"state": "ok", "delay_ms": _d73, "delay_ewma_ms": float(_d73), "consecutive_fail": 0, "consecutive_ok": 5, "quarantine_until": 0, "last_probe_ts": now_73, "probe_ts": now_73, "samples": 6, "score": 95.0, "success_rate": 1.0}
+        dmod.save_node_probe_store(st_73, tmp_v252)
+        dmod.save_auto_nodes_config({"auto_nodes": [
+            {"id": "auto_youtube", "tag": "Auto_YouTube", "name": "YouTube池", "pool_mode": "ping_only", "dispatch_mode": "multi_line", "multi_line_nodes": ["SubA-JP-01", "SubA-JP-03"], "groups": [{"index": 1, "name": "G1", "node_tags": ["SubA-JP-01", "SubA-JP-03"]}]},
+            {"id": "auto_hf_dl", "tag": "Auto_HF_DL", "name": "HF下载池", "pool_mode": "ping_only", "dispatch_mode": "multi_line", "multi_line_nodes": ["SubB-JP-UltraFast", "SubA-JP-03"], "groups": [{"index": 1, "name": "G1", "node_tags": ["SubB-JP-UltraFast", "SubA-JP-03"]}]}
+        ]}, tmp_v252)
+        sh_73 = dmod.load_shunt_config(tmp_v252)
+        for _g73 in sh_73.get("groups", []):
+            if _g73.get("id") in ("YouTube", "Final_Fallback"):
+                _g73["shunt_mode"] = "auto"
+                _g73["auto_node_id"] = "auto_youtube"
+            elif _g73.get("id") == "GitHub":
+                _g73["shunt_mode"] = "auto"
+                _g73["auto_node_id"] = "auto_hf_dl"
+        dmod.save_shunt_config(sh_73, tmp_v252)
+        with dmod._MULTI_LINE_RR_LOCK:
+            dmod._MULTI_LINE_RR_STATE["memo_sig"] = None
+            dmod._MULTI_LINE_RR_STATE["cursors"].clear()
+            dmod._MULTI_LINE_RR_STATE["last_rotate_ts"].clear()
+        t_73_1 = dmod.dispatch_multi_line_pools_tick(tmp_v252, advance=True, respect_dwell_interval=True, clash_api_override=lambda s, t: True)
+        t_73_2 = dmod.dispatch_multi_line_pools_tick(tmp_v252, advance=True, respect_dwell_interval=True, clash_api_override=lambda s, t: True)
+        plan_73 = dmod._MULTI_LINE_RR_STATE.get("memo_plan") or []
+        yt_bound = next((p["bound_selectors"] for p in plan_73 if p["pool_id"] == "auto_youtube"), [])
+        hf_bound = next((p["bound_selectors"] for p in plan_73 if p["pool_id"] == "auto_hf_dl"), [])
+        check("Stage 7.3 (v2.5.5 P0-3/P0-5 多线池 Selector 1对1 唯一所有权与 30s 驻留防抖门禁): YouTube/Final 严格归属 auto_youtube、GitHub 严格归属 auto_hf_dl 零交集，且 30s 驻留期内二次 tick 不发生频繁跳变",
+              set(yt_bound).isdisjoint(set(hf_bound))
+              and "Shunt_Final" in yt_bound and "Shunt_Final" not in hf_bound
+              and "Shunt_GitHub" in hf_bound and "Shunt_GitHub" not in yt_bound
+              and t_73_1["dispatched"].get("Auto_YouTube") == t_73_2["dispatched"].get("Auto_YouTube"),
+              f"yt_bound={yt_bound}, hf_bound={hf_bound}, d1={t_73_1['dispatched'].get('Auto_YouTube')}, d2={t_73_2['dispatched'].get('Auto_YouTube')}")
+
+        # Stage 7.4 (P0-4 & P1-5.3): L7 Strict Tri-State (Unverified Never Beats Verified; 0 Verified -> l7_degraded=True; Break-Glass L7 Guard)
+        st_74 = dmod.load_node_probe_store(tmp_v252)
+        st_74["nid_a_jp1"]["delay_ms"] = 55
+        st_74["nid_a_jp1"]["delay_ewma_ms"] = 55.0
+        st_74["nid_a_jp1"]["svc"] = {}  # Unverified!
+        st_74["SubA-JP-01"] = st_74["nid_a_jp1"]
+        st_74["nid_a_jp3"]["delay_ms"] = 118
+        st_74["nid_a_jp3"]["delay_ewma_ms"] = 118.0
+        st_74["nid_a_jp3"]["svc"] = {"netflix": {"ok": True, "ts": now_73, "status": 200}}  # Verified!
+        st_74["SubA-JP-03"] = st_74["nid_a_jp3"]
+        dmod.save_node_probe_store(st_74, tmp_v252)
+        an_nf_74 = {
+            "id": "auto_nf_strict",
+            "tag": "Auto_NF_Strict",
+            "name": "网飞严格验证池",
+            "pool_mode": "service_check",
+            "service_check_enabled": True,
+            "service_checks": ["netflix"],
+            "groups": [{"index": 1, "name": "G1", "node_tags": ["SubA-JP-01", "SubA-JP-03"]}],
+        }
+        dmod.evaluate_single_auto_node(an_nf_74, conf_dir=tmp_v252)
+        cur_when_one_verified = an_nf_74.get("current_node")
+        deg_when_one_verified = an_nf_74.get("l7_degraded")
+        # Now make both unverified (0/2 verified) -> must set l7_degraded=True and verified_service_count=0!
+        st_74["nid_a_jp3"]["svc"] = {}
+        st_74["SubA-JP-03"] = st_74["nid_a_jp3"]
+        dmod.save_node_probe_store(st_74, tmp_v252)
+        an_nf_unv = dict(an_nf_74)
+        dmod.evaluate_single_auto_node(an_nf_unv, conf_dir=tmp_v252)
+        # Now put both unverified nodes in quarantine -> service_check pool must NOT break-glass to unverified node!
+        st_74["nid_a_jp1"]["quarantine_until"] = now_73 + 1200
+        st_74["nid_a_jp3"]["quarantine_until"] = now_73 + 1200
+        dmod.save_node_probe_store(st_74, tmp_v252)
+        an_nf_q = dict(an_nf_74)
+        dmod.evaluate_single_auto_node(an_nf_q, conf_dir=tmp_v252)
+        check("Stage 7.4 (v2.5.5 P0-4/P1-5.3 L7 严格三态验证与半开恢复防绕过门禁): 已验证节点(118ms)严格胜出未测节点(55ms)，0验证时强制标 l7_degraded=True，且服务池拒绝半开恢复未验证节点",
+              cur_when_one_verified == "SubA-JP-03"
+              and deg_when_one_verified is False
+              and an_nf_unv.get("l7_degraded") is True
+              and an_nf_unv.get("verified_service_count") == 0
+              and an_nf_q.get("quarantine_break_glass") is False
+              and an_nf_q.get("current_node") == "direct",
+              f"1ver={cur_when_one_verified}/{deg_when_one_verified}, 0ver_deg={an_nf_unv.get('l7_degraded')}, q_bg={an_nf_q.get('quarantine_break_glass')}/{an_nf_q.get('current_node')}")
+
+        # Stage 7.5 (P1-5.1/5.2/5.8): Auto_Auto_AI Prefix Fix, Unbound Dedicated Pool Warning & Honest UI Copy
+        norm_ai_item = dmod._normalize_auto_node_item({"id": "auto_ai", "tag": "Auto_Auto_AI", "name": "AI自动"}, conf_dir=tmp_v252)
+        an_api_75 = dmod.build_auto_nodes_api_response(tmp_v252)
+        check("Stage 7.5 (v2.5.5 P1-5.1/5.2/5.8 Auto_AI 去重前缀、未绑定分流组告警与诚实轮询文案门禁): Auto_Auto_AI 自动归一为 Auto_AI，暴露 unbound_pool_warning 与 quota_status，且前端文案如实表述多出口轮询与服务待验证",
+              norm_ai_item.get("tag") == "Auto_AI"
+              and isinstance(an_api_75.get("quota_status"), dict)
+              and "多出口轮询（实验，不叠加单流带宽）" in js_252_txt
+              and "服务待验证 (仅连通)" in js_252_txt
+              and "多线并发（池内健康节点叠加吞吐）" not in js_252_txt,
+              f"tag={norm_ai_item.get('tag')}, has_quota={isinstance(an_api_75.get('quota_status'), dict)}")
     finally:
         shutil.rmtree(tmp_v252, ignore_errors=True)
 

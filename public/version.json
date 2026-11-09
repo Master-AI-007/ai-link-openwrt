@@ -1,18 +1,33 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.5.4",
+  "latest": "2.5.5",
   "release_date": "2026-11-09",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.5.4",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.5.5",
   "highlights": [
-    "四项出包工程标准固化：夹具整棵随包、四列指纹定稿注入、--self-test 沙箱隔离、出包前隔离目录零补发跑 15/15",
-    "验收报告版本锚点自动注入：PKG_VERSION / PKG_RELEASE 从 Makefile 读取，报告与 HANDOFF 不再手写，三方一致性门禁",
-    "验收报告按版本结构化：首节即本轮增量，历史版本收敛为状态总表",
-    "节点池全员隔离半开破冰自愈（quarantine_break_glass）与手动移除防回弹（manually_removed_tags）",
-    "D-01 兜底越界拦截、多线并发最低双通道保底、声呐三环延迟刻度（50/150/300ms）、全站动态版本号单一真相源",
-    "延续：节点池订阅源/地区强约束、WAN 闪断防团灭、多线 urltest 出口与 0.5s 轮转"
+    "官方自检 100% 生产隔离：新增 _SELF_TEST_ACTIVE 与 _is_live_conf_dir 守卫，自检态严禁写生产状态文件或调用 Clash API",
+    "启动/加载时自动清洗残留的 JP-Trojan-01 / HK-SS2022-01 等自检假节点，实测脏数据重启后残留为 0",
+    "探测预算双轨拆分（池健康巡检与日常探索分离），500+ 节点库自动扩容；故障复验免配额穿透，不再被旧缓存阻断切换",
+    "真实探测新鲜度：暴露 last_real_probe_ts / probe_stale / fresh_ok_count / quota_status",
+    "多线池 Selector 1 对 1 唯一归属，修复跨池抢占；轮换驻留窗口收敛为 30s，故障仍秒切",
+    "前端文案如实改为「多出口轮询（实验，不叠加单流带宽）」",
+    "四项出包标准保持：夹具整棵随包、四列指纹定稿注入、自检沙箱、零补发 15 套全量回归"
   ],
   "changelog": [
+    {
+      "version": "2.5.5",
+      "date": "2026-11-09",
+      "type": "fix",
+      "title": "节点池专项复审计（P0-1~P0-5 & P1-5.1~5.9）",
+      "items": [
+        "自检 100% 生产隔离（_SELF_TEST_ACTIVE / _is_live_conf_dir），自检态不写 selections.json / switch_history.json、不调 Clash API",
+        "启动/加载时自动清洗残留假节点（JP-Trojan-01 / HK-SS2022-01），实测重启后残留 0",
+        "探测预算双轨拆分与 500+ 节点库扩容；on_egress_fail 故障复验 force=True 免配额穿透",
+        "真实探测新鲜度遥测：last_real_probe_ts / probe_stale / fresh_ok_count / quota_status",
+        "多线池 Selector 1 对 1 唯一归属，修复跨池抢占；轮换驻留 30s、故障秒切",
+        "前端文案改为「多出口轮询（实验，不叠加单流带宽）」；Auto_Auto_AI 归一为 Auto_AI"
+      ]
+    },
     {
       "version": "2.5.4",
       "date": "2026-11-09",
@@ -323,13 +338,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.5.4/AI-LINK-v2.5.4.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.5.5/AI-LINK-v2.5.5.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.5.4.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.5.5.tar.gz"
       ],
-      "size": 955544,
-      "md5": "8098a22008d81d5a6dc83291ea5349f1",
-      "sha256": "de785847e8f0c8e22e88422d1ab1c83e983b64c8f882095f670dc7c63ecbed20"
+      "size": 989400,
+      "md5": "32995b4cde320f0bff34018b9858820f",
+      "sha256": "496d5d16d5c61ff59a0245e764a2ae2d9f771abfa33b7cf25f938fb26c96037b"
     }
   }
 }
