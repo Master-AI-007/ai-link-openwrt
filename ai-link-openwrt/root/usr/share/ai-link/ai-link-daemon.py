@@ -1962,13 +1962,14 @@ def _reconcile_auto_pools_after_sub_sync(old_nodes: list, new_nodes: list, conf_
                 req_svcs = [s.lower() for s in (flt.get("require_services") or an.get("service_checks") or []) if s]
                 need_ai_region = any(s in ("gemini", "chatgpt", "openai", "claude", "ai") for s in req_svcs) or ("ai" in str(an.get("id") or "").lower())
                 bw_pref_sync = bool(an.get("bandwidth_prefer", False))
+                _man_rem_sync = set(an.get("manually_removed_tags") or [])
                 cand_backfill_list = []
                 for cand_n in in_scope_new_nodes:
                     cand_k = cand_n.get("node_key") or compute_node_key(cand_n)
                     if cand_k in pool_used_keys:
                         continue
                     ctag = cand_n.get("tag", "")
-                    if not ctag or ctag in updated_tags or is_builtin_test_node(ctag) or _is_random_region_node(ctag):
+                    if not ctag or ctag in updated_tags or ctag in _man_rem_sync or is_builtin_test_node(ctag) or _is_random_region_node(ctag):
                         continue
                     if cand_n.get("is_chained") or cand_n.get("detour") or cand_n.get("detour_pool_id"):
                         continue
@@ -2051,9 +2052,15 @@ def reconcile_node_references(old_tag: str = "", new_tag: str = "", deleted_node
     pools_updated = False
     acfg = load_auto_nodes_config(conf_dir)
     for an in (acfg.get("auto_nodes") or []):
+        pool_touched = False
         if old_tag and an.get("current_node") == old_tag:
-            an["current_node"] = new_tag or fallback_tag
+            an["current_node"] = new_tag if new_tag else ""
             pools_updated = True
+            pool_touched = True
+        if old_tag and isinstance(an.get("multi_line_nodes"), list) and old_tag in an["multi_line_nodes"]:
+            an["multi_line_nodes"] = ([new_tag if x == old_tag else x for x in an["multi_line_nodes"]] if new_tag else [x for x in an["multi_line_nodes"] if x != old_tag])
+            pools_updated = True
+            pool_touched = True
         for grp in (an.get("groups") or []):
             for list_key in ("node_tags", "nodes"):
                 if isinstance(grp.get(list_key), list) and old_tag in grp[list_key]:
@@ -2062,9 +2069,17 @@ def reconcile_node_references(old_tag: str = "", new_tag: str = "", deleted_node
                     else:
                         grp[list_key] = [x for x in grp[list_key] if x != old_tag]
                     pools_updated = True
+                    pool_touched = True
             if not new_tag and deleted_node_id and isinstance(grp.get("node_ids"), list) and deleted_node_id in grp["node_ids"]:
                 grp["node_ids"] = [x for x in grp["node_ids"] if x != deleted_node_id]
                 pools_updated = True
+                pool_touched = True
+        if pool_touched and an.get("auto_maintain", True):
+            try:
+                if maintain_auto_node_pool_health(an, conf_dir=conf_dir, allow_live_l7_probe=False):
+                    pools_updated = True
+            except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
+                globals().get("_record_internal_diag", str)(_e_diag)
     # Also reconcile Chained Proxy detour references if an upstream relay node was renamed or deleted
     chained_updated = False
     if old_tag:
@@ -4927,6 +4942,8 @@ def _normalize_auto_node_item(an: dict, conf_dir: Path = CONF_DIR, saved_nodes: 
         raw_rep_th = item["filters"].get("replenish_threshold")
     item["replenish_threshold"] = max(1, min(item["target_size"], int(raw_rep_th if raw_rep_th is not None else max(1, (item["target_size"] + 1) // 2))))
     item["auto_maintain"] = bool(item.get("auto_maintain", True))
+    _cur_grp_tags = {t for g_o in (item.get("groups") or []) if isinstance(g_o, dict) for t in (g_o.get("node_tags") or [])}
+    item["manually_removed_tags"] = [str(x).strip() for x in (item.get("manually_removed_tags") or []) if str(x).strip() and str(x).strip() not in _cur_grp_tags][-20:]
     item["smart_switch_enabled"] = bool(item.get("smart_switch_enabled", True))
     item["switch_threshold_ms"] = max(10, int(item.get("switch_threshold_ms") if item.get("switch_threshold_ms") is not None else 150))
     item["switch_cooldown_s"] = max(0, int(item.get("switch_cooldown_s") if item.get("switch_cooldown_s") is not None else 600))
@@ -5181,7 +5198,7 @@ def _strip_auto_node_runtime_fields(an: dict) -> dict:
     """B2-9 Fix: Strips volatile per-tick probe telemetry (members sparklines, quality_ranking, last_check_ts, current_delay_ms)
     before writing /etc/ai-link/auto_nodes.json so the persisted configuration file is deterministic and free of real-time probe noise."""
     clean = dict(an or {})
-    for vk in ("quality_ranking", "pool_reachable_count", "pool_candidate_tags", "last_check_ts", "current_delay_ms", "verified_nodes", "all_groups_dead_alert", "alert_message", "last_revert_ts", "last_smart_switch_ts", "last_switch_ts", "selection_explain", "current_google_region", "current_node_key", "l7_degraded_fallback", "multi_line_nodes", "active_lines_count", "multi_line_locked", "multi_line_locked_reason", "estimated_daily_bw_mib"):
+    for vk in ("quality_ranking", "pool_reachable_count", "pool_candidate_tags", "last_check_ts", "current_delay_ms", "verified_nodes", "all_groups_dead_alert", "alert_message", "last_revert_ts", "last_smart_switch_ts", "last_switch_ts", "selection_explain", "current_google_region", "current_node_key", "l7_degraded_fallback", "quarantine_break_glass", "multi_line_nodes", "active_lines_count", "multi_line_locked", "multi_line_locked_reason", "estimated_daily_bw_mib"):
         clean.pop(vk, None)
     if int(clean.get("active_group_index") or 1) <= 1:
         clean.pop("primary_recover_streak", None)
@@ -6391,9 +6408,12 @@ def maintain_auto_node_pool_health(an: dict, saved_nodes: list = None, store: di
             url_ping_batch_nodes(tags_or_ids=unprobed_in_scope[:12], timeout_ms=2200, concurrency=6, conf_dir=conf_dir)
             store = load_node_probe_store(conf_dir)
     _svc_logic_c = "any" if (an.get("service_logic") == "any" or an.get("match_mode") == "any") else "all"
+    _man_rem_set = set(an.get("manually_removed_tags") or [])
     scored_cands = []
     for n_obj in cands:
         t = n_obj.get("tag", "")
+        if t in _man_rem_set and t not in cur_tags:
+            continue
         nid = n_obj.get("node_id") or compute_node_id(n_obj)
         ev = evaluate_node_selectability(n_obj, store=store, subs_list=subs_list, now_ts=now_ts, conf_dir=conf_dir)
         if ev["state"] != "ok" or ev["delay_ms"] <= 0:
@@ -6685,6 +6705,7 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
                 "google_region_label": g_reg_info["label"],
                 "gemini_supported": g_reg_info["gemini_supported"],
                 "region_blocked": node_region_blocked,
+                "out_of_scope": out_of_scope_member,
                 "in_quarantine": in_quarantine,
                 "quarantine_until": quarantine_until,
                 "in_cooldown": in_cooldown,
@@ -6767,13 +6788,14 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
     cur_tag = str(an.get("current_node") or "")
     cur_nid = str(an.get("current_node_id") or "")
     # Case: No group has any qualified `ok` node
+    an["quarantine_break_glass"] = False
     if cand_group_idx == 0:
         # D-01 Safety Guard: If L7 service check or temporary cooldown rejected all nodes,
-        # never deadlock to 'direct' when reachable (state=='ok', delay_ms>0, not region_blocked) nodes exist in the pool!
+        # never deadlock to 'direct' when reachable (state=='ok', delay_ms>0, not region_blocked, not out_of_scope) nodes exist in the pool!
         for g in groups:
             g_reach = [
                 m for m in (g.get("members") or [])
-                if m.get("selectable") and m.get("state") == "ok" and int(m.get("delay_ms") or 0) > 0 and m.get("score_passed", True) and not m.get("region_blocked") and not m.get("in_quarantine")
+                if m.get("selectable") and not m.get("out_of_scope") and m.get("state") == "ok" and int(m.get("delay_ms") or 0) > 0 and m.get("score_passed", True) and not m.get("region_blocked") and not m.get("in_quarantine")
             ]
             if g_reach:
                 g_reach.sort(key=lambda x: (x["delay_ms"], x["tag"]))
@@ -6786,6 +6808,31 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
                 an["l7_degraded_fallback"] = True
                 an["l7_degraded"] = True
                 break
+        # Stage 6.31a Half-Open Break-Glass Recovery: If all in-scope nodes are in quarantine or low-score filtered,
+        # but at least one in-scope node has already recovered connectivity (state=="ok", delay_ms>0, consecutive_fail==0),
+        # break glass instead of deadlocking to direct for 60 minutes!
+        if cand_group_idx == 0:
+            for g in groups:
+                g_bg = [
+                    m for m in (g.get("members") or [])
+                    if m.get("selectable")
+                    and not m.get("out_of_scope")
+                    and not m.get("region_blocked")
+                    and m.get("state") == "ok"
+                    and int(m.get("delay_ms") or 0) > 0
+                    and int(m.get("consecutive_fail") or 0) == 0
+                    and m.get("svc_passed", True)
+                ]
+                if g_bg:
+                    g_bg.sort(key=lambda x: (int(x.get("quarantine_until") or 0), x.get("eff_rank_ms", x["delay_ms"]), x["delay_ms"], x["tag"]))
+                    qualified_by_group[g["index"]] = g_bg
+                    g["ok_count"] = len(g_bg)
+                    for _mb in g_bg:
+                        if _mb["tag"] not in all_ok_tags:
+                            all_ok_tags.append(_mb["tag"])
+                    cand_group_idx = g["index"]
+                    an["quarantine_break_glass"] = True
+                    break
         if all_ok_tags:
             an["pool_reachable_count"] = len(all_ok_tags)
             an["pool_candidate_tags"] = all_ok_tags
@@ -6954,6 +7001,13 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
         _base_eff = max(10.0, float(fastest.get("eff_rank_ms") or fastest.get("delay_ms") or 50.0))
         _max_allowed_eff = max(_base_eff * 2.2, _base_eff + 160.0)
         _fast_ml = [x["tag"] for x in g_nodes[:_cap_ml] if float(x.get("eff_rank_ms") or x.get("delay_ms") or 9999.0) <= _max_allowed_eff]
+        if len(_fast_ml) < 2 and len(g_nodes) >= 2:
+            for _cand_ml2 in g_nodes[:_cap_ml]:
+                _t2 = str(_cand_ml2.get("tag") or "").strip()
+                if _t2 and _t2 not in _fast_ml and int(_cand_ml2.get("delay_ms") or 9999) <= 300 and float(_cand_ml2.get("eff_rank_ms") or 9999.0) <= max(_base_eff * 3.0, _base_eff + 220.0):
+                    _fast_ml.append(_t2)
+                    if len(_fast_ml) >= 2:
+                        break
         _ch_tag = str(chosen.get("tag") or "").strip()
         if _ch_tag and _ch_tag != "direct":
             _fast_ml = ([_ch_tag] + [t for t in _fast_ml if t != _ch_tag])[:_cap_ml]
@@ -7540,10 +7594,14 @@ def scan_kernel_logs_for_active_pool_failures(
             if p.get("auto_maintain", True):
                 if maintain_auto_node_pool_health(p, conf_dir=conf_dir, allow_live_l7_probe=False):
                     any_maint_changed = True
-    if any_maint_changed:
+    if triggered_nodes or any_maint_changed:
         save_auto_nodes_config(auto_cfg, conf_dir)
 
     PROBE_ENGINE.apply_shunt_selections(conf_dir)
+    if any(p.get("dispatch_mode") == "multi_line" for bad_t in triggered_nodes for p in active_map.get(bad_t, [])):
+        with _MULTI_LINE_RR_LOCK:
+            _MULTI_LINE_RR_STATE["memo_sig"] = None
+        dispatch_multi_line_pools_tick(conf_dir, advance=False)
     updated_auto = load_auto_nodes_config(conf_dir).get("auto_nodes") or []
     switched_pools = []
     run_dir_target = RUN_DIR if conf_dir.resolve() == CONF_DIR.resolve() else conf_dir
@@ -21225,9 +21283,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.5.3"
+APP_VERSION = "2.5.4"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.5.3-release-20261109"
+APP_BUILD = "2.5.4-release-20261109"
 
 UPDATE_MANIFEST_PRIMARY = "https://ai-link-official.pages.dev/version.json"
 UPDATE_MANIFEST_GITHUB = "https://raw.githubusercontent.com/Master-AI-007/ai-link-openwrt/main/version.json"
@@ -24391,6 +24449,14 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                     g["node_tags"] = [x for x in tags if x != rem_tag]
                     g["node_ids"] = [x for i, x in enumerate(g.get("node_ids") or []) if i != removed_index]
                     break
+            _man_rem_list = [x for x in (target_an.get("manually_removed_tags") or []) if x and x != rem_tag]
+            if rem_tag:
+                _man_rem_list.append(rem_tag)
+            target_an["manually_removed_tags"] = _man_rem_list[-20:]
+            if isinstance(target_an.get("multi_line_nodes"), list) and rem_tag in target_an["multi_line_nodes"]:
+                target_an["multi_line_nodes"] = [x for x in target_an["multi_line_nodes"] if x != rem_tag]
+            if target_an.get("auto_maintain", False):
+                maintain_auto_node_pool_health(target_an, conf_dir=CONF_DIR, allow_live_l7_probe=False)
             remaining_total = sum(len(g.get("node_tags") or []) for g in (target_an.get("groups") or []))
             if remaining_total == 0:
                 self._send_json({"ok": False, "error": "pool_empty", "message": "请至少保留 1 个节点"}, status=400)
@@ -25334,6 +25400,15 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             save_nodes_list(existing, CONF_DIR)
             if old_node_tag and updated_node.get("tag") and old_node_tag != updated_node.get("tag"):
                 reconcile_node_references(old_tag=old_node_tag, new_tag=updated_node["tag"], conf_dir=CONF_DIR)
+            elif "disabled" in patch or "region_override" in patch:
+                _ac_u = load_auto_nodes_config(CONF_DIR)
+                _ac_u_mod = False
+                for _an_u in (_ac_u.get("auto_nodes") or []):
+                    if _an_u.get("auto_maintain", True) and maintain_auto_node_pool_health(_an_u, conf_dir=CONF_DIR, allow_live_l7_probe=False):
+                        _ac_u_mod = True
+                if _ac_u_mod:
+                    save_auto_nodes_config(_ac_u, CONF_DIR)
+                evaluate_all_auto_nodes(CONF_DIR, force_service_probe=False, advance_revert_streak=False, sync_selectors=False)
             write_all_configs(CONF_DIR)
             PROBE_ENGINE.apply_shunt_selections(CONF_DIR)
             # D-03 Fix: Must pass hot_only=False so edited node parameters are reloaded into sing-box!

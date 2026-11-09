@@ -25,6 +25,7 @@ def src_root() -> Path:
     if v and (Path(v) / "ai-link-openwrt" / "install.sh").is_file():
         return Path(v) / "ai-link-openwrt"
     for cand in (
+        HERE.parent,
         HERE.parent / "site" / "ai-link-openwrt",
         HERE.parent / "ai-link-openwrt",
         HERE.parent / "02-源码" / "ai-link-openwrt",

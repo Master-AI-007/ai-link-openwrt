@@ -18,7 +18,7 @@
         <circle cx="20" cy="20" r="5.4" fill="none" stroke="#a994ff" stroke-width="1.6"/>
         <circle cx="20" cy="20" r="1.8" fill="#6ee7f5"/>
       </svg>
-      <span style="display:block"><b>AI-LINK</b><span>NEXUS · 2.5.3</span></span>
+      <span style="display:block"><b>AI-LINK</b><span>NEXUS · 2.5.4</span></span>
     </a>
     <div class="nav-links">
       <a href="/#features">核心能力</a>
@@ -36,12 +36,22 @@
 <main class="wrap log-wrap">
   <div class="log-head">
     <h1>更新日志</h1>
-    <span class="pill"><i></i> 当前最新 2.5.3</span>
+    <span class="pill"><i></i> 当前最新 2.5.4</span>
   </div>
 <article class="log-item latest">
   <div class="log-top">
-    <h2>v2.5.3</h2>
+    <h2>v2.5.4</h2>
     <span class="tag c">最新</span>
+    <time>2026-11-09</time>
+  </div>
+  <p style="margin:2px 0 6px;color:var(--dim)"></p>
+<h3>出包标准固化 + 报告结构化（FB-253-1/2 闭环）+ 节点池破冰自愈</h3>
+<ul><li><b>四项出包标准固化</b>：夹具整棵随包、四列指纹定稿注入、<code>--self-test</code> 沙箱隔离、出包前隔离目录零补发 <code>run_all</code> 15/15。</li><li><b>报告版本锚点自动注入</b>：<code>PKG_VERSION</code> / <code>PKG_RELEASE</code> 由构建脚本从 <code>Makefile</code> 读取注入，新增「报告 == Makefile == ipk 文件名」三方一致性门禁。</li><li><b>报告按版本结构化</b>：首节即本轮增量与反馈闭环，历史版本收敛为状态总表。</li><li><b>节点池破冰自愈</b>：全员隔离但已恢复连通时 <code>quarantine_break_glass</code> 半开探测接管；手动移除节点记入 <code>manually_removed_tags</code> 不再回弹；D-01 兜底越界拦截。</li><li><b>多线并发双通道保底</b>：并发池至少保留两条通道，避免退化后只剩单线；概览声呐三环延迟刻度（50/150/300ms），全站版本号取自单一真相源。</li><li><b>稳定性</b>：安装退出码 0、<code>nft=1</code>、重启稳定；Design Lint 18/18、门禁 17/17、混沌 61/61、原始包零补发 15/15。</li></ul>
+</article>
+<article class="log-item">
+  <div class="log-top">
+    <h2>v2.5.3</h2>
+    <span class="tag">历史</span>
     <time>2026-11-09</time>
   </div>
   <p style="margin:2px 0 6px;color:var(--dim)"></p>

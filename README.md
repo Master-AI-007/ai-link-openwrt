@@ -4,7 +4,7 @@
 
 **NEXUS 全域 3D 智能网关 · 运行在 OpenWrt 上的智能分流系统**
 
-[![version](https://img.shields.io/badge/version-2.5.3-6ee7f5?style=flat-square)](https://github.com/Master-AI-007/ai-link-openwrt/releases/tag/v2.5.3)
+[![version](https://img.shields.io/badge/version-2.5.4-6ee7f5?style=flat-square)](https://github.com/Master-AI-007/ai-link-openwrt/releases/tag/v2.5.4)
 [![platform](https://img.shields.io/badge/OpenWrt-23.05%20%7C%2024.10%20%7C%20ImmortalWrt-a994ff?style=flat-square)](#环境要求)
 [![core](https://img.shields.io/badge/sing--box-1.14.1-54e6b5?style=flat-square)](#技术架构)
 [![license](https://img.shields.io/badge/license-MIT-f9a8d4?style=flat-square)](#许可与免责)
@@ -30,9 +30,9 @@ AI-LINK 是一套面向 OpenWrt 的**智能分流网关**：用 sing-box 单内�
 
 ---
 
-## 核心能力总览（v2.5.3）
+## 核心能力总览（v2.5.4）
 
-> **v2.5.3 增量**：测试夹具全量随包（原始包零补发即可 15/15）、四列指纹机制化、`--self-test` 沙箱隔离、`run_all` 就绪等待；延续节点池范围强约束、WAN 闪断防团灭、多线并发出口等全部能力。
+> **v2.5.4 增量**：四项出包标准固化进门禁、报告版本锚点自动注入与结构化、节点池全员隔离半开破冰自愈与手动移除防回弹、D-01 兜底越界拦截、多线双通道保底、声呐三环刻度与全站动态版本号；延续范围强约束与多线出口。
 
 
 | | 能力 | 说明 |
@@ -185,7 +185,8 @@ sing-box 1.14.1（单内核）
 
 | 版本 | 日期 | 主题 |
 |---|---|---|
-| **2.5.3** | 2026-11-09 | 测试集自包含 + 交付指纹机制化 |
+| **2.5.4** | 2026-11-09 | 出包标准固化 + 报告结构化 + 节点池破冰自愈 |
+| 2.5.3 | 2026-11-09 | 测试集自包含 + 交付指纹机制化 |
 | 2.5.2 | 2026-11-09 | 节点池订阅源/地区强约束闭环 + 测试集随包内置 |
 | 2.5.1 | 2026-11-08 | LuCI 极简重构 + 多线并发退化收敛 + 上轮反馈闭环 |
 | 2.5.0 | 2026-11-08 | 多线并发正式落地 + 节点池全生命周期审计 + 订阅自动同步开关 |
@@ -220,10 +221,10 @@ sing-box 1.14.1（单内核）
 ## 包指纹
 
 ```
-AI-LINK-v2.5.3.tar.gz
-size   949,934 B
-md5    4864bc1c376ecf82d8ae1b8b359cb233
-sha256 8991b2cb1fde59e6f5d159be3281ccd1dca7386cfcae2cf00b968ff575a53057
+AI-LINK-v2.5.4.tar.gz
+size   955,544 B
+md5    8098a22008d81d5a6dc83291ea5349f1
+sha256 de785847e8f0c8e22e88422d1ab1c83e983b64c8f882095f670dc7c63ecbed20
 ```
 
 在线清单：<https://ai-link-official.pages.dev/version.json>

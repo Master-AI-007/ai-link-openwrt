@@ -685,6 +685,10 @@ select { appearance: none; padding-right: 30px; background-image: linear-gradien
 .sonar-head-actions { display: inline-flex; align-items: center; gap: var(--sp-2); flex-shrink: 0; }
 .sonar-stage { position: relative; width: 340px; height: 340px; max-width: 100%; margin: var(--sp-2) auto var(--sp-2); border-radius: 50%; overflow: visible; background: radial-gradient(circle, var(--cyan-tint-20), var(--surface-tone-47) 70%); border: 1px solid var(--cyan-tint-17); box-shadow: inset 0 0 42px var(--cyan-tint-8), 0 12px 36px var(--shadow-elevation-7); }
 .sonar-rings { position: absolute; inset: 0; border-radius: 50%; overflow: hidden; background: repeating-radial-gradient(circle, transparent 0 54px, var(--cyan-tint-21) 55px 56px); }
+.sonar-ring-scale { position: absolute; left: 50%; transform: translateX(-50%); font-size: 11px; font-weight: 500; line-height: 1; color: var(--text-3); background: var(--surface-tone-48); padding: 2px 4px; border-radius: var(--r-xs); pointer-events: none; }
+.sonar-ring-scale.r-inner { top: 34%; }
+.sonar-ring-scale.r-mid { top: 18%; }
+.sonar-ring-scale.r-outer { top: 2%; }
 .core-head-right { display: inline-flex; align-items: center; gap: var(--sp-2); flex-shrink: 0; flex-wrap: nowrap; }
 .core-ota-inline-row { margin: 0 0 var(--sp-3); padding: var(--sp-2) var(--sp-3); border-radius: var(--r-sm); border: 1px solid var(--line); background: var(--surface-tone-1); color: var(--muted); font-size: 12px; line-height: 1.4; }
 .ipv6-detail-inline-btn { margin-left: var(--sp-2); padding: 0 var(--sp-2); min-height: 22px; font-size: 12px; vertical-align: middle; }

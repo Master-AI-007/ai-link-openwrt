@@ -1,18 +1,31 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.5.3",
+  "latest": "2.5.4",
   "release_date": "2026-11-09",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.5.3",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.5.4",
   "highlights": [
-    "测试集真正自包含：tests/subscription_formats/ 12 个多格式订阅夹具全量随包（tar 84 条目 / 56 文件），原始包零补发即可 15/15",
-    "单文件指纹机制化：产物定稿后统一计算注入四列指纹，混沌脚本尾部换行符差异彻底消除",
-    "daemon --self-test 全量隔离到独立临时沙箱，测试上下文与后台守护进程不再互相干扰",
-    "run_all.py 首套件前增加 /api/status 连续两次 200 就绪等待与自动重试，消除刚重启即跑的时序假失败",
-    "发布门禁增加夹具目录与原始包零补发解压校验（fixtures=12）",
-    "延续：节点池严格遵循勾选订阅源与地区、WAN 闪断防团灭、多线并发 urltest 出口与 0.5s 轮转"
+    "四项出包工程标准固化：夹具整棵随包、四列指纹定稿注入、--self-test 沙箱隔离、出包前隔离目录零补发跑 15/15",
+    "验收报告版本锚点自动注入：PKG_VERSION / PKG_RELEASE 从 Makefile 读取，报告与 HANDOFF 不再手写，三方一致性门禁",
+    "验收报告按版本结构化：首节即本轮增量，历史版本收敛为状态总表",
+    "节点池全员隔离半开破冰自愈（quarantine_break_glass）与手动移除防回弹（manually_removed_tags）",
+    "D-01 兜底越界拦截、多线并发最低双通道保底、声呐三环延迟刻度（50/150/300ms）、全站动态版本号单一真相源",
+    "延续：节点池订阅源/地区强约束、WAN 闪断防团灭、多线 urltest 出口与 0.5s 轮转"
   ],
   "changelog": [
+    {
+      "version": "2.5.4",
+      "date": "2026-11-09",
+      "type": "fix",
+      "title": "出包标准固化 + 报告结构化（FB-253-1/2 闭环）+ 节点池破冰自愈",
+      "items": [
+        "报告 PKG_RELEASE 与 ipk 文件名由 Makefile 动态注入，新增三方一致性门禁（FB-253-1）",
+        "报告按版本重构：首节为本轮增量，历史版本收敛为状态总表（FB-253-2）",
+        "四项出包标准固化：夹具整棵随包 / 指纹定稿注入 / self-test 沙箱 / 隔离目录零补发 15/15",
+        "节点池全员隔离半开破冰自愈、手动移除节点防回弹、D-01 兜底越界拦截",
+        "多线并发最低双通道保底、声呐三环延迟刻度、全站动态版本号单一真相源"
+      ]
+    },
     {
       "version": "2.5.3",
       "date": "2026-11-09",
@@ -310,13 +323,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.5.3/AI-LINK-v2.5.3.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.5.4/AI-LINK-v2.5.4.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.5.3.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.5.4.tar.gz"
       ],
-      "size": 949934,
-      "md5": "4864bc1c376ecf82d8ae1b8b359cb233",
-      "sha256": "8991b2cb1fde59e6f5d159be3281ccd1dca7386cfcae2cf00b968ff575a53057"
+      "size": 955544,
+      "md5": "8098a22008d81d5a6dc83291ea5349f1",
+      "sha256": "de785847e8f0c8e22e88422d1ab1c83e983b64c8f882095f670dc7c63ecbed20"
     }
   }
 }

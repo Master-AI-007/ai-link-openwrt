@@ -1560,6 +1560,197 @@ def main() -> int:
               and (not self_bytes_253.endswith(bytes([10])))
               and "NodeURIParser.parse_subscription_text(sample_uris, conf_dir=tmp_test_dir)" in d_src_253,
               f"fixtures={fx_cnt_253}, no_trailing_nl={not self_bytes_253.endswith(bytes([10]))}")
+
+        # Stage 6.27a: v2.5.4 FB-253-1 (Makefile PKG_RELEASE alignment) & FB-253-2 (Gates enforce report PKG_RELEASE & version-centric Section 1)
+        mk_254_p = Path(dmod.__file__).resolve().parents[4] / "Makefile"
+        mk_254_txt = mk_254_p.read_text(encoding="utf-8") if mk_254_p.is_file() else ""
+        gates_254_txt = (Path(__file__).resolve().parent / "gates_v101.py").read_text(encoding="utf-8")
+        check("Stage 6.27a (v2.5.4 FB-253-1/2 Makefile PKG_VERSION/PKG_RELEASE 锚点与报告版本结构门禁): Makefile 含 PKG_VERSION:=2.5.4 与 PKG_RELEASE:=14，且 gates_v101 强制校验报告 PKG_RELEASE 与首节版本号",
+              f"PKG_VERSION:={dmod.APP_VERSION}" in mk_254_txt
+              and "PKG_RELEASE:=14" in mk_254_txt
+              and "FB-253-1: Verify PKG_RELEASE" in gates_254_txt
+              and "FB-253-2: Verify report Section 1" in gates_254_txt,
+              f"app_ver={dmod.APP_VERSION}")
+
+        # Stage 6.28a: Multi-line pool passive kernel log failover immediately converges bound Shunt_* selectors away from dead sub-line
+        dmod.save_auto_nodes_config({
+            "auto_nodes": [{
+                "id": "auto_youtube",
+                "tag": "Stream_Auto",
+                "name": "流媒体多线池",
+                "pool_mode": "ping_only",
+                "dispatch_mode": "multi_line",
+                "scope_sources": ["sub_A", "sub_B"],
+                "scope_source": "sub_A,sub_B",
+                "scope_countries": ["JP"],
+                "target_size": 3,
+                "replenish_threshold": 1,
+                "auto_maintain": True,
+                "last_switch_ts": now_252,
+                "last_smart_switch_ts": now_252,
+                "current_node": "SubA-JP-01",
+                "multi_line_nodes": ["SubA-JP-01", "SubB-JP-UltraFast"],
+                "groups": [{"index": 1, "name": "主力组 G1", "node_tags": ["SubA-JP-01", "SubB-JP-UltraFast"]}],
+            }]
+        }, tmp_v252)
+        dmod.set_subscription_enabled(sub_id="sub_A", enabled=True, conf_dir=tmp_v252)
+        klog_ml_res = dmod.scan_kernel_logs_for_active_pool_failures(
+            tmp_v252,
+            log_lines_override=[
+                "ERROR outbound/vless[SubA-JP-01]: dial tcp to youtube.com:443: i/o timeout",
+                "ERROR outbound/vless[SubA-JP-01]: dial tcp to googlevideo.com:443: connection reset by peer",
+                "ERROR outbound/vless[SubA-JP-01]: tls: handshake failed to ytimg.com:443: unexpected EOF",
+            ],
+            recheck_before_switch=False,
+        )
+        after_klog_pool = dmod.load_auto_nodes_config(tmp_v252)["auto_nodes"][0]
+        check("Stage 6.28a (v2.5.4 多线并发池内核日志被动秒切与分流组联动收敛): 即使存活数未跌破 replenish_threshold(1)，连续 3 次传输报错亦突破粘性冷却将死线移出 multi_line_nodes 并收敛分流组至健康线 SubB-JP-UltraFast",
+              klog_ml_res.get("triggered") is True
+              and after_klog_pool.get("current_node") == "SubB-JP-UltraFast"
+              and "SubA-JP-01" not in (after_klog_pool.get("multi_line_nodes") or [])
+              and dmod.PROBE_ENGINE.current_selections.get("Shunt_YouTube") == "SubB-JP-UltraFast",
+              f"cur={after_klog_pool.get('current_node')}, ml={after_klog_pool.get('multi_line_nodes')}, yt_sel={dmod.PROBE_ENGINE.current_selections.get('Shunt_YouTube')}")
+
+        # Stage 6.28b: Shunt Hit Leaderboard KPI Strip Active Count & 1h Traffic Volume Gate
+        check("Stage 6.28b (v2.5.4 分流命中排行 KPI 栏活跃项占比与 1h 累计流量直显门禁): renderShuntHitLeaderboard 汇总栏展示千分位命中次数与活跃项/1h累计流量",
+              "totalHitBytes" in js_252_txt
+              and "活跃项 · 1h 流量" in js_252_txt,
+              "shunt hit leaderboard KPI verified")
+
+        # Stage 6.29a: Single-Node Deletion Cascade Replenishment strictly within pool's scope_sources & scope_countries
+        # Configure a pool bound ONLY to sub_A + JP, initially holding SubA-JP-01, while SubB-JP-UltraFast (12ms) is at index 0 of nodes.json
+        nodes_29a = [
+            {"tag": "SubB-JP-UltraFast", "node_id": "nid_b_jp1", "node_key": "nk_b_jp1", "type": "vless", "server": "198.51.100.32", "server_port": 443, "uuid": "11111111-1111-1111-1111-111111111132", "_sub_id": "sub_B", "_sub_url": "https://example.com/subB"},
+            {"tag": "SubA-JP-03", "node_id": "nid_a_jp3", "node_key": "nk_a_jp3", "type": "vless", "server": "198.51.100.34", "server_port": 443, "uuid": "11111111-1111-1111-1111-111111111134", "_sub_id": "sub_A", "_sub_url": "https://example.com/subA"},
+        ]
+        dmod.save_nodes_list(nodes_29a, tmp_v252)
+        dmod.save_auto_nodes_config({
+            "auto_nodes": [{
+                "id": "auto_del_node_scope",
+                "tag": "Auto_Del_Node_Scope",
+                "name": "单节点删除自愈池",
+                "pool_mode": "ping_only",
+                "scope_sources": ["sub_A"],
+                "scope_source": "sub_A",
+                "scope_countries": ["JP"],
+                "target_size": 2,
+                "replenish_threshold": 2,
+                "auto_maintain": True,
+                "current_node": "SubA-JP-01",
+                "groups": [{"index": 1, "name": "主力组 G1", "node_tags": ["SubA-JP-01"]}],
+            }]
+        }, tmp_v252)
+        dmod.reconcile_node_references(old_tag="SubA-JP-01", new_tag="", deleted_node_id="nid_a_jp1", conf_dir=tmp_v252)
+        after_del_node_an = dmod.load_auto_nodes_config(tmp_v252)["auto_nodes"][0]
+        check("Stage 6.29a (v2.5.4 单节点删除触发节点池严格按勾选订阅/地区补位自愈): 删除 SubA-JP-01 后 reconcile_node_references 绝不误回退至排首位的未勾选订阅节点 SubB-JP-UltraFast，而是严格从 sub_A+JP 补入 SubA-JP-03",
+              after_del_node_an["groups"][0]["node_tags"] == ["SubA-JP-03"]
+              and after_del_node_an.get("current_node") == "SubA-JP-03",
+              f"tags={after_del_node_an['groups'][0]['node_tags']}, cur={after_del_node_an.get('current_node')}")
+
+        # Stage 6.29b: 7x24 Activity Matrix Cell Downlink/Uplink Split Readability Gate
+        check("Stage 6.29b (v2.5.4 7x24时空流量全息矩阵悬停上下行拆分明细门禁): 矩阵单元格提示含 ↓下行 / ↑上行 拆分流量",
+              "ioSplitTxt" in js_252_txt,
+              "7x24 matrix ioSplitTxt verified")
+
+        # Stage 6.30a: Manual member removal (manually_removed_tags) prevents zombie re-admission during low-health replenishment
+        nodes_30a = [
+            {"tag": "SubA-JP-01", "node_id": "nid_a_jp1", "node_key": "nk_a_jp1", "type": "vless", "server": "198.51.100.31", "server_port": 443, "uuid": "11111111-1111-1111-1111-111111111131", "_sub_id": "sub_A", "_sub_url": "https://example.com/subA"},
+            {"tag": "SubA-JP-03", "node_id": "nid_a_jp3", "node_key": "nk_a_jp3", "type": "vless", "server": "198.51.100.34", "server_port": 443, "uuid": "11111111-1111-1111-1111-111111111134", "_sub_id": "sub_A", "_sub_url": "https://example.com/subA"},
+            {"tag": "SubB-JP-UltraFast", "node_id": "nid_b_jp1", "node_key": "nk_b_jp1", "type": "vless", "server": "198.51.100.32", "server_port": 443, "uuid": "11111111-1111-1111-1111-111111111132", "_sub_id": "sub_B", "_sub_url": "https://example.com/subB"},
+        ]
+        dmod.save_nodes_list(nodes_30a, tmp_v252)
+        an_30a = {
+            "id": "auto_man_rem_guard",
+            "tag": "Auto_Man_Rem_Guard",
+            "name": "手动移除防回弹池",
+            "pool_mode": "ping_only",
+            "scope_sources": ["sub_A"],
+            "scope_source": "sub_A",
+            "scope_countries": ["JP"],
+            "target_size": 3,
+            "replenish_threshold": 3,
+            "auto_maintain": True,
+            "manually_removed_tags": ["SubA-JP-01"],
+            "groups": [{"index": 1, "name": "主力组 G1", "node_tags": ["SubA-JP-03"]}],
+        }
+        dmod.maintain_auto_node_pool_health(an_30a, conf_dir=tmp_v252, allow_live_l7_probe=False)
+        check("Stage 6.30a (v2.5.4 手动移除成员防回弹守卫 manually_removed_tags): 被用户手动移出节点池的 SubA-JP-01 在后续低健康度自动复选与订阅同步回填中绝不背着用户自动回弹入池",
+              an_30a["groups"][0]["node_tags"] == ["SubA-JP-03"]
+              and "SubA-JP-01" not in an_30a["groups"][0]["node_tags"],
+              f"tags={an_30a['groups'][0]['node_tags']}")
+
+        # Stage 6.30b: Overview Bottom 3 Insight Cards Live Progress Bar & Destination Summary Gate
+        check("Stage 6.30b (v2.5.4 概览页底部三联洞察卡片真实数据绑定门禁): #ov-card-outbounds 进度条动态绑定实测连通率，#ov-destinations-sub 动态展示主力目标域名",
+              "outProgBar = $('#ov-card-outbounds .thin-progress > i')" in js_252_txt
+              and "const destSubEl = $('#ov-destinations-sub')" in js_252_txt,
+              "overview 3 insight cards live binding verified")
+
+        # Stage 6.31a: Auto-Node Pool Break-Glass Quarantine Recovery + Out-of-Scope D-01 Guard + Multi-Line Dual-Channel Floor
+        store_31a = dmod.load_node_probe_store(tmp_v252)
+        now_31a = int(time.time())
+        store_31a["nid_a_jp1"] = {
+            "state": "ok", "delay_ms": 24, "delay_ewma_ms": 24.0, "consecutive_fail": 0, "consecutive_ok": 2,
+            "quarantine_until": now_31a + 1800, "last_probe_ts": now_31a, "samples": 6, "score": 88.0, "success_rate": 0.92,
+        }
+        store_31a["SubA-JP-01"] = store_31a["nid_a_jp1"]
+        store_31a["nid_a_jp3"] = {
+            "state": "ok", "delay_ms": 148, "delay_ewma_ms": 148.0, "consecutive_fail": 0, "consecutive_ok": 4,
+            "quarantine_until": 0, "last_probe_ts": now_31a, "samples": 6, "score": 86.0, "success_rate": 0.96, "cv": 0.42,
+        }
+        store_31a["SubA-JP-03"] = store_31a["nid_a_jp3"]
+        store_31a["nid_b_jp1"] = {
+            "state": "ok", "delay_ms": 12, "delay_ewma_ms": 12.0, "consecutive_fail": 0, "consecutive_ok": 8,
+            "quarantine_until": 0, "last_probe_ts": now_31a, "samples": 8, "score": 98.0, "success_rate": 1.0,
+        }
+        store_31a["SubB-JP-UltraFast"] = store_31a["nid_b_jp1"]
+        dmod.save_node_probe_store(store_31a, tmp_v252)
+
+        # Case 1: Pool with only quarantined in-scope recovered node + out-of-scope SubB node -> must NOT pick SubB, must break-glass to SubA-JP-01!
+        an_31a_bg = {
+            "id": "auto_bg_test",
+            "tag": "Auto_BG_Test",
+            "name": "破冰自愈测试池",
+            "pool_mode": "ping_only",
+            "scope_sources": ["sub_A"],
+            "scope_source": "sub_A",
+            "scope_countries": ["JP"],
+            "groups": [{"index": 1, "name": "节点池成员", "node_tags": ["SubA-JP-01", "SubB-JP-UltraFast"]}],
+        }
+        dmod.evaluate_single_auto_node(an_31a_bg, conf_dir=tmp_v252)
+
+        # Case 2: Multi-line pool with ultra-fast 24ms node (quarantine cleared) + 148ms node -> must preserve both lines (>=2)
+        store_31a["nid_a_jp1"]["quarantine_until"] = 0
+        dmod.save_node_probe_store(store_31a, tmp_v252)
+        an_31a_ml = {
+            "id": "auto_ml_floor",
+            "tag": "Auto_ML_Floor",
+            "name": "多线保底视频池",
+            "pool_mode": "ping_only",
+            "dispatch_mode": "multi_line",
+            "scope_sources": ["sub_A"],
+            "scope_source": "sub_A",
+            "scope_countries": ["JP"],
+            "target_size": 4,
+            "groups": [{"index": 1, "name": "节点池成员", "node_tags": ["SubA-JP-01", "SubA-JP-03"]}],
+        }
+        dmod.evaluate_single_auto_node(an_31a_ml, conf_dir=tmp_v252)
+        check("Stage 6.31a (v2.5.4 全员隔离半开破冰自愈 + D-01 越界拦截 + 多线并发双通道保底): 杜绝越界选入 SubB 且在隔离节点恢复连通时自动破冰接管，multi_line 保持 >=2 条健康并发通道",
+              an_31a_bg.get("current_node") == "SubA-JP-01"
+              and an_31a_bg.get("quarantine_break_glass") is True
+              and an_31a_ml.get("multi_line_nodes") == ["SubA-JP-01", "SubA-JP-03"]
+              and an_31a_ml.get("active_lines_count") == 2,
+              f"bg_cur={an_31a_bg.get('current_node')} bg_flag={an_31a_bg.get('quarantine_break_glass')} ml={an_31a_ml.get('multi_line_nodes')}")
+
+        # Stage 6.31b: Sonar Radar 3-Ring Latency Scale (50ms/150ms/300ms) + Peak KPI + Dynamic Version Single Source of Truth
+        html_254_txt = (Path(__file__).resolve().parent.parent / "root/usr/share/ai-link/webui/index.html").read_text(encoding="utf-8")
+        check("Stage 6.31b (v2.5.4 声呐三环延迟坐标刻度 50ms/150ms/300ms + 峰值延迟摘要 + 全站动态版本号单一真相源)",
+              'sonar-ring-scale r-inner">50ms</span>' in html_254_txt
+              and 'sonar-ring-scale r-mid">150ms</span>' in html_254_txt
+              and 'sonar-ring-scale r-outer">300ms</span>' in html_254_txt
+              and "AI-LINK v2.5.4 · 单一真相源架构" in html_254_txt
+              and "worstSvc.name" in js_252_txt
+              and "AI-LINK v2.5.2" not in js_252_txt,
+              "sonar ring scales, peak latency KPI, and dynamic version verified")
     finally:
         shutil.rmtree(tmp_v252, ignore_errors=True)
 

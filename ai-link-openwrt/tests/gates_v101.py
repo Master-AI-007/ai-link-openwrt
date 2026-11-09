@@ -363,11 +363,23 @@ def fb250_packaging_and_luci_gate():
                 if f"site/ai-link-openwrt/tests/subscription_formats/{fx}" not in znames:
                     archive_missing.append(f"zip:site/subscription_formats/{fx}")
 
+    mk_rel_m = re.search(r"^PKG_RELEASE:=(\d+)", (site_dir / "Makefile").read_text(encoding="utf-8"), re.M) if (site_dir / "Makefile").is_file() else None
+    exp_pkg_rel = mk_rel_m.group(1) if mk_rel_m else "14"
     fp_mismatches = []
     for doc_name in [f"AI-LINK-v{v_d}-全量检查与重构验收报告.md", "HANDOFF.md"]:
         doc_p = root_dir / doc_name
         if doc_p.is_file():
-            rows = re.findall(r"^\|\s*`([^`]+)`\s*\|\s*`(\d+)`\s*\|\s*`([0-9a-f]{32})`\s*\|\s*`([0-9a-f]{64})`\s*\|", doc_p.read_text(encoding="utf-8"), re.M)
+            doc_txt = doc_p.read_text(encoding="utf-8")
+            # FB-253-1: Verify PKG_RELEASE in report/handoff matches Makefile and ipk rN
+            doc_rels = set(re.findall(r"PKG_RELEASE:=(\d+)", doc_txt))
+            if doc_rels and doc_rels != {exp_pkg_rel}:
+                fp_mismatches.append(f"{doc_name}:PKG_RELEASE={doc_rels}!=Makefile({exp_pkg_rel})")
+            # FB-253-2: Verify report Section 1 is dedicated to current version v{v_d}
+            if doc_name.startswith("AI-LINK-v"):
+                sec1_m = re.search(r"^##\s+一、([^\n]+)", doc_txt, re.M)
+                if not sec1_m or f"v{v_d}" not in sec1_m.group(1):
+                    fp_mismatches.append(f"{doc_name}:sec1_not_v{v_d}")
+            rows = re.findall(r"^\|\s*`([^`]+)`\s*\|\s*`(\d+)`\s*\|\s*`([0-9a-f]{32})`\s*\|\s*`([0-9a-f]{64})`\s*\|", doc_txt, re.M)
             if len(rows) < 3:
                 fp_mismatches.append(f"{doc_name}:rows={len(rows)}<3")
             for fname, exp_sz, exp_md5, exp_sha in rows:

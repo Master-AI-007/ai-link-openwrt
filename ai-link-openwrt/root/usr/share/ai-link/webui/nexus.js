@@ -987,8 +987,10 @@
           sonarFoot.textContent = '核心服务离线 · 点击星点可单测对应分流组连通性';
         } else if (okSvcs.length > 0) {
           const avgMs = Math.round(okSvcs.reduce((a, b) => a + Number(b.ms || 0), 0) / okSvcs.length);
-          const bestSvc = okSvcs.slice().sort((a, b) => Number(a.ms) - Number(b.ms))[0];
-          sonarFoot.textContent = '已就绪 ' + okSvcs.length + '/' + svcs8.length + ' 项 · 均值 ' + avgMs + 'ms · 最快 ' + bestSvc.name + ' ' + Math.round(Number(bestSvc.ms)) + 'ms（点击星点单测）';
+          const sortedSvcs = okSvcs.slice().sort((a, b) => Number(a.ms) - Number(b.ms));
+          const bestSvc = sortedSvcs[0];
+          const worstSvc = sortedSvcs[sortedSvcs.length - 1];
+          sonarFoot.textContent = '已就绪 ' + okSvcs.length + '/' + svcs8.length + ' 项 · 均值 ' + avgMs + 'ms · 最快 ' + bestSvc.name + ' ' + Math.round(Number(bestSvc.ms)) + 'ms · 峰值 ' + worstSvc.name + ' ' + Math.round(Number(worstSvc.ms)) + 'ms';
         } else {
           sonarFoot.textContent = '点击星点实时测速对应分流组 · 断网或节点不可达时实时告警';
         }
@@ -1060,7 +1062,10 @@
           const ratio = maxCellB > 0 ? Math.min(1, tb / maxCellB) : 0;
           const alpha = tb > 0 ? (0.12 + ratio * 0.72).toFixed(3) : '0.045';
           const isPeak = (idx === maxIdx && maxCellB > 0);
-          const tip = (cell.date || rowLabel) + ' ' + (cell.hour || (String(hour).padStart(2, '0') + ':00')) + ' · 合计 ' + (cell.total_human || fmtBytes(tb));
+          const inCellB = Number(cell.in_bytes || 0);
+          const outCellB = Number(cell.out_bytes || 0);
+          const ioSplitTxt = tb > 0 ? (' (↓' + fmtBytes(inCellB) + ' / ↑' + fmtBytes(outCellB) + ')') : '';
+          const tip = (cell.date || rowLabel) + ' ' + (cell.hour || (String(hour).padStart(2, '0') + ':00')) + ' · 合计 ' + (cell.total_human || fmtBytes(tb)) + ioSplitTxt;
           htmlParts.push('<span class="matrix-cell' + (isPeak ? ' is-peak' : '') + '" style="--alpha:' + alpha + '" data-tip="' + esc(tip) + '" title="' + esc(tip) + '"></span>');
         }
       }
@@ -1114,9 +1119,21 @@
       const okCnt = mock.nodes.filter(n => n.status === 'ok').length;
       const pendCnt = mock.nodes.filter(n => n.status === 'pending').length;
       outSubEl.textContent = okCnt + ' 已验证可用 · ' + pendCnt + ' 待探测 · 总计 ' + mock.nodes.length + ' 节点 (点击查看详情)';
+      const outProgBar = $('#ov-card-outbounds .thin-progress > i');
+      if (outProgBar) {
+        const okRatioPct = mock.nodes.length ? Math.max(4, Math.min(100, Math.round((okCnt / mock.nodes.length) * 100))) : 100;
+        outProgBar.style.width = okRatioPct + '%';
+      }
     }
     const destCountEl = $('#ov-destinations-count');
     if (destCountEl) destCountEl.textContent = String(mock.destinationsTotal);
+    const destSubEl = $('#ov-destinations-sub');
+    if (destSubEl) {
+      const topDest = (state.insightTargets && state.insightTargets.length) ? state.insightTargets[0] : null;
+      destSubEl.textContent = (topDest && topDest.name)
+        ? ('主力目标 ' + topDest.name + ' · 共 ' + mock.destinationsTotal + ' 个活跃服务 (点击查看详情)')
+        : 'AI 与流媒体服务实时访问统计 (点击查看详情)';
+    }
     const destTagsEl = $('#ov-destinations-tags');
     if (destTagsEl && state.insightTargets && state.insightTargets.length) {
       destTagsEl.innerHTML = state.insightTargets.slice(0, 5).map(t =>
@@ -1480,11 +1497,13 @@
       }));
     }
     const totalHits = Number(stats.total_hits != null ? stats.total_hits : list.reduce((acc, it) => acc + Number(it.hits != null ? it.hits : (it.count || 0)), 0));
-    const topItem = list[0] ? (list[0].title || list[0].group_title || list[0].rule || list[0].outbound || list[0].key || '--') : '--';
+    const totalHitBytes = list.reduce((acc, it) => acc + Number(it.bytes || it.hit_bytes || 0), 0);
+    const activeHitItems = list.filter(it => Number(it.hits != null ? it.hits : (it.count || 0)) > 0).length;
+    const topItem = (totalHits > 0 && list[0]) ? (list[0].title || list[0].group_title || list[0].rule || list[0].outbound || list[0].key || '--') : (list[0] ? (list[0].title || '--') : '--');
     const summaryBar = '<div class="traffic-kpi-strip" style="grid-template-columns:repeat(3,1fr);margin-bottom:6px">' +
-      '<div class="traffic-kpi-item"><span>1h 累计命中</span><b class="mono">' + totalHits + ' 次</b></div>' +
+      '<div class="traffic-kpi-item"><span>1h 累计命中</span><b class="mono">' + Number(totalHits).toLocaleString('zh-CN') + ' 次</b></div>' +
       '<div class="traffic-kpi-item"><span>最高频命中项</span><b class="mono">' + esc(topItem) + '</b></div>' +
-      '<div class="traffic-kpi-item"><span>活跃排行项</span><b class="mono">' + list.length + ' 项</b></div>' +
+      '<div class="traffic-kpi-item"><span>活跃项 · 1h 流量</span><b class="mono">' + activeHitItems + '/' + list.length + ' 项 · ' + esc(fmtBytes(totalHitBytes)) + '</b></div>' +
     '</div>';
     box.innerHTML = summaryBar + list.slice(0, 10).map((it, idx) => {
       const title = it.title || it.group_title || it.rule || it.outbound || it.key || ('排行项 #' + (idx + 1));
@@ -2179,7 +2198,8 @@
       const dpmLabel = state.dataPlaneMode === 'tun_full'
         ? '全量 TUN 虚拟网卡 (ailink0)'
         : (state.dataPlaneMode === 'tproxy_tcp_tun_udp' ? 'TCP TProxy + UDP TUN 游戏混合' : 'TProxy + Redirect 零拷贝');
-      coreSubEl.textContent = 'AI-LINK v2.5.2 · ' + dpmLabel;
+      const curVerClean = String((state.rawStatus && state.rawStatus.version) || '2.5.4').split('-')[0];
+      coreSubEl.textContent = 'AI-LINK v' + curVerClean + ' · ' + dpmLabel;
     }
     setSwitchState($('#toggle-require-lan-auth'), state.authEnabled);
     setSwitchState($('#toggle-ops-entry-bypass'), state.entryBypass);
@@ -6120,7 +6140,7 @@
         openModal(
           'OTA 在线升级状态与确认',
           '<div class="detail-grid">' +
-            '<div><span>当前运行版本</span><b class="mono">v' + esc((res && res.current) || (state.rawStatus && state.rawStatus.version) || '2.5.1') + '</b></div>' +
+            '<div><span>当前运行版本</span><b class="mono">v' + esc((res && res.current) || (state.rawStatus && state.rawStatus.version) || '2.5.4') + '</b></div>' +
             '<div><span>升级阶段</span><b>' + esc(prog.stage || 'idle (就绪)') + '</b></div>' +
             '<div><span>进度百分比</span><b>' + esc((prog.percent != null ? prog.percent : 100) + '%') + '</b></div>' +
             '<div><span>状态说明</span><b>' + esc(prog.message || '当前无进行中的升级任务') + '</b></div>' +
@@ -7342,7 +7362,7 @@
           if (applyBtn) applyBtn.classList.remove('hidden');
           toast('发现新版本 v' + res.latest + '，可点击「立即升级」');
         } else {
-          const curVer = (res && res.current) || (state.rawStatus && state.rawStatus.version) || '2.5.1';
+          const curVer = (res && res.current) || (state.rawStatus && state.rawStatus.version) || '2.5.4';
           if (subEl) subEl.textContent = '当前已是最新版本 (v' + curVer + ' · 已校验云端清单)';
           toast('当前已是最新版本 (v' + curVer + ')');
         }
