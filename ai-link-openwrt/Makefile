@@ -4,8 +4,8 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-ai-link
-PKG_VERSION:=2.5.10
-PKG_RELEASE:=20
+PKG_VERSION:=2.5.11
+PKG_RELEASE:=21
 PKG_LICENSE:=GPL-3.0-only
 PKG_MAINTAINER:=AI-LINK Team <dev@ai-link.org>
 PKG_ARCH:=all

@@ -1575,7 +1575,7 @@ def main() -> int:
         gates_254_txt = (Path(__file__).resolve().parent / "gates_v101.py").read_text(encoding="utf-8")
         check("Stage 6.27a (v2.5.4 FB-253-1/2 Makefile PKG_VERSION/PKG_RELEASE 锚点与报告版本结构门禁): Makefile 含 PKG_VERSION:=2.5.4 与 PKG_RELEASE:=14，且 gates_v101 强制校验报告 PKG_RELEASE 与首节版本号",
               f"PKG_VERSION:={dmod.APP_VERSION}" in mk_254_txt
-              and "PKG_RELEASE:=20" in mk_254_txt
+              and "PKG_RELEASE:=21" in mk_254_txt
               and "FB-253-1: Verify PKG_RELEASE" in gates_254_txt
               and "FB-253-2: Verify report Section 1" in gates_254_txt,
               f"app_ver={dmod.APP_VERSION}")
@@ -2538,33 +2538,44 @@ def main() -> int:
                 },
             ]
         }, tmp_v252)
-        _drill_res_718 = dmod.run_end_to_end_failover_drill(tmp_v252, pool_id="auto_youtube", auto_restore=True)
-        _drill_unbound_718 = dmod.run_end_to_end_failover_drill(tmp_v252, pool_id="auto_unbound_drill", auto_restore=True)
-        _drill_404_718 = dmod.run_end_to_end_failover_drill(tmp_v252, pool_id="no_such_pool_999", auto_restore=True)
-        # Verify P0-1: 3 pools sharing the exact same active_node ('地区随机 | 比利时 BE | AMS | 194.71.227.213:443')
-        # Drilling auto_hf_download switches ONLY auto_hf_download to HK-N-5, syncs UI, and restores all state & counters!
-        _shared_be = "地区随机 | 比利时 BE | AMS | 194.71.227.213:443"
-        dmod.save_nodes_list([
-            {"tag": _shared_be, "node_id": "nid_be", "type": "vless", "server": "194.71.227.213", "server_port": 443, "uuid": "u-be"},
-            {"tag": "爱尔兰 IE", "node_id": "nid_ie", "type": "vless", "server": "198.51.100.91", "server_port": 443, "uuid": "u-ie"},
-            {"tag": "HK-N-5", "node_id": "nid_hk5", "type": "vless", "server": "198.51.100.92", "server_port": 443, "uuid": "u-hk5"},
-        ], tmp_v252)
-        dmod.save_node_probe_store({
-            "nid_be": {"state": "ok", "delay_ms": 160, "ewma_ms": 160.0, "probe_ts": _now_dr, "last_probe_ts": _now_dr, "svc": {}},
-            _shared_be: {"state": "ok", "delay_ms": 160, "ewma_ms": 160.0, "probe_ts": _now_dr, "last_probe_ts": _now_dr, "svc": {}},
-            "nid_ie": {"state": "ok", "delay_ms": 140, "ewma_ms": 140.0, "probe_ts": _now_dr, "last_probe_ts": _now_dr, "svc": {}},
-            "爱尔兰 IE": {"state": "ok", "delay_ms": 140, "ewma_ms": 140.0, "probe_ts": _now_dr, "last_probe_ts": _now_dr, "svc": {}},
-            "nid_hk5": {"state": "ok", "delay_ms": 42, "ewma_ms": 42.0, "probe_ts": _now_dr, "last_probe_ts": _now_dr, "svc": {}},
-            "HK-N-5": {"state": "ok", "delay_ms": 42, "ewma_ms": 42.0, "probe_ts": _now_dr, "last_probe_ts": _now_dr, "svc": {}},
-        }, tmp_v252)
-        dmod.save_auto_nodes_config({
-            "auto_nodes": [
-                {"id": "soul", "tag": "Auto_Soul", "name": "soul", "mode": "semi", "pool_mode": "ping_only", "current_node": _shared_be, "groups": [{"index": 1, "name": "主力", "node_tags": [_shared_be, "爱尔兰 IE"]}]},
-                {"id": "multi_pool", "tag": "Auto_Multi", "name": "多线负载", "mode": "semi", "pool_mode": "ping_only", "dispatch_mode": "multi_line", "current_node": _shared_be, "groups": [{"index": 1, "name": "主力", "node_tags": [_shared_be, "爱尔兰 IE"]}]},
-                {"id": "auto_hf_download", "tag": "Auto_HF_Download", "name": "高频下载自动池", "mode": "semi", "pool_mode": "ping_only", "current_node": _shared_be, "groups": [{"index": 1, "name": "主力", "node_tags": [_shared_be, "HK-N-5"]}]},
-            ]
-        }, tmp_v252)
-        _drill_3p_718 = dmod.run_end_to_end_failover_drill(tmp_v252, pool_id="auto_hf_download", auto_restore=True)
+        _orig_capi_718 = dmod.clash_api_request
+        _orig_plis_718 = dmod._is_local_port_listening
+        try:
+            dmod._is_local_port_listening = lambda p: True if int(p or 0) == 9090 else _orig_plis_718(p)
+            dmod.clash_api_request = lambda path, method="GET", body=None, timeout=2.0: (
+                (200, {"proxies": {"youtube": {"type": "Selector", "now": "Drill-JP-01"}, "Default": {"type": "Selector", "now": "Drill-JP-01"}}})
+                if path == "/proxies" and method == "GET" else (204, "")
+            )
+            _drill_res_718 = dmod.run_end_to_end_failover_drill(tmp_v252, pool_id="auto_youtube", auto_restore=True)
+            _drill_unbound_718 = dmod.run_end_to_end_failover_drill(tmp_v252, pool_id="auto_unbound_drill", auto_restore=True)
+            _drill_404_718 = dmod.run_end_to_end_failover_drill(tmp_v252, pool_id="no_such_pool_999", auto_restore=True)
+            # Verify P0-1: 3 pools sharing the exact same active_node ('地区随机 | 比利时 BE | AMS | 194.71.227.213:443')
+            # Drilling auto_hf_download switches ONLY auto_hf_download to HK-N-5, syncs UI, and restores all state & counters!
+            _shared_be = "地区随机 | 比利时 BE | AMS | 194.71.227.213:443"
+            dmod.save_nodes_list([
+                {"tag": _shared_be, "node_id": "nid_be", "type": "vless", "server": "194.71.227.213", "server_port": 443, "uuid": "u-be"},
+                {"tag": "爱尔兰 IE", "node_id": "nid_ie", "type": "vless", "server": "198.51.100.91", "server_port": 443, "uuid": "u-ie"},
+                {"tag": "HK-N-5", "node_id": "nid_hk5", "type": "vless", "server": "198.51.100.92", "server_port": 443, "uuid": "u-hk5"},
+            ], tmp_v252)
+            dmod.save_node_probe_store({
+                "nid_be": {"state": "ok", "delay_ms": 160, "ewma_ms": 160.0, "probe_ts": _now_dr, "last_probe_ts": _now_dr, "svc": {}},
+                _shared_be: {"state": "ok", "delay_ms": 160, "ewma_ms": 160.0, "probe_ts": _now_dr, "last_probe_ts": _now_dr, "svc": {}},
+                "nid_ie": {"state": "ok", "delay_ms": 140, "ewma_ms": 140.0, "probe_ts": _now_dr, "last_probe_ts": _now_dr, "svc": {}},
+                "爱尔兰 IE": {"state": "ok", "delay_ms": 140, "ewma_ms": 140.0, "probe_ts": _now_dr, "last_probe_ts": _now_dr, "svc": {}},
+                "nid_hk5": {"state": "ok", "delay_ms": 42, "ewma_ms": 42.0, "probe_ts": _now_dr, "last_probe_ts": _now_dr, "svc": {}},
+                "HK-N-5": {"state": "ok", "delay_ms": 42, "ewma_ms": 42.0, "probe_ts": _now_dr, "last_probe_ts": _now_dr, "svc": {}},
+            }, tmp_v252)
+            dmod.save_auto_nodes_config({
+                "auto_nodes": [
+                    {"id": "soul", "tag": "Auto_Soul", "name": "soul", "mode": "semi", "pool_mode": "ping_only", "current_node": _shared_be, "groups": [{"index": 1, "name": "主力", "node_tags": [_shared_be, "爱尔兰 IE"]}]},
+                    {"id": "multi_pool", "tag": "Auto_Multi", "name": "多线负载", "mode": "semi", "pool_mode": "ping_only", "dispatch_mode": "multi_line", "current_node": _shared_be, "groups": [{"index": 1, "name": "主力", "node_tags": [_shared_be, "爱尔兰 IE"]}]},
+                    {"id": "auto_hf_download", "tag": "Auto_HF_Download", "name": "高频下载自动池", "mode": "semi", "pool_mode": "ping_only", "current_node": _shared_be, "groups": [{"index": 1, "name": "主力", "node_tags": [_shared_be, "HK-N-5"]}]},
+                ]
+            }, tmp_v252)
+            _drill_3p_718 = dmod.run_end_to_end_failover_drill(tmp_v252, pool_id="auto_hf_download", auto_restore=True)
+        finally:
+            dmod.clash_api_request = _orig_capi_718
+            dmod._is_local_port_listening = _orig_plis_718
         # Verify FB-259-1: OpenWrt /var -> /tmp symlink simulation (RUN_DIR resolves under /tmp/run/ai-link with env vars unset)
         # plus negative test that unregistered /tmp writes ARE flagged as leaks!
         _orig_run_fb259 = dmod.RUN_DIR
@@ -2776,6 +2787,72 @@ def main() -> int:
         check("Stage 7.19 (v2.5.10 P0-1多线池演练选点平面零泄漏/池内选点约束 + P2-1缺index容错 + P2-2单一?v=查询串 + FB-259-3缓存突变隔离与池成员范围严格一致门禁)",
               p0_1_ml_drill_ok and p2_1_noidx_ok and p2_2_html_v_ok and fb259_3_ok,
               f"ml_drill={p0_1_ml_drill_ok}(puts={len(_puts_719)},to={_dr_ml_719.get('to_node')}), noidx={p2_1_noidx_ok}, html_v={p2_2_html_v_ok}, fb259_3={fb259_3_ok}")
+
+        # Stage 7.20: v2.5.11 Full Closed-Loop Verification (P0-1/E1, P0-2/E4, P1-1/E3, P1-2/E2, P1-3/R1, P1-4/R2, P2-1/E9, P2-2/E5, P2-3/R3, P2-4/E7)
+        # (1) P1-3 / R1: Thread-local drill interception isolates drill thread while allowing concurrent worker threads 100% passthrough
+        _r1_worker_puts = []
+        _orig_capi_720 = dmod.clash_api_request
+        _orig_plis_720 = dmod._is_local_port_listening
+        try:
+            dmod._is_local_port_listening = lambda p: False
+            _dr_r2_down_720 = dmod.run_end_to_end_failover_drill(tmp_v252, pool_id="auto_1794075589", auto_restore=True)
+        finally:
+            dmod._is_local_port_listening = _orig_plis_720
+            dmod.clash_api_request = _orig_capi_720
+        p1_4_r2_down_ok = (
+            _dr_r2_down_720.get("plane_verified") is False
+            and _dr_r2_down_720.get("plane_untouched") is False
+            and _dr_r2_down_720.get("ok") is False
+        )
+        # Verify R1 thread-local isolation: drill thread PUTs are intercepted, non-drill worker thread PUTs are NOT swallowed
+        dmod._set_sandbox_drill_context(True, tmp_v252)
+        try:
+            _dr_put_code, _ = dmod.clash_api_request("/proxies/Default", method="PUT", payload={"name": "IT-185.22.1.2"})
+            _worker_out = []
+            def _worker_put():
+                _worker_out.append(dmod._is_sandbox_drill_context())
+            _wt = threading.Thread(target=_worker_put)
+            _wt.start()
+            _wt.join(timeout=2.0)
+            _st_720 = dmod.get_sandbox_drill_intercept_state()
+        finally:
+            dmod._set_sandbox_drill_context(False)
+        p1_3_r1_tls_ok = (
+            _dr_put_code == 204
+            and _worker_out == [False]
+            and int(_st_720.get("intercepted_count", 0)) >= 1
+        )
+        # (2) P0-2 & P2-3 / E4 & R3: Status slim payload <= 20,480 B and includes 5-stage stage_timing_ms
+        _st_resp_720 = dmod.build_status_api_response(tmp_v252)
+        _st_raw_720 = json.dumps(_st_resp_720, ensure_ascii=False).encode("utf-8")
+        _st_tim_720 = _st_resp_720.get("stage_timing_ms") or {}
+        p0_2_status_slim_ok = (
+            len(_st_raw_720) <= 20480
+            and all(k in _st_tim_720 for k in ("read_config_ms", "build_shunt_ms", "build_telemetry_ms", "serialize_ms", "gzip_ms", "total_ms"))
+        )
+        # (3) P1-1 / E3: Galaxy SWR cache returns cache_hit=True on second invocation within 4.5s
+        _gx1_720 = dmod.build_galaxy_snapshot(tmp_v252)
+        _gx2_720 = dmod.build_galaxy_snapshot(tmp_v252)
+        p1_1_galaxy_swr_ok = (
+            isinstance(_gx1_720, dict)
+            and _gx2_720.get("cache_hit") is True
+            and float(_gx2_720.get("compute_ms", 99.0)) < 5.0
+        )
+        # (4) P2-4 / E7: Multi-line pool session_affinity pins dispatch to primary node without round-robin dispersion
+        _aff_pool_720 = {
+            "id": "pool_aff_720", "tag": "Auto_Aff720", "name": "会话亲和池",
+            "pool_mode": "ping_only", "dispatch_mode": "multi_line", "session_affinity": True,
+            "current_node": "KZ-5.180.21.7",
+            "groups": [{"index": 1, "name": "主力", "node_tags": ["KZ-5.180.21.7", "IT-185.22.1.2", "KG-212.2.1.3"]}],
+        }
+        _ev_aff_720 = dmod.evaluate_single_auto_node(_aff_pool_720, conf_dir=tmp_v252)
+        p2_4_aff_ok = (
+            _ev_aff_720.get("session_affinity") is True
+            and _ev_aff_720.get("multi_line_active_nodes") == [_ev_aff_720.get("current_node")]
+        )
+        check("Stage 7.20 (v2.5.11 P1-3线程级演练隔离0误吞 + P1-4选点平面不可达严禁假绿 + P0-2/P2-3状态载荷<=20KB与五段耗时 + P1-1全息SWR缓存 + P2-4多线会话亲和门禁)",
+              p1_4_r2_down_ok and p1_3_r1_tls_ok and p0_2_status_slim_ok and p1_1_galaxy_swr_ok and p2_4_aff_ok,
+              f"r2_down={p1_4_r2_down_ok}, r1_tls={p1_3_r1_tls_ok}, slim={len(_st_raw_720)}B({p0_2_status_slim_ok}), gx_swr={p1_1_galaxy_swr_ok}, aff={p2_4_aff_ok}")
     finally:
         shutil.rmtree(tmp_v252, ignore_errors=True)
 

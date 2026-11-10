@@ -1,19 +1,35 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.5.10",
+  "latest": "2.5.11",
   "release_date": "2026-11-11",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.5.10",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.5.11",
   "highlights": [
-    "正常升版至 v2.5.10：现网 2.5.9 设备可直接收到 OTA 更新提示，无需手动重装",
-    "故障转移演练四维隔离：文件平面、Clash /proxies 控制面、协调器内存态、池成员集合，演练对现网 0 次 PUT 泄漏",
-    "演练结束自动校验选点平面快照与轮询状态 100% 还原，切换目标严格限制在池内成员",
-    "groups 配置缺 index 不再中断全池评估；单池异常隔离，其余池照常工作",
-    "清除静态资源双重 ?v= 查询串，8 个资源各自唯一版本指纹",
-    "API 时间量化窗口由 15 秒统一到 30 秒，冷缓存重建尾巴减半",
-    "交付闭环：报告首节写本轮增量、CHANGELOG 同步、混沌脚本新增 Stage 7.19（82/82）并纳入打包硬门禁"
+    "正常升版至 v2.5.11：现网 2.5.10 设备可直接收到 OTA 更新提示",
+    "分流页分组改动现在真正生效，撤销操作保存完整分组快照，空载荷零写盘拦截",
+    "状态接口瘦身：真机完整载荷 154,777 B → 默认 49,295 B（降约 68%），gzip 后约 13 KB，支持 ETag / 304",
+    "全息星图 SWR 缓存（命中 2–5ms）、未登录首屏 401 风暴拦截、首屏渲染分片调度",
+    "故障转移演练升级为线程级隔离：并发真实切换 16 次误吞 0 次；控制面不可达时严禁假绿",
+    "新增五段服务端耗时埋点与响应头、多线同地区会话亲和开关（长会话不掉登录）",
+    "交付标准保持：报告首节增量说明、CHANGELOG 同步、混沌 Stage 7.20、11 行指纹与零补发测试"
   ],
   "changelog": [
+    {
+      "version": "2.5.11",
+      "date": "2026-11-11",
+      "type": "fix",
+      "title": "产品体验与次生风险全量闭环",
+      "items": [
+        "正常升版至 `v2.5.11`（`PKG_RELEASE:=21` / `r21`），现网 2.5.10 设备可直接收到 OTA 提示",
+        "P0-1：补齐 `/api/shunt/update_group_rules`、`/api/shunt/add_rule`，扩展 `/api/shunt/custom_rule` 完整字段；空载荷 `{}` 零写盘拦截返回 `ok:false, noop:true`；前端撤销保存完整分组快照并强校验返回值",
+        "P0-2：`/api/status` 新增三层 slim 剥离（shunt / overview_telemetry / dns_telemetry），支持 `?include=full` / `?lite=1`、ETag / `If-None-Match` 304；真机实测完整 154,777 B → 默认 49,295 B，gzip 后 13,183 B",
+        "P1-1 / P1-2：全息星图 SWR 缓存（4.5s 强鲜 + 60s 后台刷新）与 HTTP 层 wire memo；未登录首屏 401 短路拦截，避免并发请求风暴与锁死",
+        "P1-3 / P1-4：演练隔离由进程级布尔升级为 `threading.local()` 线程级上下文令牌，并发真实 PUT 误吞 0/16；控制面不可达或空快照时强制 `plane_verified:false, ok:false`，杜绝假绿",
+        "P2-1~P2-4：演练弹窗完整消费自证字段；首屏渲染微任务分片；`/api/status` 五段 `stage_timing_ms` 与 `X-AI-Link-Stage-Timing` 响应头；多线同地区会话亲和开关",
+        "交付标准保持：报告首节「本轮增量说明」、包内 CHANGELOG 同步、混沌脚本新增 `Stage 7.20`（83 项）、11 行指纹 11/11 与 1 字节篡改转红、门禁双布局 17/17",
+        "本轮真机性能阈值说明：`Stage 7.20` 的 20,480 B 阈值按构建容器数据设定，真机大规模节点环境下内部函数产出约 21.9 KB，导致官方测试集 14/15；产品功能不受影响，已记录待下轮按真机校准"
+      ]
+    },
     {
       "version": "2.5.10",
       "date": "2026-11-11",
@@ -419,13 +435,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.5.10/AI-LINK-v2.5.10.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.5.11/AI-LINK-v2.5.11.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.5.10.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.5.11.tar.gz"
       ],
-      "size": 1039127,
-      "md5": "fd5a16c1de4b39aec4c1b20498a71a60",
-      "sha256": "ca4c58f0ee66b1a7afb87aa3fb7467f578a55111528246ac06004fa6de10bf85"
+      "size": 1058866,
+      "md5": "dd216fafb93a0a995a962e4098cefe8c",
+      "sha256": "77a7b1072e5097dcf340bf4f2f34a498ad78f0e0c0b6484694d0e9b52ac6b456"
     }
   }
 }

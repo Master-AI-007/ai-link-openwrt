@@ -18,7 +18,7 @@
         <circle cx="20" cy="20" r="5.4" fill="none" stroke="#a994ff" stroke-width="1.6"/>
         <circle cx="20" cy="20" r="1.8" fill="#6ee7f5"/>
       </svg>
-      <span style="display:block"><b>AI-LINK</b><span>NEXUS · 2.5.10</span></span>
+      <span style="display:block"><b>AI-LINK</b><span>NEXUS · 2.5.11</span></span>
     </a>
     <div class="nav-links">
       <a href="/#features">核心能力</a>
@@ -36,12 +36,22 @@
 <main class="wrap log-wrap">
   <div class="log-head">
     <h1>更新日志</h1>
-    <span class="pill"><i></i> 当前最新 2.5.10</span>
+    <span class="pill"><i></i> 当前最新 2.5.11</span>
   </div>
 <article class="log-item latest">
   <div class="log-top">
-    <h2>v2.5.10</h2>
+    <h2>v2.5.11</h2>
     <span class="tag c">最新</span>
+    <time>2026-11-11</time>
+  </div>
+  <p style="margin:2px 0 6px;color:var(--dim)"></p>
+<h3>产品体验与次生风险全量闭环</h3>
+<ul><li><b>正常升版</b>：升至 <code>v2.5.11</code>（<code>PKG_RELEASE:=21</code> / <code>r21</code>），现网 2.5.10 设备可直接收到 OTA 提示。</li><li><b>P0-1 分流页改动生效</b>：补齐 <code>/api/shunt/update_group_rules</code>、<code>/api/shunt/add_rule</code>，扩展 <code>custom_rule</code> 完整字段；空载荷 <code>{}</code> 零写盘拦截返回 <code>ok:false, noop:true</code>；前端撤销保存完整分组快照并强校验 <code>uRes.ok !== false</code>。</li><li><b>P0-2 状态接口瘦身</b>：新增三层 slim 剥离，支持 <code>?include=full</code> / <code>?lite=1</code> 与 ETag / <code>If-None-Match</code> 304；真机实测完整 154,777 B → 默认 49,295 B（降约 68%），gzip 后 13,183 B，缓存命中毫秒级。</li><li><b>P1-1 / P1-2</b>：全息星图 SWR 缓存（二次 2–5ms）、HTTP 层 wire memo；未登录首屏 401 短路拦截与渲染微任务分片。</li><li><b>P1-3 / P1-4 次生风险</b>：演练隔离升级为 <code>threading.local()</code> 线程级令牌，并发真实 PUT 误吞 <b>0/16</b>；控制面不可达或空快照时强制 <code>plane_verified:false, ok:false</code>，杜绝假绿。</li><li><b>P2-1~P2-4</b>：演练弹窗完整消费自证字段、首屏渲染分片、<code>stage_timing_ms</code> 五段埋点与 <code>X-AI-Link-Stage-Timing</code> 响应头、多线同地区会话亲和开关。</li><li><b>交付标准保持</b>：报告首节「本轮增量说明」、CHANGELOG 同步、混沌脚本新增 <code>Stage 7.20</code>（83 项）、11 行指纹 11/11 与 1 字节篡改转红、门禁双布局 17/17、静态资源 8/8、design-lint 18/18。</li><li><b>已知测试侧问题</b>：原始包零补发 <code>run_all</code> <b>14/15</b>、混沌 <b>82/83</b>，唯一失败为 <code>Stage 7.20</code> 的 20,480 B 性能阈值（按构建容器 19,360 B 设定，真机大规模节点下内部函数产出 21.9–22.1 KB、HTTP 默认 49,295 B）。静默复测排除并发污染，判定为阈值/文档口径问题，产品功能不受影响；已在反馈单记录，待下轮按真机校准。</li><li>真机：<code>INSTALL_RC=0</code>、服务全 1、<code>nft ok:true</code>、重启稳定、自检 10/10 + 负向、4 个多线出口与 AI 单线保护、UI 零异常三视口零溢出、出网 200/200/204。</li></ul>
+</article>
+<article class="log-item">
+  <div class="log-top">
+    <h2>v2.5.10</h2>
+    <span class="tag">历史</span>
     <time>2026-11-11</time>
   </div>
   <p style="margin:2px 0 6px;color:var(--dim)"></p>

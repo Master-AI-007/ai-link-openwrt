@@ -98,6 +98,24 @@ def check_parity(daemon_path: Path = DAEMON_PATH, nexus_js_path: Path = NEXUS_JS
         if ".write_text(" in ln and ("CONF_DIR" in ln or "RUN_DIR" in ln) and not ln.lstrip().startswith("#") and "getattr(Path," not in ln
     ]
 
+    # v2.5.11 P0-1 & P2-1 Gate: Verify 100% of frontend literal /api/* paths exist in backend, all onUndo check res.ok, and drill verification fields are consumed in UI
+    js_api_paths = set(re.findall(r"['\"](/api/[a-zA-Z0-9_/\-]+)", nexus_src))
+    py_api_paths = set(re.findall(r"['\"](/api/[a-zA-Z0-9_/\-]+)", daemon_src))
+    missing_api_routes = sorted(
+        p_api for p_api in js_api_paths
+        if p_api not in py_api_paths and not p_api.endswith("/")
+    )
+    drill_ui_refs = sum(nexus_src.count(k) for k in ("plane_verified", "plane_untouched", "in_pool_scope", "selector_plane"))
+    drill_ui_ok = (
+        "plane_verified" in nexus_src
+        and "plane_untouched" in nexus_src
+        and "in_pool_scope" in nexus_src
+        and "selector_plane" in nexus_src
+        and drill_ui_refs >= 6
+    )
+    undo_blocks = [nexus_src[m.start():m.start()+1300] for m in re.finditer(r"onUndo\s*:\s*async\s*\(\)\s*=>\s*\{", nexus_src)]
+    unprotected_undos = [b[:60].strip() for b in undo_blocks if "callRouterApi(" in b and "uRes.ok === false" not in b]
+
     ok = (
         not missing_in_backend
         and not missing_in_frontend
@@ -105,13 +123,17 @@ def check_parity(daemon_path: Path = DAEMON_PATH, nexus_js_path: Path = NEXUS_JS
         and obs_type_loc_ok
         and qb_ok
         and not raw_write_lines
+        and not missing_api_routes
+        and drill_ui_ok
+        and not unprotected_undos
     )
     summary = (
         f"backend_keys={len(backend_preview_keys)}, frontend_reads={len(frontend_res_fields)}, "
         f"missing_backend={missing_in_backend}, missing_frontend={missing_in_frontend}, "
         f"unknown_reads={unknown_frontend_reads}, obs_type_loc_ok={obs_type_loc_ok} "
         f"(bgt_arr={bgt_type_ok}, rot_top={rot_loc_ok}, dwell={dwell_loc_ok}), "
-        f"quick_bind_ok={qb_ok}, raw_conf_run_writes={len(raw_write_lines)}"
+        f"quick_bind_ok={qb_ok}, api_routes={len(js_api_paths)}(missing={missing_api_routes}), "
+        f"drill_ui_refs={drill_ui_refs}, unprotected_undos={len(unprotected_undos)}, raw_conf_run_writes={len(raw_write_lines)}"
     )
     return ok, summary
 

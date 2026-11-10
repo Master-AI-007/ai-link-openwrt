@@ -578,13 +578,17 @@
   }
 
   async function callRouterApi(endpoint, method = 'GET', payload = null, timeoutMs = 25000, silentError = false) {
+    const epBase = String(endpoint || '').split('?', 1)[0];
+    const isMutating = method && method.toUpperCase() !== 'GET';
+    const isBgPoll = !isMutating && (epBase === '/api/status' || epBase === '/api/overview/galaxy' || epBase === '/api/ops/logs' || String(endpoint || '').startsWith('/api/nodes?sparkline=1'));
+    const tok = getAuthToken();
+    if (state.authRequiredLock && !tok && epBase !== '/api/login' && epBase !== '/api/system/version') {
+      return { ok: false, error: 'unauthorized', _httpStatus: 401, _shortCircuitedUnauth: true };
+    }
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
-    const isMutating = method && method.toUpperCase() !== 'GET';
-    const isBgPoll = !isMutating && (endpoint === '/api/status' || endpoint === '/api/overview/galaxy' || endpoint === '/api/ops/logs' || endpoint.startsWith('/api/nodes?sparkline=1'));
     try {
       const headers = { 'Accept': 'application/json' };
-      const tok = getAuthToken();
       if (tok) headers['X-AI-Link-Token'] = tok;
       const opts = { method, headers };
       if (controller) opts.signal = controller.signal;
@@ -595,9 +599,12 @@
       const res = await fetch(endpoint, opts);
       let data = {};
       try { data = await res.json(); } catch (_) {}
-      if (res.status === 401 && endpoint !== '/api/login' && (!isBgPoll || (endpoint === '/api/status' && !state._loginPromptedOnce))) {
-        state._loginPromptedOnce = true;
-        promptPanelLoginModal();
+      if (res.status === 401 && epBase !== '/api/login') {
+        state.authRequiredLock = true;
+        if (!state._loginPromptedOnce) {
+          state._loginPromptedOnce = true;
+          promptPanelLoginModal();
+        }
       }
       const okFlag = Boolean(res.ok && data.ok !== false);
       const out = Object.assign({ ok: okFlag, _httpStatus: res.status }, data);
@@ -807,8 +814,11 @@
         if (!pw) { toast('请输入管理密码', 'warn'); return; }
         const res = await callRouterApi('/api/login', 'POST', { password: pw });
         if (res && res.ok && res.token) {
+          state.authRequiredLock = false;
+          state._loginPromptedOnce = false;
           setAuthToken(res.token);
           closeModal();
+          if (!scene) initScene();
           toast('登录成功，已获取安全会话令牌');
           await syncBackendStatus(true, true);
         } else {
@@ -2723,6 +2733,31 @@
     renderInspector(state.selected);
   }
 
+  let _deferredRenderTimer = null;
+  function scheduleDeferredRenderAll() {
+    if (_deferredRenderTimer) clearTimeout(_deferredRenderTimer);
+    const activeP = state.page || 'galaxy';
+    const tasks = [
+      ['overview', () => renderOverviewDashboard()],
+      ['shunt', () => renderShuntMatrix()],
+      ['homelink', () => renderHomeLinkSection(false)],
+      ['dns', () => renderDnsAndFilterSection()],
+      ['nodes', () => renderSubscriptionsAndNodes()],
+      ['settings', () => { renderOpsAndUpdatesSection(); renderConnectionsSection(); }],
+      ['galaxy', () => renderInspector(state.selected)]
+    ].filter(item => item[0] !== activeP);
+    let idx = 0;
+    const step = () => {
+      if (idx >= tasks.length || state.authRequiredLock) return;
+      const fn = tasks[idx++][1];
+      try { fn(); } catch (_) {}
+      if (idx < tasks.length) {
+        _deferredRenderTimer = setTimeout(step, 8);
+      }
+    };
+    _deferredRenderTimer = setTimeout(step, 8);
+  }
+
   function showPage(page) {
     const normalized = page === 'topology' ? 'galaxy' : page;
     if (!pageTitles[normalized]) return;
@@ -2738,8 +2773,16 @@
       if (normalized === 'galaxy') setTimeout(() => scene.resize(), 50);
     }
     if (normalized === 'overview') setTimeout(drawTrafficChart, 60);
-    if (normalized === 'settings') {
-      callRouterApi('/api/clash/connections', 'GET').then(res => {
+    if (normalized === 'overview' && !state.authRequiredLock && !window.__MOCK_STATUS && (!state.rawStatus || !state.rawStatus.overview_telemetry || !Array.isArray(state.rawStatus.overview_telemetry.matrix_7x24))) {
+      callRouterApi('/api/overview/telemetry', 'GET', null, 8000, true).then(ovRes => {
+        if (ovRes && ovRes.ok !== false && state.rawStatus) {
+          state.rawStatus.overview_telemetry = Object.assign({}, state.rawStatus.overview_telemetry || {}, ovRes);
+          if (state.page === 'overview') { renderOverviewDashboard(); drawTrafficChart(); }
+        }
+      });
+    }
+    if (normalized === 'settings' && !state.authRequiredLock) {
+      callRouterApi('/api/clash/connections', 'GET', null, 12000, true).then(res => {
         if (res && Array.isArray(res.connections)) {
           state.rawConnections = res.connections;
           mock.connections = typeof res.total === 'number' ? res.total : res.connections.length;
@@ -2748,7 +2791,7 @@
           renderConnectionsSection();
         }
       });
-      callRouterApi('/api/ops/logs', 'GET').then(res => {
+      callRouterApi('/api/ops/logs', 'GET', null, 12000, true).then(res => {
         if (res && Array.isArray(res.logs) && res.logs.length) {
           mock.logs = res.logs;
           renderLogsViewer();
@@ -3203,13 +3246,60 @@
     });
   }
 
+  const PRESET_GROUP_DOMAINS_FALLBACK = {
+    AI: ['openai.com', 'chatgpt.com', 'oaistatic.com', 'oaiusercontent.com', 'anthropic.com', 'claude.ai', 'gemini.google.com', 'bard.google.com', 'generativelanguage.googleapis.com', 'aistudio.google.com', 'notebooklm.google.com', 'perplexity.ai', 'poe.com', 'Midjourney.com', 'cursor.sh', 'cursor.com', 'grok.com', 'x.ai', 'huggingface.co'],
+    YouTube: ['youtube.com', 'youtu.be', 'googlevideo.com', 'ytimg.com', 'ggpht.com', 'youtubei.googleapis.com'],
+    TikTok: ['tiktok.com', 'tiktokv.com', 'tiktokcdn.com', 'tiktokcdn-us.com', 'musical.ly', 'byteoversea.com', 'ibytedtos.com', 'ibyteimg.com', 'ipstatp.com', 'tik-tokapi.com'],
+    Netflix: ['netflix.com', 'netflix.net', 'nflxext.com', 'nflximg.net', 'nflxso.net', 'nflxvideo.net', 'disneyplus.com', 'dssott.com', 'hbo.com', 'max.com'],
+    GitHub: ['github.com', 'github.io', 'githubusercontent.com', 'githubassets.com', 'ghcr.io', 'gitlab.com', 'docker.io', 'npmjs.org'],
+    Google: ['google.com', 'googleapis.com', 'gstatic.com', 'googleusercontent.com', 'gmail.com', 'gvt1.com', 'dl.google.com', 'mtalk.google.com'],
+    Microsoft: ['microsoft.com', 'live.com', 'office.com', 'office365.com', 'onedrive.com', 'bing.com', 'azure.com', 'windowsupdate.com'],
+    Apple: ['apple.com', 'icloud.com', 'mzstatic.com', 'itunes.com', 'cdn-apple.com', 'aaplimg.com'],
+    Games: ['steampowered.com', 'steamcommunity.com', 'steamstatic.com', 'epicgames.com', 'playstation.net', 'xboxlive.com', 'nintendo.net', 'riotgames.com'],
+    Outside_CN: ['telegram.org', 't.me', 'tdesktop.com', 'twitter.com', 'x.com', 'twimg.com', 'discord.com', 'discordapp.com', 'reddit.com', 'wikipedia.org'],
+    Domestic_CN: ['baidu.com', 'qq.com', 'weixin.qq.com', 'taobao.com', 'tmall.com', 'jd.com', 'bilibili.com', 'hdslb.com', 'douyin.com', 'douyincdn.com', 'douyinpic.com', 'zijieapi.com', 'amemv.com', '163.com', '126.net', 'zhihu.com', 'weibo.com', 'aliyun.com'],
+    Final_Fallback: []
+  };
+
   async function syncBackendStatus(forceNodes, forceImmediate) {
+    if (state.authRequiredLock && !getAuthToken() && !forceImmediate) return;
     try {
-      const [stRes, galRes, nodesRes] = await Promise.all([
-        callRouterApi('/api/status', 'GET', null, 15000, true),
-        callRouterApi('/api/overview/galaxy', 'GET', null, 12000, true),
-        (forceNodes || !state.rawNodes.length) ? callRouterApi('/api/nodes?sparkline=1', 'GET', null, 15000, true) : Promise.resolve(null)
-      ]);
+      const statusEp = (!forceImmediate && state.rawStatus) ? '/api/status?lite=1' : '/api/status';
+      let stRes = null;
+      let galRes = null;
+      let nodesRes = null;
+      if (!getAuthToken() && !window.__MOCK_STATUS) {
+        stRes = await callRouterApi(statusEp, 'GET', null, 15000, true);
+        if (!stRes || stRes._httpStatus === 401 || stRes.auth_required) {
+          state.authRequiredLock = true;
+          if (stRes && stRes.pwd_customized != null) state.pwdCustomized = Boolean(stRes.pwd_customized);
+          if (!state._loginPromptedOnce) {
+            state._loginPromptedOnce = true;
+            promptPanelLoginModal();
+          }
+          return;
+        }
+        state.authRequiredLock = false;
+        if (!scene) initScene();
+        [galRes, nodesRes] = await Promise.all([
+          callRouterApi('/api/overview/galaxy', 'GET', null, 12000, true),
+          (forceNodes || !state.rawNodes.length) ? callRouterApi('/api/nodes?sparkline=1', 'GET', null, 15000, true) : Promise.resolve(null)
+        ]);
+      } else {
+        [stRes, galRes, nodesRes] = await Promise.all([
+          callRouterApi(statusEp, 'GET', null, 15000, true),
+          callRouterApi('/api/overview/galaxy', 'GET', null, 12000, true),
+          (forceNodes || !state.rawNodes.length) ? callRouterApi('/api/nodes?sparkline=1', 'GET', null, 15000, true) : Promise.resolve(null)
+        ]);
+        if (stRes && (stRes._httpStatus === 401 || stRes.auth_required) && !window.__MOCK_STATUS) {
+          state.authRequiredLock = true;
+          if (!state._loginPromptedOnce) {
+            state._loginPromptedOnce = true;
+            promptPanelLoginModal();
+          }
+          return;
+        }
+      }
       if (nodesRes && Array.isArray(nodesRes.nodes)) {
         if (Array.isArray(nodesRes.subscriptions)) {
           applySubscriptionsFromApi(nodesRes.subscriptions);
@@ -3401,6 +3491,9 @@
                 active_lines_count: (a.active_lines_count != null) ? Number(a.active_lines_count) : (Array.isArray(a.multi_line_nodes) ? a.multi_line_nodes.length : 1),
                 multi_line_locked: Boolean(a.multi_line_locked),
                 multi_line_locked_reason: a.multi_line_locked_reason || '',
+                session_affinity: Boolean(a.session_affinity || a.same_region_multi_line),
+                same_region_multi_line: Boolean(a.same_region_multi_line || a.session_affinity),
+                session_sticky_s: Number(a.session_sticky_s || 300),
                 bandwidth_prefer: Boolean(a.bandwidth_prefer),
                 bandwidth_interval_h: Number(a.bandwidth_interval_h || 6),
                 bandwidth_limit_mb: Number(a.bandwidth_limit_mb || 16),
@@ -3418,7 +3511,10 @@
             });
           }
           if (Array.isArray(sh.groups)) {
+            const prevGrpMap = {};
+            (mock.groups || []).forEach(pg => { if (pg && pg.id) prevGrpMap[pg.id] = pg; });
             mock.groups = sh.groups.map(g => {
+              const prevG = prevGrpMap[g.id] || {};
               const gMode = g.shunt_mode || g.mode || 'auto';
               const gAid = g.auto_node_id || 'auto_youtube';
               const boundP = gMode === 'auto' ? (mock.autoPools || []).find(p => p.id === gAid || p.tag === gAid || p.name === g.auto_node_name) : null;
@@ -3450,10 +3546,10 @@
                 custom_dns: g.custom_dns || '',
                 rule_blocks: Array.isArray(g.rule_blocks) ? g.rule_blocks : [],
                 rtt: validMs,
-                domains: Array.isArray(g.domains) ? g.domains : [],
-                domain_keywords: Array.isArray(g.domain_keywords) ? g.domain_keywords : [],
-                exact_domains: Array.isArray(g.exact_domains) ? g.exact_domains : [],
-                ip_cidrs: Array.isArray(g.ip_cidrs) ? g.ip_cidrs : [],
+                domains: (Array.isArray(g.domains) && g.domains.length) ? g.domains : ((Array.isArray(prevG.domains) && prevG.domains.length) ? prevG.domains : (PRESET_GROUP_DOMAINS_FALLBACK[g.id] || [])),
+                domain_keywords: Array.isArray(g.domain_keywords) ? g.domain_keywords : (Array.isArray(prevG.domain_keywords) ? prevG.domain_keywords : []),
+                exact_domains: Array.isArray(g.exact_domains) ? g.exact_domains : (Array.isArray(prevG.exact_domains) ? prevG.exact_domains : []),
+                ip_cidrs: Array.isArray(g.ip_cidrs) ? g.ip_cidrs : (Array.isArray(prevG.ip_cidrs) ? prevG.ip_cidrs : []),
                 is_custom: Boolean(g.is_custom || !['AI_Assistant','YouTube','Netflix_Disney','TikTok','Social_Media','Gaming','GitHub_Dev','Apple_Microsoft','Domestic_CN','Final_Fallback'].includes(g.id)),
                 locked_bottom: Boolean(g.locked_bottom),
                 locked_order: Boolean(g.locked_order)
@@ -3760,7 +3856,12 @@
       mock.outTotalText = '--';
     }
     if (forceImmediate) {
-      renderAll();
+      if (window.__MOCK_STATUS) {
+        renderAll();
+      } else {
+        renderActivePageOnly();
+        scheduleDeferredRenderAll();
+      }
     } else {
       renderActivePageOnly();
     }
@@ -4286,6 +4387,7 @@
     let replenishThresh = Math.max(1, Math.min(targetSize, Number((p && p.replenish_threshold != null) ? p.replenish_threshold : Math.max(1, Math.ceil(targetSize / 2)))));
     let dispatchMode = (p && p.dispatch_mode === 'multi_line') ? 'multi_line' : 'single_best';
     let bwPrefer = Boolean(p && p.bandwidth_prefer);
+    let sessAffinity = Boolean(p && (p.session_affinity || p.same_region_multi_line));
     let bwIntervalH = Number((p && p.bandwidth_interval_h) || 6);
     let bwLimitMb = Number((p && p.bandwidth_limit_mb) || 16);
     let keywordFilter = String((p && p.keyword_filter) || '');
@@ -4449,6 +4551,12 @@
               '<span class="status-pill mono" id="mdl-an-bw-est">预计日耗 ~64 MiB</span>' +
             '</div>' +
           '</div>' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding-top:4px">' +
+            '<label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">' +
+              '<input type="checkbox" id="mdl-an-session-affinity" ' + (sessAffinity ? 'checked' : '') + '>' +
+              '<span>启用<b>会话亲和 / 同域出口粘滞</b>（多线模式下锁定同国家地区出口并延长粘滞窗口，防短连接跨洲跳变）</span>' +
+            '</label>' +
+          '</div>' +
         '</div>' +
 
         /* Step 6: Start Auto-Selection Action + Real-Time Progress Bar + Selected Nodes Table */
@@ -4524,6 +4632,8 @@
           bandwidth_prefer: Boolean($('#mdl-an-bw-prefer') && $('#mdl-an-bw-prefer').checked),
           bandwidth_interval_h: Number(($('#mdl-an-bw-interval') && $('#mdl-an-bw-interval').value) || 6),
           bandwidth_limit_mb: Number(($('#mdl-an-bw-limit') && $('#mdl-an-bw-limit').value) || 16),
+          session_affinity: Boolean($('#mdl-an-session-affinity') && $('#mdl-an-session-affinity').checked),
+          same_region_multi_line: Boolean($('#mdl-an-session-affinity') && $('#mdl-an-session-affinity').checked),
           auto_maintain: true,
           filters: {
             enabled: true,
@@ -5979,7 +6089,8 @@
               toast((res && res.message) || '已切换至宽带直连恢复模式', 'warn', {
                 undoText: '↩ 撤销并恢复代理',
                 onUndo: async () => {
-                  await callRouterApi('/api/restore_proxy', 'POST', {});
+                  const uRes = await callRouterApi('/api/restore_proxy', 'POST', {});
+                  if (!uRes || uRes.ok === false) return;
                   await syncBackendStatus(false, true);
                   toast('已撤销并恢复透明代理接管');
                 }
@@ -6041,7 +6152,8 @@
               closeModal();
               toastWithUndo((res && res.message) || ('已将 ' + cleanNodeDisplayName(nodeTag) + ' 设为当前出口'), async () => {
                 if (prevExit && prevExit !== nodeTag) {
-                  await callRouterApi('/api/shunt/apply_exit', 'POST', { node_tag: prevExit, tag: prevExit, name: prevExit });
+                  const uRes = await callRouterApi('/api/shunt/apply_exit', 'POST', { node_tag: prevExit, tag: prevExit, name: prevExit });
+                  if (!uRes || uRes.ok === false) return;
                   await syncBackendStatus(false, true);
                   toast('已撤销出口变更');
                 }
@@ -6066,7 +6178,8 @@
             toast('已删除节点「' + nodeTag + '」', '', nodeSnap ? {
               undoText: '↩ 撤销删除',
               onUndo: async () => {
-                await callRouterApi('/api/nodes/add', 'POST', nodeSnap);
+                const uRes = await callRouterApi('/api/nodes/add', 'POST', nodeSnap);
+                if (!uRes || uRes.ok === false) return;
                 await syncBackendStatus(true, true);
                 toast('已恢复节点「' + nodeTag + '」');
               }
@@ -6412,11 +6525,47 @@
           async () => {
             toast('正在独立沙盒中执行故障转移演练…');
             const dRes = await callRouterApi('/api/auto_nodes/failover_drill', 'POST', { pool_id: pidDrill || '', auto_restore: true });
-            if (dRes && dRes.ok && dRes.ui_synced && dRes.restored) {
-              toast('沙盒演练通过：' + (dRes.pool_name || pidDrill) + ' 验证 ' + cleanNodeDisplayName(dRes.from_node || '') + ' → ' + cleanNodeDisplayName(dRes.to_node || '') + ' 秒切成功，现网状态与计数零改动');
+            state.lastFailoverDrillResult = dRes;
+            const planeBefore = (dRes && dRes.before_snapshot && dRes.before_snapshot.selector_plane) || {};
+            const planeAfter = (dRes && dRes.after_snapshot && dRes.after_snapshot.selector_plane) || {};
+            const selKeys = Object.keys(planeAfter).length ? Object.keys(planeAfter) : Object.keys(planeBefore);
+            const selCount = Number((dRes && dRes.selector_plane_count != null) ? dRes.selector_plane_count : selKeys.length);
+            const planeVerified = Boolean(dRes && dRes.plane_verified !== false);
+            const planeUntouched = Boolean(dRes && dRes.plane_untouched && planeVerified);
+            const inPoolScope = Boolean(dRes && dRes.in_pool_scope);
+            const restoredSel = Boolean(dRes && dRes.restored_selector);
+            const restoredCnt = Boolean(dRes && dRes.restored_counters);
+            const otherUntouched = Boolean(dRes && dRes.other_pools_untouched);
+            const diffRowsHtml = selKeys.slice(0, 40).map(k => {
+              const bVal = planeBefore[k] || '--';
+              const aVal = planeAfter[k] || '--';
+              const same = bVal === aVal;
+              return '<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px solid var(--line-subtle)"><span class="mono">' + esc(k) + '</span><span class="mono" style="color:' + (same ? 'var(--mint)' : 'var(--rose)') + '">' + esc(bVal) + ' → ' + esc(aVal) + (same ? ' (一致)' : ' (变更)') + '</span></div>';
+            }).join('') || '<div class="mono" style="color:var(--amber)">控制面 (:9090/proxies) 未返回 Selector 快照</div>';
+            if (dRes && dRes.ok && dRes.ui_synced && dRes.restored && planeUntouched && inPoolScope) {
+              toast('沙盒演练通过：' + (dRes.pool_name || pidDrill) + ' 验证 ' + cleanNodeDisplayName(dRes.from_node || '') + ' → ' + cleanNodeDisplayName(dRes.to_node || '') + ' 秒切成功 · ' + selCount + ' 个 selector 前后一致 · 平面未受影响');
+              openModal(
+                '沙盒故障转移演练无损自证报告 · ' + (dRes.pool_name || pidDrill),
+                '<div class="detail-grid">' +
+                  '<div><span>演练目标切换路径</span><b class="mono">' + esc(cleanNodeDisplayName(dRes.from_node || '') + ' → ' + cleanNodeDisplayName(dRes.to_node || '')) + '</b></div>' +
+                  '<div><span>Selector 控制面快照</span><b style="color:var(--mint)">' + selCount + ' 个 selector 前后一致 (plane_verified: true)</b></div>' +
+                  '<div><span>生产平面零污染校验</span><b style="color:var(--mint)">' + (planeUntouched ? '平面未受影响 (plane_untouched: true)' : '存在异常') + '</b></div>' +
+                  '<div><span>候选节点边界约束</span><b style="color:var(--mint)">' + (inPoolScope ? '切换范围限于本池 (in_pool_scope: true)' : '越界告警') + '</b></div>' +
+                  '<div><span>计数器与旁池状态</span><b style="color:var(--mint)">' + ((restoredSel && restoredCnt && otherUntouched) ? '计数器已复原 · 旁池零改动' : '部分未复原') + '</b></div>' +
+                  '<div><span>沙盒写拦截与并发透传</span><b class="mono">拦截 ' + Number(dRes.sandbox_intercepted_writes || 0) + ' 次 · 并发透传 ' + Number(dRes.concurrent_passthrough_writes || 0) + ' 次</b></div>' +
+                '</div>' +
+                '<details style="margin-top:12px;background:var(--surface-2);padding:10px 12px;border-radius:var(--r-md);border:1px solid var(--line-subtle)">' +
+                  '<summary style="cursor:pointer;font-weight:600;font-size:13px">展开查看演练前后 ' + selCount + ' 个 Selector 平面快照 Diff 明细 (selector_plane)</summary>' +
+                  '<div style="max-height:180px;overflow-y:auto;margin-top:8px;font-size:12px">' + diffRowsHtml + '</div>' +
+                '</details>',
+                'SANDBOX ISOLATION VERIFIED'
+              );
               await syncBackendStatus(true, true);
             } else {
-              toast((dRes && dRes.message) || '故障转移演练未完全通过，请检查池内可用备用节点', 'warn');
+              const failReason = (!planeVerified)
+                ? ('控制面不可达 (plane_verified=false)：9090 未监听或 /proxies 不可用，已拒绝假绿判定')
+                : ((dRes && dRes.message) || '故障转移演练未完全通过，请检查池内可用备用节点');
+              toast(failReason, 'warn');
             }
           },
           '开始演练'
@@ -6453,7 +6602,8 @@
             toast('已删除自动节点池「' + (poolSnap ? poolSnap.name : pid) + '」', '', poolSnap ? {
               undoText: '↩ 撤销删除',
               onUndo: async () => {
-                await callRouterApi('/api/auto_nodes/save', 'POST', poolSnap);
+                const uRes = await callRouterApi('/api/auto_nodes/save', 'POST', poolSnap);
+                if (!uRes || uRes.ok === false) return;
                 await syncBackendStatus(false, true);
                 toast('已恢复自动节点池「' + poolSnap.name + '」');
               }
@@ -6497,7 +6647,8 @@
             toast('已将全部海外分流组一键切换至智能自动节点池', '', {
               undoText: '↩ 撤销批量切换',
               onUndo: async () => {
-                await callRouterApi('/api/shunt/update', 'POST', { groups: prevUpdates });
+                const uRes = await callRouterApi('/api/shunt/update', 'POST', { groups: prevUpdates });
+                if (!uRes || uRes.ok === false) return;
                 await syncBackendStatus(false, true);
                 toast('已撤销并恢复原有的分流组节点配置');
               }
@@ -6536,7 +6687,8 @@
             toast('已将 AI / 流媒体组一键切至最低延迟节点: ' + bTag, '', {
               undoText: '↩ 撤销批量切换',
               onUndo: async () => {
-                await callRouterApi('/api/shunt/update', 'POST', { groups: prevUpdates });
+                const uRes = await callRouterApi('/api/shunt/update', 'POST', { groups: prevUpdates });
+                if (!uRes || uRes.ok === false) return;
                 await syncBackendStatus(false, true);
                 toast('已撤销并恢复 AI / 流媒体组原策略');
               }
@@ -6572,7 +6724,8 @@
             toast('国内白名单、Microsoft 与 Apple 组已重置为直连', '', {
               undoText: '↩ 撤销重置',
               onUndo: async () => {
-                await callRouterApi('/api/shunt/update', 'POST', { groups: prevUpdates });
+                const uRes = await callRouterApi('/api/shunt/update', 'POST', { groups: prevUpdates });
+                if (!uRes || uRes.ok === false) return;
                 await syncBackendStatus(false, true);
                 toast('已撤销并恢复原分流策略');
               }
@@ -6589,24 +6742,31 @@
         break;
       }
       case 'reset-all-shunt-rules': {
+        const prevOrderIds = mock.groups.map(g => g.id);
         const prevUpdates = mock.groups.map(g => ({
           id: g.id,
           shunt_mode: g.shunt_mode,
           strategy: g.strategy || g.shunt_mode,
           country: g.country,
           auto_node_id: g.auto_node_id,
-          manual_node: g.shunt_mode === 'auto' ? ('auto:' + g.auto_node_id) : (g.shunt_mode === 'direct' ? 'direct' : g.resolved_node)
+          manual_node: g.shunt_mode === 'auto' ? ('auto:' + g.auto_node_id) : (g.shunt_mode === 'direct' ? 'direct' : (g.manual_node || g.resolved_node)),
+          domains: Array.isArray(g.domains) ? g.domains.slice() : [],
+          domain_keywords: Array.isArray(g.domain_keywords) ? g.domain_keywords.slice() : [],
+          exact_domains: Array.isArray(g.exact_domains) ? g.exact_domains.slice() : [],
+          ip_cidrs: Array.isArray(g.ip_cidrs) ? g.ip_cidrs.slice() : []
         }));
         confirmModal(
           '确认恢复默认分流规则库',
           '该操作会将全部内置分流组的域名列表与编排规则恢复为默认出厂状态，确认继续执行吗？',
           async () => {
-            await callRouterApi('/api/shunt/reset_group_rules', 'POST', { reset_presets: true });
+            const rRes = await callRouterApi('/api/shunt/reset_group_rules', 'POST', { reset_presets: true });
+            if (!rRes || rRes.ok === false) return;
             await syncBackendStatus(false, true);
             toast('已恢复默认内置分流组规则', '', {
               undoText: '↩ 撤销恢复',
               onUndo: async () => {
-                await callRouterApi('/api/shunt/update', 'POST', { groups: prevUpdates });
+                const uRes = await callRouterApi('/api/shunt/update', 'POST', { groups: prevUpdates, ordered_ids: prevOrderIds });
+                if (!uRes || uRes.ok === false) return;
                 await syncBackendStatus(false, true);
                 toast('已撤销并还原分流组编排策略');
               }
@@ -6619,17 +6779,35 @@
       case 'reset-single-group': {
         const gid = el && el.dataset.gid;
         if (!gid) return;
+        const grpOrderIds = mock.groups.map(g => g.id);
         const grpSnap = mock.groups.find(g => g.id === gid) ? JSON.parse(JSON.stringify(mock.groups.find(g => g.id === gid))) : null;
         confirmModal(
           '确认恢复「' + gid + '」默认域名库',
           '将清除分流组「' + gid + '」的自定义修改并还原为系统内置默认域名库，确认执行吗？',
           async () => {
-            await callRouterApi('/api/shunt/reset_group_rules', 'POST', { group_id: gid });
+            const rRes = await callRouterApi('/api/shunt/reset_group_rules', 'POST', { group_id: gid });
+            if (!rRes || rRes.ok === false) return;
             await syncBackendStatus(false, true);
             toast('已恢复「' + gid + '」默认域名库', '', grpSnap ? {
               undoText: '↩ 撤销恢复',
               onUndo: async () => {
-                await callRouterApi('/api/shunt/update_group_rules', 'POST', { group_id: gid, domains: grpSnap.domains || [] });
+                const uRes = await callRouterApi('/api/shunt/update_group_rules', 'POST', {
+                  id: grpSnap.id || gid,
+                  group_id: grpSnap.id || gid,
+                  name: grpSnap.name || gid,
+                  title: grpSnap.name || gid,
+                  domains: grpSnap.domains || [],
+                  domain_keywords: grpSnap.domain_keywords || [],
+                  exact_domains: grpSnap.exact_domains || [],
+                  ip_cidrs: grpSnap.ip_cidrs || [],
+                  shunt_mode: grpSnap.shunt_mode || 'auto',
+                  strategy: grpSnap.strategy || grpSnap.shunt_mode || 'auto',
+                  auto_node_id: grpSnap.auto_node_id || 'auto_ai',
+                  country: grpSnap.country || 'JP',
+                  manual_node: grpSnap.manual_node || grpSnap.resolved_node || '',
+                  ordered_ids: grpOrderIds
+                });
+                if (!uRes || uRes.ok === false) return;
                 await syncBackendStatus(false, true);
                 toast('已还原「' + gid + '」自定义域名列表');
               }
@@ -6642,25 +6820,38 @@
       case 'delete-custom-group': {
         const gid = el && el.dataset.gid;
         if (!gid) return;
+        const grpOrderIds = mock.groups.map(g => g.id);
+        const grpOrderIdx = mock.groups.findIndex(g => g.id === gid);
         const grpSnap = mock.groups.find(g => g.id === gid) ? JSON.parse(JSON.stringify(mock.groups.find(g => g.id === gid))) : { id: gid, name: gid, domains: [] };
         confirmModal(
           '确认删除自定义分流组 · ' + (grpSnap.name || gid),
           '删除后自定义分流组「' + (grpSnap.name || gid) + '」及其匹配规则将被移除，确认继续删除吗？',
           async () => {
-            await callRouterApi('/api/shunt/delete_rule', 'POST', { group_id: gid });
+            const dRes = await callRouterApi('/api/shunt/delete_rule', 'POST', { group_id: gid });
+            if (!dRes || dRes.ok === false) return;
             await syncBackendStatus(false, true);
             toast('已删除自定义分流组「' + (grpSnap.name || gid) + '」', '', {
               undoText: '↩ 撤销删除',
               onUndo: async () => {
-                await callRouterApi('/api/shunt/add_rule', 'POST', {
-                  group_id: grpSnap.id,
-                  title: grpSnap.name || grpSnap.id,
+                const uRes = await callRouterApi('/api/shunt/add_rule', 'POST', {
+                  id: grpSnap.id || gid,
+                  group_id: grpSnap.id || gid,
+                  name: grpSnap.name || grpSnap.id || gid,
+                  title: grpSnap.name || grpSnap.id || gid,
+                  subtitle: grpSnap.subtitle || '',
                   domains: grpSnap.domains || [],
+                  domain_keywords: grpSnap.domain_keywords || [],
+                  exact_domains: grpSnap.exact_domains || [],
+                  ip_cidrs: grpSnap.ip_cidrs || [],
                   shunt_mode: grpSnap.shunt_mode || 'auto',
+                  strategy: grpSnap.strategy || grpSnap.shunt_mode || 'auto',
                   auto_node_id: grpSnap.auto_node_id || 'auto_ai',
                   country: grpSnap.country || 'JP',
-                  manual_node: grpSnap.resolved_node || ''
+                  manual_node: grpSnap.manual_node || grpSnap.resolved_node || '',
+                  order_index: grpOrderIdx >= 0 ? grpOrderIdx : 0,
+                  ordered_ids: grpOrderIds
                 });
+                if (!uRes || uRes.ok === false) return;
                 await syncBackendStatus(false, true);
                 toast('已恢复自定义分流组「' + (grpSnap.name || gid) + '」');
               }
@@ -6878,7 +7069,8 @@
             toast('已删除回家节点「' + (hlSnap ? hlSnap.name : nid) + '」', '', hlSnap ? {
               undoText: '↩ 撤销删除',
               onUndo: async () => {
-                await callRouterApi('/api/homelink/add', 'POST', Object.assign({}, hlSnap, { protocol: hlSnap.raw_proto || hlSnap.protocol }));
+                const uRes = await callRouterApi('/api/homelink/add', 'POST', Object.assign({}, hlSnap, { protocol: hlSnap.raw_proto || hlSnap.protocol }));
+                if (!uRes || uRes.ok === false) return;
                 await syncBackendStatus(false, true);
                 toast('已恢复回家节点「' + hlSnap.name + '」');
               }
@@ -7092,7 +7284,8 @@
             toastWithUndo('已删除远程规则源「' + rpName + '」', async () => {
               const snap = (delRes && delRes.deleted) || backupProvider;
               if (snap && snap.url) {
-                await callRouterApi('/api/shunt/rule_providers', 'POST', Object.assign({}, snap, { sync_now: false }));
+                const uRes = await callRouterApi('/api/shunt/rule_providers', 'POST', Object.assign({}, snap, { sync_now: false }));
+                if (!uRes || uRes.ok === false) return;
                 toast('↩ 已撤销删除并恢复规则源「' + rpName + '」');
                 await openRuleProvidersModal();
               }
@@ -7524,7 +7717,8 @@
             toast('已删除订阅「' + subSnap.name + '」', '', {
               undoText: '↩ 撤销删除',
               onUndo: async () => {
-                await callRouterApi('/api/subscriptions/add', 'POST', { name: subSnap.name, url: subSnap.url, auto_update: true, update_interval_min: subSnap.update_interval_min || 360 });
+                const uRes = await callRouterApi('/api/subscriptions/add', 'POST', { name: subSnap.name, url: subSnap.url, auto_update: true, update_interval_min: subSnap.update_interval_min || 360 });
+                if (!uRes || uRes.ok === false) return;
                 await syncBackendStatus(true, true);
                 toast('已恢复订阅「' + subSnap.name + '」');
               }
@@ -8414,9 +8608,10 @@
         toast('已将回家节点「' + (hlNode ? hlNode.name : nid) + '」路由模式切换为：' + modeLabel, '', {
           undoText: '↩ 撤销',
           onUndo: async () => {
+            const uRes = await callRouterApi('/api/homelink/route_mode', 'POST', { id: nid, route_mode: prevMode, apply_all: false });
+            if (!uRes || uRes.ok === false) return;
             if (hlNode) hlNode.route_mode = prevMode;
             renderHomeLinkSection();
-            await callRouterApi('/api/homelink/route_mode', 'POST', { id: nid, route_mode: prevMode, apply_all: false });
             await syncBackendStatus(false, true);
             toast('已恢复回家节点「' + (hlNode ? hlNode.name : nid) + '」原路由模式');
           }
@@ -9074,6 +9269,7 @@
 
   async function updateTelemetryTick() {
     if (telemetryInFlight) return;
+    if (state.authRequiredLock && !getAuthToken()) return;
     if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
       const nowMs = Date.now();
       if (nowMs - lastHiddenPollTs < 15000) return;
@@ -9135,11 +9331,22 @@
   }
 
   function init() {
-    renderAll();
-    bindInteractions();
-    initCharts();
-    initScene();
-    syncBackendStatus(true, true);
+    if (window.__MOCK_STATUS) {
+      renderAll();
+      bindInteractions();
+      initCharts();
+      initScene();
+      syncBackendStatus(true, true);
+    } else {
+      renderActivePageOnly();
+      bindInteractions();
+      initCharts();
+      scheduleDeferredRenderAll();
+      if (getAuthToken()) {
+        setTimeout(() => { if (!scene && !state.authRequiredLock) initScene(); }, 12);
+      }
+      syncBackendStatus(true, true);
+    }
     if (window.innerWidth < 1240 && $('#inspector')) $('#inspector').classList.remove('open');
     let lastNarrow = window.innerWidth < 1240;
     window.addEventListener('resize', () => {
