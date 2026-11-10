@@ -4,7 +4,7 @@
 
 **NEXUS 全域 3D 智能网关 · 运行在 OpenWrt 上的智能分流系统**
 
-[![version](https://img.shields.io/badge/version-2.5.9-6ee7f5?style=flat-square)](https://github.com/Master-AI-007/ai-link-openwrt/releases/tag/v2.5.9)
+[![version](https://img.shields.io/badge/version-2.5.10-6ee7f5?style=flat-square)](https://github.com/Master-AI-007/ai-link-openwrt/releases/tag/v2.5.10)
 [![platform](https://img.shields.io/badge/OpenWrt-23.05%20%7C%2024.10%20%7C%20ImmortalWrt-a994ff?style=flat-square)](#环境要求)
 [![core](https://img.shields.io/badge/sing--box-1.14.1-54e6b5?style=flat-square)](#技术架构)
 [![license](https://img.shields.io/badge/license-MIT-f9a8d4?style=flat-square)](#许可与免责)
@@ -30,9 +30,9 @@ AI-LINK 是一套面向 OpenWrt 的**智能分流网关**：用 sing-box 单内�
 
 ---
 
-## 核心能力总览（v2.5.9）
+## 核心能力总览（v2.5.10）
 
-> **v2.5.9 增量**：真机写拦截根治（生产根白名单 + 沙盒显式注册，兼容 `/var → /tmp` 符号链接）、故障转移演练沙盒化与单池隔离、订阅预览 409 状态保持、可观测性字段类型/位置契约、测试钩子生产守卫与冷缓存提速；延续七项交付标准与零补发 15 套全量回归。
+> **v2.5.10 增量**：故障转移演练四维隔离（文件/Clash 控制面/协调器内存态/池成员集合，0 PUT 泄漏）、正常升版使现网可收 OTA 提示、`groups` 缺 `index` 容错与逐池异常隔离、双重 `?v=` 清除、API 量化窗口 30s、报告与 CHANGELOG 写本轮增量并新增 Stage 7.19（82/82）；延续七项交付标准。
 
 
 | | 能力 | 说明 |
@@ -185,7 +185,8 @@ sing-box 1.14.1（单内核）
 
 | 版本 | 日期 | 主题 |
 |---|---|---|
-| **2.5.9** | 2026-11-10 | 真机写拦截根治 + 演练沙盒化 + 订阅与可观测性契约闭环 |
+| **2.5.10** | 2026-11-11 | 演练四维隔离 + 正常升版 + 交付增量闭环 |
+| 2.5.9 | 2026-11-10 | 真机写拦截根治 + 演练沙盒化 + 订阅与可观测性契约闭环 |
 | 2.5.8 | 2026-11-10 | 自检并发误报根治 + 绑定/预览契约闭环 + 多出口轮询治理 |
 | 2.5.7 | 2026-11-10 | 自检语义根治 + 订阅预览闭环 + 交付数值后置注入 |
 | 2.5.6 | 2026-11-09 | 加强复审计（6 项 P1 + 6 项 P2 闭环）|
@@ -226,10 +227,10 @@ sing-box 1.14.1（单内核）
 ## 包指纹
 
 ```
-AI-LINK-v2.5.9.tar.gz
-size   1,034,583 B
-md5    44ebb55b01bcc589faeb3a0568c27f58
-sha256 eecd3dcef737488e9df13c1c47def3d3a8d40aaae24d4aa271324f586f953481
+AI-LINK-v2.5.10.tar.gz
+size   1,039,127 B
+md5    fd5a16c1de4b39aec4c1b20498a71a60
+sha256 ca4c58f0ee66b1a7afb87aa3fb7467f578a55111528246ac06004fa6de10bf85
 ```
 
 在线清单：<https://ai-link-official.pages.dev/version.json>

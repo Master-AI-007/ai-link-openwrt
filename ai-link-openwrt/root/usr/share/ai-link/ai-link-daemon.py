@@ -2442,7 +2442,11 @@ def merge_nodes(sub_id: str, incoming_nodes: list, sub_url: str = "", replace_su
 
 _CLASH_API_DOWN_UNTIL = {"ts": 0.0}
 
+_SANDBOX_DRILL_ACTIVE = False
+
 def clash_api_request(path: str, method: str = "GET", payload: dict = None, timeout: float = 4.5) -> tuple:
+    if (globals().get("_SELF_TEST_ACTIVE", False) or globals().get("_SANDBOX_DRILL_ACTIVE", False)) and str(method or "GET").upper() in ("PUT", "POST", "DELETE"):
+        return (204, {"sandbox_intercepted": True})
     now_c = time.time()
     is_delay_probe = "/delay?" in str(path or "")
     if not is_delay_probe and now_c < _CLASH_API_DOWN_UNTIL.get("ts", 0.0):
@@ -7117,13 +7121,20 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
     if all_services_map is None:
         all_services_map = {s["id"]: s for s in PRESET_SERVICE_CHECKS}
     if "pool_mode" not in an:
-        an.update(_normalize_auto_node_item(an, conf_dir=conf_dir, saved_nodes=saved_nodes, subs_list=subs_list, store=store))
+        for _k_norm, _v_norm in _normalize_auto_node_item(an, conf_dir=conf_dir, saved_nodes=saved_nodes, subs_list=subs_list, store=store).items():
+            an.setdefault(_k_norm, _v_norm)
     for cs in (an.get("service_custom") or []):
         if isinstance(cs, dict) and (cs.get("id") or cs.get("name")) and cs.get("url"):
             all_services_map[cs.get("id") or cs.get("name")] = cs
     raw_groups_cfg = an.get("groups") if isinstance(an.get("groups"), list) else []
     has_explicit_nodes = any(bool((g or {}).get("node_ids") or (g or {}).get("node_tags")) for g in raw_groups_cfg if isinstance(g, dict)) or bool(an.get("node_ids") or an.get("node_tags"))
-    if len(raw_groups_cfg) == 1 and isinstance(raw_groups_cfg[0], dict) and ("node_tags" in raw_groups_cfg[0]) and (has_explicit_nodes or an.get("allow_empty_groups")):
+    if (
+        len(raw_groups_cfg) == 1
+        and isinstance(raw_groups_cfg[0], dict)
+        and ("node_tags" in raw_groups_cfg[0])
+        and ("index" in raw_groups_cfg[0])
+        and (has_explicit_nodes or an.get("allow_empty_groups"))
+    ):
         groups = raw_groups_cfg
     else:
         groups = normalize_auto_node_groups(an, saved_nodes=saved_nodes, subs_list=subs_list, store=store, conf_dir=conf_dir, auto_seed_if_empty=(not has_explicit_nodes))
@@ -7175,7 +7186,8 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
     union_ids, union_tags = [], []
     any_tested_in_pool = False
     for g in groups:
-        g_idx = g["index"]
+        g_idx = int(g.get("index") or 1);
+        g["index"] = g_idx
         resolved_tuples = _extract_group_resolved_nodes(g, by_id, by_tag, max_nodes=10)
         g["node_ids"] = [x[0] for x in resolved_tuples]
         g["node_tags"] = [x[1] for x in resolved_tuples]
@@ -7747,11 +7759,17 @@ def evaluate_all_auto_nodes(conf_dir: Path = CONF_DIR, target_id: str = "", forc
     for an in cfg.get("auto_nodes", []):
         if target_id and an.get("id") != target_id and an.get("tag") != target_id:
             continue
-        evaluate_single_auto_node(
-            an, saved_nodes, store, subs_list, all_svcs,
-            conf_dir=conf_dir, force_service_probe=force_service_probe,
-            advance_revert_streak=advance_revert_streak, force_revert=force_revert
-        )
+        try:
+            evaluate_single_auto_node(
+                an, saved_nodes, store, subs_list, all_svcs,
+                conf_dir=conf_dir, force_service_probe=force_service_probe,
+                advance_revert_streak=advance_revert_streak, force_revert=force_revert
+            )
+        except Exception as _e_ev_pool:
+            _record_internal_diag("evaluate_single_auto_node", _e_ev_pool)
+            an["pool_degraded_alert"] = True
+            an["degraded_reason"] = f"评估异常: {type(_e_ev_pool).__name__}"
+            continue
 
         if persist and sync_selectors and an.get("tag") and an.get("current_node"):
             an_id_low = str(an.get("id") or "").strip().lower()
@@ -7763,7 +7781,7 @@ def evaluate_all_auto_nodes(conf_dir: Path = CONF_DIR, target_id: str = "", forc
                     if _is_active_ml:
                         _cur_an_t = _MULTI_LINE_RR_STATE["active_target"].get(an["tag"]) or PROBE_ENGINE.current_selections.get(an["tag"], "")
                         if _cur_an_t not in _an_ml_list:
-                            _put_clash_selector_silent(an["tag"], an["current_node"])
+                            _put_clash_selector_silent(an["tag"], an["current_node"], conf_dir=conf_dir)
                     else:
                         request_switch(an["tag"], an["current_node"], reason=f"自动节点池 [{an.get('name')}] 优选", pool_id=an.get("id", ""), conf_dir=conf_dir)
                 if g_mode_now == "auto" and g_aid_now in (an_id_low, an_tag_low):
@@ -7772,7 +7790,7 @@ def evaluate_all_auto_nodes(conf_dir: Path = CONF_DIR, target_id: str = "", forc
                 if _is_active_ml:
                     _cur_an_t = _MULTI_LINE_RR_STATE["active_target"].get(an["tag"]) or PROBE_ENGINE.current_selections.get(an["tag"], "")
                     if _cur_an_t not in _an_ml_list:
-                        _put_clash_selector_silent(an["tag"], an["current_node"])
+                        _put_clash_selector_silent(an["tag"], an["current_node"], conf_dir=conf_dir)
                 else:
                     request_switch(an["tag"], an["current_node"], reason=f"自动节点池 [{an.get('name')}] 优选", pool_id=an.get("id", ""), conf_dir=conf_dir)
     if persist:
@@ -8045,9 +8063,13 @@ class SelectorWriteCoordinator:
                 hist.append(target_node)
                 _MULTI_LINE_RR_STATE["dispatched_history"][selector_group] = hist[-16:]
 
-    def put_silent(self, selector_group: str, target_node: str, clash_api_override=None, force: bool = False) -> bool:
+    def put_silent(self, selector_group: str, target_node: str, clash_api_override=None, force: bool = False, conf_dir: Path = None) -> bool:
         if not selector_group or not target_node:
             return False
+        is_live_plane = (not globals().get("_SANDBOX_DRILL_ACTIVE", False)) and (conf_dir is None or _is_live_conf_dir(conf_dir))
+        if not is_live_plane and not callable(clash_api_override):
+            PROBE_ENGINE.current_selections[selector_group] = target_node
+            return True
         with _MULTI_LINE_RR_LOCK:
             prev_t = _MULTI_LINE_RR_STATE["active_target"].get(selector_group, "")
             if not force and prev_t == target_node and PROBE_ENGINE.current_selections.get(selector_group) == target_node:
@@ -8062,7 +8084,7 @@ class SelectorWriteCoordinator:
         self.total_writes += 1
         if callable(clash_api_override):
             return bool(clash_api_override(selector_group, target_node))
-        if not _SELF_TEST_ACTIVE and _is_local_port_listening(9090):
+        if is_live_plane and not _SELF_TEST_ACTIVE and not globals().get("_SANDBOX_DRILL_ACTIVE", False) and _is_local_port_listening(9090):
             enc = urllib.parse.quote(selector_group, safe="")
             code, _ = clash_api_request(f"/proxies/{enc}", method="PUT", payload={"name": target_node}, timeout=0.8)
             return code in (200, 204)
@@ -8072,9 +8094,9 @@ class SelectorWriteCoordinator:
 SELECTOR_WRITE_COORDINATOR = SelectorWriteCoordinator(min_hold_s=MULTI_LINE_ROTATE_INTERVAL_S)
 
 
-def _put_clash_selector_silent(selector_group: str, target_node: str, clash_api_override=None, force: bool = False) -> bool:
+def _put_clash_selector_silent(selector_group: str, target_node: str, clash_api_override=None, force: bool = False, conf_dir: Path = None) -> bool:
     """Silently rotates a multi-line selector in Sing-box (:9090) via SelectorWriteCoordinator without flushing conntrack or spamming switch_history."""
-    return SELECTOR_WRITE_COORDINATOR.put_silent(selector_group, target_node, clash_api_override=clash_api_override, force=force)
+    return SELECTOR_WRITE_COORDINATOR.put_silent(selector_group, target_node, clash_api_override=clash_api_override, force=force, conf_dir=conf_dir)
 
 
 def dispatch_multi_line_pools_tick(conf_dir: Path = CONF_DIR, advance: bool = True, clash_api_override=None, respect_dwell_interval: bool = True) -> dict:
@@ -8163,7 +8185,7 @@ def dispatch_multi_line_pools_tick(conf_dir: Path = CONF_DIR, advance: bool = Tr
             sole_target = ml_nodes[0] if ml_nodes else "direct"
             for sel_t in ([ptag] if ptag else []) + (["Stream_Auto"] if (pid == "auto_youtube" and ptag != "Stream_Auto") else []) + list(p_info["bound_selectors"]):
                 if (_MULTI_LINE_RR_STATE.get("dispatched_history", {}).get(sel_t) or [None])[-1] != sole_target or PROBE_ENGINE.current_selections.get(sel_t) != sole_target:
-                    _put_clash_selector_silent(sel_t, sole_target, clash_api_override=clash_api_override)
+                    _put_clash_selector_silent(sel_t, sole_target, clash_api_override=clash_api_override, conf_dir=conf_dir)
                     dispatched[sel_t] = sole_target
             continue
         active_multi_cnt += 1
@@ -8187,15 +8209,15 @@ def dispatch_multi_line_pools_tick(conf_dir: Path = CONF_DIR, advance: bool = Tr
             _MULTI_LINE_RR_STATE["total_ticks"] = int(_MULTI_LINE_RR_STATE.get("total_ticks") or 0) + 1
         p_target = ml_nodes[cur_c]
         if ptag:
-            _put_clash_selector_silent(ptag, p_target, clash_api_override=clash_api_override)
+            _put_clash_selector_silent(ptag, p_target, clash_api_override=clash_api_override, conf_dir=conf_dir)
             dispatched[ptag] = p_target
         if pid == "auto_youtube" and ptag != "Stream_Auto":
-            _put_clash_selector_silent("Stream_Auto", p_target, clash_api_override=clash_api_override)
+            _put_clash_selector_silent("Stream_Auto", p_target, clash_api_override=clash_api_override, conf_dir=conf_dir)
             dispatched["Stream_Auto"] = p_target
         _grp_targets_log = {}
         for g_idx, stag in enumerate(p_info["bound_selectors"]):
             g_target = ml_nodes[(cur_c + g_idx) % len(ml_nodes)]
-            _put_clash_selector_silent(stag, g_target, clash_api_override=clash_api_override)
+            _put_clash_selector_silent(stag, g_target, clash_api_override=clash_api_override, conf_dir=conf_dir)
             dispatched[stag] = g_target
             _grp_targets_log[stag] = g_target
         with _MULTI_LINE_RR_LOCK:
@@ -8353,11 +8375,29 @@ def get_kernel_log_failover_status(conf_dir: Path = CONF_DIR, sh_cfg: dict = Non
         }
 
 
+def _snapshot_selector_plane() -> dict:
+    """v2.5.10 P0-1 Fix: Snapshots live Sing-box Clash API (/proxies) Selector & URLTest `now` values."""
+    if not _is_local_port_listening(9090):
+        return {}
+    try:
+        code, data = clash_api_request("/proxies", method="GET", timeout=2.0)
+        if code != 200 or not isinstance(data, dict):
+            return {}
+        return {
+            str(k): str(v.get("now") or "")
+            for k, v in (data.get("proxies") or {}).items()
+            if isinstance(v, dict) and v.get("type") in ("Selector", "URLTest")
+        }
+    except Exception:
+        return {}
+
+
 def run_end_to_end_failover_drill(conf_dir: Path = CONF_DIR, pool_id: str = "", auto_restore: bool = True) -> dict:
-    """v2.5.9 P0-1 & P2-7 Sandbox-Isolated & Single-Pool Scoped Non-Destructive End-to-End Failover Drill:
-    When auto_restore=True (default), executes all 5 failover stages inside an isolated temporary sandbox copy of conf_dir
-    and strictly scopes the log failover scan to `only_pool_id=eff_pid`, guaranteeing zero side effects on sibling pools,
-    live Clash selectors, switch_history.json, or kernel_log_failover counters, with full pre/post snapshot verification."""
+    """v2.5.10 P0-1 & P2-7 Dual-Plane Sandbox-Isolated & Single-Pool Scoped Non-Destructive End-to-End Failover Drill:
+    Isolates both the configuration file plane (via temporary `drill_conf`) AND the Clash selector control plane
+    (via `_SANDBOX_DRILL_ACTIVE`, `put_silent` live-plane gate, coordinator memory state snapshot/restore, and
+    pre/post `/proxies` selector plane verification), while constraining `to_node` strictly to `target_pool`'s defined members."""
+    global _LAST_SYNCED_SHUNT_MTIME, _SANDBOX_DRILL_ACTIVE
     conf_dir = Path(conf_dir)
     sh_cfg = load_shunt_config(conf_dir)
     auto_cfg = load_auto_nodes_config(conf_dir)
@@ -8401,8 +8441,12 @@ def run_end_to_end_failover_drill(conf_dir: Path = CONF_DIR, pool_id: str = "", 
         return {"ok": False, "error": "no_active_pool_node", "message": "当前无可用活跃出口节点的节点池可供演练"}
     eff_pid = str(target_pool.get("id") or "")
     eff_ptag = str(target_pool.get("tag") or eff_pid)
+    orig_pool_member_tags = list(dict.fromkeys(
+        [str(x) for x in (target_pool.get("multi_line_nodes") or []) if x and x not in ("direct", "block")]
+        + [str(x) for g_o in (target_pool.get("groups") or []) if isinstance(g_o, dict) for x in (g_o.get("node_tags") or []) if x and x not in ("direct", "block")]
+        + [str(x) for x in (target_pool.get("candidates") or []) if x and x not in ("direct", "block")]
+    ))
 
-    global _LAST_SYNCED_SHUNT_MTIME
     sh_before = build_shunt_api_response(conf_dir)
     if (conf_dir / "shunt.json").is_file():
         _LAST_SYNCED_SHUNT_MTIME = (conf_dir / "shunt.json").stat().st_mtime_ns
@@ -8410,15 +8454,34 @@ def run_end_to_end_failover_drill(conf_dir: Path = CONF_DIR, pool_id: str = "", 
         str(a.get("id") or ""): str(a.get("current_node") or "")
         for a in (sh_before.get("auto_nodes") or []) if isinstance(a, dict)
     }
+    plane_before = _snapshot_selector_plane()
     with _KERNEL_LOG_FAILOVER_LOCK:
         kl_state_before = copy.deepcopy(_KERNEL_LOG_FAILOVER_STATE)
         before_total_switches = int(kl_state_before.get("total_switches") or 0)
         before_recent_len = len(kl_state_before.get("recent_events") or [])
+    with _MULTI_LINE_RR_LOCK:
+        rr_before = {
+            "active_target": copy.deepcopy(_MULTI_LINE_RR_STATE.get("active_target", {})),
+            "dispatched_history": copy.deepcopy(_MULTI_LINE_RR_STATE.get("dispatched_history", {})),
+            "cursors": copy.deepcopy(_MULTI_LINE_RR_STATE.get("cursors", {})),
+            "last_rotate_ts": copy.deepcopy(_MULTI_LINE_RR_STATE.get("last_rotate_ts", {})),
+            "rotation_log": copy.deepcopy(_MULTI_LINE_RR_STATE.get("rotation_log", [])),
+            "total_ticks": int(_MULTI_LINE_RR_STATE.get("total_ticks") or 0),
+            "memo_sig": _MULTI_LINE_RR_STATE.get("memo_sig"),
+            "memo_plan": copy.deepcopy(_MULTI_LINE_RR_STATE.get("memo_plan")),
+        }
+    coord_before = (
+        int(SELECTOR_WRITE_COORDINATOR.total_writes),
+        int(SELECTOR_WRITE_COORDINATOR.skipped_noop),
+        int(SELECTOR_WRITE_COORDINATOR.skipped_dwell),
+        int(SELECTOR_WRITE_COORDINATOR.dwell_bypass_calls),
+    )
     eff_rdir = _effective_run_dir(conf_dir)
     sw_hist_before_len = len(load_switch_history(eff_rdir))
     sels_before = copy.deepcopy(PROBE_ENGINE.current_selections)
     before_snapshot = {
         "pools": pools_before,
+        "selector_plane": plane_before,
         "total_switches": before_total_switches,
         "recent_events_len": before_recent_len,
         "switch_history_len": sw_hist_before_len,
@@ -8432,8 +8495,10 @@ def run_end_to_end_failover_drill(conf_dir: Path = CONF_DIR, pool_id: str = "", 
 
     import tempfile
     drill_conf = Path(tempfile.mkdtemp(prefix="ailink_drill_")) if auto_restore else conf_dir
+    prev_sbx_flag = bool(_SANDBOX_DRILL_ACTIVE)
     try:
         if auto_restore:
+            _SANDBOX_DRILL_ACTIVE = True
             for _fn_c in ("nodes.json", "auto_nodes.json", "shunt.json", "shunt_config.json", "subscriptions.json", "ops_settings.json"):
                 _src_f = conf_dir / _fn_c
                 if _src_f.is_file():
@@ -8471,16 +8536,32 @@ def run_end_to_end_failover_drill(conf_dir: Path = CONF_DIR, pool_id: str = "", 
             ct_res = flush_conntrack_for_switch(selector_tag=eff_ptag, old_node=target_node, reason=f"e2e_failover_drill:{eff_pid}:{target_node}->{to_node}")
         sh_drill = build_shunt_api_response(drill_conf)
         an_drill = next((a for a in (sh_drill.get("auto_nodes") or []) if str(a.get("id") or "") == eff_pid), {})
+        in_pool_scope = bool(not orig_pool_member_tags or to_node in orig_pool_member_tags or to_node == "direct")
         ui_synced = bool(
             sw_match.get("pool_id") == eff_pid
             and to_node
+            and in_pool_scope
             and (an_drill.get("current_node") == to_node or to_node in (an_drill.get("multi_line_nodes") or []))
         )
     finally:
+        _SANDBOX_DRILL_ACTIVE = prev_sbx_flag
         if auto_restore:
             with _KERNEL_LOG_FAILOVER_LOCK:
                 _KERNEL_LOG_FAILOVER_STATE.clear()
                 _KERNEL_LOG_FAILOVER_STATE.update(kl_state_before)
+            with _MULTI_LINE_RR_LOCK:
+                _MULTI_LINE_RR_STATE["active_target"] = rr_before["active_target"]
+                _MULTI_LINE_RR_STATE["dispatched_history"] = rr_before["dispatched_history"]
+                _MULTI_LINE_RR_STATE["cursors"] = rr_before["cursors"]
+                _MULTI_LINE_RR_STATE["last_rotate_ts"] = rr_before["last_rotate_ts"]
+                _MULTI_LINE_RR_STATE["rotation_log"] = rr_before["rotation_log"]
+                _MULTI_LINE_RR_STATE["total_ticks"] = rr_before["total_ticks"]
+                _MULTI_LINE_RR_STATE["memo_sig"] = rr_before["memo_sig"]
+                _MULTI_LINE_RR_STATE["memo_plan"] = rr_before["memo_plan"]
+            SELECTOR_WRITE_COORDINATOR.total_writes = coord_before[0]
+            SELECTOR_WRITE_COORDINATOR.skipped_noop = coord_before[1]
+            SELECTOR_WRITE_COORDINATOR.skipped_dwell = coord_before[2]
+            SELECTOR_WRITE_COORDINATOR.dwell_bypass_calls = coord_before[3]
             with _AUTO_POOL_RUNTIME_LOCK:
                 _dc_str = str(drill_conf.resolve())
                 for _rk in [k for k in _AUTO_POOL_RUNTIME_MAP if k[0] == _dc_str]:
@@ -8495,35 +8576,40 @@ def run_end_to_end_failover_drill(conf_dir: Path = CONF_DIR, pool_id: str = "", 
         str(a.get("id") or ""): str(a.get("current_node") or "")
         for a in (sh_after.get("auto_nodes") or []) if isinstance(a, dict)
     }
+    plane_after = _snapshot_selector_plane()
+    plane_untouched = (plane_after == plane_before)
     kl_after = get_kernel_log_failover_status(conf_dir, sh_cfg=sh_cfg, auto_cfg=auto_cfg)
     after_total_switches = int(kl_after.get("total_switches") or 0)
     after_recent_len = len(kl_after.get("recent_events") or [])
     sw_hist_after_len = len(load_switch_history(eff_rdir))
     after_snapshot = {
         "pools": pools_after,
+        "selector_plane": plane_after,
         "total_switches": after_total_switches,
         "recent_events_len": after_recent_len,
         "switch_history_len": sw_hist_after_len,
     }
     restored_node = str(pools_after.get(eff_pid) or (target_node if auto_restore else to_node))
-    restored_selector = (pools_after == pools_before and restored_node == target_node) if auto_restore else False
+    restored_selector = (pools_after == pools_before and restored_node == target_node and plane_untouched) if auto_restore else False
     restored_counters = (
         after_total_switches == before_total_switches
         and after_recent_len == before_recent_len
         and sw_hist_after_len == sw_hist_before_len
     ) if auto_restore else False
-    other_pools_untouched = all(
-        s.get("pool_id") == eff_pid for s in (scan_res.get("switched_pools") or [])
-    ) and all(
-        pools_after.get(k) == v for k, v in pools_before.items() if k != eff_pid
+    other_pools_untouched = (
+        all(s.get("pool_id") == eff_pid for s in (scan_res.get("switched_pools") or []))
+        and all(pools_after.get(k) == v for k, v in pools_before.items() if k != eff_pid)
+        and plane_untouched
     )
-    restored = bool(restored_selector and restored_counters and other_pools_untouched) if auto_restore else False
-    selector_switched = bool(sw_match.get("pool_id") == eff_pid and to_node and to_node != target_node)
+    restored = bool(restored_selector and restored_counters and other_pools_untouched and plane_untouched) if auto_restore else False
+    selector_switched = bool(sw_match.get("pool_id") == eff_pid and to_node and to_node != target_node and in_pool_scope)
     ok_final = bool(
         scan_res.get("triggered")
         and selector_switched
         and ct_res.get("ok")
         and ui_synced
+        and in_pool_scope
+        and plane_untouched
         and other_pools_untouched
         and (not auto_restore or restored)
     )
@@ -8541,6 +8627,8 @@ def run_end_to_end_failover_drill(conf_dir: Path = CONF_DIR, pool_id: str = "", 
         "restored_selector": restored_selector,
         "restored_counters": restored_counters,
         "other_pools_untouched": other_pools_untouched,
+        "plane_untouched": plane_untouched,
+        "in_pool_scope": in_pool_scope,
         "restored_node": restored_node,
         "drill_switches": len(sw_pools),
         "total_switches": after_total_switches if auto_restore else max(len(sw_pools), after_total_switches),
@@ -8732,17 +8820,27 @@ def scan_kernel_logs_for_active_pool_failures(
             p["last_smart_switch_ts"] = 0
             p["cooldown_bypassed"] = True
             _set_auto_pool_runtime_state(conf_dir, pid, {"last_switch_ts": 0, "last_smart_switch_ts": 0, "cooldown_bypassed": True})
-            if p.get("auto_maintain", True):
+            if (not sandbox_drill) and p.get("auto_maintain", True):
                 if maintain_auto_node_pool_health(p, conf_dir=conf_dir, allow_live_l7_probe=False):
                     any_maint_changed = True
     if triggered_nodes or any_maint_changed:
         save_auto_nodes_config(auto_cfg, conf_dir)
 
-    PROBE_ENGINE.apply_shunt_selections(conf_dir)
-    if any(p.get("dispatch_mode") == "multi_line" for bad_t in triggered_nodes for p in active_map.get(bad_t, [])):
-        with _MULTI_LINE_RR_LOCK:
-            _MULTI_LINE_RR_STATE["memo_sig"] = None
-        dispatch_multi_line_pools_tick(conf_dir, advance=False)
+    if not sandbox_drill:
+        PROBE_ENGINE.apply_shunt_selections(conf_dir)
+        if any(p.get("dispatch_mode") == "multi_line" for bad_t in triggered_nodes for p in active_map.get(bad_t, [])):
+            with _MULTI_LINE_RR_LOCK:
+                _MULTI_LINE_RR_STATE["memo_sig"] = None
+            dispatch_multi_line_pools_tick(conf_dir, advance=False)
+    else:
+        evaluate_all_auto_nodes(
+            conf_dir,
+            target_id=only_pool_id,
+            force_service_probe=False,
+            advance_revert_streak=False,
+            persist=True,
+            sync_selectors=False,
+        )
     updated_auto = load_auto_nodes_config(conf_dir).get("auto_nodes") or []
     switched_pools = []
     run_dir_target = RUN_DIR if conf_dir.resolve() == CONF_DIR.resolve() else conf_dir
@@ -8752,24 +8850,36 @@ def scan_kernel_logs_for_active_pool_failures(
         for p_old in active_map.get(bad_tag, []):
             pid = str(p_old.get("id") or "")
             p_new = next((x for x in updated_auto if str(x.get("id") or "") == pid), p_old)
+            _orig_defined_tags = list(dict.fromkeys(
+                [str(x) for x in (p_old.get("multi_line_nodes") or []) if x and x not in ("direct", "block")]
+                + [str(x) for g_o in (p_old.get("groups") or []) if isinstance(g_o, dict) for x in (g_o.get("node_tags") or []) if x and x not in ("direct", "block")]
+                + [str(x) for x in (p_old.get("candidates") or []) if x and x not in ("direct", "block")]
+            ))
             rt_new = _get_auto_pool_runtime_state(conf_dir, pid)
             if isinstance(rt_new.get("multi_line_nodes"), list) and bad_tag in rt_new["multi_line_nodes"]:
-                rt_new["multi_line_nodes"] = [x for x in rt_new["multi_line_nodes"] if x != bad_tag]
+                rt_new["multi_line_nodes"] = [x for x in rt_new["multi_line_nodes"] if x != bad_tag and (not sandbox_drill or not _orig_defined_tags or x in _orig_defined_tags)]
                 rt_new["active_lines_count"] = len(rt_new["multi_line_nodes"])
                 _set_auto_pool_runtime_state(conf_dir, pid, rt_new)
-            if isinstance(p_new.get("multi_line_nodes"), list) and bad_tag in p_new["multi_line_nodes"]:
-                p_new["multi_line_nodes"] = [x for x in p_new["multi_line_nodes"] if x != bad_tag]
+            if isinstance(p_new.get("multi_line_nodes"), list):
+                p_new["multi_line_nodes"] = [x for x in p_new["multi_line_nodes"] if x != bad_tag and (not sandbox_drill or not _orig_defined_tags or x in _orig_defined_tags)]
                 p_new["active_lines_count"] = len(p_new["multi_line_nodes"])
             new_node = str(p_new.get("current_node") or "direct")
-            if new_node == bad_tag:
-                _alt_ml = [x for x in (p_new.get("multi_line_nodes") or p_new.get("verified_nodes") or []) if x and x != bad_tag]
+            if new_node == bad_tag or (sandbox_drill and _orig_defined_tags and new_node not in _orig_defined_tags and new_node != "direct"):
+                _alt_ml = [
+                    x for x in (list(p_new.get("multi_line_nodes") or []) + list(p_new.get("verified_nodes") or []) + _orig_defined_tags)
+                    if x and x != bad_tag and (not _orig_defined_tags or x in _orig_defined_tags)
+                ]
                 new_node = _alt_ml[0] if _alt_ml else "direct"
                 p_new["current_node"] = new_node
+                _set_auto_pool_runtime_state(conf_dir, pid, {"current_node": new_node, "multi_line_nodes": list(p_new.get("multi_line_nodes") or [])})
             elif p_new.get("dispatch_mode") == "multi_line" and bad_tag != p_old.get("current_node"):
                 _old_ml_set = set(p_old.get("multi_line_nodes") or [])
-                _promoted = [x for x in (p_new.get("multi_line_nodes") or []) if x not in _old_ml_set and x != bad_tag]
+                _promoted = [x for x in (p_new.get("multi_line_nodes") or []) if x not in _old_ml_set and x != bad_tag and (not sandbox_drill or not _orig_defined_tags or x in _orig_defined_tags)]
                 if _promoted:
                     new_node = _promoted[0]
+                elif sandbox_drill and _orig_defined_tags and new_node not in _orig_defined_tags:
+                    _stay = [x for x in _orig_defined_tags if x != bad_tag]
+                    new_node = _stay[0] if _stay else "direct" 
             new_rtt = float(p_new.get("current_delay_ms") or 0.0)
             pool_label = p_new.get("name") or p_new.get("tag") or pid
             reason_str = f"内核日志连续 {cnt_val} 次报错 ({l_err}) 极速切换"
@@ -9429,7 +9539,7 @@ class AIProbeEngine:
                     or self.current_selections.get(stag, "")
                 )
                 if _cur_live_g not in _ml_nodes_g:
-                    _put_clash_selector_silent(stag, sel_target)
+                    _put_clash_selector_silent(stag, sel_target, conf_dir=conf_dir)
                 else:
                     self.current_selections[stag] = _cur_live_g
             else:
@@ -9484,7 +9594,7 @@ class AIProbeEngine:
         if yt_an and yt_an.get("dispatch_mode") == "multi_line" and len(_yt_ml) >= 2 and not is_pool_ip_sensitive(yt_an):
             _cur_st_live = _MULTI_LINE_RR_STATE["active_target"].get("Stream_Auto") or (_read_clash_selector_now("Stream_Auto", timeout=0.8) if _is_local_port_listening(9090) else "") or self.current_selections.get("Stream_Auto", "")
             if _cur_st_live not in _yt_ml:
-                _put_clash_selector_silent("Stream_Auto", yt_target)
+                _put_clash_selector_silent("Stream_Auto", yt_target, conf_dir=conf_dir)
             else:
                 self.current_selections["Stream_Auto"] = _cur_st_live
         else:
@@ -9498,7 +9608,7 @@ class AIProbeEngine:
                 if an_item.get("dispatch_mode") == "multi_line" and len(_an_ml) >= 2 and not is_pool_ip_sensitive(an_item):
                     _cur_live_an = _MULTI_LINE_RR_STATE["active_target"].get(an_tag) or (_read_clash_selector_now(an_tag, timeout=0.8) if _is_local_port_listening(9090) else "") or self.current_selections.get(an_tag, "")
                     if _cur_live_an not in _an_ml:
-                        _put_clash_selector_silent(an_tag, an_cur)
+                        _put_clash_selector_silent(an_tag, an_cur, conf_dir=conf_dir)
                     else:
                         self.current_selections[an_tag] = _cur_live_an
                 else:
@@ -11434,7 +11544,7 @@ def build_ipv6_governance_summary(conf_dir: Path = CONF_DIR) -> dict:
         ipv6_proxy,
         _conf_file_mtimes_sig_q(conf_dir, ("nodes.json", "node_probe.json", "ops_settings.json", "shunt.json", "auto_nodes.json"), 15),
         _CORE_RELOAD_STATE["config_seq"],
-        int(time.time()) // 15,
+        int(time.time()) // 30,
     )
     if _v6_memo_key in _IPV6_GOV_MEMO:
         return dict(_IPV6_GOV_MEMO[_v6_memo_key])
@@ -16070,7 +16180,7 @@ def build_auto_nodes_api_response(conf_dir: Path = CONF_DIR, include_sparkline: 
     an_key = (
         str(conf_dir),
         bool(include_sparkline),
-        (_conf_file_mtimes_sig_q(conf_dir, ("auto_nodes.json", "nodes.json", "node_probe.json", "subscriptions.json"), 15)
+        (_conf_file_mtimes_sig_q(conf_dir, ("auto_nodes.json", "nodes.json", "node_probe.json", "subscriptions.json"), 30)
          if _is_live_conf_dir(conf_dir)
          else _conf_file_mtimes_sig(conf_dir, ("auto_nodes.json", "nodes.json", "node_probe.json", "subscriptions.json"))),
         _CORE_RELOAD_STATE["config_seq"],
@@ -16200,7 +16310,7 @@ def build_nodes_api_response(
         str(conf_dir),
         bool(include_full),
         bool(include_sparkline),
-        (_conf_file_mtimes_sig_q(conf_dir, ("nodes.json", "node_probe.json", "subscriptions.json", "max_outbounds", "shunt.json"), 15)
+        (_conf_file_mtimes_sig_q(conf_dir, ("nodes.json", "node_probe.json", "subscriptions.json", "max_outbounds", "shunt.json"), 30)
          if _is_live_conf_dir(conf_dir)
          else _conf_file_mtimes_sig(conf_dir, ("nodes.json", "node_probe.json", "subscriptions.json", "max_outbounds", "shunt.json"))),
         _CORE_RELOAD_STATE["config_seq"],
@@ -16791,7 +16901,7 @@ def build_status_api_response(conf_dir: Path = CONF_DIR) -> dict:
         bool(FAIL_OPEN_STATE.get("active")),
         tuple(_cached_Value("live_sb_pids", 1.5, _get_live_singbox_pids)),
         sels_tup,
-        int(time.time()) // 15,
+        int(time.time()) // 30,
     )
     if st_key in _STATUS_API_MEMO:
         cached = dict(_STATUS_API_MEMO[st_key])
@@ -16869,8 +16979,8 @@ def build_status_api_response(conf_dir: Path = CONF_DIR) -> dict:
         "_snapshot_created_ts": time.time(),
         "data_age_ms": 0,
         "single_group_migrated": True,
-        "kernel_log_failover": get_kernel_log_failover_status(conf_dir, sh_cfg=shunt_full, auto_cfg=shunt_full),
-        "log_failover_guard": get_kernel_log_failover_status(conf_dir, sh_cfg=shunt_full, auto_cfg=shunt_full),
+        "kernel_log_failover": get_kernel_log_failover_status(conf_dir, sh_cfg=shunt_full, auto_cfg={"auto_nodes": shunt_full.get("auto_nodes", [])}),
+        "log_failover_guard": get_kernel_log_failover_status(conf_dir, sh_cfg=shunt_full, auto_cfg={"auto_nodes": shunt_full.get("auto_nodes", [])}),
         "dwell_bypass_calls": int(getattr(SELECTOR_WRITE_COORDINATOR, "dwell_bypass_calls", 0)),
         "has_backup_archive": _has_final_backup_archive(),
         "backup_archive_path": "/root/ai-link-final-backup/etc-ai-link.tgz" if _has_final_backup_archive() else "",
@@ -16936,7 +17046,7 @@ def build_status_api_response(conf_dir: Path = CONF_DIR) -> dict:
         bool(FAIL_OPEN_STATE.get("active")),
         tuple(_cached_Value("live_sb_pids", 1.5, _get_live_singbox_pids)),
         tuple(sorted((PROBE_ENGINE.current_selections or {}).items())),
-        int(time.time()) // 15,
+        int(time.time()) // 30,
     )
     _STATUS_API_MEMO[st_key] = res_obj
     _STATUS_API_MEMO[st_key_after] = res_obj
@@ -22844,9 +22954,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.5.9"
+APP_VERSION = "2.5.10"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.5.9-release-20261110"
+APP_BUILD = "2.5.10-release-20261110"
 
 UPDATE_MANIFEST_PRIMARY = "https://ai-link-official.pages.dev/version.json"
 UPDATE_MANIFEST_GITHUB = "https://raw.githubusercontent.com/Master-AI-007/ai-link-openwrt/main/version.json"
@@ -24523,7 +24633,7 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 bool(SUB_SYNC_STATE.get("running", False)),
                 tuple(sorted((PROBE_ENGINE.current_selections or {}).items())),
                 _conf_file_mtimes_sig_q(CONF_DIR, ("nodes.json", "node_probe.json", "auto_nodes.json", "subscriptions.json", "homelink.json", "dns_filters.json", "dns_rewrite.json", "ops_settings.json", "panel_auth.json")),
-                int(time.time()) // 15 if req_path_only == "/api/status" else 0,
+                int(time.time()) // 30 if req_path_only == "/api/status" else 0,
             )
         return None
 

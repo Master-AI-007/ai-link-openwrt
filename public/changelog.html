@@ -18,7 +18,7 @@
         <circle cx="20" cy="20" r="5.4" fill="none" stroke="#a994ff" stroke-width="1.6"/>
         <circle cx="20" cy="20" r="1.8" fill="#6ee7f5"/>
       </svg>
-      <span style="display:block"><b>AI-LINK</b><span>NEXUS · 2.5.9</span></span>
+      <span style="display:block"><b>AI-LINK</b><span>NEXUS · 2.5.10</span></span>
     </a>
     <div class="nav-links">
       <a href="/#features">核心能力</a>
@@ -36,12 +36,22 @@
 <main class="wrap log-wrap">
   <div class="log-head">
     <h1>更新日志</h1>
-    <span class="pill"><i></i> 当前最新 2.5.9</span>
+    <span class="pill"><i></i> 当前最新 2.5.10</span>
   </div>
 <article class="log-item latest">
   <div class="log-top">
-    <h2>v2.5.9</h2>
+    <h2>v2.5.10</h2>
     <span class="tag c">最新</span>
+    <time>2026-11-11</time>
+  </div>
+  <p style="margin:2px 0 6px;color:var(--dim)"></p>
+<h3>演练四维隔离 + 正常升版 + 交付增量闭环</h3>
+<ul><li><b>正常升版</b>：响应云端反馈要求升至 <code>v2.5.10</code>（<code>PKG_RELEASE:=20</code> / <code>r20</code>），全仓 7 处版本锚点、IPK <code>control</code> 与 CHANGELOG 统一；现网 2.5.9 设备可直接收到 OTA 提示，无需手动重装。</li><li><b>P0-1 故障转移演练四维隔离</b>：新增 <code>_SANDBOX_DRILL_ACTIVE</code> 门闸，在 <code>SelectorWriteCoordinator.put_silent</code>、<code>_put_clash_selector_silent</code> 与 <code>clash_api_request</code> 三层阻断沙盒态 <code>PUT /proxies/*</code>（实测多线池演练 0 PUT 泄漏）；<code>scan_kernel_logs_for_active_pool_failures</code> 演练态跳过外部补位与多线调度，<code>to_node</code> 严格限定池内成员；新增 <code>_snapshot_selector_plane()</code> 校验前后选点平面一致，<code>finally</code> 完整恢复 <code>_MULTI_LINE_RR_STATE</code> 与协调器计数器。</li><li><b>P2-1</b>：<code>evaluate_single_auto_node</code> 单组快路径增加 <code>index</code> 键守卫与 <code>int(g.get(&quot;index&quot;) or 1)</code> 兜底；<code>evaluate_all_auto_nodes</code> 逐池异常隔离，单池异常仅标记 <code>pool_degraded_alert</code> 不中断其余池。</li><li><b>P2-2 / P2-3</b>：清除 <code>index.html</code> 8 个静态资源的双重 <code>?v=</code> 查询串并纳入门禁断言；<code>build_status_api_response</code> / <code>build_auto_nodes_api_response</code> / <code>build_nodes_api_response</code> / <code>_make_wire_key</code> 量化窗口 15s → 30s。</li><li><b>FB-259-3 交付闭环</b>：报告首节增设「本轮增量说明」、包内 CHANGELOG 同步 v2.5.10 条目；混沌脚本新增 <code>Stage 7.19</code>（81/81 → <b>82/82</b>）覆盖缓存返回对象突变隔离、候选池集合等于池成员子集、演练 0 PUT、缺 <code>index</code> 容错；<code>gates_v101.py</code> 强制校验报告与 CHANGELOG 增量标记。</li><li><b>观察项闭环</b>：<code>_normalize_auto_node_item</code> 改 <code>setdefault</code> 不就地改写、移除 <code>_get_live_singbox_pids</code> 死判断、<code>get_kernel_log_failover_status</code> 显式传参。</li><li>验收：原始包零补发 <code>run_all 15/15 PASS / RC=0</code>、自检 10/10 + 负向、混沌 <b>82/82</b>、门禁双布局 <b>17/17</b>、11 行指纹 11/11 与 1 字节篡改转红、design-lint 18/18、静态资源 8/8、<code>INSTALL_RC=0</code>、<code>nft=1</code>、重启后稳定、4 个多线出口与 AI 单线保护、UI 零异常三视口零溢出。</li></ul>
+</article>
+<article class="log-item">
+  <div class="log-top">
+    <h2>v2.5.9</h2>
+    <span class="tag">历史</span>
     <time>2026-11-10</time>
   </div>
   <p style="margin:2px 0 6px;color:var(--dim)"></p>

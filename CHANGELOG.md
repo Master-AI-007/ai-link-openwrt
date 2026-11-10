@@ -1,3 +1,13 @@
+## [v2.5.10] - 2026-11-11
+### 演练四维隔离 + 正常升版 + 交付增量闭环
+- **正常升版**：响应云端反馈要求升至 `v2.5.10`（`PKG_RELEASE:=20` / `r20`），全仓 7 处版本锚点、IPK `control` 与 CHANGELOG 统一；现网 2.5.9 设备可直接收到 OTA 提示，无需手动重装。
+- **P0-1 故障转移演练四维隔离**：新增 `_SANDBOX_DRILL_ACTIVE` 门闸，在 `SelectorWriteCoordinator.put_silent`、`_put_clash_selector_silent` 与 `clash_api_request` 三层阻断沙盒态 `PUT /proxies/*`（实测多线池演练 0 PUT 泄漏）；`scan_kernel_logs_for_active_pool_failures` 演练态跳过外部补位与多线调度，`to_node` 严格限定池内成员；新增 `_snapshot_selector_plane()` 校验前后选点平面一致，`finally` 完整恢复 `_MULTI_LINE_RR_STATE` 与协调器计数器。
+- **P2-1**：`evaluate_single_auto_node` 单组快路径增加 `index` 键守卫与 `int(g.get("index") or 1)` 兜底；`evaluate_all_auto_nodes` 逐池异常隔离，单池异常仅标记 `pool_degraded_alert` 不中断其余池。
+- **P2-2 / P2-3**：清除 `index.html` 8 个静态资源的双重 `?v=` 查询串并纳入门禁断言；`build_status_api_response` / `build_auto_nodes_api_response` / `build_nodes_api_response` / `_make_wire_key` 量化窗口 15s → 30s。
+- **FB-259-3 交付闭环**：报告首节增设「本轮增量说明」、包内 CHANGELOG 同步 v2.5.10 条目；混沌脚本新增 `Stage 7.19`（81/81 → **82/82**）覆盖缓存返回对象突变隔离、候选池集合等于池成员子集、演练 0 PUT、缺 `index` 容错；`gates_v101.py` 强制校验报告与 CHANGELOG 增量标记。
+- **观察项闭环**：`_normalize_auto_node_item` 改 `setdefault` 不就地改写、移除 `_get_live_singbox_pids` 死判断、`get_kernel_log_failover_status` 显式传参。
+- 验收：原始包零补发 `run_all 15/15 PASS / RC=0`、自检 10/10 + 负向、混沌 **82/82**、门禁双布局 **17/17**、11 行指纹 11/11 与 1 字节篡改转红、design-lint 18/18、静态资源 8/8、`INSTALL_RC=0`、`nft=1`、重启后稳定、4 个多线出口与 AI 单线保护、UI 零异常三视口零溢出。
+
 ## [v2.5.9] - 2026-11-10
 ### 真机写拦截根治 + 演练沙盒化 + 订阅与可观测性契约闭环
 - **P1-1 & FB-259-1 真机自检写拦截根治**：移除易误判的 `/tmp` 前缀放行，新增 `_is_sandbox_exempt_write()` 统一守卫；将启动期锁定的 `_BOOT_CONF_DIR` / `_BOOT_RUN_DIR` 与 `/etc/ai-link`、`/var/run/ai-link`、`/tmp/run/ai-link` 列为严禁豁免的生产根，仅进程内动态改写目录至独立沙盒且写入注册状态文件时豁免。兼容 OpenWrt `/var → /tmp` 符号链接，真机不设任何环境变量连续 10 次自检全部 `RC=0`（`blocked=7 / leaked=0`）、生产文件哈希零变化；负向关闭拦截仍正确报 `leaked 7 (blocked=0)`。

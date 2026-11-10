@@ -1575,7 +1575,7 @@ def main() -> int:
         gates_254_txt = (Path(__file__).resolve().parent / "gates_v101.py").read_text(encoding="utf-8")
         check("Stage 6.27a (v2.5.4 FB-253-1/2 Makefile PKG_VERSION/PKG_RELEASE 锚点与报告版本结构门禁): Makefile 含 PKG_VERSION:=2.5.4 与 PKG_RELEASE:=14，且 gates_v101 强制校验报告 PKG_RELEASE 与首节版本号",
               f"PKG_VERSION:={dmod.APP_VERSION}" in mk_254_txt
-              and "PKG_RELEASE:=19" in mk_254_txt
+              and "PKG_RELEASE:=20" in mk_254_txt
               and "FB-253-1: Verify PKG_RELEASE" in gates_254_txt
               and "FB-253-2: Verify report Section 1" in gates_254_txt,
               f"app_ver={dmod.APP_VERSION}")
@@ -2651,6 +2651,131 @@ def main() -> int:
               and p2_2_3_ok
               and p2_7_drill_ok,
               f"409_ok={p1_1_409_ok}, sbx_quota={p2_4_sbx_quota_ok}, an_api={p2_1_5_ok}({round(_cold_ms_718, 1)}ms), p2_2_3={p2_2_3_ok}, drill_3p_fb259={p2_7_drill_ok}")
+
+        import copy
+        # Stage 7.19 (v2.5.10 P0-1 残留多线池演练 Clash 选点平面零泄漏 + P2-1..P2-3 + FB-259-3 缓存隔离与池成员边界门禁):
+        #   (1) P0-1: Multi-line pool (auto_1794075589 [KZ, IT, KG] + external faster HK-N-2) drill emits 0 Clash PUTs,
+        #       keeps to_node strictly inside pool members (IT, never HK-N-2), preserves /proxies plane & coordinator state.
+        #   (2) P2-1: Single group missing 'index' key evaluates cleanly without KeyError in evaluate_single_auto_node & evaluate_all_auto_nodes.
+        #   (3) P2-2: index.html has exactly 8 '?v=' query strings and zero duplicate '?v=...?v=' strings.
+        #   (4) FB-259-3: Mutating returned dict from load_auto_nodes_config never pollutes _FAST_FILE_CACHE, and
+        #       get_auto_node_candidate_pool / evaluate_single_auto_node candidates strictly equal pool member subset.
+        dmod.save_nodes_list([
+            {"tag": "KZ-5.180.21.7", "node_id": "nid_719_kz", "type": "vless", "server": "5.180.21.7", "server_port": 443, "uuid": "u-719-kz"},
+            {"tag": "IT-185.22.1.2", "node_id": "nid_719_it", "type": "vless", "server": "185.22.1.2", "server_port": 443, "uuid": "u-719-it"},
+            {"tag": "KG-212.2.1.3", "node_id": "nid_719_kg", "type": "vless", "server": "212.2.1.3", "server_port": 443, "uuid": "u-719-kg"},
+            {"tag": "HK-N-2", "node_id": "nid_719_hk2", "type": "vless", "server": "198.51.100.2", "server_port": 443, "uuid": "u-719-hk2"},
+            {"tag": "HK-N-5", "node_id": "nid_719_hk5", "type": "vless", "server": "198.51.100.5", "server_port": 443, "uuid": "u-719-hk5"},
+        ], tmp_v252)
+        _now_719 = int(time.time())
+        dmod.save_node_probe_store({
+            "nid_719_kz": {"state": "ok", "delay_ms": 180, "ewma_ms": 180.0, "probe_ts": _now_719, "last_probe_ts": _now_719, "svc": {}},
+            "KZ-5.180.21.7": {"state": "ok", "delay_ms": 180, "ewma_ms": 180.0, "probe_ts": _now_719, "last_probe_ts": _now_719, "svc": {}},
+            "nid_719_it": {"state": "ok", "delay_ms": 195, "ewma_ms": 195.0, "probe_ts": _now_719, "last_probe_ts": _now_719, "svc": {}},
+            "IT-185.22.1.2": {"state": "ok", "delay_ms": 195, "ewma_ms": 195.0, "probe_ts": _now_719, "last_probe_ts": _now_719, "svc": {}},
+            "nid_719_kg": {"state": "ok", "delay_ms": 210, "ewma_ms": 210.0, "probe_ts": _now_719, "last_probe_ts": _now_719, "svc": {}},
+            "KG-212.2.1.3": {"state": "ok", "delay_ms": 210, "ewma_ms": 210.0, "probe_ts": _now_719, "last_probe_ts": _now_719, "svc": {}},
+            "nid_719_hk2": {"state": "ok", "delay_ms": 32, "ewma_ms": 32.0, "probe_ts": _now_719, "last_probe_ts": _now_719, "svc": {}},
+            "HK-N-2": {"state": "ok", "delay_ms": 32, "ewma_ms": 32.0, "probe_ts": _now_719, "last_probe_ts": _now_719, "svc": {}},
+            "nid_719_hk5": {"state": "ok", "delay_ms": 38, "ewma_ms": 38.0, "probe_ts": _now_719, "last_probe_ts": _now_719, "svc": {}},
+            "HK-N-5": {"state": "ok", "delay_ms": 38, "ewma_ms": 38.0, "probe_ts": _now_719, "last_probe_ts": _now_719, "svc": {}},
+        }, tmp_v252, force_flash=True)
+        dmod.save_auto_nodes_config({
+            "auto_nodes": [
+                {
+                    "id": "auto_1794075589", "tag": "Auto_1794075589", "name": "TikTok多线池",
+                    "pool_mode": "ping_only", "dispatch_mode": "multi_line", "auto_maintain": True,
+                    "replenish_threshold": 5, "target_size": 5, "current_node": "KZ-5.180.21.7",
+                    "groups": [{"index": 1, "name": "主力", "node_tags": ["KZ-5.180.21.7", "IT-185.22.1.2", "KG-212.2.1.3"]}],
+                },
+                {
+                    "id": "auto_hf_download", "tag": "Auto_HF_Download", "name": "HF多线池",
+                    "pool_mode": "ping_only", "dispatch_mode": "multi_line", "auto_maintain": True,
+                    "replenish_threshold": 3, "target_size": 3, "current_node": "KZ-5.180.21.7",
+                    "groups": [{"index": 1, "name": "主力", "node_tags": ["KZ-5.180.21.7", "HK-N-5"]}],
+                },
+            ]
+        }, tmp_v252)
+        _sh_719 = dmod.load_shunt_config(tmp_v252)
+        for _g_719 in _sh_719["groups"]:
+            if _g_719["id"] == "TikTok":
+                _g_719["shunt_mode"] = "auto"
+                _g_719["strategy"] = "auto"
+                _g_719["auto_node_id"] = "auto_1794075589"
+                _g_719["manual_node"] = "auto:auto_1794075589"
+        dmod.save_shunt_config(_sh_719, tmp_v252)
+        _puts_719 = []
+        _fake_proxies_719 = {
+            "Shunt_TikTok": {"type": "Selector", "now": "KZ-5.180.21.7"},
+            "Auto_1794075589": {"type": "Selector", "now": "KZ-5.180.21.7"},
+            "Auto_HF_Download": {"type": "Selector", "now": "KZ-5.180.21.7"},
+        }
+        _orig_creq_719 = dmod.clash_api_request
+        _orig_plis_719 = dmod._is_local_port_listening
+        def _hook_creq_719(path, method="GET", payload=None, timeout=4.5):
+            if str(method).upper() == "PUT":
+                _puts_719.append((path, payload))
+                return (204, {})
+            if path == "/proxies":
+                return (200, {"proxies": copy.deepcopy(_fake_proxies_719)})
+            return (200, {})
+        dmod.clash_api_request = _hook_creq_719
+        dmod._is_local_port_listening = lambda p: True if p == 9090 else _orig_plis_719(p)
+        try:
+            _rr_pre_719 = copy.deepcopy(dmod._MULTI_LINE_RR_STATE["active_target"])
+            _cw_pre_719 = dmod.SELECTOR_WRITE_COORDINATOR.total_writes
+            _dr_ml_719 = dmod.run_end_to_end_failover_drill(tmp_v252, pool_id="auto_1794075589", auto_restore=True)
+            _rr_post_719 = copy.deepcopy(dmod._MULTI_LINE_RR_STATE["active_target"])
+            _cw_post_719 = dmod.SELECTOR_WRITE_COORDINATOR.total_writes
+        finally:
+            dmod.clash_api_request = _orig_creq_719
+            dmod._is_local_port_listening = _orig_plis_719
+        p0_1_ml_drill_ok = (
+            _dr_ml_719.get("ok") is True
+            and len(_puts_719) == 0
+            and _dr_ml_719.get("from_node") == "KZ-5.180.21.7"
+            and _dr_ml_719.get("to_node") in ("IT-185.22.1.2", "KG-212.2.1.3")
+            and _dr_ml_719.get("in_pool_scope") is True
+            and _dr_ml_719.get("plane_untouched") is True
+            and _dr_ml_719.get("ui_synced") is True
+            and _dr_ml_719.get("restored") is True
+            and _dr_ml_719.get("other_pools_untouched") is True
+            and _rr_pre_719 == _rr_post_719
+            and _cw_pre_719 == _cw_post_719
+        )
+        # (2) P2-1: Single group missing 'index' key evaluates without KeyError
+        _no_idx_pool_719 = {
+            "id": "pool_no_idx_719", "tag": "Auto_NoIdx719", "name": "无index容错池",
+            "pool_mode": "ping_only", "target_size": 3, "replenish_threshold": 2,
+            "groups": [{"name": "主力", "node_tags": ["IT-185.22.1.2", "KG-212.2.1.3"]}],
+        }
+        _ev_noidx_719 = dmod.evaluate_single_auto_node(_no_idx_pool_719, conf_dir=tmp_v252)
+        p2_1_noidx_ok = (
+            _ev_noidx_719.get("current_node") == "IT-185.22.1.2"
+            and _ev_noidx_719.get("groups", [{}])[0].get("index") == 1
+        )
+        # (3) P2-2: index.html has exactly 8 '?v=' query strings and zero duplicate '?v=...?v='
+        _html_719 = (SITE / "root/usr/share/ai-link/webui/index.html").read_text("utf-8")
+        p2_2_html_v_ok = (
+            _html_719.count("?v=") == 8
+            and all(ln.count("?v=") <= 1 for ln in _html_719.splitlines())
+        )
+        # (4) FB-259-3: _FAST_FILE_CACHE mutation isolation & candidate pool member scope invariance
+        _cfg_c1_719 = dmod.load_auto_nodes_config(tmp_v252)
+        _orig_p0_name = _cfg_c1_719["auto_nodes"][0]["name"]
+        _cfg_c1_719["auto_nodes"][0]["name"] = "EXTERNAL_MUTATION_POLLUTION"
+        _cfg_c2_719 = dmod.load_auto_nodes_config(tmp_v252)
+        _cands_719 = dmod.get_auto_node_candidate_pool(_cfg_c2_719["auto_nodes"][0], conf_dir=tmp_v252)
+        _cand_tags_719 = {c.get("tag") for c in _cands_719}
+        _defined_tags_719 = {"KZ-5.180.21.7", "IT-185.22.1.2", "KG-212.2.1.3"}
+        fb259_3_ok = (
+            _cfg_c2_719["auto_nodes"][0]["name"] == _orig_p0_name
+            and _cand_tags_719 == _defined_tags_719
+            and "HK-N-2" not in _cand_tags_719
+        )
+        check("Stage 7.19 (v2.5.10 P0-1多线池演练选点平面零泄漏/池内选点约束 + P2-1缺index容错 + P2-2单一?v=查询串 + FB-259-3缓存突变隔离与池成员范围严格一致门禁)",
+              p0_1_ml_drill_ok and p2_1_noidx_ok and p2_2_html_v_ok and fb259_3_ok,
+              f"ml_drill={p0_1_ml_drill_ok}(puts={len(_puts_719)},to={_dr_ml_719.get('to_node')}), noidx={p2_1_noidx_ok}, html_v={p2_2_html_v_ok}, fb259_3={fb259_3_ok}")
     finally:
         shutil.rmtree(tmp_v252, ignore_errors=True)
 

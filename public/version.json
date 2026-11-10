@@ -1,19 +1,35 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.5.9",
-  "release_date": "2026-11-10",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.5.9",
+  "latest": "2.5.10",
+  "release_date": "2026-11-11",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.5.10",
   "highlights": [
-    "真机自检写拦截漏洞根治：新增统一沙盒豁免守卫，把启动期锁定的配置/运行目录及 /tmp/run/ai-link 列入严禁豁免的生产根白名单",
-    "兼容 OpenWrt /var → /tmp 符号链接：即便未显式设置环境变量，生产目录也绝不被误判成测试沙盒",
-    "故障转移演练全程在隔离沙盒执行，不再真实切换生产节点、清理宿主连接或递增全局计数，并按池精确隔离",
-    "订阅预览 409 过期不再把状态卡在 syncing：保持原状态并持久化可诊断错误，连续触发也不卡死",
-    "可观测性字段数组/类型/层级全链路对齐：绑定出口、轮换轨迹、驻留旁路计数可在面板直接查看",
-    "调试测试钩子默认关闭，仅在显式开启调试配置或自检态生效；/api/auto_nodes 冷缓存首样本提速约 18 倍",
-    "七项交付标准保持：11 行指纹逐行校验与 1 字节篡改转红、零补发 15 套全量回归、自检正负双向门禁"
+    "正常升版至 v2.5.10：现网 2.5.9 设备可直接收到 OTA 更新提示，无需手动重装",
+    "故障转移演练四维隔离：文件平面、Clash /proxies 控制面、协调器内存态、池成员集合，演练对现网 0 次 PUT 泄漏",
+    "演练结束自动校验选点平面快照与轮询状态 100% 还原，切换目标严格限制在池内成员",
+    "groups 配置缺 index 不再中断全池评估；单池异常隔离，其余池照常工作",
+    "清除静态资源双重 ?v= 查询串，8 个资源各自唯一版本指纹",
+    "API 时间量化窗口由 15 秒统一到 30 秒，冷缓存重建尾巴减半",
+    "交付闭环：报告首节写本轮增量、CHANGELOG 同步、混沌脚本新增 Stage 7.19（82/82）并纳入打包硬门禁"
   ],
   "changelog": [
+    {
+      "version": "2.5.10",
+      "date": "2026-11-11",
+      "type": "fix",
+      "title": "演练四维隔离 + 正常升版 + 交付增量闭环",
+      "items": [
+        "正常升版至 `v2.5.10`（`PKG_RELEASE:=20` / `r20`），现网 2.5.9 设备可直接收到 OTA 提示",
+        "P0-1：新增 `_SANDBOX_DRILL_ACTIVE` 门闸，在 `put_silent` / `_put_clash_selector_silent` / `clash_api_request` 三层阻断沙盒态 `PUT /proxies/*`；`scan_kernel_logs_for_active_pool_failures` 在演练态跳过外部补位与多线调度，`to_node` 严格限定池内成员；`_snapshot_selector_plane()` 校验前后选点平面一致并在 finally 完整恢复轮询状态与协调器计数器",
+        "P2-1：`evaluate_single_auto_node` 单组快路径增加 `index` 键守卫与 `int(g.get('index') or 1)` 兜底；`evaluate_all_auto_nodes` 逐池 try/except 隔离，单池异常只标记降级不中断其余池",
+        "P2-2：清除 `index.html` 8 个静态资源的双重 `?v=` 查询串，门禁新增 `?v=` 计数与单行零重复断言",
+        "P2-3：`build_status_api_response` / `build_auto_nodes_api_response` / `build_nodes_api_response` / `_make_wire_key` 量化窗口 15s → 30s，与 shunt 对齐",
+        "FB-259-3：报告首节增设「本轮增量说明」、包内 CHANGELOG 同步 v2.5.10 条目；混沌脚本新增 `Stage 7.19`（81/81 → 82/82）覆盖缓存返回对象突变隔离、候选池等于池成员子集、演练 0 PUT、缺 index 容错；`gates_v101.py` 强制校验报告与 CHANGELOG 增量标记",
+        "观察项：`_normalize_auto_node_item` 改 `setdefault` 不就地改写、移除 `_get_live_singbox_pids` 死判断、`get_kernel_log_failover_status` 显式传参",
+        "七项交付标准保持：11 行指纹逐行校验与 1 字节篡改转红、连续中文章节、交接包布局声明、12 夹具随包、测试数值实跑后置注入、自检正负双向门禁、零补发 15/15"
+      ]
+    },
     {
       "version": "2.5.9",
       "date": "2026-11-10",
@@ -403,13 +419,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.5.9/AI-LINK-v2.5.9.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.5.10/AI-LINK-v2.5.10.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.5.9.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.5.10.tar.gz"
       ],
-      "size": 1034583,
-      "md5": "44ebb55b01bcc589faeb3a0568c27f58",
-      "sha256": "eecd3dcef737488e9df13c1c47def3d3a8d40aaae24d4aa271324f586f953481"
+      "size": 1039127,
+      "md5": "fd5a16c1de4b39aec4c1b20498a71a60",
+      "sha256": "ca4c58f0ee66b1a7afb87aa3fb7467f578a55111528246ac06004fa6de10bf85"
     }
   }
 }
