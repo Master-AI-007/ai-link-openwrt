@@ -126,7 +126,7 @@ def _atomic_write_text(target: Path, content: str, encoding: str = "utf-8") -> N
         "sub_jaccard_ring.json", "ai-link.nft", "homelink_ports.nft",
         "node_ips.txt", "lan_direct_macs.txt", ".applied_core_rule_hash", "node_probe.json",
     ):
-        for _m_name in ("_SHUNT_API_MEMO", "_NODES_API_MEMO", "_AUTO_NODES_API_MEMO", "_STATUS_API_MEMO", "_HOMELINK_API_MEMO", "_DNS_TELEM_MEMO", "_MTIMES_FAST_CACHE", "_JSON_WIRE_MEMO", "_FAST_FILE_CACHE"):
+        for _m_name in ("_SHUNT_API_MEMO", "_NODES_API_MEMO", "_AUTO_NODES_API_MEMO", "_STATUS_API_MEMO", "_HOMELINK_API_MEMO", "_DNS_TELEM_MEMO", "_MTIMES_FAST_CACHE", "_JSON_WIRE_MEMO"):
             _m = globals().get(_m_name)
             if isinstance(_m, dict):
                 _m.clear()
@@ -4859,10 +4859,17 @@ def _set_auto_pool_runtime_state(conf_dir: Path, pool_id: str, state_dict: dict)
             except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                 globals().get("_record_internal_diag", str)(_e_diag)
 
+_PROBE_TUNING_MEMO = {}
+
 def get_probe_tuning_params(conf_dir: Path = CONF_DIR) -> dict:
+    ops_f = Path(conf_dir) / "ops_settings.json"
+    uci_f = Path("/etc/config/ai-link")
+    sig = (str(conf_dir), _get_file_sig(ops_f), _get_file_sig(uci_f))
+    cached = _PROBE_TUNING_MEMO.get(str(conf_dir))
+    if cached and cached[0] == sig:
+        return dict(cached[1])
     ops = {}
     try:
-        ops_f = Path(conf_dir) / "ops_settings.json"
         if ops_f.is_file():
             ops = json.loads(ops_f.read_text(encoding="utf-8")) or {}
     except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
@@ -4872,13 +4879,15 @@ def get_probe_tuning_params(conf_dir: Path = CONF_DIR) -> dict:
     w_lat = float(ops.get("w_latency") or 0.45)
     w_bw = float(ops.get("w_bandwidth") or 0.30)
     w_stab = float(ops.get("w_stability") or 0.25)
-    return {
+    res = {
         "min_hold_sec": max(10, min(3600, min_hold)),
         "hysteresis_pct": max(0.0, min(80.0, hyst_pct)),
         "w_latency": w_lat,
         "w_bandwidth": w_bw,
         "w_stability": w_stab,
     }
+    _PROBE_TUNING_MEMO[str(conf_dir)] = (sig, res)
+    return dict(res)
 
 DEFAULT_AUTO_NODES = [
     {
@@ -5565,8 +5574,7 @@ def load_auto_nodes_config(conf_dir: Path = CONF_DIR) -> dict:
     with _FAST_CACHE_LOCK:
         c = _FAST_FILE_CACHE.get(cache_key)
         if c and c[0] == comp_sig:
-            import copy
-            return copy.deepcopy(c[1])
+            return json.loads(c[1])
     saved_nodes = [n for n in load_saved_nodes(conf_dir) if not is_builtin_test_node(n.get("tag", ""))]
     subs_list = load_subscriptions(conf_dir)
     store = load_node_probe_store(conf_dir)
@@ -5619,8 +5627,7 @@ def load_auto_nodes_config(conf_dir: Path = CONF_DIR) -> dict:
         "auto_nodes": norm_auto_list
     }
     with _FAST_CACHE_LOCK:
-        import copy
-        _FAST_FILE_CACHE[cache_key] = (comp_sig, copy.deepcopy(res_data))
+        _FAST_FILE_CACHE[cache_key] = (comp_sig, json.dumps(res_data, ensure_ascii=False))
     return res_data
 
 def _strip_auto_node_runtime_fields(an: dict) -> dict:
@@ -5680,16 +5687,35 @@ def save_auto_nodes_config(cfg: dict, conf_dir: Path = CONF_DIR) -> dict:
             "custom_services": cfg.get("custom_services") or [],
             "auto_nodes": normalized_list
         }
+        _an_disk_changed = False
         try:
             conf_dir.mkdir(parents=True, exist_ok=True)
             new_txt = json.dumps(disk_out, indent=2, ensure_ascii=False)
             target_f = conf_dir / "auto_nodes.json"
             if not target_f.is_file() or target_f.read_text(encoding="utf-8", errors="ignore") != new_txt:
                 _atomic_write_text(target_f, new_txt)
+                _an_disk_changed = True
         except OSError as _e_diag:
             globals().get("_record_internal_diag", str)(_e_diag)
+        _is_main_an = (Path(conf_dir).resolve() == Path(CONF_DIR).resolve())
+        _probe_f_an = (RUN_DIR / "node_probe.json") if (_is_main_an and (RUN_DIR / "node_probe.json").is_file()) else (conf_dir / "node_probe.json")
+        _comp_sig_an = (
+            _get_file_sig(conf_dir / "auto_nodes.json"),
+            _get_file_sig(conf_dir / "nodes.json"),
+            _get_file_sig(_probe_f_an),
+            _get_file_sig(conf_dir / "subscriptions.json"),
+        )
+        _res_data_an = {
+            "ok": True,
+            "single_group_migrated": True,
+            "v241_single_group_migrated": True,
+            "probe_intervals": AUTO_PROBE_INTERVALS,
+            "preset_services": PRESET_SERVICE_CHECKS,
+            "custom_services": cfg.get("custom_services") or [],
+            "auto_nodes": normalized_list,
+        }
         with _FAST_CACHE_LOCK:
-            _FAST_FILE_CACHE.pop(("auto_nodes_cfg", str(conf_dir)), None)
+            _FAST_FILE_CACHE[("auto_nodes_cfg", str(conf_dir))] = (_comp_sig_an, json.dumps(_res_data_an, ensure_ascii=False))
         _AUTO_NODES_API_MEMO.clear()
         _SHUNT_API_MEMO.clear()
         _STATUS_API_MEMO.clear()
@@ -6311,8 +6337,14 @@ def get_auto_node_candidate_pool(an: dict, conf_dir: Path = CONF_DIR,
     )
     _cp_in_scope_tags = None
     if _cp_has_scope:
+        _cp_member_nodes = []
+        for _g_cp in groups:
+            for _r_cp in list(dict.fromkeys(list(_g_cp.get("node_ids") or []) + list(_g_cp.get("node_tags") or []))):
+                _no_cp = by_id.get(_r_cp) or by_tag.get(_r_cp)
+                if _no_cp is not None:
+                    _cp_member_nodes.append(_no_cp)
         _cp_scoped = _filter_nodes_by_pool_scope(
-            saved_nodes, subs_list, scope_source=_cp_source, scope_countries=_cp_countries,
+            _cp_member_nodes, subs_list, scope_source=_cp_source, scope_countries=_cp_countries,
             conf_dir=conf_dir, scope_sources=_cp_sources, keyword_filter=_cp_kw,
             keyword_mode=str(an.get("keyword_mode") or "OR"), exclude_chained_for_pool=str(an.get("id") or ""),
         )
@@ -7124,8 +7156,14 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
     )
     _ev_in_scope_tags = None
     if _ev_has_scope:
+        _ev_member_nodes = []
+        for _g_ev in groups:
+            for _r_ev in list(dict.fromkeys(list(_g_ev.get("node_ids") or []) + list(_g_ev.get("node_tags") or []))):
+                _no_ev = by_id.get(_r_ev) or by_tag.get(_r_ev)
+                if _no_ev is not None:
+                    _ev_member_nodes.append(_no_ev)
         _ev_scoped = _filter_nodes_by_pool_scope(
-            saved_nodes, subs_list, scope_source=_ev_source, scope_countries=_ev_countries,
+            _ev_member_nodes, subs_list, scope_source=_ev_source, scope_countries=_ev_countries,
             conf_dir=conf_dir, scope_sources=_ev_sources, keyword_filter=_ev_kw,
             keyword_mode=str(an.get("keyword_mode") or "OR"), exclude_chained_for_pool=str(an.get("id") or ""),
         )
@@ -7738,7 +7776,17 @@ def evaluate_all_auto_nodes(conf_dir: Path = CONF_DIR, target_id: str = "", forc
                 else:
                     request_switch(an["tag"], an["current_node"], reason=f"自动节点池 [{an.get('name')}] 优选", pool_id=an.get("id", ""), conf_dir=conf_dir)
     if persist:
-        save_auto_nodes_config(cfg, conf_dir)
+        if not sync_selectors and (conf_dir / "auto_nodes.json").is_file():
+            try:
+                _disk_prev = json.loads((conf_dir / "auto_nodes.json").read_text(encoding="utf-8", errors="ignore"))
+                _prev_stripped = _disk_prev.get("auto_nodes") if isinstance(_disk_prev, dict) else None
+                _now_stripped = [_strip_auto_node_runtime_fields(x) for x in (cfg.get("auto_nodes") or []) if isinstance(x, dict)]
+                if _prev_stripped != _now_stripped:
+                    save_auto_nodes_config(cfg, conf_dir)
+            except Exception:
+                save_auto_nodes_config(cfg, conf_dir)
+        else:
+            save_auto_nodes_config(cfg, conf_dir)
     return cfg.get("auto_nodes", [])
 
 
@@ -8037,7 +8085,7 @@ def dispatch_multi_line_pools_tick(conf_dir: Path = CONF_DIR, advance: bool = Tr
     `multi_line_nodes` with `interrupt_exist_connections: False` and zero redundant PUTs when target is unchanged."""
     conf_dir = Path(conf_dir)
     c_str = str(conf_dir.resolve())
-    sig = (c_str, _conf_file_mtimes_sig(conf_dir, ("auto_nodes.json", "shunt.json", "node_probe.json", "nodes.json")))
+    sig = (c_str, _conf_file_mtimes_sig(conf_dir, ("auto_nodes.json", "shunt.json", "nodes.json")), _conf_file_mtimes_sig_q(conf_dir, ("node_probe.json",), 15) if _is_live_conf_dir(conf_dir) else _conf_file_mtimes_sig(conf_dir, ("node_probe.json",)))
     with _MULTI_LINE_RR_LOCK:
         cached_plan = _MULTI_LINE_RR_STATE["memo_plan"] if _MULTI_LINE_RR_STATE["memo_sig"] == sig else None
     if cached_plan is None:
@@ -9319,14 +9367,40 @@ class AIProbeEngine:
         store = load_node_probe_store(conf_dir)
         selectable_nodes = []
         delays = {}
+        tag_state_map = {}
+        cdn_ok_map = {}
+        saved_by_tag = {}
+        now_ap_ts = int(time.time())
         for n in raw_nodes:
-            if is_builtin_test_node(n.get("tag", "")):
+            t_ap = n.get("tag", "")
+            if is_builtin_test_node(t_ap):
                 continue
-            ev = evaluate_node_selectability(n, store=store, subs_list=subs_list, conf_dir=conf_dir)
+            saved_by_tag[t_ap] = n
+            ev = evaluate_node_selectability(n, store=store, subs_list=subs_list, now_ts=now_ap_ts, conf_dir=conf_dir)
             if ev["selectable"]:
                 selectable_nodes.append(n)
-                delays[n["tag"]] = float(ev["delay_ms"]) if (ev["state"] == "ok" and ev["delay_ms"] > 0) else 0.0
-        candidate_tags = [n["tag"] for n in selectable_nodes] + ["direct", "block"]
+                tag_state_map[t_ap] = ev["state"]
+                delays[t_ap] = float(ev["delay_ms"]) if (ev["state"] == "ok" and ev["delay_ms"] > 0) else 0.0
+                nid_ap = n.get("node_id") or ev.get("node_id") or t_ap
+                cdn_ok_map[t_ap] = _is_node_cdn_tls_healthy((store or {}).get(nid_ap) or (store or {}).get(t_ap) or {})
+        sorted_sel_tags = [n["tag"] for n in selectable_nodes]
+        sorted_sel_tags.sort(key=lambda t: (
+            0 if (tag_state_map.get(t) == "ok" and delays.get(t, 0.0) > 0 and cdn_ok_map.get(t, True)) else (1 if (tag_state_map.get(t) == "ok" and delays.get(t, 0.0) > 0) else 2),
+            (delays.get(t, 99999.0) * (1.28 if _is_random_region_node(t) else 1.0)) if delays.get(t, 0.0) > 0 else 99999.0,
+            1 if _is_random_region_node(t) else 0,
+            t
+        ))
+        pre_ctx_ap = {
+            "saved_by_tag": saved_by_tag,
+            "selectable_tags": sorted_sel_tags,
+            "selectable_set": set(sorted_sel_tags),
+            "tag_delay": delays,
+            "tag_state": tag_state_map,
+            "cdn_ok_map": cdn_ok_map,
+            "auto_pools_map": {},
+            "region_pools": {},
+        }
+        candidate_tags = sorted_sel_tags + ["direct", "block"]
         eval_auto_list = evaluate_all_auto_nodes(conf_dir, force_service_probe=False, advance_revert_streak=False, sync_selectors=False)
         auto_cfg = load_auto_nodes_config(conf_dir)
         if eval_auto_list:
@@ -9340,7 +9414,8 @@ class AIProbeEngine:
             res = resolve_node_for_country_strategy_with_failover(
                 country, strategy, manual_node,
                 candidate_tags, delays, group_id=gid, conf_dir=conf_dir,
-                saved_nodes=raw_nodes, subs_list=subs_list, store=store, auto_cfg=auto_cfg
+                saved_nodes=raw_nodes, subs_list=subs_list, store=store, auto_cfg=auto_cfg,
+                precomputed_ctx=pre_ctx_ap
             )
             sel_target = res["selected"]
             if sm == "manual" and bool(g.get("strict_lock", False)) and manual_node and not str(manual_node).startswith("auto:"):
@@ -16794,8 +16869,8 @@ def build_status_api_response(conf_dir: Path = CONF_DIR) -> dict:
         "_snapshot_created_ts": time.time(),
         "data_age_ms": 0,
         "single_group_migrated": True,
-        "kernel_log_failover": get_kernel_log_failover_status(conf_dir),
-        "log_failover_guard": get_kernel_log_failover_status(conf_dir),
+        "kernel_log_failover": get_kernel_log_failover_status(conf_dir, sh_cfg=shunt_full, auto_cfg=shunt_full),
+        "log_failover_guard": get_kernel_log_failover_status(conf_dir, sh_cfg=shunt_full, auto_cfg=shunt_full),
         "dwell_bypass_calls": int(getattr(SELECTOR_WRITE_COORDINATOR, "dwell_bypass_calls", 0)),
         "has_backup_archive": _has_final_backup_archive(),
         "backup_archive_path": "/root/ai-link-final-backup/etc-ai-link.tgz" if _has_final_backup_archive() else "",
@@ -16900,25 +16975,39 @@ def match_srs_ruleset_target(srs_path: Path, target: str) -> bool:
     except Exception:
         return False
 
+_LAN_IP_MEMO = {"ts": 0.0, "ip": ""}
+
 def _detect_router_lan_ip() -> str:
-    try:
-        r = subprocess.run(["uci", "-q", "get", "network.lan.ipaddr"], capture_output=True, text=True, timeout=1)
-        ip = (r.stdout or "").strip()
-        if ip:
-            return ip
-    except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
-        globals().get("_record_internal_diag", str)(_e_diag)
+    now = time.time()
+    if _LAN_IP_MEMO["ip"] and (now - _LAN_IP_MEMO["ts"]) < 30.0:
+        return _LAN_IP_MEMO["ip"]
+    if shutil.which("uci"):
+        try:
+            r = subprocess.run(["uci", "-q", "get", "network.lan.ipaddr"], capture_output=True, text=True, timeout=1)
+            ip = (r.stdout or "").strip()
+            if ip:
+                _LAN_IP_MEMO["ts"] = now
+                _LAN_IP_MEMO["ip"] = ip
+                return ip
+        except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
+            globals().get("_record_internal_diag", str)(_e_diag)
     try:
         addr_out = subprocess.check_output(["ip", "-4", "addr", "show"], text=True, timeout=1.2)
         m_br = re.search(r"inet\s+(\d+\.\d+\.\d+\.\d+)/\d+.*\b(br-lan|eth0|lan)\b", addr_out)
         if m_br:
+            _LAN_IP_MEMO["ts"] = now
+            _LAN_IP_MEMO["ip"] = m_br.group(1)
             return m_br.group(1)
         for m_any in re.finditer(r"inet\s+(\d+\.\d+\.\d+\.\d+)/\d+", addr_out):
             cand_ip = m_any.group(1)
             if not cand_ip.startswith("127.") and not cand_ip.startswith("198.18."):
+                _LAN_IP_MEMO["ts"] = now
+                _LAN_IP_MEMO["ip"] = cand_ip
                 return cand_ip
     except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
         globals().get("_record_internal_diag", str)(_e_diag)
+    _LAN_IP_MEMO["ts"] = now
+    _LAN_IP_MEMO["ip"] = "127.0.0.1"
     return "127.0.0.1"
 
 def _get_or_create_initial_secret(conf_dir: Path = CONF_DIR) -> str:
@@ -19415,27 +19504,51 @@ def is_bypass_active() -> bool:
             return True
     return False
 
+_UCI_VAL_MEMO = {}
+
 def _uci_get_bool(key: str, default: bool = True) -> bool:
-    try:
-        r = subprocess.run(["uci", "-q", "get", f"ai-link.{key}"], capture_output=True, text=True, timeout=1)
-        val = (r.stdout or "").strip().lower()
-        if val in ("1", "true", "yes", "on", "enabled"):
-            return True
-        if val in ("0", "false", "no", "off", "disabled"):
-            return False
-    except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
-        globals().get("_record_internal_diag", str)(_e_diag)
-    return default
+    now = time.time()
+    uci_sig = _get_file_sig(Path("/etc/config/ai-link"))
+    ckey = ("bool", key, default, uci_sig)
+    cached = _UCI_VAL_MEMO.get(ckey)
+    if cached is not None and (now - cached[0]) < 15.0:
+        return cached[1]
+    res = default
+    if shutil.which("uci"):
+        try:
+            r = subprocess.run(["uci", "-q", "get", f"ai-link.{key}"], capture_output=True, text=True, timeout=1)
+            val = (r.stdout or "").strip().lower()
+            if val in ("1", "true", "yes", "on", "enabled"):
+                res = True
+            elif val in ("0", "false", "no", "off", "disabled"):
+                res = False
+        except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
+            globals().get("_record_internal_diag", str)(_e_diag)
+    if len(_UCI_VAL_MEMO) > 128:
+        _UCI_VAL_MEMO.clear()
+    _UCI_VAL_MEMO[ckey] = (now, res)
+    return res
 
 def _uci_get_str(key: str, default: str = "") -> str:
-    try:
-        r = subprocess.run(["uci", "-q", "get", f"ai-link.{key}"], capture_output=True, text=True, timeout=1)
-        val = (r.stdout or "").strip()
-        if val:
-            return val
-    except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
-        globals().get("_record_internal_diag", str)(_e_diag)
-    return default
+    now = time.time()
+    uci_sig = _get_file_sig(Path("/etc/config/ai-link"))
+    ckey = ("str", key, default, uci_sig)
+    cached = _UCI_VAL_MEMO.get(ckey)
+    if cached is not None and (now - cached[0]) < 15.0:
+        return cached[1]
+    res = default
+    if shutil.which("uci"):
+        try:
+            r = subprocess.run(["uci", "-q", "get", f"ai-link.{key}"], capture_output=True, text=True, timeout=1)
+            val = (r.stdout or "").strip()
+            if val:
+                res = val
+        except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
+            globals().get("_record_internal_diag", str)(_e_diag)
+    if len(_UCI_VAL_MEMO) > 128:
+        _UCI_VAL_MEMO.clear()
+    _UCI_VAL_MEMO[ckey] = (now, res)
+    return res
 
 _OPS_SETTINGS_MEMO = {}
 _OPS_SETTINGS_LOCK = threading.RLock()

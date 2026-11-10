@@ -8,7 +8,11 @@
 const fs = require('fs');
 const path = require('path');
 
-const webuiDir = process.argv[2] || path.join(__dirname, '../site/ai-link-openwrt/root/usr/share/ai-link/webui');
+const webuiDir = process.argv[2] || [
+  path.join(__dirname, '../root/usr/share/ai-link/webui'),
+  path.join(__dirname, '../site/ai-link-openwrt/root/usr/share/ai-link/webui'),
+  path.join(__dirname, '../ai-link-openwrt/root/usr/share/ai-link/webui'),
+].find(p => fs.existsSync(path.join(p, 'index.html'))) || path.join(__dirname, '../root/usr/share/ai-link/webui');
 const htmlFile = path.join(webuiDir, 'index.html');
 const cssFile = path.join(webuiDir, 'nexus.css');
 const jsFile = path.join(webuiDir, 'nexus.js');
