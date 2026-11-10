@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-AI-LINK v2.5.8 API <-> UI Field Parity Gate (tools/check_api_ui_parity.py)
+AI-LINK v2.5.9 API <-> UI Field, Type & Location Parity Gate (tools/check_api_ui_parity.py)
 Verifies two-way contract parity between backend `ai-link-daemon.py` and frontend `webui/nexus.js`:
 1) Extracts keys returned by `preview_subscription_sync_impact()` and `/api/subscriptions/preview_sync`.
-2) Scans `nexus.js` `sub-preview-sync` branch for `res.<field>` accesses.
-3) Asserts RISK_FIELDS <= backend_keys and RISK_FIELDS <= frontend_consumed.
-4) Reverse check: every `res.<field>` read in `sub-preview-sync` MUST exist in backend success or error responses.
-5) Quick-bind-pool payload check: every key sent to `/api/shunt/update` in `quick-bind-pool` must be recognized by backend `/api/shunt/update`.
+2) Scans `nexus.js` `sub-preview-sync` branch for `res.<field>` accesses (forward & reverse checks).
+3) Verifies type & nesting location parity for `bound_group_targets` (Array of {group_name, current_node, delay_ms, shared_exit}),
+   `multi_line_rotation_log` (top-level & per-pool list), and `dwell_bypass_calls` (top-level int consumed in UI).
+4) Verifies `quick-bind-pool` payload keys and 0 raw `.write_text(` on `CONF_DIR`/`RUN_DIR`.
 """
 import ast
 import re
@@ -54,11 +54,9 @@ def check_parity(daemon_path: Path = DAEMON_PATH, nexus_js_path: Path = NEXUS_JS
                         if isinstance(k, ast.Constant) and isinstance(k.value, str):
                             backend_preview_keys.add(k.value)
 
-    # Also include top-level keys injected by `/api/subscriptions/preview_sync` handler (ok, request_id, error, detail, cache_hit)
     handler_extra_keys = {"ok", "request_id", "error", "detail", "cache_hit", "message"}
     all_backend_keys = backend_preview_keys | handler_extra_keys
 
-    # Extract `sub-preview-sync` case block in nexus.js up to next case
     m_case = re.search(r"case\s+'sub-preview-sync'\s*:\s*\{(.*?)case\s+'probe-custom-nodes'\s*:", nexus_src, re.S)
     if not m_case:
         return False, "sub-preview-sync block not found in nexus.js"
@@ -68,6 +66,26 @@ def check_parity(daemon_path: Path = DAEMON_PATH, nexus_js_path: Path = NEXUS_JS
     missing_in_backend = sorted(RISK_FIELDS - all_backend_keys)
     missing_in_frontend = sorted(RISK_FIELDS - frontend_res_fields)
     unknown_frontend_reads = sorted(frontend_res_fields - all_backend_keys)
+
+    # P2-1b: Verify type & nesting location parity for bound_group_targets, multi_line_rotation_log, and dwell_bypass_calls
+    bgt_type_ok = (
+        "Array.isArray(p.bound_group_targets)" in nexus_src
+        and "Array.isArray(a.bound_group_targets)" in nexus_src
+        and "Object.entries(bgtObj)" not in nexus_src
+        and all(f"x.{k}" in nexus_src for k in ("group_name", "current_node", "delay_ms", "shared_exit"))
+    )
+    rot_loc_ok = (
+        "sh.multi_line_rotation_log" in nexus_src
+        and "stRes.multi_line_rotation_log" in nexus_src
+        and "state.multiLineRotationLog" in nexus_src
+        and "[多出口轮询]" in nexus_src
+    )
+    dwell_loc_ok = (
+        "sh.dwell_bypass_calls" in nexus_src
+        and "stRes.dwell_bypass_calls" in nexus_src
+        and "state.dwellBypassCalls" in nexus_src
+    )
+    obs_type_loc_ok = bool(bgt_type_ok and rot_loc_ok and dwell_loc_ok)
 
     # Check quick-bind-pool payload keys vs backend `/api/shunt/update` recognized keys
     m_qb = re.search(r"case\s+'quick-bind-pool'\s*:\s*\{(.*?)case\s+'sub-preview-sync'\s*:", nexus_src, re.S)
@@ -84,13 +102,16 @@ def check_parity(daemon_path: Path = DAEMON_PATH, nexus_js_path: Path = NEXUS_JS
         not missing_in_backend
         and not missing_in_frontend
         and not unknown_frontend_reads
+        and obs_type_loc_ok
         and qb_ok
         and not raw_write_lines
     )
     summary = (
         f"backend_keys={len(backend_preview_keys)}, frontend_reads={len(frontend_res_fields)}, "
         f"missing_backend={missing_in_backend}, missing_frontend={missing_in_frontend}, "
-        f"unknown_reads={unknown_frontend_reads}, quick_bind_ok={qb_ok}, raw_conf_run_writes={len(raw_write_lines)}"
+        f"unknown_reads={unknown_frontend_reads}, obs_type_loc_ok={obs_type_loc_ok} "
+        f"(bgt_arr={bgt_type_ok}, rot_top={rot_loc_ok}, dwell={dwell_loc_ok}), "
+        f"quick_bind_ok={qb_ok}, raw_conf_run_writes={len(raw_write_lines)}"
     )
     return ok, summary
 

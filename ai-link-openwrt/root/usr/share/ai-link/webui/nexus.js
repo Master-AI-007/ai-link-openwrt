@@ -1420,10 +1420,17 @@
         const verSvcStr = (p.verified_service_count != null) ? (Number(p.verified_service_count) + '/' + g1Tags.length) : '--';
         const capReasonStr = p.capacity_shortfall ? (p.capacity_shortfall_reason || ('上游符合筛选范围的合格节点不足 (' + healthyCnt + '/' + targetCap + ')')) : '容量充足';
         const l7DegNote = p.l7_degraded ? ('\nL7降级说明：当前 ' + healthyCnt + ' 个可达出口均未经目标服务验证（连通性保底）') : '';
-        const bgtObj = (p.bound_group_targets && typeof p.bound_group_targets === 'object') ? p.bound_group_targets : {};
-        const bgtEntries = Object.entries(bgtObj);
-        const bgtStr = bgtEntries.length ? ('\n绑定分流组出口：' + bgtEntries.map(([gk, gv]) => gk + '→' + cleanNodeDisplayName(gv)).join(' · ')) : '';
-        const mlRotNote = p.dispatch_mode === 'multi_line' ? ('\n轮询机制：每个分流组同一时刻仅 1 个出口生效；不同分流组可能落在不同节点（每 30 秒轮换，仅对新连接生效，不叠加单流带宽）' + bgtStr) : bgtStr;
+        const bgtArr = Array.isArray(p.bound_group_targets) ? p.bound_group_targets : [];
+        const bgtStr = bgtArr.length
+          ? ('\n绑定分流组出口：' + bgtArr.map(x =>
+              x.group_name + '→' + cleanNodeDisplayName(x.current_node) +
+              (x.delay_ms > 0 ? ('(' + x.delay_ms + 'ms)') : '') +
+              (x.shared_exit ? '[共享]' : '')
+            ).join(' · '))
+          : '';
+        const slowFiltCnt = Number(p.multi_line_filtered_slow_count || 0);
+        const slowFiltStr = (p.dispatch_mode === 'multi_line' && slowFiltCnt > 0) ? ('\n离散度过滤：已剔除 ' + slowFiltCnt + ' 个偏慢节点（防拖慢轮询体验）') : '';
+        const mlRotNote = p.dispatch_mode === 'multi_line' ? ('\n轮询机制：每个分流组同一时刻仅 1 个出口生效；不同分流组可能落在不同节点（每 30 秒轮换，仅对新连接生效，不叠加单流带宽）' + slowFiltStr + bgtStr) : bgtStr;
         const tipDetail = '节点池：' + p.name + '\n来源范围：' + srcLabel + '\n国家区域：' + ctryLabel + '\n检测策略：' + svcTag + '\n三口径统计：入池可达 ' + healthyCnt + ' · 近期实测ok ' + freshOkCnt + ' · L7已验证：' + verSvcStr + l7DegNote + '\n容量说明：' + capReasonStr + ' · 最近实测：' + realProbeStr + '\n巡检配额：' + quotaInfoStr + ' · 复选阈值：低于 ' + repThresh + ' 个自动补齐' + mlRotNote;
         const isMenuOpen = state.openPoolMenuIdx != null && Number(state.openPoolMenuIdx) === idx;
         return '<div class="auto-pool hud-pool-card ' + cardStateCls + (isMenuOpen ? ' menu-open' : '') + '" title="' + esc(tipDetail) + '">' +
@@ -1442,8 +1449,10 @@
               const mlSuffix = p.dispatch_mode === 'multi_line'
                 ? (mlCnt >= 2 ? (' · 多出口轮询(' + mlCnt + '线)') : (mlCnt === 1 ? ' · 多出口轮询(1线·单线降级)' : ' · 多出口轮询(0线·无可用)'))
                 : '';
+              const hasSharedExit = Array.isArray(p.bound_group_targets) && p.bound_group_targets.some(x => x && x.shared_exit);
+              const sharedSuffix = (p.dispatch_mode === 'multi_line' && hasSharedExit) ? ' · 组间共享出口' : '';
               const mlTitleExtra = (p.dispatch_mode === 'multi_line' && mlArr.length) ? (' · 轮询候选：' + mlArr.map(cleanNodeDisplayName).join(' / ') + '（每个分流组同一时刻仅 1 个出口生效；不同分流组可能落在不同节点（每 30 秒轮换，仅对新连接生效，不叠加单流带宽））') : '';
-              return '<strong class="hud-pool-node mono" style="color:' + (isDirectPool ? 'var(--amber)' : 'var(--cyan)') + '" title="当前出口：' + esc(curNode) + ' · 池内 ' + g1Tags.length + ' 个候选' + esc(mlTitleExtra) + '">' + esc(curNode) + ' <small class="hud-pool-scope" style="color:var(--text-3);font-weight:400">· ' + g1Tags.length + ' 候选 · ' + esc(ctryLabel) + '' + mlSuffix + (p.bandwidth_prefer ? ' · 带宽择优' : '') + '</small></strong>';
+              return '<strong class="hud-pool-node mono" style="color:' + (isDirectPool ? 'var(--amber)' : 'var(--cyan)') + '" title="当前出口：' + esc(curNode) + ' · 池内 ' + g1Tags.length + ' 个候选' + esc(mlTitleExtra) + '">' + esc(curNode) + ' <small class="hud-pool-scope" style="color:var(--text-3);font-weight:400">· ' + g1Tags.length + ' 候选 · ' + esc(ctryLabel) + '' + mlSuffix + sharedSuffix + (p.bandwidth_prefer ? ' · 带宽择优' : '') + '</small></strong>';
             })() +
             '<span style="flex-shrink:0">' + latBadgeCompact + '</span>' +
           '</div>' +
@@ -1453,6 +1462,7 @@
               '<button type="button" class="button ghost compact" style="min-width:40px;padding:0 10px" data-action="toggle-pool-menu" data-pool-idx="' + idx + '" title="更多节点池操作" aria-label="更多节点池操作">···</button>' +
               '<div class="pool-more-menu' + (isMenuOpen ? '' : ' hidden') + '" id="pool-more-menu-' + idx + '">' +
                 '<button type="button" class="button ghost compact" data-action="rescreen-auto-pool" data-pool-idx="' + idx + '">重新自动选取</button>' +
+                '<button type="button" class="button ghost compact" data-action="drill-auto-pool-failover" data-pool-id="' + esc(p.id) + '">故障转移演练</button>' +
                 '<button type="button" class="button ghost compact" data-auto-pool="' + idx + '">配置节点池</button>' +
                 (!['auto_ai', 'auto_youtube', 'auto_netflix'].includes(p.id)
                   ? '<button type="button" class="button ghost danger-text compact" data-action="delete-auto-pool" data-pool-id="' + esc(p.id) + '">删除节点池</button>'
@@ -1467,17 +1477,27 @@
 
     const histEl = $('#switch-history-list');
     if (histEl) {
-      if (mock.switchHistory && mock.switchHistory.length) {
-        histEl.innerHTML = mock.switchHistory.slice(0, 6).map(h => {
-          const ts = h.ts ? new Date(h.ts * 1000).toLocaleTimeString('zh-CN', { hour12: false }) : (h.time || '刚刚');
-          return '<div class="trace-stage" style="padding:8px 11px"><i></i><div><b>' + esc(h.group || h.selector || '自动节点池') + ' ' + esc(h.to_node || h.selected || '新出口') + '</b><span>' + esc(h.reason || '延迟劣化自动平滑切换') + '</span></div><strong>' + esc(ts) + '</strong></div>';
-        }).join('');
+      const swRows = (mock.switchHistory && mock.switchHistory.length) ? mock.switchHistory.slice(0, 6).map(h => {
+        const ts = h.ts ? new Date(h.ts * 1000).toLocaleTimeString('zh-CN', { hour12: false }) : (h.time || '刚刚');
+        return '<div class="trace-stage" style="padding:8px 11px"><i></i><div><b>' + esc(h.group || h.selector || '自动节点池') + ' ' + esc(h.to_node || h.selected || '新出口') + '</b><span>' + esc(h.reason || '延迟劣化自动平滑切换') + '</span></div><strong>' + esc(ts) + '</strong></div>';
+      }) : [];
+      const rotList = Array.isArray(state.multiLineRotationLog) ? state.multiLineRotationLog.slice(-20).reverse() : [];
+      const dwellBypassCnt = Number(state.dwellBypassCalls || 0);
+      const rotRows = rotList.map(r => {
+        const ts = r.ts ? new Date(r.ts * 1000).toLocaleTimeString('zh-CN', { hour12: false }) : '轮询';
+        const gtObj = (r.group_targets && typeof r.group_targets === 'object') ? r.group_targets : {};
+        const gtTxt = Object.entries(gtObj).map(([gk, gv]) => gk.replace(/^Shunt_/, '') + '→' + cleanNodeDisplayName(gv)).join(' · ');
+        return '<div class="trace-stage" style="padding:8px 11px"><i></i><div><b>[多出口轮询] ' + esc(r.pool_tag || r.pool_id || '自动池') + ' → ' + esc(cleanNodeDisplayName(r.selected || '')) + '</b><span>候选 ' + Number(r.candidate_nodes_count || 0) + ' 线' + (gtTxt ? (' · ' + esc(gtTxt)) : '') + ' · 驻留旁路 ' + dwellBypassCnt + ' 次</span></div><strong>' + esc(ts) + '</strong></div>';
+      });
+      const combinedRows = swRows.concat(rotRows);
+      if (combinedRows.length) {
+        histEl.innerHTML = combinedRows.slice(0, 20).join('');
       } else {
-        histEl.innerHTML = '<div class="trace-stage" style="padding:10px 12px"><i></i><div><b>当前全部自动节点池运行稳定 · 零异常抖动</b><span>单组去重省流探测开启中，仅当主组节点连续不可达或劣化超阈值时触发无感热切换</span></div><strong>防抖就绪</strong></div>';
+        histEl.innerHTML = '<div class="trace-stage" style="padding:10px 12px"><i></i><div><b>当前全部自动节点池运行稳定 · 零异常抖动</b><span>单组去重省流探测与 30s 驻留防抖开启中（显式旁路 ' + dwellBypassCnt + ' 次），仅当主组节点连续不可达或劣化超阈值时触发无感热切换</span></div><strong>防抖就绪</strong></div>';
       }
     }
-    const dynGrpCnt = (mock.groups && mock.groups.length) ? mock.groups.length : 16;
-    const dynPoolCnt = (mock.autoPools && mock.autoPools.length) ? mock.autoPools.length : 6;
+    const dynGrpCnt = (mock.groups && mock.groups.length) ? mock.groups.length : '--';
+    const dynPoolCnt = (mock.autoPools && mock.autoPools.length) ? mock.autoPools.length : '--';
     const shHeroGrp = $('#shunt-hero-stat-groups');
     if (shHeroGrp) shHeroGrp.textContent = dynGrpCnt + ' 组';
     const shHeroPools = $('#shunt-hero-stat-pools');
@@ -1530,14 +1550,15 @@
       const title = it.title || it.group_title || it.rule || it.outbound || it.key || ('排行项 #' + (idx + 1));
       const sub = it.subtitle || (it.sample_target ? ('代表目标: ' + it.sample_target) : '最近 1 小时活跃匹配');
       const hits = Number(it.hits != null ? it.hits : (it.count || 0));
-      const pct = Number(it.share_pct != null ? it.share_pct : (it.pct || 0)).toFixed(1);
+      const rawPct = (it.share_pct != null && Number(it.share_pct) > 0) ? Number(it.share_pct) : ((it.pct != null && Number(it.pct) > 0) ? Number(it.pct) : (totalHits > 0 ? ((hits / totalHits) * 100) : 0));
+      const pct = Math.min(100, Math.max(0, rawPct)).toFixed(1);
       const bytesStr = it.bytes_str || fmtBytes(it.bytes || 0);
       const filterKey = it.sample_target || it.key || title;
       return '<div class="hit-stat-row" data-action="filter-conn-by-hit" data-hit-query="' + esc(filterKey) + '" title="点击筛选「' + esc(title) + '」关联的实时连接">' +
         '<span class="hit-rank-badge">#' + (idx + 1) + '</span>' +
         '<div style="min-width:0"><b style="display:block;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(title) + '</b><small style="display:block;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(sub) + '</small></div>' +
         '<div class="thin-progress" style="margin:0"><i style="width:' + Math.max(6, Math.min(100, Number(pct))) + '%"></i></div>' +
-        '<span class="status-pill">' + esc(hits) + ' 次 (' + esc(pct) + '%)</span>' +
+        '<span class="status-pill num">' + esc(Number(hits).toLocaleString('zh-CN')) + ' 次 (' + esc(pct) + '%)</span>' +
         '<strong class="mono" style="color:var(--cyan)">' + esc(bytesStr) + '</strong>' +
       '</div>';
     }).join('');
@@ -3304,6 +3325,10 @@
           if (sh.global_country) state.globalCountry = sh.global_country;
           if (sh.global_manual_node != null) state.globalManualNode = sh.global_manual_node;
           if (sh.global_resolved_node != null) state.globalResolvedNode = sh.global_resolved_node;
+          state.multiLineRotationLog = Array.isArray(sh.multi_line_rotation_log)
+            ? sh.multi_line_rotation_log
+            : (Array.isArray(stRes.multi_line_rotation_log) ? stRes.multi_line_rotation_log : (state.multiLineRotationLog || []));
+          state.dwellBypassCalls = Number(sh.dwell_bypass_calls != null ? sh.dwell_bypass_calls : (stRes.dwell_bypass_calls != null ? stRes.dwell_bypass_calls : (state.dwellBypassCalls || 0)));
           if (Array.isArray(sh.auto_nodes)) {
             state.rawAutoNodes = sh.auto_nodes;
             mock.autoPools = sh.auto_nodes.map(a => {
@@ -3342,8 +3367,10 @@
                 capacity_shortfall: Boolean(a.capacity_shortfall),
                 unbound_pool_warning: Boolean(a.unbound_pool_warning),
                 bound_shunt_groups: Array.isArray(a.bound_shunt_groups) ? a.bound_shunt_groups : [],
-                bound_group_targets: (a.bound_group_targets && typeof a.bound_group_targets === 'object') ? a.bound_group_targets : {},
-                multi_line_rotation_log: Array.isArray(a.multi_line_rotation_log) ? a.multi_line_rotation_log : [],
+                bound_group_targets: Array.isArray(a.bound_group_targets) ? a.bound_group_targets : [],
+                multi_line_rotation_log: Array.isArray(a.multi_line_rotation_log)
+                  ? a.multi_line_rotation_log
+                  : (Array.isArray(sh.multi_line_rotation_log) ? sh.multi_line_rotation_log.filter(r => r && r.pool_id === a.id) : []),
                 verified_service_count: Number(a.verified_service_count != null ? a.verified_service_count : 0),
                 fresh_ok_count: Number(a.fresh_ok_count != null ? a.fresh_ok_count : 0),
                 last_real_probe_ts: Number(a.last_real_probe_ts || a.last_check_ts || 0),
@@ -3370,6 +3397,7 @@
                 current_google_region: a.current_google_region || '',
                 dispatch_mode: a.dispatch_mode || 'single_best',
                 multi_line_nodes: Array.isArray(a.multi_line_nodes) ? a.multi_line_nodes : [],
+                multi_line_filtered_slow_count: Number(a.multi_line_filtered_slow_count || 0),
                 active_lines_count: (a.active_lines_count != null) ? Number(a.active_lines_count) : (Array.isArray(a.multi_line_nodes) ? a.multi_line_nodes.length : 1),
                 multi_line_locked: Boolean(a.multi_line_locked),
                 multi_line_locked_reason: a.multi_line_locked_reason || '',
@@ -5224,14 +5252,15 @@
           }
         } else {
           failCount++;
+          const isStalePreview = Boolean(res && res.error === 'stale_preview');
           const errMsg = (res && (res.message || res.error)) || '连接订阅源超时或解析失败';
           if (badgeEl) {
-            badgeEl.textContent = '同步失败';
-            badgeEl.style.color = 'var(--rose)';
-            badgeEl.style.borderColor = 'var(--rose)';
+            badgeEl.textContent = isStalePreview ? '预览过期 · 需重算' : '同步失败';
+            badgeEl.style.color = isStalePreview ? 'var(--amber)' : 'var(--rose)';
+            badgeEl.style.borderColor = isStalePreview ? 'var(--amber)' : 'var(--rose)';
           }
           if (detailEl) {
-            detailEl.textContent = '失败原因：' + errMsg;
+            detailEl.textContent = isStalePreview ? ('安全拦截：' + errMsg) : ('失败原因：' + errMsg);
             detailEl.style.color = 'var(--rose)';
           }
         }
@@ -6371,6 +6400,27 @@
         await callRouterApi('/api/auto_nodes/probe', 'POST', { id: pid || '', probe_services: false });
         await syncBackendStatus(true, true);
         toast('节点池 URL Ping 测速与最快节点切换已完成');
+        break;
+      }
+      case 'drill-auto-pool-failover': {
+        const pidDrill = el && el.dataset.poolId;
+        state.openPoolMenuIdx = null;
+        renderShuntMatrix();
+        confirmModal(
+          '确认执行沙盒故障转移演练',
+          '将在独立内存沙盒中仅针对当前节点池（' + (pidDrill || '默认池') + '）模拟 3 次跨目标连接故障，验证「日志检测 → 备用节点秒切 → conntrack 校验 → UI 同步 → 原状态恢复」全链路，不影响其它节点池出口与现网连接计数。是否开始演练？',
+          async () => {
+            toast('正在独立沙盒中执行故障转移演练…');
+            const dRes = await callRouterApi('/api/auto_nodes/failover_drill', 'POST', { pool_id: pidDrill || '', auto_restore: true });
+            if (dRes && dRes.ok && dRes.ui_synced && dRes.restored) {
+              toast('沙盒演练通过：' + (dRes.pool_name || pidDrill) + ' 验证 ' + cleanNodeDisplayName(dRes.from_node || '') + ' → ' + cleanNodeDisplayName(dRes.to_node || '') + ' 秒切成功，现网状态与计数零改动');
+              await syncBackendStatus(true, true);
+            } else {
+              toast((dRes && dRes.message) || '故障转移演练未完全通过，请检查池内可用备用节点', 'warn');
+            }
+          },
+          '开始演练'
+        );
         break;
       }
       case 'rescreen-auto-pool': {

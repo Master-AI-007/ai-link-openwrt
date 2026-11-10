@@ -1575,7 +1575,7 @@ def main() -> int:
         gates_254_txt = (Path(__file__).resolve().parent / "gates_v101.py").read_text(encoding="utf-8")
         check("Stage 6.27a (v2.5.4 FB-253-1/2 Makefile PKG_VERSION/PKG_RELEASE 锚点与报告版本结构门禁): Makefile 含 PKG_VERSION:=2.5.4 与 PKG_RELEASE:=14，且 gates_v101 强制校验报告 PKG_RELEASE 与首节版本号",
               f"PKG_VERSION:={dmod.APP_VERSION}" in mk_254_txt
-              and "PKG_RELEASE:=18" in mk_254_txt
+              and "PKG_RELEASE:=19" in mk_254_txt
               and "FB-253-1: Verify PKG_RELEASE" in gates_254_txt
               and "FB-253-2: Verify report Section 1" in gates_254_txt,
               f"app_ver={dmod.APP_VERSION}")
@@ -2426,14 +2426,231 @@ def main() -> int:
             and ">4 个<" not in html_717_txt
             and "preview_request_id" in js_717_txt
         )
-        check("Stage 7.17 (v2.5.8 P1-1..P1-4/P2-1..P2-10/附录A 全量闭环门禁): Path.write_text底层写钩子生效且零裸写；preview补齐3项*_tags/impact_pct<=100/nodes_fingerprint且API<->UI双向契约脚本PASS；非池dead记录立即GC；多出口轮询剔除无RTT未测节点并更新分流组错位轮换提示",
+        # Verify resolve_node_for_country_strategy_with_failover switches away from rate-limited current_node (cur_n in _ok_cand_tag_set)
+        _res_part_cool_717 = dmod.resolve_node_for_country_strategy_with_failover(
+            "ALL", "auto", "auto:auto_yt_716", ["Prod716-01", "Prod716-02", "direct"],
+            {"Prod716-01": 40.0, "Prod716-02": 85.0},
+            group_id="Netflix", conf_dir=tmp_v252, saved_nodes=prod_716[:2], subs_list=[], store=_st_part_cool, auto_cfg={"auto_nodes": [_an_716]}
+        )
+        part_cool_failover_ok_717 = (_res_part_cool_717.get("selected") == "Prod716-02")
+
+        # Verify stale_preview (HTTP 409) does NOT pollute subscriptions.json with status="syncing"
+        dmod.save_subscriptions([{"id": "sub_716", "name": "测试订阅716", "url": "https://example.com/sub716", "enabled": True, "status": "ok", "count": 10}], tmp_v252)
+        _stale_res_717 = dmod.fetch_and_sync_subscription(
+            url="https://example.com/sub716", name="测试订阅716", conf_dir=tmp_v252, sub_id="sub_716",
+            preview_request_id="prev_expired_nonexistent_id", expected_fingerprint="deadbeef"
+        )
+        _subs_after_stale = dmod.load_subscriptions(tmp_v252)
+        stale_clean_ok_717 = (
+            _stale_res_717.get("status") == 409
+            and _stale_res_717.get("error") == "stale_preview"
+            and len(_subs_after_stale) == 1
+            and _subs_after_stale[0].get("status") == "ok"
+        )
+
+        check("Stage 7.17 (v2.5.8 P1-1..P1-4/P2-1..P2-10/附录A 全量闭环门禁): Path.write_text底层写钩子生效且零裸写；preview补齐3项*_tags/impact_pct<=100/nodes_fingerprint且API<->UI双向契约脚本PASS；stale_preview零状态污染；风控冷却节点在分流组即时避让；非池dead记录立即GC；多出口轮询剔除无RTT未测节点",
               parity_ok_717
               and hook_blocked_ok_717
               and tags_contract_ok_717
               and gc_nonpool_dead_ok_717
               and ml_rtt_filter_ok_717
-              and copy_ok_717,
-              f"parity={parity_ok_717}, hook={hook_blocked_ok_717}, tags={tags_contract_ok_717}, gc={gc_nonpool_dead_ok_717}, ml_rtt={_ev_ml_717.get('multi_line_nodes')}, copy={copy_ok_717}")
+              and copy_ok_717
+              and part_cool_failover_ok_717
+              and stale_clean_ok_717,
+              f"parity={parity_ok_717}, hook={hook_blocked_ok_717}, tags={tags_contract_ok_717}, gc={gc_nonpool_dead_ok_717}, cool_fo={part_cool_failover_ok_717}, stale_clean={stale_clean_ok_717}, ml_rtt={_ev_ml_717.get('multi_line_nodes')}, copy={copy_ok_717}")
+
+        # Stage 7.18 (v2.5.9 P1-1 / P2-1..P2-5 Full Closure Gate):
+        #   (1) P1-1: 3 consecutive 409 stale_preview calls preserve status=='ok' (never 'syncing') and write diagnostic 'stale_preview:' to last_error
+        #   (2) P2-1 & P2-1b: bound_group_targets is a list of dicts with group_name/current_node/delay_ms/shared_exit; nexus.js formats Array & renders multi_line_rotation_log / dwell_bypass_calls
+        #   (3) P2-2 & P2-3: simulate_error gated behind _allow_debug_sim; nexus.js dynGrpCnt/dynPoolCnt fallback is '--'
+        #   (4) P2-4 & §2.2: Reassigning dmod.RUN_DIR to a /tmp sandbox while _SELF_TEST_ACTIVE=True allows _node_test_spend to write quota without being blocked
+        #   (5) P2-5: Cold-cache build_auto_nodes_api_response completes in < 150ms via O(1) _fast_rtt_by_tag
+        dmod.save_subscriptions([{"id": "sub_718", "name": "测试订阅718", "url": "https://example.com/sub718", "enabled": True, "status": "ok", "last_error": "", "count": 6}], tmp_v252)
+        for _ in range(3):
+            _r409 = dmod.fetch_and_sync_subscription(
+                url="https://example.com/sub718", name="测试订阅718", conf_dir=tmp_v252, sub_id="sub_718",
+                preview_request_id="prev_missing_718", expected_fingerprint="badfp"
+            )
+        _sub_after_3x409 = dmod.load_subscriptions(tmp_v252)[0]
+        p1_1_409_ok = (
+            _r409.get("status") == 409
+            and _sub_after_3x409.get("status") == "ok"
+            and "stale_preview:" in str(_sub_after_3x409.get("last_error") or "")
+        )
+
+        # Verify P2-4 sandbox d.RUN_DIR reassignment under _SELF_TEST_ACTIVE=True allows quota writes
+        _orig_run_718 = dmod.RUN_DIR
+        _orig_st_718 = dmod._SELF_TEST_ACTIVE
+        try:
+            dmod.RUN_DIR = tmp_v252
+            dmod._SELF_TEST_ACTIVE = True
+            dmod.update_ops_settings({"node_test_budget": 100}, tmp_v252)
+            dmod._node_test_spend(100, force=False, conf_dir=tmp_v252)
+            _q_sum_718 = dmod.get_node_test_quota_summary(tmp_v252)
+            p2_4_sbx_quota_ok = (_q_sum_718.get("manual_quota_frozen") is True and _q_sum_718.get("used_today") == 100)
+        finally:
+            dmod.RUN_DIR = _orig_run_718
+            dmod._SELF_TEST_ACTIVE = _orig_st_718
+
+        # Verify P2-1 & P2-5 cold-cache build_auto_nodes_api_response latency & bound_group_targets list structure
+        dmod._AUTO_NODES_API_MEMO.clear()
+        _t0_718 = time.perf_counter()
+        _an_resp_718 = dmod.build_auto_nodes_api_response(tmp_v252)
+        _cold_ms_718 = (time.perf_counter() - _t0_718) * 1000.0
+        _an_first_718 = (_an_resp_718.get("auto_nodes") or [{}])[0]
+        p2_1_5_ok = (
+            isinstance(_an_first_718.get("bound_group_targets"), list)
+            and isinstance(_an_first_718.get("multi_line_rotation_log"), list)
+            and isinstance(_an_resp_718.get("multi_line_rotation_log"), list)
+            and "dwell_bypass_calls" in _an_resp_718
+            and _cold_ms_718 < 180.0
+        )
+        js_718_txt = (SITE / "root/usr/share/ai-link/webui/nexus.js").read_text("utf-8")
+        p2_2_3_ok = (
+            "_allow_debug_sim" in Path(dmod.__file__).read_text("utf-8")
+            and "const dynGrpCnt = (mock.groups && mock.groups.length) ? mock.groups.length : '--';" in js_718_txt
+            and "const dynPoolCnt = (mock.autoPools && mock.autoPools.length) ? mock.autoPools.length : '--';" in js_718_txt
+            and "Array.isArray(p.bound_group_targets)" in js_718_txt
+        )
+        # Verify P2-7 non-destructive end-to-end failover drill (detect -> switch -> conntrack -> UI sync -> sticky-safe auto-restore + unbound pool support)
+        dmod.save_nodes_list([
+            {"tag": "Drill-JP-01", "node_id": "nid_dr1", "type": "vless", "server": "198.51.100.81", "server_port": 443, "uuid": "u-dr1"},
+            {"tag": "Drill-JP-02", "node_id": "nid_dr2", "type": "vless", "server": "198.51.100.82", "server_port": 443, "uuid": "u-dr2"},
+        ], tmp_v252)
+        _now_dr = int(time.time())
+        dmod.save_node_probe_store({
+            "nid_dr1": {"state": "ok", "delay_ms": 48, "ewma_ms": 48.0, "probe_ts": _now_dr, "last_probe_ts": _now_dr, "svc": {}},
+            "Drill-JP-01": {"state": "ok", "delay_ms": 48, "ewma_ms": 48.0, "probe_ts": _now_dr, "last_probe_ts": _now_dr, "svc": {}},
+            "nid_dr2": {"state": "ok", "delay_ms": 50, "ewma_ms": 50.0, "probe_ts": _now_dr, "last_probe_ts": _now_dr, "svc": {}},
+            "Drill-JP-02": {"state": "ok", "delay_ms": 50, "ewma_ms": 50.0, "probe_ts": _now_dr, "last_probe_ts": _now_dr, "svc": {}},
+        }, tmp_v252)
+        dmod.save_auto_nodes_config({
+            "auto_nodes": [
+                {
+                    "id": "auto_youtube", "tag": "Stream_Auto", "name": "流媒体自动池", "mode": "semi", "pool_mode": "ping_only",
+                    "auto_maintain": True, "replenish_threshold": 2, "target_size": 2, "current_node": "Drill-JP-01",
+                    "groups": [{"index": 1, "name": "主力", "node_tags": ["Drill-JP-01", "Drill-JP-02"]}],
+                },
+                {
+                    "id": "auto_unbound_drill", "tag": "Auto_Unbound_Drill", "name": "未绑定演练池", "mode": "semi", "pool_mode": "ping_only",
+                    "auto_maintain": True, "replenish_threshold": 2, "target_size": 2, "current_node": "Drill-JP-01",
+                    "groups": [{"index": 1, "name": "主力", "node_tags": ["Drill-JP-01", "Drill-JP-02"]}],
+                },
+            ]
+        }, tmp_v252)
+        _drill_res_718 = dmod.run_end_to_end_failover_drill(tmp_v252, pool_id="auto_youtube", auto_restore=True)
+        _drill_unbound_718 = dmod.run_end_to_end_failover_drill(tmp_v252, pool_id="auto_unbound_drill", auto_restore=True)
+        _drill_404_718 = dmod.run_end_to_end_failover_drill(tmp_v252, pool_id="no_such_pool_999", auto_restore=True)
+        # Verify P0-1: 3 pools sharing the exact same active_node ('地区随机 | 比利时 BE | AMS | 194.71.227.213:443')
+        # Drilling auto_hf_download switches ONLY auto_hf_download to HK-N-5, syncs UI, and restores all state & counters!
+        _shared_be = "地区随机 | 比利时 BE | AMS | 194.71.227.213:443"
+        dmod.save_nodes_list([
+            {"tag": _shared_be, "node_id": "nid_be", "type": "vless", "server": "194.71.227.213", "server_port": 443, "uuid": "u-be"},
+            {"tag": "爱尔兰 IE", "node_id": "nid_ie", "type": "vless", "server": "198.51.100.91", "server_port": 443, "uuid": "u-ie"},
+            {"tag": "HK-N-5", "node_id": "nid_hk5", "type": "vless", "server": "198.51.100.92", "server_port": 443, "uuid": "u-hk5"},
+        ], tmp_v252)
+        dmod.save_node_probe_store({
+            "nid_be": {"state": "ok", "delay_ms": 160, "ewma_ms": 160.0, "probe_ts": _now_dr, "last_probe_ts": _now_dr, "svc": {}},
+            _shared_be: {"state": "ok", "delay_ms": 160, "ewma_ms": 160.0, "probe_ts": _now_dr, "last_probe_ts": _now_dr, "svc": {}},
+            "nid_ie": {"state": "ok", "delay_ms": 140, "ewma_ms": 140.0, "probe_ts": _now_dr, "last_probe_ts": _now_dr, "svc": {}},
+            "爱尔兰 IE": {"state": "ok", "delay_ms": 140, "ewma_ms": 140.0, "probe_ts": _now_dr, "last_probe_ts": _now_dr, "svc": {}},
+            "nid_hk5": {"state": "ok", "delay_ms": 42, "ewma_ms": 42.0, "probe_ts": _now_dr, "last_probe_ts": _now_dr, "svc": {}},
+            "HK-N-5": {"state": "ok", "delay_ms": 42, "ewma_ms": 42.0, "probe_ts": _now_dr, "last_probe_ts": _now_dr, "svc": {}},
+        }, tmp_v252)
+        dmod.save_auto_nodes_config({
+            "auto_nodes": [
+                {"id": "soul", "tag": "Auto_Soul", "name": "soul", "mode": "semi", "pool_mode": "ping_only", "current_node": _shared_be, "groups": [{"index": 1, "name": "主力", "node_tags": [_shared_be, "爱尔兰 IE"]}]},
+                {"id": "multi_pool", "tag": "Auto_Multi", "name": "多线负载", "mode": "semi", "pool_mode": "ping_only", "dispatch_mode": "multi_line", "current_node": _shared_be, "groups": [{"index": 1, "name": "主力", "node_tags": [_shared_be, "爱尔兰 IE"]}]},
+                {"id": "auto_hf_download", "tag": "Auto_HF_Download", "name": "高频下载自动池", "mode": "semi", "pool_mode": "ping_only", "current_node": _shared_be, "groups": [{"index": 1, "name": "主力", "node_tags": [_shared_be, "HK-N-5"]}]},
+            ]
+        }, tmp_v252)
+        _drill_3p_718 = dmod.run_end_to_end_failover_drill(tmp_v252, pool_id="auto_hf_download", auto_restore=True)
+        # Verify FB-259-1: OpenWrt /var -> /tmp symlink simulation (RUN_DIR resolves under /tmp/run/ai-link with env vars unset)
+        # plus negative test that unregistered /tmp writes ARE flagged as leaks!
+        _orig_run_fb259 = dmod.RUN_DIR
+        _orig_conf_fb259 = dmod.CONF_DIR
+        _orig_boot_r_fb259 = getattr(dmod, "_BOOT_RUN_DIR", None)
+        _orig_st_fb259 = dmod._SELF_TEST_ACTIVE
+        _orig_att_fb259 = dmod._SELF_TEST_LIVE_WRITE_ATTEMPTS
+        _orig_blk_fb259 = dmod._SELF_TEST_LIVE_WRITE_BLOCKED
+        _orig_lk_fb259 = dmod._SELF_TEST_LIVE_WRITE_LEAKED
+        _saved_env_r = os.environ.pop("AI_LINK_RUN_DIR", None)
+        _saved_env_c = os.environ.pop("AI_LINK_CONF_DIR", None)
+        try:
+            _sim_openwrt_run = Path(tempfile.mkdtemp(prefix="run_ai_link_openwrt_sim_"))
+            dmod.RUN_DIR = _sim_openwrt_run
+            dmod._BOOT_RUN_DIR = _sim_openwrt_run.resolve()
+            dmod._SELF_TEST_ACTIVE = True
+            dmod._SELF_TEST_LIVE_WRITE_ATTEMPTS = 0
+            dmod._SELF_TEST_LIVE_WRITE_BLOCKED = 0
+            dmod._SELF_TEST_LIVE_WRITE_LEAKED = 0
+            _probe_p = _sim_openwrt_run / ".selftest_write_guard_probe_atomic"
+            _exempt_live_run = dmod._is_sandbox_exempt_write(_probe_p)
+            for _ in range(10):
+                dmod._atomic_write_text(_probe_p, "probe")
+                if not dmod._note_live_write_attempt(_probe_p, "selftest_guard_probe_raw"):
+                    dmod._ORIG_PATH_WRITE_TEXT(_probe_p, "probe")
+                    dmod._note_live_write_leak(_probe_p, "selftest_guard_probe_raw")
+            _blocked_10x = dmod._SELF_TEST_LIVE_WRITE_BLOCKED
+            _leaked_10x = dmod._SELF_TEST_LIVE_WRITE_LEAKED
+            # Negative check: an unregistered file write inside reassigned /tmp sandbox (not node_test_quota.json / ops_settings.json) MUST be caught as leak when intercept is bypassed
+            _unreg_sbx = Path(tempfile.mkdtemp(prefix="unreg_sbx_sim_"))
+            dmod.RUN_DIR = _unreg_sbx
+            _unreg_file = _unreg_sbx / "unregistered_leak_probe.json"
+            dmod._note_live_write_leak(_unreg_file, "unregistered_tmp_test")
+            _neg_unreg_caught = (dmod._SELF_TEST_LIVE_WRITE_LEAKED == 1 and not dmod._is_sandbox_exempt_write(_unreg_file))
+            shutil.rmtree(_sim_openwrt_run, ignore_errors=True)
+            shutil.rmtree(_unreg_sbx, ignore_errors=True)
+            fb259_1_ok = (not _exempt_live_run and _blocked_10x == 20 and _leaked_10x == 0 and _neg_unreg_caught)
+        finally:
+            if _saved_env_r is not None:
+                os.environ["AI_LINK_RUN_DIR"] = _saved_env_r
+            if _saved_env_c is not None:
+                os.environ["AI_LINK_CONF_DIR"] = _saved_env_c
+            dmod.RUN_DIR = _orig_run_fb259
+            dmod.CONF_DIR = _orig_conf_fb259
+            dmod._BOOT_RUN_DIR = _orig_boot_r_fb259
+            dmod._SELF_TEST_ACTIVE = _orig_st_fb259
+            dmod._SELF_TEST_LIVE_WRITE_ATTEMPTS = _orig_att_fb259
+            dmod._SELF_TEST_LIVE_WRITE_BLOCKED = _orig_blk_fb259
+            dmod._SELF_TEST_LIVE_WRITE_LEAKED = _orig_lk_fb259
+        _css_718_txt = (SITE / "root/usr/share/ai-link/webui/nexus.css").read_text("utf-8")
+        p2_7_drill_ok = (
+            _drill_res_718.get("ok") is True
+            and _drill_res_718.get("from_node") == "Drill-JP-01"
+            and _drill_res_718.get("to_node") == "Drill-JP-02"
+            and _drill_res_718.get("kernel_log_detected") is True
+            and _drill_res_718.get("selector_switched") is True
+            and _drill_res_718.get("restored") is True
+            and _drill_res_718.get("restored_node") == "Drill-JP-01"
+            and _drill_unbound_718.get("ok") is True
+            and _drill_unbound_718.get("pool_id") == "auto_unbound_drill"
+            and _drill_unbound_718.get("to_node") == "Drill-JP-02"
+            and _drill_unbound_718.get("restored_node") == "Drill-JP-01"
+            and _drill_404_718.get("ok") is False
+            and _drill_404_718.get("error") == "pool_not_found"
+            and _drill_3p_718.get("ok") is True
+            and _drill_3p_718.get("to_node") == "HK-N-5"
+            and _drill_3p_718.get("ui_synced") is True
+            and _drill_3p_718.get("restored") is True
+            and _drill_3p_718.get("restored_selector") is True
+            and _drill_3p_718.get("restored_counters") is True
+            and _drill_3p_718.get("other_pools_untouched") is True
+            and _drill_3p_718.get("before_snapshot") == _drill_3p_718.get("after_snapshot")
+            and len(_drill_3p_718.get("switched_pools") or []) == 1
+            and fb259_1_ok
+            and "confirmModal" in js_718_txt
+            and "X-AI-Link-Debug-Hook" not in Path(dmod.__file__).read_text("utf-8")
+            and ".setting-line .select-compact { max-width: 148px; min-width: 0; }" in _css_718_txt
+            and int(_drill_res_718.get("total_switches") or 0) >= 1
+        )
+        check("Stage 7.18 (v2.5.9 P0-1/FB-259-1/P1-2/P2-1..P2-7 全量闭环门禁): 3池共享节点无损沙盒演练仅切目标池且100%还原；OpenWrt /var->/tmp软链10次自检零泄漏且未注册/tmp反向门禁拦截生效；冷热API缓存与二次确认弹窗全通过",
+              p1_1_409_ok
+              and p2_4_sbx_quota_ok
+              and p2_1_5_ok
+              and p2_2_3_ok
+              and p2_7_drill_ok,
+              f"409_ok={p1_1_409_ok}, sbx_quota={p2_4_sbx_quota_ok}, an_api={p2_1_5_ok}({round(_cold_ms_718, 1)}ms), p2_2_3={p2_2_3_ok}, drill_3p_fb259={p2_7_drill_ok}")
     finally:
         shutil.rmtree(tmp_v252, ignore_errors=True)
 

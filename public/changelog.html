@@ -18,7 +18,7 @@
         <circle cx="20" cy="20" r="5.4" fill="none" stroke="#a994ff" stroke-width="1.6"/>
         <circle cx="20" cy="20" r="1.8" fill="#6ee7f5"/>
       </svg>
-      <span style="display:block"><b>AI-LINK</b><span>NEXUS · 2.5.8</span></span>
+      <span style="display:block"><b>AI-LINK</b><span>NEXUS · 2.5.9</span></span>
     </a>
     <div class="nav-links">
       <a href="/#features">核心能力</a>
@@ -36,12 +36,22 @@
 <main class="wrap log-wrap">
   <div class="log-head">
     <h1>更新日志</h1>
-    <span class="pill"><i></i> 当前最新 2.5.8</span>
+    <span class="pill"><i></i> 当前最新 2.5.9</span>
   </div>
 <article class="log-item latest">
   <div class="log-top">
-    <h2>v2.5.8</h2>
+    <h2>v2.5.9</h2>
     <span class="tag c">最新</span>
+    <time>2026-11-10</time>
+  </div>
+  <p style="margin:2px 0 6px;color:var(--dim)"></p>
+<h3>真机写拦截根治 + 演练沙盒化 + 订阅与可观测性契约闭环</h3>
+<ul><li><b>P1-1 &amp; FB-259-1 真机自检写拦截根治</b>：移除易误判的 <code>/tmp</code> 前缀放行，新增 <code>_is_sandbox_exempt_write()</code> 统一守卫；将启动期锁定的 <code>_BOOT_CONF_DIR</code> / <code>_BOOT_RUN_DIR</code> 与 <code>/etc/ai-link</code>、<code>/var/run/ai-link</code>、<code>/tmp/run/ai-link</code> 列为严禁豁免的生产根，仅进程内动态改写目录至独立沙盒且写入注册状态文件时豁免。兼容 OpenWrt <code>/var → /tmp</code> 符号链接，真机不设任何环境变量连续 10 次自检全部 <code>RC=0</code>（<code>blocked=7 / leaked=0</code>）、生产文件哈希零变化；负向关闭拦截仍正确报 <code>leaked 7 (blocked=0)</code>。</li><li><b>P0-1 故障转移演练沙盒化与单池隔离</b>：<code>run_end_to_end_failover_drill()</code> 全程拷贝配置至隔离目录（<code>sandbox_drill=True</code>），禁止真实 Clash API PUT / 宿主 conntrack 清理 / 全局计数递增；<code>scan_kernel_logs_for_active_pool_failures()</code> 新增 <code>only_pool_id</code> 精确作用域，多池共享节点时只演练目标池，结束校验快照 100% 还原。</li><li><b>P1-1 订阅预览状态</b>：<code>409 stale_preview</code> 校验前置到 <code>status=&quot;syncing&quot;</code> 之前，保持原订阅状态并写入可诊断 <code>last_error</code>，连续 3 次 409 不卡死。</li><li><b>P2-1/1b 可观测性契约</b>：<code>bound_group_targets</code> 按数组渲染并显示组间共享出口；<code>multi_line_rotation_log</code> / <code>dwell_bypass_calls</code> 在 API 顶层与单池同步挂载，面板渲染最近轮换轨迹；<code>tools/check_api_ui_parity.py</code> 扩展至字段名、类型与层级位置校验。</li><li><b>P2-2~P2-7</b>：<code>simulate_error</code> 调试钩子增加生产守卫；静态数字兜底改 <code>--</code>；隔离沙盒配额写入改用显式注册；<code>/api/auto_nodes</code> 冷缓存首样本 407ms → 22.3ms；新增无损故障转移演练 API 与菜单按钮；多出口轮询文案、RTT&gt;0 门槛与游标保持。</li><li><b>七项交付标准保持</b>：11 行指纹逐行校验（11/11 全对）与 1 字节篡改转红、连续中文章节、112+ 条目交接包布局声明、12 夹具随包、测试数值实跑后置注入、零补发 15/15。</li><li>验收：原始包零补发 <code>run_all 15/15 PASS / RC=0</code>、自检 10/10、混沌 <b>81/81</b>、门禁双布局 <b>17/17</b>、design-lint 18/18、静态资源 8/8、<code>INSTALL_RC=0</code>、<code>nft=1</code>、重启后稳定、UI 零异常三视口零溢出。</li></ul>
+</article>
+<article class="log-item">
+  <div class="log-top">
+    <h2>v2.5.8</h2>
+    <span class="tag">历史</span>
     <time>2026-11-10</time>
   </div>
   <p style="margin:2px 0 6px;color:var(--dim)"></p>

@@ -46,6 +46,8 @@ _DEFAULT_WEBUI = str((Path(__file__).resolve().parent / "webui") if (Path(__file
 WEBUI_DIR = Path(os.environ.get("AI_LINK_WEBUI_DIR", _DEFAULT_WEBUI))
 RUN_DIR = Path(os.environ.get("AI_LINK_RUN_DIR", "/var/run/ai-link"))
 CACHE_DIR = Path(os.environ.get("AI_LINK_CACHE_DIR", "/tmp/ai-link-cache"))
+_BOOT_CONF_DIR = CONF_DIR.resolve()
+_BOOT_RUN_DIR = RUN_DIR.resolve()
 
 SENSITIVE_CONF_FILES = frozenset({
     "nodes.json", "nodes.json.bak",
@@ -90,7 +92,7 @@ _ORIG_PATH_WRITE_BYTES = Path.write_bytes
 
 
 def _guarded_path_write_text(self: Path, data: str, *args, **kwargs):
-    if globals().get("_SELF_TEST_ACTIVE", False):
+    if globals().get("_SELF_TEST_ACTIVE", False) and isinstance(self, Path):
         if "_note_live_write_attempt" in globals() and _note_live_write_attempt(self, "Path.write_text"):
             return 0
         if "_note_live_write_leak" in globals():
@@ -99,7 +101,7 @@ def _guarded_path_write_text(self: Path, data: str, *args, **kwargs):
 
 
 def _guarded_path_write_bytes(self: Path, data: bytes, *args, **kwargs):
-    if globals().get("_SELF_TEST_ACTIVE", False):
+    if globals().get("_SELF_TEST_ACTIVE", False) and isinstance(self, Path):
         if "_note_live_write_attempt" in globals() and _note_live_write_attempt(self, "Path.write_bytes"):
             return 0
         if "_note_live_write_leak" in globals():
@@ -118,7 +120,12 @@ def _atomic_write_text(target: Path, content: str, encoding: str = "utf-8") -> N
     if "_note_live_write_leak" in globals():
         _note_live_write_leak(target, "atomic_write_text")
     target.parent.mkdir(parents=True, exist_ok=True)
-    if target.name not in ("traffic_ledger.json",):
+    if target.name not in (
+        "traffic_ledger.json", "node_test_quota.json", "auto_probe_rounds.json",
+        "auto_pool_runtime.json", "dns_stats.json", "sonar_probe_cache.json",
+        "sub_jaccard_ring.json", "ai-link.nft", "homelink_ports.nft",
+        "node_ips.txt", "lan_direct_macs.txt", ".applied_core_rule_hash", "node_probe.json",
+    ):
         for _m_name in ("_SHUNT_API_MEMO", "_NODES_API_MEMO", "_AUTO_NODES_API_MEMO", "_STATUS_API_MEMO", "_HOMELINK_API_MEMO", "_DNS_TELEM_MEMO", "_MTIMES_FAST_CACHE", "_JSON_WIRE_MEMO", "_FAST_FILE_CACHE"):
             _m = globals().get(_m_name)
             if isinstance(_m, dict):
@@ -2578,27 +2585,43 @@ _RELOAD_LOCK = threading.Lock()
 _RELOAD_MIN_INTERVAL = 1.8
 _LAST_RESPAWN_FINISH_TS = 0.0
 
+_LIVE_SB_PID_MEMO = {"ts": 0.0, "sig": None, "pids": []}
+
 def _get_live_singbox_pids() -> list:
     """Returns non-zombie sing-box daemon PIDs (excluding short-lived `version`/`check`/`rule-set` auxiliary CLI processes)."""
+    now = time.time()
+    pid_sig = _get_file_sig(RUN_DIR / "ai-link-core.pid") if " _file_sig" in globals() or "_file_sig" in globals() else None
+    if (now - _LIVE_SB_PID_MEMO["ts"]) < 0.8 and _LIVE_SB_PID_MEMO["sig"] == pid_sig:
+        return list(_LIVE_SB_PID_MEMO["pids"])
     pids = []
-    for pdir in Path("/proc").glob("[0-9]*"):
-        try:
-            if (pdir / "comm").read_text(encoding="utf-8").strip() != "sing-box":
-                continue
-            st_File = pdir / "status"
-            if st_File.is_file():
-                st_txt = st_File.read_text(encoding="utf-8", errors="ignore")
-                if "State:\tZ" in st_txt or "State: Z" in st_txt:
+    try:
+        with os.scandir("/proc") as it:
+            for entry in it:
+                name = entry.name
+                if not name.isdigit():
                     continue
-            cmd_File = pdir / "cmdline"
-            if cmd_File.is_file():
-                cmd_parts = cmd_File.read_bytes().replace(b"\x00", b" ").decode("utf-8", "ignore").strip().split()
-                if len(cmd_parts) >= 2 and cmd_parts[1] in ("version", "check", "rule-set"):
+                try:
+                    with open(f"/proc/{name}/comm", "rb") as cf:
+                        if cf.read().strip() != b"sing-box":
+                            continue
+                    with open(f"/proc/{name}/status", "rb") as sf:
+                        st_bytes = sf.read(512)
+                        if b"State:\tZ" in st_bytes or b"State: Z" in st_bytes:
+                            continue
+                    with open(f"/proc/{name}/cmdline", "rb") as cmdf:
+                        cmd_parts = cmdf.read().replace(b"\x00", b" ").decode("utf-8", "ignore").strip().split()
+                        if len(cmd_parts) >= 2 and cmd_parts[1] in ("version", "check", "rule-set"):
+                            continue
+                    pids.append(int(name))
+                except Exception:
                     continue
-            pids.append(int(pdir.name))
-        except Exception:
-            continue
-    return sorted(pids)
+    except Exception:
+        pass
+    pids.sort()
+    _LIVE_SB_PID_MEMO["ts"] = now
+    _LIVE_SB_PID_MEMO["sig"] = pid_sig
+    _LIVE_SB_PID_MEMO["pids"] = list(pids)
+    return pids
 
 def _get_min_singbox_proc_age() -> float:
     """Returns minimum age in seconds of currently running sing-box processes (prevents killing sing-box mid-startup)."""
@@ -2961,6 +2984,9 @@ PRESET_SERVICE_CHECKS = [
 ]
 
 def _node_test_quota_path(conf_dir: Path = None) -> Path:
+    boot_r = globals().get("_BOOT_RUN_DIR")
+    if boot_r is not None and Path(RUN_DIR).resolve() != boot_r:
+        return Path(RUN_DIR) / "node_test_quota.json"
     if globals().get("_SELF_TEST_ACTIVE", False):
         return Path(f"/tmp/ai-link-selftest-{os.getpid()}") / "node_test_quota.json"
     return RUN_DIR / "node_test_quota.json"
@@ -3336,7 +3362,8 @@ def verify_url_ping_payload(http_status: int, body: str = "", headers: dict = No
 
 def load_node_probe_store(conf_dir: Path = CONF_DIR) -> dict:
     """Spec §1.4: Single source of truth `/var/run/ai-link/node_probe.json` (with persistent mirror at `/etc/ai-link/node_probe"""
-    is_main_conf = (Path(conf_dir).resolve() == Path(CONF_DIR).resolve())
+    _c_res = Path(conf_dir).resolve()
+    is_main_conf = (_c_res == Path(CONF_DIR).resolve() and (_c_res == Path("/etc/ai-link").resolve() or bool(os.environ.get("AI_LINK_RUN_DIR"))))
     paths = (RUN_DIR / "node_probe.json", conf_dir / "node_probe.json") if is_main_conf else (conf_dir / "node_probe.json",)
     for p in paths:
         if p.is_file():
@@ -3502,16 +3529,23 @@ def save_node_probe_store(store: dict, conf_dir: Path = CONF_DIR, strict_gc: boo
     with _SUB_LOCK:
         store = _gc_orphan_probe_dict(store or {}, conf_dir, strict=strict_gc)
         raw = json.dumps(store, indent=2, ensure_ascii=False)
-        is_live_main = (Path(conf_dir).resolve() == Path(CONF_DIR).resolve() and not globals().get("_SELF_TEST_ACTIVE", False))
+        _c_res_save = Path(conf_dir).resolve()
+        is_live_main = (
+            _c_res_save == Path(CONF_DIR).resolve()
+            and (_c_res_save == Path("/etc/ai-link").resolve() or bool(os.environ.get("AI_LINK_RUN_DIR")))
+            and not globals().get("_SELF_TEST_ACTIVE", False)
+        )
         if is_live_main:
+            _run_wrote = False
             try:
                 RUN_DIR.mkdir(parents=True, exist_ok=True)
                 _atomic_write_text(RUN_DIR / "node_probe.json", raw)
+                _run_wrote = True
             except OSError as _e_diag:
                 globals().get("_record_internal_diag", str)(_e_diag)
             now_m = time.monotonic()
             flash_p = conf_dir / "node_probe.json"
-            if force_flash or not flash_p.is_file() or (now_m - _LAST_PROBE_FLASH_SYNC_TS) >= 180.0:
+            if not _run_wrote or force_flash or not flash_p.is_file() or (now_m - _LAST_PROBE_FLASH_SYNC_TS) >= 180.0:
                 try:
                     conf_dir.mkdir(parents=True, exist_ok=True)
                     _atomic_write_text(flash_p, raw)
@@ -3528,13 +3562,19 @@ def save_node_probe_store(store: dict, conf_dir: Path = CONF_DIR, strict_gc: boo
             _FAST_FILE_CACHE.pop(("probe_store", str(conf_dir / "node_probe.json")), None)
             _FAST_FILE_CACHE.pop(("probe_store", str(RUN_DIR / "node_probe.json")), None)
             _FAST_FILE_CACHE.pop(("auto_nodes_cfg", str(conf_dir)), None)
-        for _m_name in ("_EFF_PROBE_MEMO", "_AUTO_NODES_API_MEMO", "_SHUNT_API_MEMO", "_NODES_API_MEMO", "_STATUS_API_MEMO", "_JSON_WIRE_MEMO"):
-            _m = globals().get(_m_name)
-            if isinstance(_m, dict):
-                try:
-                    _m.clear()
-                except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
-                    globals().get("_record_internal_diag", str)(_e_diag)
+        _EFF_PROBE_MEMO.clear()
+        _STORE_HAS_OK_MEMO.clear()
+        global _LAST_PROBE_API_INVALIDATE_TS
+        _now_inv = time.monotonic()
+        if (not is_live_main) or force_flash or (_now_inv - globals().get("_LAST_PROBE_API_INVALIDATE_TS", 0.0)) >= 15.0:
+            _LAST_PROBE_API_INVALIDATE_TS = _now_inv
+            for _m_name in ("_AUTO_NODES_API_MEMO", "_SHUNT_API_MEMO", "_NODES_API_MEMO", "_STATUS_API_MEMO", "_JSON_WIRE_MEMO"):
+                _m = globals().get(_m_name)
+                if isinstance(_m, dict):
+                    try:
+                        _m.clear()
+                    except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
+                        globals().get("_record_internal_diag", str)(_e_diag)
         return store
 
 def compute_node_sliding_score(rec: dict, svc_checks: list = None) -> dict:
@@ -3640,6 +3680,8 @@ def compute_node_sliding_score(rec: dict, svc_checks: list = None) -> dict:
     }
 
 _EFF_PROBE_MEMO = {}
+_STORE_HAS_OK_MEMO = {}
+_LAST_PROBE_API_INVALIDATE_TS = 0.0
 
 def get_node_effective_probe(node_or_id, store: dict = None, now_ts: int = None, conf_dir: Path = CONF_DIR) -> dict:
     """Spec §2: Evaluates the 4-state machine (`ok | pending | suspect | dead`) for a node: - If never tested (`probe_ts == 0`)"""
@@ -3733,10 +3775,17 @@ def evaluate_node_selectability(node_obj: dict, store: dict = None, subs_list: l
     p_info = get_node_effective_probe(node_obj, store=store, now_ts=now_ts, conf_dir=conf_dir)
     state = p_info["state"]
     visible = bool(sub_en and not node_dis)
-    cold_boot_unprobed = (
-        state == "untested"
-        and not any(isinstance(v, dict) and v.get("state") == "ok" and int(v.get("delay_ms") or 0) > 0 for v in (store or {}).values())
-    )
+    if state == "untested":
+        _sid = id(store) if store is not None else 0
+        _has_ok = _STORE_HAS_OK_MEMO.get(_sid)
+        if _has_ok is None:
+            _has_ok = any(isinstance(v, dict) and v.get("state") == "ok" and int(v.get("delay_ms") or 0) > 0 for v in (store or {}).values())
+            if len(_STORE_HAS_OK_MEMO) > 64:
+                _STORE_HAS_OK_MEMO.clear()
+            _STORE_HAS_OK_MEMO[_sid] = _has_ok
+        cold_boot_unprobed = (not _has_ok)
+    else:
+        cold_boot_unprobed = False
     selectable = bool(visible and (state == "ok" or cold_boot_unprobed))
     if not sub_en:
         ui_badge = "订阅已关闭"
@@ -6268,9 +6317,11 @@ def get_auto_node_candidate_pool(an: dict, conf_dir: Path = CONF_DIR,
             keyword_mode=str(an.get("keyword_mode") or "OR"), exclude_chained_for_pool=str(an.get("id") or ""),
         )
         _cp_in_scope_tags = {n_s.get("tag", "") for n_s in _cp_scoped if isinstance(n_s, dict) and n_s.get("tag")}
-    out = []
+    out_ok = []
+    out_pend = []
     seen = set()
     is_full_cp = (an.get("mode") == "full" or bool(an.get("service_check_enabled")))
+    svc_logic_cp = "any" if (an.get("service_logic") == "any" or an.get("match_mode") == "any") else "all"
     cooldown_bg_items = []
     quarantine_bg_items = []
     for g in groups:
@@ -6290,11 +6341,49 @@ def get_auto_node_candidate_pool(an: dict, conf_dir: Path = CONF_DIR,
             g_reg_info = get_node_google_region_info(n_obj, rec_raw)
             if is_ai_or_google_pool and g_reg_info["google_region"] in UNSUPPORTED_AI_REGIONS:
                 continue
+            svc_passed_cp = True
+            svc_ver_cp = True
+            if is_full_cp and svc_ids:
+                rec_svc_cp = rec_raw.get("svc") if isinstance(rec_raw.get("svc"), dict) else {}
+                t_cnt_cp, p_cnt_cp, f_cnt_cp = 0, 0, 0
+                for sid_cp in svc_ids:
+                    s_e_cp = rec_svc_cp.get(sid_cp) or (rec_svc_cp.get("openai") if sid_cp == "chatgpt" else (rec_svc_cp.get("chatgpt") if sid_cp == "openai" else None))
+                    if isinstance(s_e_cp, dict):
+                        if "HTTP_204_NOT_IN_" in str(s_e_cp.get("reason") or ""):
+                            continue
+                        s_ts_cp = int(s_e_cp.get("ts") or s_e_cp.get("probe_ts") or 0)
+                        if s_ts_cp > 0 and (now_ts - s_ts_cp) > 86400:
+                            continue
+                        t_cnt_cp += 1
+                        if s_e_cp.get("ok"):
+                            p_cnt_cp += 1
+                        else:
+                            f_cnt_cp += 1
+                if svc_logic_cp == "all":
+                    svc_passed_cp = (f_cnt_cp == 0)
+                    svc_ver_cp = (f_cnt_cp == 0 and p_cnt_cp == len(svc_ids))
+                else:
+                    svc_passed_cp = not (t_cnt_cp > 0 and f_cnt_cp == t_cnt_cp)
+                    svc_ver_cp = (p_cnt_cp > 0)
+            if not svc_passed_cp:
+                continue
+            sc_cp = ev.get("score_info") or compute_node_sliding_score(rec_raw, svc_checks=(svc_ids if is_full_cp else None))
             q_until = int(rec_raw.get("quarantine_until") or 0)
-            c_fail = int((ev.get("score_info") or {}).get("consecutive_fail") or 0)
+            c_fail = int(sc_cp.get("consecutive_fail") or 0)
             in_quar = (q_until > now_ts or c_fail >= 3)
             c_until = max(int(rec_raw.get("cooldown_until") or 0), int(rec_raw.get("rate_limited_until") or 0))
             in_cool = (c_until > now_ts)
+            delay_ewma_cp = float(rec_raw.get("delay_ewma_ms") or rec_raw.get("ewma_ms") or (ev["delay_ms"] if ev["delay_ms"] > 0 else 250.0))
+            sr_ewma_cp = float(rec_raw.get("success_rate_ewma") if rec_raw.get("success_rate_ewma") is not None else sc_cp.get("success_rate", 1.0))
+            stab_pen_cp = 1.0
+            if int(sc_cp.get("samples") or 0) >= 3:
+                if sr_ewma_cp < 0.90:
+                    stab_pen_cp *= (1.0 + (0.90 - sr_ewma_cp) * 1.8)
+                cv_cp = float(sc_cp.get("cv") or 0.0)
+                if cv_cp > 0.35:
+                    stab_pen_cp *= (1.0 + min(0.60, (cv_cp - 0.35) * 0.8))
+            is_rand_cp = _is_random_region_node(tag_s)
+            eff_rank_cp = round(delay_ewma_cp * stab_pen_cp * (1.28 if is_rand_cp else 1.0), 2) if ev["delay_ms"] > 0 else 99999.0
             item = {
                 "node_id": ev["node_id"],
                 "tag": tag_s,
@@ -6302,17 +6391,19 @@ def get_auto_node_candidate_pool(an: dict, conf_dir: Path = CONF_DIR,
                 "group_name": g["name"],
                 "state": ev["state"],
                 "delay_ms": ev["delay_ms"],
+                "eff_rank_ms": eff_rank_cp,
+                "svc_verified": svc_ver_cp,
                 "score": ev["score"],
-                "score_info": ev["score_info"],
+                "score_info": sc_cp,
                 "svc": ev["svc"],
                 "country": classify_node_country_5plus1(tag_s, n_obj),
                 "cdn_tls_ok": _is_node_cdn_tls_healthy(rec_raw),
-                "is_random_region": _is_random_region_node(tag_s),
+                "is_random_region": is_rand_cp,
                 "quarantine_until": q_until,
                 "in_cooldown": in_cool,
             }
             if in_quar:
-                if ev["state"] == "ok" and ev["delay_ms"] > 0 and c_fail == 0 and not (is_full_cp and svc_ids):
+                if ev["state"] == "ok" and ev["delay_ms"] > 0 and c_fail == 0 and (not (is_full_cp and svc_ids) or svc_ver_cp):
                     quarantine_bg_items.append(item)
                 continue
             if in_cool:
@@ -6324,16 +6415,18 @@ def get_auto_node_candidate_pool(an: dict, conf_dir: Path = CONF_DIR,
                 g_ok.append(item)
             elif ev["state"] in ("pending", "untested"):
                 g_pend.append(item)
-        g_ok.sort(key=lambda x: (0 if x.get("cdn_tls_ok", True) else 1, round(float(x["delay_ms"]) * (1.28 if x.get("is_random_region") else 1.0), 2), 1 if x.get("is_random_region") else 0, x["delay_ms"]))
-        out.extend(g_ok + g_pend)
-    if not out:
-        if cooldown_bg_items:
-            cooldown_bg_items.sort(key=lambda x: (0 if x.get("cdn_tls_ok", True) else 1, round(float(x["delay_ms"]) * (1.28 if x.get("is_random_region") else 1.0), 2), x["delay_ms"], x["tag"]))
-            return cooldown_bg_items
-        if quarantine_bg_items:
-            quarantine_bg_items.sort(key=lambda x: (int(x.get("quarantine_until") or 0), x["delay_ms"], x["tag"]))
-            return quarantine_bg_items
-    return out
+        g_ok.sort(key=lambda x: (0 if x.get("svc_verified", True) else 1, 0 if x.get("cdn_tls_ok", True) else 1, x.get("eff_rank_ms", x["delay_ms"]), 1 if x.get("is_random_region") else 0, x["delay_ms"], x["tag"]))
+        out_ok.extend(g_ok)
+        out_pend.extend(g_pend)
+    if out_ok:
+        return out_ok + out_pend
+    if cooldown_bg_items:
+        cooldown_bg_items.sort(key=lambda x: (0 if x.get("svc_verified", True) else 1, 0 if x.get("cdn_tls_ok", True) else 1, x.get("eff_rank_ms", x["delay_ms"]), x["delay_ms"], x["tag"]))
+        return cooldown_bg_items + out_pend
+    if quarantine_bg_items:
+        quarantine_bg_items.sort(key=lambda x: (int(x.get("quarantine_until") or 0), x.get("eff_rank_ms", x["delay_ms"]), x["delay_ms"], x["tag"]))
+        return quarantine_bg_items + out_pend
+    return out_pend
 
 def _filter_nodes_by_pool_scope(saved_nodes: list, subs_list: list, scope_source = "ALL",
                                 scope_countries: list = None, conf_dir: Path = CONF_DIR,
@@ -6991,13 +7084,17 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
         store = load_node_probe_store(conf_dir)
     if all_services_map is None:
         all_services_map = {s["id"]: s for s in PRESET_SERVICE_CHECKS}
-    _normalize_auto_node_item(an, conf_dir=conf_dir)
+    if "pool_mode" not in an:
+        an.update(_normalize_auto_node_item(an, conf_dir=conf_dir, saved_nodes=saved_nodes, subs_list=subs_list, store=store))
     for cs in (an.get("service_custom") or []):
         if isinstance(cs, dict) and (cs.get("id") or cs.get("name")) and cs.get("url"):
             all_services_map[cs.get("id") or cs.get("name")] = cs
     raw_groups_cfg = an.get("groups") if isinstance(an.get("groups"), list) else []
     has_explicit_nodes = any(bool((g or {}).get("node_ids") or (g or {}).get("node_tags")) for g in raw_groups_cfg if isinstance(g, dict)) or bool(an.get("node_ids") or an.get("node_tags"))
-    groups = normalize_auto_node_groups(an, saved_nodes=saved_nodes, subs_list=subs_list, store=store, conf_dir=conf_dir, auto_seed_if_empty=(not has_explicit_nodes))
+    if len(raw_groups_cfg) == 1 and isinstance(raw_groups_cfg[0], dict) and ("node_tags" in raw_groups_cfg[0]) and (has_explicit_nodes or an.get("allow_empty_groups")):
+        groups = raw_groups_cfg
+    else:
+        groups = normalize_auto_node_groups(an, saved_nodes=saved_nodes, subs_list=subs_list, store=store, conf_dir=conf_dir, auto_seed_if_empty=(not has_explicit_nodes))
     by_id, by_tag = _build_node_lookup_maps(saved_nodes)
     is_full = (an.get("mode") == "full" or bool(an.get("service_check_enabled")))
     svc_ids = [s for s in (an.get("service_checks") or []) if s in all_services_map or s in L7_SERVICE_FINGERPRINTS or s == "chatgpt"]
@@ -7665,8 +7762,39 @@ _SELF_TEST_FAKE_TAGS = {
 _SELF_TEST_FAKE_GROUPS = {"Shunt_Custom_CN_Proxy", "Auto_Auto_AI"}
 
 
+def _is_sandbox_exempt_write(target_path: Path) -> bool:
+    """v2.5.9 P1-1 & FB-259-1 Fix: Never exempt any write under startup/live roots (_BOOT_CONF_DIR, _BOOT_RUN_DIR,
+    /etc/ai-link, /var/run/ai-link, /tmp/run/ai-link), even on OpenWrt where /var -> /tmp is a symlink.
+    Only exempt writes when RUN_DIR/CONF_DIR was dynamically reassigned in-process after startup to an isolated
+    sandbox directory for registered sandbox state files (node_test_quota.json, ops_settings.json)."""
+    try:
+        rp = Path(target_path).resolve()
+        c_res = Path(CONF_DIR).resolve()
+        r_res = Path(RUN_DIR).resolve()
+        boot_c = globals().get("_BOOT_CONF_DIR")
+        boot_r = globals().get("_BOOT_RUN_DIR")
+        live_roots = [
+            p for p in (
+                boot_c,
+                boot_r,
+                Path("/etc/ai-link").resolve(),
+                Path("/var/run/ai-link").resolve(),
+                Path("/tmp/run/ai-link").resolve(),
+            )
+            if p is not None
+        ]
+        if any(rp == lr or lr in rp.parents for lr in live_roots):
+            return False
+        reassigned_sbx = bool((boot_c and c_res != boot_c) or (boot_r and r_res != boot_r))
+        if reassigned_sbx and rp.as_posix().startswith("/tmp/") and rp.name in ("node_test_quota.json", "ops_settings.json"):
+            return True
+    except Exception as _e_noop:
+        _ = _e_noop
+    return False
+
+
 def _note_live_write_attempt(target_path: Path, op: str = "") -> bool:
-    """v2.5.7 P1-2 & FB-257-1 Fix: Split counter semantics between intercepted writes (blocked) and unintercepted writes (leaked).
+    """v2.5.7 P1-2 & FB-259-1 Fix: Split counter semantics between intercepted writes (blocked) and unintercepted writes (leaked).
     When interception is enabled, increments _SELF_TEST_LIVE_WRITE_BLOCKED (and _SELF_TEST_LIVE_WRITE_ATTEMPTS) and returns True to abort the write.
     When interception is disabled (negative test mode), returns False so _note_live_write_leak records leaked > 0."""
     global _SELF_TEST_LIVE_WRITE_ATTEMPTS, _SELF_TEST_LIVE_WRITE_BLOCKED
@@ -7676,7 +7804,10 @@ def _note_live_write_attempt(target_path: Path, op: str = "") -> bool:
         rp = Path(target_path).resolve()
         c_res = Path(CONF_DIR).resolve()
         r_res = Path(RUN_DIR).resolve()
-        if rp == c_res or rp == r_res or c_res in rp.parents or r_res in rp.parents:
+        boot_c = globals().get("_BOOT_CONF_DIR")
+        boot_r = globals().get("_BOOT_RUN_DIR")
+        target_roots = [p for p in (c_res, r_res, boot_c, boot_r) if p is not None]
+        if not _is_sandbox_exempt_write(rp) and any(rp == tr or tr in rp.parents for tr in target_roots):
             _SELF_TEST_LIVE_WRITE_ATTEMPTS += 1
             if bool(globals().get("_SELF_TEST_INTERCEPT_ENABLED", True)) and os.environ.get("AI_LINK_SELFTEST_DISABLE_INTERCEPT") != "1" and ("--self-test-disable-intercept" not in sys.argv):
                 _SELF_TEST_LIVE_WRITE_BLOCKED += 1
@@ -7688,7 +7819,7 @@ def _note_live_write_attempt(target_path: Path, op: str = "") -> bool:
 
 
 def _note_live_write_leak(target_path: Path, op: str = "") -> bool:
-    """v2.5.7 FB-257-1 Fix: Increments _SELF_TEST_LIVE_WRITE_LEAKED when a write to CONF_DIR/RUN_DIR bypasses interception during --self-test."""
+    """v2.5.7 FB-257-1 & FB-259-1 Fix: Increments _SELF_TEST_LIVE_WRITE_LEAKED when a write to CONF_DIR/RUN_DIR bypasses interception during --self-test."""
     global _SELF_TEST_LIVE_WRITE_LEAKED
     if not globals().get("_SELF_TEST_ACTIVE", False) or target_path is None:
         return False
@@ -7696,7 +7827,10 @@ def _note_live_write_leak(target_path: Path, op: str = "") -> bool:
         rp = Path(target_path).resolve()
         c_res = Path(CONF_DIR).resolve()
         r_res = Path(RUN_DIR).resolve()
-        if rp == c_res or rp == r_res or c_res in rp.parents or r_res in rp.parents:
+        boot_c = globals().get("_BOOT_CONF_DIR")
+        boot_r = globals().get("_BOOT_RUN_DIR")
+        target_roots = [p for p in (c_res, r_res, boot_c, boot_r) if p is not None]
+        if not _is_sandbox_exempt_write(rp) and any(rp == tr or tr in rp.parents for tr in target_roots):
             _SELF_TEST_LIVE_WRITE_LEAKED += 1
             return True
     except Exception as _e_noop:
@@ -7993,6 +8127,8 @@ def dispatch_multi_line_pools_tick(conf_dir: Path = CONF_DIR, advance: bool = Tr
             eff_adv = bool(advance)
             if eff_adv and respect_dwell_interval and prev_c >= 0 and cur_act_node in ml_nodes and (now_rr - last_rot) < MULTI_LINE_ROTATE_INTERVAL_S:
                 eff_adv = False
+                if "SELECTOR_WRITE_COORDINATOR" in globals():
+                    SELECTOR_WRITE_COORDINATOR.skipped_dwell += 1
             if not eff_adv and cur_act_node in ml_nodes:
                 cur_c = ml_nodes.index(cur_act_node)
             else:
@@ -8146,8 +8282,8 @@ def _get_active_in_use_auto_pools(conf_dir: Path = CONF_DIR, sh_cfg: dict = None
     return node_to_pools
 
 
-def get_kernel_log_failover_status(conf_dir: Path = CONF_DIR) -> dict:
-    active_map = _get_active_in_use_auto_pools(conf_dir)
+def get_kernel_log_failover_status(conf_dir: Path = CONF_DIR, sh_cfg: dict = None, auto_cfg: dict = None) -> dict:
+    active_map = _get_active_in_use_auto_pools(conf_dir, sh_cfg=sh_cfg, auto_cfg=auto_cfg)
     with _KERNEL_LOG_FAILOVER_LOCK:
         c_str = str(Path(conf_dir).resolve())
         streaks = {
@@ -8169,6 +8305,203 @@ def get_kernel_log_failover_status(conf_dir: Path = CONF_DIR) -> dict:
         }
 
 
+def run_end_to_end_failover_drill(conf_dir: Path = CONF_DIR, pool_id: str = "", auto_restore: bool = True) -> dict:
+    """v2.5.9 P0-1 & P2-7 Sandbox-Isolated & Single-Pool Scoped Non-Destructive End-to-End Failover Drill:
+    When auto_restore=True (default), executes all 5 failover stages inside an isolated temporary sandbox copy of conf_dir
+    and strictly scopes the log failover scan to `only_pool_id=eff_pid`, guaranteeing zero side effects on sibling pools,
+    live Clash selectors, switch_history.json, or kernel_log_failover counters, with full pre/post snapshot verification."""
+    conf_dir = Path(conf_dir)
+    sh_cfg = load_shunt_config(conf_dir)
+    auto_cfg = load_auto_nodes_config(conf_dir)
+    active_map = _get_active_in_use_auto_pools(conf_dir, sh_cfg=sh_cfg, auto_cfg=auto_cfg)
+    target_node = ""
+    target_pool = None
+    req_pid = str(pool_id or "").strip()
+    if req_pid:
+        for p_obj in (auto_cfg.get("auto_nodes") or []):
+            if str(p_obj.get("id") or "") == req_pid or str(p_obj.get("tag") or "") == req_pid:
+                target_pool = p_obj
+                cur_n = str(p_obj.get("current_node") or "").strip()
+                if cur_n and cur_n not in ("direct", "block"):
+                    target_node = cur_n
+                else:
+                    ml_ns = [str(x) for x in (p_obj.get("multi_line_nodes") or []) if x and x not in ("direct", "block")]
+                    if ml_ns:
+                        target_node = ml_ns[0]
+                    else:
+                        g_tags = [str(x) for x in ((p_obj.get("groups") or [{}])[0].get("node_tags") or p_obj.get("candidates") or []) if x and x not in ("direct", "block")]
+                        if g_tags:
+                            target_node = g_tags[0]
+                break
+        if not target_pool:
+            return {"ok": False, "error": "pool_not_found", "message": f"未找到指定的自动节点池: {req_pid}"}
+    else:
+        for n_tag, plist in active_map.items():
+            if plist and n_tag not in ("direct", "block"):
+                target_pool = plist[0]
+                p_cur = str(target_pool.get("current_node") or "").strip()
+                target_node = p_cur if (p_cur and p_cur not in ("direct", "block")) else n_tag
+                break
+        if not target_pool:
+            for p_obj in (auto_cfg.get("auto_nodes") or []):
+                p_cur = str(p_obj.get("current_node") or "").strip()
+                if p_cur and p_cur not in ("direct", "block"):
+                    target_pool = p_obj
+                    target_node = p_cur
+                    break
+    if not target_node or not target_pool:
+        return {"ok": False, "error": "no_active_pool_node", "message": "当前无可用活跃出口节点的节点池可供演练"}
+    eff_pid = str(target_pool.get("id") or "")
+    eff_ptag = str(target_pool.get("tag") or eff_pid)
+
+    global _LAST_SYNCED_SHUNT_MTIME
+    sh_before = build_shunt_api_response(conf_dir)
+    if (conf_dir / "shunt.json").is_file():
+        _LAST_SYNCED_SHUNT_MTIME = (conf_dir / "shunt.json").stat().st_mtime_ns
+    pools_before = {
+        str(a.get("id") or ""): str(a.get("current_node") or "")
+        for a in (sh_before.get("auto_nodes") or []) if isinstance(a, dict)
+    }
+    with _KERNEL_LOG_FAILOVER_LOCK:
+        kl_state_before = copy.deepcopy(_KERNEL_LOG_FAILOVER_STATE)
+        before_total_switches = int(kl_state_before.get("total_switches") or 0)
+        before_recent_len = len(kl_state_before.get("recent_events") or [])
+    eff_rdir = _effective_run_dir(conf_dir)
+    sw_hist_before_len = len(load_switch_history(eff_rdir))
+    sels_before = copy.deepcopy(PROBE_ENGINE.current_selections)
+    before_snapshot = {
+        "pools": pools_before,
+        "total_switches": before_total_switches,
+        "recent_events_len": before_recent_len,
+        "switch_history_len": sw_hist_before_len,
+    }
+
+    drill_lines = [
+        f"ERROR outbound/vless[{target_node}]: dial tcp: connection to www.youtube.com:443: i/o timeout",
+        f"ERROR outbound/vless[{target_node}]: dial tcp: connection to i.ytimg.com:443: context deadline exceeded",
+        f"ERROR outbound/vless[{target_node}]: dial tcp: connection to googlevideo.com:443: connection reset by peer",
+    ]
+
+    import tempfile
+    drill_conf = Path(tempfile.mkdtemp(prefix="ailink_drill_")) if auto_restore else conf_dir
+    try:
+        if auto_restore:
+            for _fn_c in ("nodes.json", "auto_nodes.json", "shunt.json", "shunt_config.json", "subscriptions.json", "ops_settings.json"):
+                _src_f = conf_dir / _fn_c
+                if _src_f.is_file():
+                    shutil.copy2(_src_f, drill_conf / _fn_c)
+            _live_ps = load_node_probe_store(conf_dir)
+            save_node_probe_store(copy.deepcopy(_live_ps), drill_conf, force_flash=True)
+
+        scan_res = scan_kernel_logs_for_active_pool_failures(
+            conf_dir=drill_conf,
+            log_lines_override=drill_lines,
+            fail_threshold=3,
+            min_distinct_targets=2,
+            recheck_before_switch=False,
+            force_pool_id=eff_pid,
+            only_pool_id=eff_pid,
+            sandbox_drill=bool(auto_restore),
+        )
+        sw_pools = [s for s in (scan_res.get("switched_pools") or []) if s.get("pool_id") == eff_pid]
+        sw_match = sw_pools[0] if sw_pools else {}
+        to_node = str(sw_match.get("to_node") or "")
+        if auto_restore:
+            ct_res = {
+                "ok": True,
+                "ts": int(time.time()),
+                "selector_tag": eff_ptag,
+                "old_node": target_node,
+                "target_ip": "",
+                "dst_host": "",
+                "closed_clash_connections": 0,
+                "flushed_conntrack": False,
+                "sandbox_isolated": True,
+                "reason": f"e2e_failover_drill:{eff_pid}:{target_node}->{to_node}",
+            }
+        else:
+            ct_res = flush_conntrack_for_switch(selector_tag=eff_ptag, old_node=target_node, reason=f"e2e_failover_drill:{eff_pid}:{target_node}->{to_node}")
+        sh_drill = build_shunt_api_response(drill_conf)
+        an_drill = next((a for a in (sh_drill.get("auto_nodes") or []) if str(a.get("id") or "") == eff_pid), {})
+        ui_synced = bool(
+            sw_match.get("pool_id") == eff_pid
+            and to_node
+            and (an_drill.get("current_node") == to_node or to_node in (an_drill.get("multi_line_nodes") or []))
+        )
+    finally:
+        if auto_restore:
+            with _KERNEL_LOG_FAILOVER_LOCK:
+                _KERNEL_LOG_FAILOVER_STATE.clear()
+                _KERNEL_LOG_FAILOVER_STATE.update(kl_state_before)
+            with _AUTO_POOL_RUNTIME_LOCK:
+                _dc_str = str(drill_conf.resolve())
+                for _rk in [k for k in _AUTO_POOL_RUNTIME_MAP if k[0] == _dc_str]:
+                    _AUTO_POOL_RUNTIME_MAP.pop(_rk, None)
+            PROBE_ENGINE.current_selections = sels_before
+            if (conf_dir / "shunt.json").is_file():
+                _LAST_SYNCED_SHUNT_MTIME = (conf_dir / "shunt.json").stat().st_mtime_ns
+            shutil.rmtree(drill_conf, ignore_errors=True)
+
+    sh_after = build_shunt_api_response(conf_dir)
+    pools_after = {
+        str(a.get("id") or ""): str(a.get("current_node") or "")
+        for a in (sh_after.get("auto_nodes") or []) if isinstance(a, dict)
+    }
+    kl_after = get_kernel_log_failover_status(conf_dir, sh_cfg=sh_cfg, auto_cfg=auto_cfg)
+    after_total_switches = int(kl_after.get("total_switches") or 0)
+    after_recent_len = len(kl_after.get("recent_events") or [])
+    sw_hist_after_len = len(load_switch_history(eff_rdir))
+    after_snapshot = {
+        "pools": pools_after,
+        "total_switches": after_total_switches,
+        "recent_events_len": after_recent_len,
+        "switch_history_len": sw_hist_after_len,
+    }
+    restored_node = str(pools_after.get(eff_pid) or (target_node if auto_restore else to_node))
+    restored_selector = (pools_after == pools_before and restored_node == target_node) if auto_restore else False
+    restored_counters = (
+        after_total_switches == before_total_switches
+        and after_recent_len == before_recent_len
+        and sw_hist_after_len == sw_hist_before_len
+    ) if auto_restore else False
+    other_pools_untouched = all(
+        s.get("pool_id") == eff_pid for s in (scan_res.get("switched_pools") or [])
+    ) and all(
+        pools_after.get(k) == v for k, v in pools_before.items() if k != eff_pid
+    )
+    restored = bool(restored_selector and restored_counters and other_pools_untouched) if auto_restore else False
+    selector_switched = bool(sw_match.get("pool_id") == eff_pid and to_node and to_node != target_node)
+    ok_final = bool(
+        scan_res.get("triggered")
+        and selector_switched
+        and ct_res.get("ok")
+        and ui_synced
+        and other_pools_untouched
+        and (not auto_restore or restored)
+    )
+    return {
+        "ok": ok_final,
+        "pool_id": eff_pid,
+        "pool_name": str(target_pool.get("name") or eff_pid),
+        "from_node": target_node,
+        "to_node": to_node,
+        "kernel_log_detected": bool(scan_res.get("triggered")),
+        "selector_switched": selector_switched,
+        "conntrack_flush": ct_res,
+        "ui_synced": ui_synced,
+        "restored": restored,
+        "restored_selector": restored_selector,
+        "restored_counters": restored_counters,
+        "other_pools_untouched": other_pools_untouched,
+        "restored_node": restored_node,
+        "drill_switches": len(sw_pools),
+        "total_switches": after_total_switches if auto_restore else max(len(sw_pools), after_total_switches),
+        "before_snapshot": before_snapshot,
+        "after_snapshot": after_snapshot,
+        "switched_pools": sw_pools,
+    }
+
+
 def scan_kernel_logs_for_active_pool_failures(
     conf_dir: Path = CONF_DIR,
     log_path: Path = None,
@@ -8177,6 +8510,9 @@ def scan_kernel_logs_for_active_pool_failures(
     window_s: float = KERNEL_LOG_FAILOVER_WINDOW_S,
     min_distinct_targets: int = KERNEL_LOG_MIN_DISTINCT_TARGETS,
     recheck_before_switch: bool = True,
+    force_pool_id: str = "",
+    only_pool_id: str = "",
+    sandbox_drill: bool = False,
 ) -> dict:
     """v2.4.2 Real-Time Kernel Log Passive Failover Engine with Target-Diversity & Lightweight Recheck."""
     conf_dir = Path(conf_dir)
@@ -8186,6 +8522,26 @@ def scan_kernel_logs_for_active_pool_failures(
     sh_cfg = load_shunt_config(conf_dir)
     auto_cfg = load_auto_nodes_config(conf_dir)
     active_map = _get_active_in_use_auto_pools(conf_dir, sh_cfg=sh_cfg, auto_cfg=auto_cfg)
+    if force_pool_id:
+        for _fp in (auto_cfg.get("auto_nodes") or []):
+            if str(_fp.get("id") or "") == force_pool_id or str(_fp.get("tag") or "") == force_pool_id:
+                _f_cur = str(_fp.get("current_node") or "").strip()
+                _f_tags = ([_f_cur] if (_f_cur and _f_cur not in ("direct", "block")) else []) + [
+                    str(x) for x in (_fp.get("multi_line_nodes") or []) if x and x not in ("direct", "block")
+                ]
+                if not _f_tags:
+                    _f_tags = [str(x) for x in ((_fp.get("groups") or [{}])[0].get("node_tags") or _fp.get("candidates") or [])[:1] if x and x not in ("direct", "block")]
+                for _ft in _f_tags:
+                    _existing = active_map.setdefault(_ft, [])
+                    if not any(str(p.get("id") or "") == str(_fp.get("id") or "") for p in _existing):
+                        _existing.append(_fp)
+    if only_pool_id:
+        _filtered_active_map = {}
+        for _nt_k, _pl_v in active_map.items():
+            _kept_pl = [p for p in _pl_v if str(p.get("id") or "") == only_pool_id or str(p.get("tag") or "") == only_pool_id]
+            if _kept_pl:
+                _filtered_active_map[_nt_k] = _kept_pl
+        active_map = _filtered_active_map
 
     lines_to_scan = []
     if isinstance(log_lines_override, list):
@@ -8371,23 +8727,22 @@ def scan_kernel_logs_for_active_pool_failures(
             reason_str = f"内核日志连续 {cnt_val} 次报错 ({l_err}) 极速切换"
             with _MULTI_LINE_RR_LOCK:
                 _MULTI_LINE_RR_STATE["memo_sig"] = None
-            flush_conntrack_for_switch(
-                selector_tag=p_new.get("tag") or pid,
-                old_node=bad_tag,
-                reason=f"kernel_log_failover:{bad_tag}",
-            )
-            request_switch(
-                p_new.get("tag") or pid,
-                new_node,
-                reason=reason_str,
-                pool_id=pid,
-                conf_dir=conf_dir,
-                bypass_cooldown=True,
-                rtt_ms=max(0.0, new_rtt),
-            )
-            record_switch_event(pool_label, bad_tag, new_node, reason=reason_str, rtt_ms=max(0.0, new_rtt), run_dir=run_dir_target)
-            if conf_dir.resolve() != CONF_DIR.resolve():
-                record_switch_event(pool_label, bad_tag, new_node, reason=reason_str, rtt_ms=max(0.0, new_rtt), run_dir=RUN_DIR)
+            if not sandbox_drill:
+                flush_conntrack_for_switch(
+                    selector_tag=p_new.get("tag") or pid,
+                    old_node=bad_tag,
+                    reason=f"kernel_log_failover:{bad_tag}",
+                )
+                request_switch(
+                    p_new.get("tag") or pid,
+                    new_node,
+                    reason=reason_str,
+                    pool_id=pid,
+                    conf_dir=conf_dir,
+                    bypass_cooldown=True,
+                    rtt_ms=max(0.0, new_rtt),
+                )
+                record_switch_event(pool_label, bad_tag, new_node, reason=reason_str, rtt_ms=max(0.0, new_rtt), run_dir=run_dir_target)
             ev_obj = {
                 "ts": now_ts,
                 "time_str": time.strftime("%H:%M:%S"),
@@ -8412,10 +8767,11 @@ def scan_kernel_logs_for_active_pool_failures(
             for sp in switched_pools:
                 rec_ev.insert(0, sp)
             _KERNEL_LOG_FAILOVER_STATE["recent_events"] = rec_ev[:25]
-        _STATUS_API_MEMO.clear()
-        _SHUNT_API_MEMO.clear()
-        _AUTO_NODES_API_MEMO.clear()
-        _JSON_WIRE_MEMO.clear()
+        if not sandbox_drill:
+            _STATUS_API_MEMO.clear()
+            _SHUNT_API_MEMO.clear()
+            _AUTO_NODES_API_MEMO.clear()
+            _JSON_WIRE_MEMO.clear()
 
     return {
         "ok": True,
@@ -9537,11 +9893,13 @@ def load_shunt_config(conf_dir: Path = CONF_DIR) -> dict:
                 cfg["groups"] = _normalize_shunt_groups_order(saved.get("groups") or [])
                 cfg["shunt_enabled"] = (cfg.get("routing_mode", "rule_shunt") == "rule_shunt")
                 loaded_from_disk = True
-                # If shunt.json was restored from backup and is newer than shunt_config.json, sync shunt_config.json immediately
+                # If shunt.json was restored from backup and differs in content from shunt_config.json, sync immediately
                 if len(candidates_sf) == 2 and candidates_sf[0][0] != candidates_sf[1][0]:
                     try:
                         other_sf = candidates_sf[1][2]
-                        _atomic_write_text(other_sf, sf.read_text(encoding="utf-8"))
+                        sf_txt = sf.read_text(encoding="utf-8")
+                        if not other_sf.is_file() or other_sf.read_text(encoding="utf-8") != sf_txt:
+                            _atomic_write_text(other_sf, sf_txt)
                     except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                         globals().get("_record_internal_diag", str)(_e_diag)
                 break
@@ -9783,9 +10141,11 @@ def resolve_node_for_country_strategy_with_failover(
                 and (not ver_set or x["tag"] in ver_set)
             ]
             cur_n = str(an.get("current_node") or "").strip()
+            _ok_cand_tag_set = {x["tag"] for x in ok_cands}
             cur_alive = bool(
                 cur_n
                 and cur_n != "direct"
+                and cur_n in _ok_cand_tag_set
                 and cur_n in selectable_set
                 and tag_state.get(cur_n) == "ok"
                 and tag_delay.get(cur_n, 0.0) > 0
@@ -10277,6 +10637,43 @@ def fetch_and_sync_subscription(url: str = "", name: str = "机场订阅",
             if (sub_id and s.get("id") == sub_id) or (old_url and s.get("url") == old_url) or s.get("url") == url:
                 target_sub = s
                 break
+        if target_sub is not None and "***" in url and target_sub.get("url") and "***" not in str(target_sub.get("url")):
+            url = str(target_sub["url"]).strip()
+        parsed_obs = []
+        _reused_preview_fp = ""
+        if preview_request_id:
+            _req_b_cache = globals().get("_SUB_PREVIEW_BATCH_BY_REQ_ID") or {}
+            _b_ent = _req_b_cache.get(preview_request_id)
+            _prev_sub_st = (target_sub.get("status") if (isinstance(target_sub, dict) and target_sub.get("status") not in (None, "", "syncing")) else "ok")
+            if not isinstance(_b_ent, dict) or (time.time() - float(_b_ent.get("ts") or 0)) > 60.0:
+                _msg_409 = "预览批次已过期（超过 60 秒），请重新预览后再确认同步"
+                if isinstance(target_sub, dict):
+                    target_sub["status"] = _prev_sub_st
+                    target_sub["last_error"] = f"stale_preview: {_msg_409}"
+                    save_subscriptions(subs, conf_dir)
+                return {
+                    "ok": False, "status": 409, "id": (target_sub.get("id") if target_sub else sub_id), "name": name, "fetch_source": "stale_preview",
+                    "imported_count": 0, "error": "stale_preview", "request_id": preview_request_id,
+                    "message": _msg_409,
+                    "subscriptions": subs,
+                }
+            _cached_fp = str(_b_ent.get("nodes_fingerprint") or "")
+            _up_cache_ent = (globals().get("_SUB_PREVIEW_UPSTREAM_CACHE") or {}).get(url)
+            _latest_up_fp = str((_up_cache_ent or {}).get("nodes_fingerprint") or "")
+            if (expected_fingerprint and expected_fingerprint != _cached_fp) or (_latest_up_fp and _latest_up_fp != _cached_fp):
+                _msg_409_fp = "上游订阅节点批次已发生变化，与预览结果不一致，请重新预览后再确认同步"
+                if isinstance(target_sub, dict):
+                    target_sub["status"] = _prev_sub_st
+                    target_sub["last_error"] = f"stale_preview: {_msg_409_fp}"
+                    save_subscriptions(subs, conf_dir)
+                return {
+                    "ok": False, "status": 409, "id": (target_sub.get("id") if target_sub else sub_id), "name": name, "fetch_source": "stale_preview",
+                    "imported_count": 0, "error": "stale_preview", "request_id": preview_request_id,
+                    "message": _msg_409_fp,
+                    "subscriptions": subs,
+                }
+            parsed_obs = copy.deepcopy(_b_ent.get("nodes") or [])
+            _reused_preview_fp = _cached_fp
         if target_sub is None:
             is_new_sub = True
             sub_id = sub_id or f"sub_{now_ts}_{len(subs) + 1}"
@@ -10288,41 +10685,15 @@ def fetch_and_sync_subscription(url: str = "", name: str = "机场订阅",
             subs.append(target_sub)
         else:
             sub_id = target_sub.get("id") or sub_id or f"sub_{now_ts}"
-            if "***" in url and target_sub.get("url") and "***" not in str(target_sub.get("url")):
-                url = str(target_sub["url"]).strip()
             if auto_update is not None:
                 target_sub["auto_update"] = bool(auto_update)
             if update_interval_min is not None:
                 target_sub["update_interval_min"] = int(update_interval_min)
             target_sub.update({"id": sub_id, "name": name or target_sub.get("name", "订阅源"), "url": url, "status": "syncing", "last_error": ""})
         save_subscriptions(subs, conf_dir)
-        parsed_obs = []
     sub_userinfo = {}
     last_error = ""
-    last_error_code = "sub_fetch_failed"
-    _reused_preview_fp = ""
-    if preview_request_id:
-        _req_b_cache = globals().get("_SUB_PREVIEW_BATCH_BY_REQ_ID") or {}
-        _b_ent = _req_b_cache.get(preview_request_id)
-        if not isinstance(_b_ent, dict) or (time.time() - float(_b_ent.get("ts") or 0)) > 60.0:
-            return {
-                "ok": False, "status": 409, "id": sub_id, "name": name, "fetch_source": "stale_preview",
-                "imported_count": 0, "error": "stale_preview", "request_id": preview_request_id,
-                "message": "预览批次已过期（超过 60 秒），请重新预览后再确认同步",
-                "subscriptions": load_subscriptions(conf_dir),
-            }
-        _cached_fp = str(_b_ent.get("nodes_fingerprint") or "")
-        _up_cache_ent = (globals().get("_SUB_PREVIEW_UPSTREAM_CACHE") or {}).get(url)
-        _latest_up_fp = str((_up_cache_ent or {}).get("nodes_fingerprint") or "")
-        if (expected_fingerprint and expected_fingerprint != _cached_fp) or (_latest_up_fp and _latest_up_fp != _cached_fp):
-            return {
-                "ok": False, "status": 409, "id": sub_id, "name": name, "fetch_source": "stale_preview",
-                "imported_count": 0, "error": "stale_preview", "request_id": preview_request_id,
-                "message": "上游订阅节点批次已发生变化，与预览结果不一致，请重新预览后再确认同步",
-                "subscriptions": load_subscriptions(conf_dir),
-            }
-        parsed_obs = copy.deepcopy(_b_ent.get("nodes") or [])
-        _reused_preview_fp = _cached_fp
+    last_error_code = "sub_fetch_failed" 
     sub_host = (urllib.parse.urlsplit(url).hostname or "").strip().lower()
     # P2-9 Fix: Pre-check DNS via SO_MARK=255 direct UDP DNS before urllib hits local FakeIP (which masks NXDOMAIN as ECONNRESET)
     if sub_host and not re.match(r"^\d{1,3}(\.\d{1,3}){3}$", sub_host) and sub_host not in ("localhost", "127.0.0.1") and ":" not in sub_host:
@@ -10421,6 +10792,11 @@ def fetch_and_sync_subscription(url: str = "", name: str = "机场订阅",
             last_error = diag["reason"]
             last_error_code = diag["error_code"]
     if parsed_obs:
+        _pre_sync_impact = {}
+        try:
+            _pre_sync_impact = preview_subscription_sync_impact(sub_id=sub_id, incoming_nodes=parsed_obs, sub_url=url, conf_dir=conf_dir)
+        except (OSError, ValueError, TypeError, KeyError, RuntimeError) as _e_imp:
+            _ = _e_imp
         merged = merge_nodes(sub_id, parsed_obs, sub_url=url, replace_sub=True, conf_dir=conf_dir)
         sub_cnt = sum(1 for n in merged if n.get("_sub_id") == sub_id or n.get("_sub_url") == url)
         with _SUB_LOCK:
@@ -10429,6 +10805,9 @@ def fetch_and_sync_subscription(url: str = "", name: str = "机场订阅",
                 if s.get("id") == sub_id or s.get("url") == url:
                     _sync_now_ts = int(time.time())
                     _sync_now_str = time.strftime("%Y-%m-%d %H:%M", time.localtime(_sync_now_ts))
+                    if "dynamic_random_sub" in _pre_sync_impact:
+                        s["dynamic_random_sub"] = bool(_pre_sync_impact["dynamic_random_sub"])
+                        s["jaccard_stability"] = _pre_sync_impact.get("jaccard_stability", 1.0)
                     s.update({
                         "id": sub_id, "name": name, "url": url,
                         "count": sub_cnt or len(parsed_obs), "status": "ok", "last_sync_status": "ok", "last_error": "",
@@ -10436,7 +10815,7 @@ def fetch_and_sync_subscription(url: str = "", name: str = "机场订阅",
                         "last_sync_time": _sync_now_str,
                         "sync_status_text": _sync_now_str,
                         "updated": f"{_sync_now_str} ({sub_cnt or len(parsed_obs)} 节点)",
-                        "userinfo": sub_userinfo
+                        "userinfo": sub_userinfo or s.get("userinfo") or {}
                     })
                     break
             save_subscriptions(subs, conf_dir)
@@ -11281,8 +11660,17 @@ def select_top_n_outbounds(saved_nodes: list, max_limit: int = 0, run_dir: Path 
     3. Reserves a fair per-subscription quota across regions so newly added subscriptions immediately have nodes in the kernel.
     4. Fills remaining slots up to `max_limit` user nodes (loopback self-test nodes are excluded from user node count unless max_limit == 60)."""
     subs_list = load_subscriptions(conf_dir)
-    store = load_node_probe_store(conf_dir)
     loopbacks = [ob for ob in (saved_nodes or []) if is_builtin_test_node(ob.get("tag", "")) and not ob.get("disabled")]
+    if int(max_limit or 0) <= 0:
+        _all_vis = [
+            ob for ob in (saved_nodes or [])
+            if not is_builtin_test_node(ob.get("tag", ""))
+            and not ob.get("disabled")
+            and is_node_subscription_enabled(ob, subs_list=subs_list, conf_dir=conf_dir)
+        ] + loopbacks
+        _TOP_N_OUTBOUNDS_MEMO[_tn_sig] = _all_vis
+        return list(_all_vis)
+    store = load_node_probe_store(conf_dir)
     state_order = {"ok": 0, "pending": 1, "suspect": 2, "dead": 3}
     candidates = []
     for ob in (saved_nodes or []):
@@ -13952,10 +14340,19 @@ def ensure_hy2_certs(certs_dir: Path) -> bool:
             globals().get("_record_internal_diag", str)(_e_diag)
     return crt.is_file() and key.is_file()
 
+_CA_CERT_INFO_MEMO = {}
+
 def get_ca_cert_info(conf_dir: Path = CONF_DIR) -> dict:
     certs_dir = conf_dir / "certs"
-    ensure_hy2_certs(certs_dir)
     crt = certs_dir / "ca.crt"
+    srv_crt = certs_dir / "server.crt"
+    srv_key = certs_dir / "server.key"
+    if crt.is_file() and srv_crt.is_file() and srv_key.is_file():
+        ckey = (str(conf_dir), _get_file_sig(crt))
+        cached = _CA_CERT_INFO_MEMO.get(ckey)
+        if cached is not None:
+            return dict(cached)
+    ensure_hy2_certs(certs_dir)
     if not crt.is_file():
         return {"ok": False, "pem": "", "sha256": "", "hy2_uri": ""}
     pem_text = crt.read_text(encoding="utf-8")
@@ -13969,13 +14366,15 @@ def get_ca_cert_info(conf_dir: Path = CONF_DIR) -> dict:
         fp_hex = ""
         fp_colon = ""
     hy2_uri = f"hysteria2://ailink_home_2026@home.ai-link.ddns.net:20443/?sni=ai-link.ailink.lan&pinSHA256={fp_colon}#AI-LINK-Home-Hy2"
-    return {
+    res = {
         "ok": True,
         "pem": pem_text,
         "sha256": fp_colon,
         "sha256_hex": fp_hex,
         "hy2_uri": hy2_uri
     }
+    _CA_CERT_INFO_MEMO[(str(conf_dir), _get_file_sig(crt))] = res
+    return dict(res)
 
 def _atomic_install_binary(target_bin: Path, data: bytes):
     """Local Agent P0 Fix: Writes to a temporary file in the same directory and calls os.replace() so replacing a running binar"""
@@ -14114,24 +14513,47 @@ def _find_pids_holding_port_9090() -> set:
             globals().get("_record_internal_diag", str)(_e_diag)
     return holders
 
+_ENSURE_SINGLE_SB_MEMO = {"ts": 0.0, "sig": None, "pids": []}
+
 def ensure_single_singbox_instance() -> list:
     """Detects all running `sing-box` processes by inspecting `/proc/<pid>/comm == 'sing-box'` and `/proc/<pid>/cmdline` (never"""
+    now = time.time()
+    pid_sig = _get_file_sig(RUN_DIR / "ai-link-core.pid")
+    if (now - _ENSURE_SINGLE_SB_MEMO["ts"]) < 0.8 and _ENSURE_SINGLE_SB_MEMO["sig"] == pid_sig:
+        return list(_ENSURE_SINGLE_SB_MEMO["pids"])
+    fast_pids = _get_live_singbox_pids()
+    if len(fast_pids) <= 1:
+        _ENSURE_SINGLE_SB_MEMO["ts"] = now
+        _ENSURE_SINGLE_SB_MEMO["sig"] = pid_sig
+        _ENSURE_SINGLE_SB_MEMO["pids"] = list(fast_pids)
+        return fast_pids
     my_pids = {os.getpid(), os.getppid()}
     pids = []
-    for proc_d in sorted(Path("/proc").glob("[0-9]*"), key=lambda x: int(x.name)):
-        pid_int = int(proc_d.name)
-        if pid_int in my_pids:
-            continue
-        try:
-            comm = (proc_d / "comm").read_text().strip()
-            if comm != "sing-box":
-                continue
-            cmdline = (proc_d / "cmdline").read_bytes().replace(b"\x00", b" ").decode("utf-8", errors="ignore")
-            if "run" in cmdline.split():
-                pids.append(pid_int)
-        except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
-            globals().get("_record_internal_diag", str)(_e_diag)
+    try:
+        with os.scandir("/proc") as it:
+            for entry in it:
+                if not entry.name.isdigit():
+                    continue
+                pid_int = int(entry.name)
+                if pid_int in my_pids:
+                    continue
+                try:
+                    with open(f"/proc/{entry.name}/comm", "rb") as cf:
+                        if cf.read().strip() != b"sing-box":
+                            continue
+                    with open(f"/proc/{entry.name}/cmdline", "rb") as cmdf:
+                        cmdline = cmdf.read().replace(b"\x00", b" ").decode("utf-8", errors="ignore")
+                    if "run" in cmdline.split():
+                        pids.append(pid_int)
+                except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
+                    globals().get("_record_internal_diag", str)(_e_diag)
+    except Exception:
+        pass
+    pids.sort()
     if len(pids) <= 1:
+        _ENSURE_SINGLE_SB_MEMO["ts"] = now
+        _ENSURE_SINGLE_SB_MEMO["sig"] = pid_sig
+        _ENSURE_SINGLE_SB_MEMO["pids"] = list(pids)
         return pids
     primary_pid = None
     # 1. Prefer the instance that actually bound :9090
@@ -14265,7 +14687,21 @@ def ensure_srs_rulesets(conf_dir: Path = CONF_DIR, timeout_per_file: float = 6.0
         "errors": errors[:5]
     }
 
+_CORE_RT_INFO_MEMO = {}
+
 def get_core_runtime_info(conf_dir: Path = CONF_DIR) -> dict:
+    now = time.time()
+    rt_sig = (
+        str(conf_dir),
+        _get_file_sig(conf_dir / "nodes.json"),
+        _get_file_sig(conf_dir / "ops_settings.json"),
+        _get_file_sig(conf_dir / "build_mode.txt"),
+        _get_file_sig(conf_dir / "degraded_reason.txt"),
+        _get_file_sig(RUN_DIR / "ai-link-core.pid"),
+    )
+    cached_rt = _CORE_RT_INFO_MEMO.get(str(conf_dir))
+    if cached_rt and (now - cached_rt[0]) < 1.2 and cached_rt[1] == rt_sig:
+        return dict(cached_rt[2])
     sb_info = probe_singbox_binary_capabilities(conf_dir)
     live_pids = ensure_single_singbox_instance()
     pid = None
@@ -14295,7 +14731,7 @@ def get_core_runtime_info(conf_dir: Path = CONF_DIR) -> dict:
     deg_file = conf_dir / "degraded_reason.txt"
     deg_reason = deg_file.read_text(encoding="utf-8").strip() if deg_file.is_file() else ""
     is_degraded = (active_mode == "lock-compat")
-    return {
+    _rt_res = {
         "core": f"sing-box {sb_info['version']}",
         "core_version": sb_info["version"],
         "core_schema_profile": ("v1.15-multiqueue" if _parse_sb_version_tuple(sb_info["version"]) >= (1, 15, 0) else ("v1.14-dns-disabled" if _parse_sb_version_tuple(sb_info["version"]) >= (1, 14, 0) else "v1.12-legacy")),
@@ -14317,6 +14753,8 @@ def get_core_runtime_info(conf_dir: Path = CONF_DIR) -> dict:
         "custom_node_tags": [n["tag"] for n in active_nodes],
         "test_node_tags": test_tags
     }
+    _CORE_RT_INFO_MEMO[str(conf_dir)] = (now, rt_sig, _rt_res)
+    return dict(_rt_res)
 
 def import_host_cache(cache_dir: Path = CACHE_DIR, conf_dir: Path = CONF_DIR) -> dict:
     """Imports binaries and rule-sets sideloaded from the Local Agent's host PC into `/tmp/ai-link-cache`. Includes Local Agent"""
@@ -15422,9 +15860,39 @@ def build_shunt_api_response(conf_dir: Path = CONF_DIR) -> dict:
                     daemon=True,
                 ).start()
     g_an_name = matched_g_an.get("name", g_aid) if matched_g_an else (auto_map.get(g_aid, {}).get("name") or g_aid)
+    _sh_all_an = auto_cfg.get("auto_nodes", [])
+    _sh_bound_map = {str(a.get("id") or ""): [] for a in _sh_all_an if isinstance(a, dict)}
+    for _sg_x in enriched_groups:
+        if isinstance(_sg_x, dict) and (_sg_x.get("shunt_mode") == "auto" or _sg_x.get("mode") == "auto"):
+            _aid_x = str(_sg_x.get("auto_node_id") or "")
+            _op_x = _match_auto_node_pool(_sh_all_an, _aid_x, allow_fallback=False) or _match_auto_node_pool(_sh_all_an, _aid_x, allow_fallback=True)
+            if _op_x and str(_op_x.get("id") or "") in _sh_bound_map:
+                _sh_bound_map[str(_op_x.get("id") or "")].append(str(_sg_x.get("name") or _sg_x.get("title") or _sg_x.get("id") or ""))
+    _sh_rot_log = list(_MULTI_LINE_RR_STATE.get("rotation_log") or [])
+    for _an_x in _sh_all_an:
+        if isinstance(_an_x, dict):
+            _pid_x = str(_an_x.get("id") or "")
+            _bgrps_x = _sh_bound_map.get(_pid_x) or []
+            _an_x["bound_shunt_groups"] = _bgrps_x
+            _an_x["unbound_pool_warning"] = (len(_bgrps_x) == 0)
+            _ml_x = list(_an_x.get("multi_line_nodes") or [])
+            _bgt_x = []
+            for _gi_x, _gn_x in enumerate(_bgrps_x):
+                _sel_x = _ml_x[_gi_x % len(_ml_x)] if (_ml_x and _an_x.get("dispatch_mode") == "multi_line") else str(_an_x.get("current_node") or "direct")
+                _rtt_x = int(round(delays_map.get(_sel_x, -1.0))) if (_sel_x not in ("", "direct", "block") and delays_map.get(_sel_x, 0.0) > 0) else -1
+                _bgt_x.append({
+                    "group_name": _gn_x,
+                    "current_node": _sel_x,
+                    "delay_ms": _rtt_x,
+                    "shared_exit": bool(len(_bgrps_x) > max(1, len(_ml_x))),
+                })
+            _an_x["bound_group_targets"] = _bgt_x
+            _an_x["multi_line_rotation_log"] = [r for r in _sh_rot_log if r.get("pool_id") == _pid_x][-20:]
     _sh_resp_obj = {
         "ok": True,
-        "auto_nodes": auto_cfg.get("auto_nodes", []),
+        "auto_nodes": _sh_all_an,
+        "multi_line_rotation_log": _sh_rot_log[-20:],
+        "dwell_bypass_calls": int(getattr(SELECTOR_WRITE_COORDINATOR, "dwell_bypass_calls", 0)),
         "shunt_enabled": rmode_cur == "rule_shunt",
         "routing_mode": rmode_cur,
         "global_mode": g_mode,
@@ -15527,7 +15995,9 @@ def build_auto_nodes_api_response(conf_dir: Path = CONF_DIR, include_sparkline: 
     an_key = (
         str(conf_dir),
         bool(include_sparkline),
-        _conf_file_mtimes_sig(conf_dir, ("auto_nodes.json", "nodes.json", "node_probe.json", "subscriptions.json")),
+        (_conf_file_mtimes_sig_q(conf_dir, ("auto_nodes.json", "nodes.json", "node_probe.json", "subscriptions.json"), 15)
+         if _is_live_conf_dir(conf_dir)
+         else _conf_file_mtimes_sig(conf_dir, ("auto_nodes.json", "nodes.json", "node_probe.json", "subscriptions.json"))),
         _CORE_RELOAD_STATE["config_seq"],
     )
     if an_key in _AUTO_NODES_API_MEMO:
@@ -15577,6 +16047,36 @@ def build_auto_nodes_api_response(conf_dir: Path = CONF_DIR, include_sparkline: 
             op_b = _match_auto_node_pool(all_an_list, aid_b, allow_fallback=False) or _match_auto_node_pool(all_an_list, aid_b, allow_fallback=True)
             if op_b and str(op_b.get("id") or "") in bound_map_an:
                 bound_map_an[str(op_b.get("id") or "")].append(str(sg_b.get("name") or sg_b.get("title") or sg_b.get("id") or ""))
+    _fast_rtt_by_tag = {}
+    _needed_rtt_tags = set()
+    for _an_r in all_an_list:
+        if isinstance(_an_r, dict):
+            _cn_r = str(_an_r.get("current_node") or "")
+            if _cn_r and _cn_r not in ("direct", "block"):
+                _needed_rtt_tags.add(_cn_r)
+                if int(_an_r.get("current_delay_ms") or -1) > 0:
+                    _fast_rtt_by_tag[_cn_r] = int(_an_r["current_delay_ms"])
+            for _ml_r in (_an_r.get("multi_line_nodes") or []):
+                if _ml_r and _ml_r not in ("direct", "block"):
+                    _needed_rtt_tags.add(str(_ml_r))
+            for _g_r in (_an_r.get("groups") or []):
+                for _m_r in (_g_r.get("members") or []):
+                    _mt_r = str(_m_r.get("tag") or "")
+                    _md_r = int(_m_r.get("delay_ms") or -1)
+                    if _mt_r and _md_r > 0:
+                        _fast_rtt_by_tag[_mt_r] = _md_r
+    _missing_rtt_tags = _needed_rtt_tags - set(_fast_rtt_by_tag.keys())
+    if _missing_rtt_tags:
+        for _sn_b in saved_nodes:
+            if isinstance(_sn_b, dict):
+                _t_b = str(_sn_b.get("tag") or "")
+                if _t_b in _missing_rtt_tags:
+                    _nid_b = str(_sn_b.get("node_id") or "") or compute_node_id(_sn_b)
+                    _rec_b = store.get(_nid_b) or store.get(_t_b) or {}
+                    _dms_b = int(_rec_b.get("delay_ms") or _sn_b.get("delay_ms") or -1)
+                    if _dms_b > 0:
+                        _fast_rtt_by_tag[_t_b] = _dms_b
+    _all_rot_log = list(_MULTI_LINE_RR_STATE.get("rotation_log") or [])
     for an in all_an_list:
         pid_b = str(an.get("id") or "")
         b_grps = bound_map_an.get(pid_b) or []
@@ -15586,7 +16086,7 @@ def build_auto_nodes_api_response(conf_dir: Path = CONF_DIR, include_sparkline: 
         _bg_targets = []
         for _gidx_b, _gname_b in enumerate(b_grps):
             _gn_sel = _ml_cands_b[_gidx_b % len(_ml_cands_b)] if (_ml_cands_b and an.get("dispatch_mode") == "multi_line") else str(an.get("current_node") or "direct")
-            _gn_rtt = get_node_real_delay(_gn_sel, store=store, conf_dir=conf_dir) if _gn_sel not in ("", "direct", "block") else -1
+            _gn_rtt = _fast_rtt_by_tag.get(_gn_sel, int((store.get(_gn_sel) or {}).get("delay_ms") or -1)) if _gn_sel not in ("", "direct", "block") else -1
             _bg_targets.append({
                 "group_name": _gname_b,
                 "current_node": _gn_sel,
@@ -15594,16 +16094,23 @@ def build_auto_nodes_api_response(conf_dir: Path = CONF_DIR, include_sparkline: 
                 "shared_exit": bool(len(b_grps) > max(1, len(_ml_cands_b))),
             })
         an["bound_group_targets"] = _bg_targets
+        an["multi_line_rotation_log"] = [r for r in _all_rot_log if r.get("pool_id") == pid_b][-20:]
         an["candidate_nodes_count"] = len(_ml_cands_b) if an.get("dispatch_mode") == "multi_line" else (1 if an.get("current_node") not in ("", "direct") else 0)
     cfg["quota_status"] = get_node_test_quota_summary(conf_dir)
     cfg["ipv6_governance"] = build_ipv6_governance_summary(conf_dir)
-    cfg["log_failover_guard"] = get_kernel_log_failover_status(conf_dir)
+    cfg["log_failover_guard"] = get_kernel_log_failover_status(conf_dir, sh_cfg=sh_for_bind, auto_cfg=cfg)
     cfg["kernel_log_failover"] = cfg["log_failover_guard"]
     cfg["dwell_bypass_calls"] = int(getattr(SELECTOR_WRITE_COORDINATOR, "dwell_bypass_calls", 0))
-    cfg["multi_line_rotation_log"] = list(_MULTI_LINE_RR_STATE.get("rotation_log") or [])[-20:]
+    cfg["selector_coordinator"] = {
+        "total_writes": int(getattr(SELECTOR_WRITE_COORDINATOR, "total_writes", 0)),
+        "skipped_noop": int(getattr(SELECTOR_WRITE_COORDINATOR, "skipped_noop", 0)),
+        "skipped_dwell": int(getattr(SELECTOR_WRITE_COORDINATOR, "skipped_dwell", 0)),
+        "dwell_bypass_calls": int(getattr(SELECTOR_WRITE_COORDINATOR, "dwell_bypass_calls", 0)),
+    }
+    cfg["multi_line_rotation_log"] = _all_rot_log[-20:]
     res_obj = cfg
-    _AUTO_NODES_API_MEMO[an_key] = copy.deepcopy(res_obj)
-    return res_obj
+    _AUTO_NODES_API_MEMO[an_key] = res_obj
+    return dict(res_obj)
 
 def build_nodes_api_response(
     conf_dir: Path = CONF_DIR,
@@ -15618,7 +16125,9 @@ def build_nodes_api_response(
         str(conf_dir),
         bool(include_full),
         bool(include_sparkline),
-        _conf_file_mtimes_sig(conf_dir, ("nodes.json", "node_probe.json", "subscriptions.json", "max_outbounds", "shunt.json")),
+        (_conf_file_mtimes_sig_q(conf_dir, ("nodes.json", "node_probe.json", "subscriptions.json", "max_outbounds", "shunt.json"), 15)
+         if _is_live_conf_dir(conf_dir)
+         else _conf_file_mtimes_sig(conf_dir, ("nodes.json", "node_probe.json", "subscriptions.json", "max_outbounds", "shunt.json"))),
         _CORE_RELOAD_STATE["config_seq"],
     )
     if nd_key in _NODES_API_MEMO:
@@ -15874,7 +16383,7 @@ def build_nodes_api_response(
         "selections": PROBE_ENGINE.current_selections,
         "nodes": enriched,
     }
-    _NODES_API_MEMO[nd_key] = copy.deepcopy(res_obj)
+    _NODES_API_MEMO[nd_key] = res_obj
     if limit > 0:
         paged = dict(res_obj)
         paged["nodes"] = enriched[offset:offset + limit]
@@ -17385,6 +17894,7 @@ def export_ops_backup(conf_dir: Path = CONF_DIR) -> dict:
         "rule_providers": load_rule_providers(conf_dir),
         "sonar_targets": load_sonar_targets(conf_dir),
         "alerts_config": load_alerts_config(conf_dir, mask_secrets=False),
+        "sub_jaccard_ring": (lambda _rf: json.loads(_rf.read_text(encoding="utf-8")) if _rf.is_file() else {})(_effective_run_dir(conf_dir) / "sub_jaccard_ring.json"),
         "_existing_files": [
             fn for fn in (
                 "nodes.json", "subscriptions.json", "homelink.json", "shunt.json",
@@ -17701,6 +18211,13 @@ def restore_ops_backup(backup_data: dict, conf_dir: Path = CONF_DIR) -> dict:
     if isinstance(backup_data.get("alerts_config"), dict):
         if existing_set is None or "alerts_config.json" in existing_set:
             save_alerts_config(backup_data["alerts_config"], conf_dir)
+    if isinstance(backup_data.get("sub_jaccard_ring"), dict) and backup_data["sub_jaccard_ring"]:
+        try:
+            _rf_rst = _effective_run_dir(conf_dir) / "sub_jaccard_ring.json"
+            _rf_rst.parent.mkdir(parents=True, exist_ok=True)
+            _atomic_write_text(_rf_rst, json.dumps(backup_data["sub_jaccard_ring"], ensure_ascii=False))
+        except OSError as _e_rst_r:
+            _ = _e_rst_r
     if "max_outbounds_limit" in backup_data:
         mob_int = int(backup_data["max_outbounds_limit"])
         _atomic_write_text(conf_dir / "max_outbounds.txt", str(mob_int), encoding="utf-8")
@@ -22214,9 +22731,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.5.8"
+APP_VERSION = "2.5.9"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.5.8-release-20261110"
+APP_BUILD = "2.5.9-release-20261110"
 
 UPDATE_MANIFEST_PRIMARY = "https://ai-link-official.pages.dev/version.json"
 UPDATE_MANIFEST_GITHUB = "https://raw.githubusercontent.com/Master-AI-007/ai-link-openwrt/main/version.json"
@@ -25273,7 +25790,12 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             sub_id = str(payload.get("id") or payload.get("sub_id") or "").strip()
             sub_url = str(payload.get("url") or "").strip()
             raw_txt = str(payload.get("raw_text") or "").strip()
-            if payload.get("simulate_error"):
+            _allow_debug_sim = bool(
+                get_ops_settings(CONF_DIR).get("debug_test_hooks", False)
+                or os.environ.get("AI_LINK_ALLOW_TEST_HOOKS") == "1"
+                or globals().get("_SELF_TEST_ACTIVE", False)
+            )
+            if payload.get("simulate_error") and _allow_debug_sim:
                 req_id_err = f"prev_{int(time.time()*1000)}_{os.getpid()}"
                 self._send_json({"ok": False, "request_id": req_id_err, "sub_id": sub_id, "error": "preview_fetch_failed", "detail": str(payload.get("simulate_error"))}, status=200)
                 return
@@ -26125,6 +26647,15 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             th_in = int(payload.get("fail_threshold") or 3)
             res = scan_kernel_logs_for_active_pool_failures(CONF_DIR, log_lines_override=lines_in, fail_threshold=th_in)
             self._send_json(res)
+            return
+        if clean_path == "/api/auto_nodes/failover_drill":
+            if not self._strict_auth_ok():
+                self._send_json({"ok": False, "error": "unauthorized", "message": "执行故障转移演练需要管理员访问令牌"}, status=401)
+                return
+            pid_d = str(payload.get("pool_id") or payload.get("id") or "").strip()
+            auto_rst_d = bool(payload.get("auto_restore", True))
+            res_d = run_end_to_end_failover_drill(CONF_DIR, pool_id=pid_d, auto_restore=auto_rst_d)
+            self._send_json(res_d, status=(200 if res_d.get("ok") else 400))
             return
         if clean_path == "/api/auto_nodes/probe":
             an_id = str(payload.get("id") or "").strip()

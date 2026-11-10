@@ -499,6 +499,14 @@ def fb250_packaging_and_luci_gate():
                 st_neg_ok = (_neg_res.returncode != 0 and "leaked" in (_neg_res.stderr or ""))
                 if not st_neg_ok:
                     fp_mismatches.append("selftest_negative_intercept_check_failed")
+            # FB-259-1 Gate: Verify OpenWrt /var -> /tmp symlink path (/tmp/run/ai-link) is NEVER exempted even when AI_LINK_RUN_DIR env var is unset
+            _sym_env = {k: v for k, v in os.environ.items() if k not in ("AI_LINK_CONF_DIR", "AI_LINK_RUN_DIR")}
+            _sym_chk = subprocess.run(
+                [PY, "-B", "-c", f"import importlib.util; from pathlib import Path; spec=importlib.util.spec_from_file_location('d', { repr(str(DAEMON)) }); d=importlib.util.module_from_spec(spec); spec.loader.exec_module(d); assert not d._is_sandbox_exempt_write(Path('/tmp/run/ai-link/.selftest_write_guard_probe_atomic')); print('SYMLINK_GUARD_OK')"],
+                env=_sym_env, capture_output=True, text=True
+            )
+            if _sym_chk.returncode != 0 or "SYMLINK_GUARD_OK" not in (_sym_chk.stdout or ""):
+                fp_mismatches.append("fb259_1_openwrt_var_tmp_symlink_guard_failed")
     finally:
         if _tmp_prod_ctx is not None:
             _tmp_prod_ctx.cleanup()

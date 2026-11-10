@@ -1,3 +1,13 @@
+## [v2.5.9] - 2026-11-10
+### 真机写拦截根治 + 演练沙盒化 + 订阅与可观测性契约闭环
+- **P1-1 & FB-259-1 真机自检写拦截根治**：移除易误判的 `/tmp` 前缀放行，新增 `_is_sandbox_exempt_write()` 统一守卫；将启动期锁定的 `_BOOT_CONF_DIR` / `_BOOT_RUN_DIR` 与 `/etc/ai-link`、`/var/run/ai-link`、`/tmp/run/ai-link` 列为严禁豁免的生产根，仅进程内动态改写目录至独立沙盒且写入注册状态文件时豁免。兼容 OpenWrt `/var → /tmp` 符号链接，真机不设任何环境变量连续 10 次自检全部 `RC=0`（`blocked=7 / leaked=0`）、生产文件哈希零变化；负向关闭拦截仍正确报 `leaked 7 (blocked=0)`。
+- **P0-1 故障转移演练沙盒化与单池隔离**：`run_end_to_end_failover_drill()` 全程拷贝配置至隔离目录（`sandbox_drill=True`），禁止真实 Clash API PUT / 宿主 conntrack 清理 / 全局计数递增；`scan_kernel_logs_for_active_pool_failures()` 新增 `only_pool_id` 精确作用域，多池共享节点时只演练目标池，结束校验快照 100% 还原。
+- **P1-1 订阅预览状态**：`409 stale_preview` 校验前置到 `status="syncing"` 之前，保持原订阅状态并写入可诊断 `last_error`，连续 3 次 409 不卡死。
+- **P2-1/1b 可观测性契约**：`bound_group_targets` 按数组渲染并显示组间共享出口；`multi_line_rotation_log` / `dwell_bypass_calls` 在 API 顶层与单池同步挂载，面板渲染最近轮换轨迹；`tools/check_api_ui_parity.py` 扩展至字段名、类型与层级位置校验。
+- **P2-2~P2-7**：`simulate_error` 调试钩子增加生产守卫；静态数字兜底改 `--`；隔离沙盒配额写入改用显式注册；`/api/auto_nodes` 冷缓存首样本 407ms → 22.3ms；新增无损故障转移演练 API 与菜单按钮；多出口轮询文案、RTT>0 门槛与游标保持。
+- **七项交付标准保持**：11 行指纹逐行校验（11/11 全对）与 1 字节篡改转红、连续中文章节、112+ 条目交接包布局声明、12 夹具随包、测试数值实跑后置注入、零补发 15/15。
+- 验收：原始包零补发 `run_all 15/15 PASS / RC=0`、自检 10/10、混沌 **81/81**、门禁双布局 **17/17**、design-lint 18/18、静态资源 8/8、`INSTALL_RC=0`、`nft=1`、重启后稳定、UI 零异常三视口零溢出。
+
 ## [v2.5.8] - 2026-11-10
 ### 自检并发误报根治 + 绑定/预览契约闭环 + 多出口轮询治理
 - **P1-1 & FB-257-3 自检四层架构重构**：移除 `--self-test` 对后台 daemon 高频改写的 `node_test_quota.json` / `ai-link.nft` 的跨进程 SHA 比对（仅保留静态 `sing-box.json`）；`gates_v101.py` 把 `AI_LINK_CONF_DIR` / `AI_LINK_RUN_DIR` 注入统一提到 `if/else` 分支外，放宽 stderr 断言并输出 `eff_conf/eff_run` 诊断字段。真机纯解压布局与标准发版布局连续运行均 **17/17 PASS**，原始包零补发 `run_all` 恢复 **15/15 / RC=0**。

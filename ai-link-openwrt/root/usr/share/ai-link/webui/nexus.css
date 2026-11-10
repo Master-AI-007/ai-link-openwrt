@@ -3007,14 +3007,17 @@ select {
   gap: var(--sp-1);
 }
 .shunt-group-main {
-  grid-template-columns: 128px minmax(150px, 1.3fr) minmax(125px, 1fr) minmax(125px, 1.1fr) 86px 176px;
-  gap: var(--sp-3);
+  grid-template-columns: 108px minmax(105px, 1.3fr) minmax(90px, 1fr) minmax(90px, 1.1fr) 68px auto;
+  gap: var(--sp-2);
+}
+.shunt-group-main > * {
+  min-width: 0;
 }
 .prio-box {
   display: flex;
   align-items: center;
   gap: var(--sp-1);
-  min-width: 120px;
+  min-width: 104px;
 }
 .prio-badge {
   min-width: 28px;
@@ -3986,3 +3989,17 @@ small {
 .hud-pool-scope { color: var(--text-3); font-size: var(--fs-xs); font-weight: 400; }
 
 #page-dns .dashboard-grid.two-one > .glass-card > .blocked-list { flex: 1; }
+
+@media (max-width: 1240px) {
+  .shunt-group-main { grid-template-columns: 48px minmax(0, 1.2fr) minmax(0, 1fr) auto; }
+  .shunt-group-main > *:nth-child(4), .shunt-group-main > *:nth-child(5) { display: none; }
+}
+@media (max-width: 720px) {
+  .shunt-group-main { grid-template-columns: minmax(0, 1fr) auto; }
+  .shunt-group-main > *:nth-child(1), .shunt-group-main > *:nth-child(3) { display: none; }
+  .modal-grid-2, .modal-grid-3, .grp-mode-cards { grid-template-columns: 1fr; }
+  .setting-line { gap: var(--sp-2); }
+  .setting-line > div { min-width: 0; flex: 1; }
+  .setting-line .select-compact { max-width: 148px; min-width: 0; }
+  .glass-card > .button-row, .bento-span-2 > .button-row { flex-wrap: wrap; }
+}
