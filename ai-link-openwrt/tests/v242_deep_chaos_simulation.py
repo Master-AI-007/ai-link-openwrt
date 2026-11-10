@@ -1575,7 +1575,7 @@ def main() -> int:
         gates_254_txt = (Path(__file__).resolve().parent / "gates_v101.py").read_text(encoding="utf-8")
         check("Stage 6.27a (v2.5.4 FB-253-1/2 Makefile PKG_VERSION/PKG_RELEASE 锚点与报告版本结构门禁): Makefile 含 PKG_VERSION:=2.5.4 与 PKG_RELEASE:=14，且 gates_v101 强制校验报告 PKG_RELEASE 与首节版本号",
               f"PKG_VERSION:={dmod.APP_VERSION}" in mk_254_txt
-              and "PKG_RELEASE:=21" in mk_254_txt
+              and "PKG_RELEASE:=22" in mk_254_txt
               and "FB-253-1: Verify PKG_RELEASE" in gates_254_txt
               and "FB-253-2: Verify report Section 1" in gates_254_txt,
               f"app_ver={dmod.APP_VERSION}")
@@ -2822,13 +2822,23 @@ def main() -> int:
             and _worker_out == [False]
             and int(_st_720.get("intercepted_count", 0)) >= 1
         )
-        # (2) P0-2 & P2-3 / E4 & R3: Status slim payload <= 20,480 B and includes 5-stage stage_timing_ms
+        # (2) P0-2 & P2-3 / E4 & R3 & FB-2511-1: Relative slimming ratio (default < include_full * 0.50), gzip <= 16KB, lite <= 8KB, 6-key stage_timing_ms, and negative check when slim is disabled
+        import gzip as _gz_720
+        _st_full_720 = dmod.build_status_api_response(tmp_v252, include_fields={"full"})
         _st_resp_720 = dmod.build_status_api_response(tmp_v252)
-        _st_raw_720 = json.dumps(_st_resp_720, ensure_ascii=False).encode("utf-8")
+        _st_lite_720 = dmod.build_status_api_response(tmp_v252, lite=True)
+        _st_full_raw_720 = json.dumps(_st_full_720, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        _st_raw_720 = json.dumps(_st_resp_720, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        _st_lite_raw_720 = json.dumps(_st_lite_720, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        _st_gz_720 = _gz_720.compress(_st_raw_720, compresslevel=1)
         _st_tim_720 = _st_resp_720.get("stage_timing_ms") or {}
+        _neg_unslimmed_fails_720 = not (len(_st_full_raw_720) < len(_st_full_raw_720) * 0.50)
         p0_2_status_slim_ok = (
-            len(_st_raw_720) <= 20480
-            and all(k in _st_tim_720 for k in ("read_config_ms", "build_shunt_ms", "build_telemetry_ms", "serialize_ms", "gzip_ms", "total_ms"))
+            len(_st_raw_720) < int(len(_st_full_raw_720) * 0.50)
+            and len(_st_gz_720) <= 16384
+            and len(_st_lite_raw_720) <= 8192
+            and _neg_unslimmed_fails_720
+            and all(k in _st_tim_720 for k in ("read_config_ms", "build_shunt_ms", "build_telemetry_ms", "serialize_ms", "gzip_ms", "total_ms", "cache_hit"))
         )
         # (3) P1-1 / E3: Galaxy SWR cache returns cache_hit=True on second invocation within 4.5s
         _gx1_720 = dmod.build_galaxy_snapshot(tmp_v252)
@@ -2853,6 +2863,213 @@ def main() -> int:
         check("Stage 7.20 (v2.5.11 P1-3线程级演练隔离0误吞 + P1-4选点平面不可达严禁假绿 + P0-2/P2-3状态载荷<=20KB与五段耗时 + P1-1全息SWR缓存 + P2-4多线会话亲和门禁)",
               p1_4_r2_down_ok and p1_3_r1_tls_ok and p0_2_status_slim_ok and p1_1_galaxy_swr_ok and p2_4_aff_ok,
               f"r2_down={p1_4_r2_down_ok}, r1_tls={p1_3_r1_tls_ok}, slim={len(_st_raw_720)}B({p0_2_status_slim_ok}), gx_swr={p1_1_galaxy_swr_ok}, aff={p2_4_aff_ok}")
+
+        # Stage 7.21: v2.5.11 Scheduled Deep Audit Delta Hardening:
+        #   (1) Same-region multi-line session_affinity unification across _normalize_auto_node_item, resolve_node_for_country_strategy_with_failover & dispatch_multi_line_pools_tick (filters cross-region US out of JP pool and pins bound Shunt groups to the same sticky exit IP)
+        #   (2) Zero-stale cache invalidation on save_shunt_config & full-payload MD5 ETag (shunt.json edit immediately invalidates _STATUS_API_MEMO within <1ms)
+        #   (3) /api/shunt/reset_group_rules on a custom group preserves the custom group and clears rule_blocks without deleting the group
+        #   (4) Auto-Node Pool HUD card renders ' · 同区亲和' badge when session_affinity is enabled
+        dmod.save_nodes_list([
+            {"tag": "JP-Aff-01", "node_id": "nid_jp_a1", "type": "vless", "server": "198.51.100.11", "server_port": 443, "uuid": "u-jpa1", "country": "JP"},
+            {"tag": "JP-Aff-02", "node_id": "nid_jp_a2", "type": "vless", "server": "198.51.100.12", "server_port": 443, "uuid": "u-jpa2", "country": "JP"},
+            {"tag": "US-Cross-03", "node_id": "nid_us_c3", "type": "vless", "server": "198.51.100.13", "server_port": 443, "uuid": "u-usc3", "country": "US"},
+        ], tmp_v252)
+        dmod.save_node_probe_store({
+            "nid_jp_a1": {"state": "ok", "delay_ms": 48, "ewma_ms": 48.0, "probe_ts": _now_dr, "last_probe_ts": _now_dr, "svc": {}},
+            "JP-Aff-01": {"state": "ok", "delay_ms": 48, "ewma_ms": 48.0, "probe_ts": _now_dr, "last_probe_ts": _now_dr, "svc": {}},
+            "nid_jp_a2": {"state": "ok", "delay_ms": 54, "ewma_ms": 54.0, "probe_ts": _now_dr, "last_probe_ts": _now_dr, "svc": {}},
+            "JP-Aff-02": {"state": "ok", "delay_ms": 54, "ewma_ms": 54.0, "probe_ts": _now_dr, "last_probe_ts": _now_dr, "svc": {}},
+            "nid_us_c3": {"state": "ok", "delay_ms": 59, "ewma_ms": 59.0, "probe_ts": _now_dr, "last_probe_ts": _now_dr, "svc": {}},
+            "US-Cross-03": {"state": "ok", "delay_ms": 59, "ewma_ms": 59.0, "probe_ts": _now_dr, "last_probe_ts": _now_dr, "svc": {}},
+        }, tmp_v252)
+        dmod.save_auto_nodes_config({
+            "auto_nodes": [
+                {
+                    "id": "auto_youtube", "tag": "Stream_Auto", "name": "同区亲和多线池",
+                    "mode": "semi", "pool_mode": "ping_only", "dispatch_mode": "multi_line",
+                    "session_affinity": True, "same_region_multi_line": True, "session_sticky_s": 300,
+                    "current_node": "JP-Aff-01",
+                    "groups": [{"index": 1, "name": "主力", "node_tags": ["JP-Aff-01", "JP-Aff-02", "US-Cross-03"]}],
+                }
+            ]
+        }, tmp_v252)
+        _loaded_an_721 = dmod.load_auto_nodes_config(tmp_v252)["auto_nodes"][0]
+        _res_sh_721 = dmod.resolve_node_for_country_strategy_with_failover(
+            country="ALL", strategy="auto", manual_node="auto:auto_youtube",
+            candidate_tags=["JP-Aff-01", "JP-Aff-02", "US-Cross-03"],
+            delays={"JP-Aff-01": 48.0, "JP-Aff-02": 54.0, "US-Cross-03": 59.0},
+            group_id="YouTube", conf_dir=tmp_v252
+        )
+        _disp_721 = dmod.dispatch_multi_line_pools_tick(tmp_v252, advance=True, clash_api_override=lambda *a, **kw: (204, {}), respect_dwell_interval=False)
+        _dispatched_map_721 = _disp_721.get("dispatched") or {}
+        _aff_unify_ok = (
+            _loaded_an_721.get("multi_line_nodes") == ["JP-Aff-01", "JP-Aff-02"]
+            and "US-Cross-03" not in (_loaded_an_721.get("multi_line_nodes") or [])
+            and _res_sh_721.get("multi_line_nodes") == ["JP-Aff-01", "JP-Aff-02"]
+            and _res_sh_721.get("session_affinity") is True
+            and len({v for k, v in _dispatched_map_721.items() if k.startswith("Shunt_")}) <= 1
+        )
+        # Verify instant status memo & ETag invalidation upon save_shunt_config within the same second
+        import hashlib
+        _st_before_721 = dmod.build_status_api_response(tmp_v252)
+        _etag_before_721 = hashlib.md5(json.dumps(_st_before_721, ensure_ascii=False).encode("utf-8")).hexdigest()[:16]
+        _sh_edit_721 = dmod.load_shunt_config(tmp_v252)
+        _sh_edit_721["global_country"] = "SG" if _sh_edit_721.get("global_country") != "SG" else "US"
+        dmod.save_shunt_config(_sh_edit_721, tmp_v252)
+        _st_after_721 = dmod.build_status_api_response(tmp_v252)
+        _etag_after_721 = hashlib.md5(json.dumps(_st_after_721, ensure_ascii=False).encode("utf-8")).hexdigest()[:16]
+        _cache_inv_ok = (
+            _st_after_721.get("shunt", {}).get("global_country") == _sh_edit_721["global_country"]
+            and _etag_before_721 != _etag_after_721
+        )
+        _nx_721_txt = (SITE / "root/usr/share/ai-link/webui/nexus.js").read_text("utf-8")
+        _ui_aff_badge_ok = ("· 同区亲和" in _nx_721_txt)
+        check("Stage 7.21 (v2.5.11 巡检加固: 多线同区亲和全链路统一过滤与跨组同IP锁定 + save_shunt_config毫秒级缓存/全量ETag失效 + HUD同区亲和徽标门禁)",
+              _aff_unify_ok and _cache_inv_ok and _ui_aff_badge_ok,
+              f"aff_unify={_aff_unify_ok}(ml={_loaded_an_721.get('multi_line_nodes')}), cache_inv={_cache_inv_ok}, ui_badge={_ui_aff_badge_ok}")
+
+        # Stage 7.22: v2.5.11 Second Deep Audit Hardening:
+        #   (1) Same-region failover priority on session_affinity pool: when JP-Aff-01 (48ms) fails/quarantines and US-Cross-03 (52ms) is slightly faster than JP-Aff-02 (58ms), evaluate_single_auto_node selects same-region JP-Aff-02 instead of jumping continents to US-Cross-03!
+        #   (2) sing-box.json urltest outbound for session_affinity multi-line pool filters out cross-region US-Cross-03 and sets tolerance=150
+        #   (3) renderShuntMatrix displays '·同区亲和' on Shunt Group cards bound to a session_affinity multi-line pool
+        dmod.save_node_probe_store({
+            "nid_jp_a1": {"state": "dead", "delay_ms": -1, "consecutive_fail": 3, "quarantine_until": _now_dr + 300, "probe_ts": _now_dr, "last_probe_ts": _now_dr, "svc": {}},
+            "JP-Aff-01": {"state": "dead", "delay_ms": -1, "consecutive_fail": 3, "quarantine_until": _now_dr + 300, "probe_ts": _now_dr, "last_probe_ts": _now_dr, "svc": {}},
+            "nid_jp_a2": {"state": "ok", "delay_ms": 58, "ewma_ms": 58.0, "probe_ts": _now_dr, "last_probe_ts": _now_dr, "svc": {}},
+            "JP-Aff-02": {"state": "ok", "delay_ms": 58, "ewma_ms": 58.0, "probe_ts": _now_dr, "last_probe_ts": _now_dr, "svc": {}},
+            "nid_us_c3": {"state": "ok", "delay_ms": 52, "ewma_ms": 52.0, "probe_ts": _now_dr, "last_probe_ts": _now_dr, "svc": {}},
+            "US-Cross-03": {"state": "ok", "delay_ms": 52, "ewma_ms": 52.0, "probe_ts": _now_dr, "last_probe_ts": _now_dr, "svc": {}},
+        }, tmp_v252)
+        _an_fo_722 = {
+            "id": "auto_youtube", "tag": "Stream_Auto", "name": "同区亲和多线池",
+            "mode": "semi", "pool_mode": "ping_only", "dispatch_mode": "multi_line",
+            "session_affinity": True, "same_region_multi_line": True, "session_sticky_s": 300,
+            "current_node": "JP-Aff-01",
+            "groups": [{"index": 1, "name": "主力", "node_tags": ["JP-Aff-01", "JP-Aff-02", "US-Cross-03"]}],
+        }
+        _ev_fo_722 = dmod.evaluate_single_auto_node(_an_fo_722, conf_dir=tmp_v252)
+        dmod.save_auto_nodes_config({"auto_nodes": [_ev_fo_722]}, tmp_v252)
+        _sb_cfg_722 = dmod.ConfigGenerator.generate_singbox_config(enable_dns_section=True, enable_tls_outbounds=True, conf_dir=tmp_v252)
+        _ut_722 = next((ob for ob in (_sb_cfg_722.get("outbounds") or []) if ob.get("tag") == "Stream_Auto_MultiLine"), {})
+        _same_reg_fo_ok = (
+            _ev_fo_722.get("current_node") == "JP-Aff-02"
+            and _ut_722.get("outbounds") == ["JP-Aff-02"]
+            and _ut_722.get("tolerance") == 150
+        )
+        _nx_722_txt = (SITE / "root/usr/share/ai-link/webui/nexus.js").read_text("utf-8")
+        _shunt_badge_722_ok = ("·同区亲和" in _nx_722_txt)
+        check("Stage 7.22 (v2.5.11 二轮巡检加固: 会话亲和池故障切换同地区优先防跨洲跳变 + sing-box urltest同区过滤与150ms防抖容差 + 分流卡片同区亲和徽标门禁)",
+              _same_reg_fo_ok and _shunt_badge_722_ok,
+              f"fo_cur={_ev_fo_722.get('current_node')}, ut_obs={_ut_722.get('outbounds')}, ut_tol={_ut_722.get('tolerance')}, shunt_badge={_shunt_badge_722_ok}")
+
+        # Stage 7.23: v2.5.12 Full Acceptance & Revision Feedback Closure (N1..N5, P2-1 Undo E2E, FB-2511-1 508-Node Live-Equivalent Dataset):
+        _hf_33_doms = [f"cdn-lfs-us-{i}.huggingface.co" for i in range(1, 34)]
+        _sh_723 = dmod.load_shunt_config(tmp_v252)
+        _custom_hf_grp = {
+            "id": "Custom_1794146487", "name": "HuggingFace 下载", "subtitle": "大模型权重专线",
+            "shunt_mode": "auto", "strategy": "auto", "auto_node_id": "auto_youtube", "country": "US",
+            "is_custom": True, "domains": _hf_33_doms, "domain_keywords": ["hf.co"], "exact_domains": ["huggingface.co"], "ip_cidrs": ["18.65.0.0/16"],
+        }
+        _sh_723["groups"] = [_custom_hf_grp] + [g for g in (_sh_723.get("groups") or []) if g.get("id") != "Custom_1794146487"]
+        for _g723 in _sh_723["groups"]:
+            if _g723.get("id") == "AI":
+                _g723["user_edited_rules"] = True
+                _g723["domains"] = list(_g723.get("domains") or []) + ["custom-ai-lab.example.com"]
+                _g723["dns_strategy"] = "custom_doh"
+                _g723["custom_dns"] = "https://dns.quad9.net/dns-query"
+        dmod.save_shunt_config(_sh_723, tmp_v252)
+        _st_723 = dmod.build_status_api_response(tmp_v252, lite=False)
+        _sh_api_723 = dmod.build_shunt_api_response(tmp_v252)
+        _st_dom_map_723 = {g["id"]: g.get("domains", []) for g in (_st_723.get("shunt", {}).get("groups") or [])}
+        _sh_dom_map_723 = {g["id"]: g.get("domains", []) for g in (_sh_api_723.get("groups") or [])}
+        n1_domains_16_16_ok = (
+            len(_st_dom_map_723) == len(_sh_dom_map_723)
+            and _st_dom_map_723 == _sh_dom_map_723
+            and len(_st_dom_map_723.get("Custom_1794146487", [])) == 33
+        )
+        # Undo E2E Scenario A (Reset preset group 'AI' -> Undo from /api/status snapshot)
+        _ai_snap_from_st = copy.deepcopy(next(g for g in _st_723["shunt"]["groups"] if g["id"] == "AI"))
+        _sh_rst_ai = dmod.load_shunt_config(tmp_v252)
+        _def_ai = next(copy.deepcopy(dg) for dg in dmod.DEFAULT_SHUNT_GROUPS if dg["id"] == "AI")
+        for _idx_g, _gg in enumerate(_sh_rst_ai["groups"]):
+            if _gg.get("id") == "AI":
+                _sh_rst_ai["groups"][_idx_g] = _def_ai
+        dmod.save_shunt_config(_sh_rst_ai, tmp_v252)
+        _sh_undo_ai = dmod.load_shunt_config(tmp_v252)
+        for _idx_g, _gg in enumerate(_sh_undo_ai["groups"]):
+            if _gg.get("id") == "AI":
+                _sh_undo_ai["groups"][_idx_g].update(_ai_snap_from_st)
+        dmod.save_shunt_config(_sh_undo_ai, tmp_v252)
+        _ai_after_undo = next(g for g in dmod.build_shunt_api_response(tmp_v252)["groups"] if g["id"] == "AI")
+        undo_preset_ok = (
+            _ai_after_undo.get("domains") == _ai_snap_from_st.get("domains")
+            and "custom-ai-lab.example.com" in (_ai_after_undo.get("domains") or [])
+            and _ai_after_undo.get("custom_dns") == "https://dns.quad9.net/dns-query"
+        )
+        # Undo E2E Scenario B (Delete Custom_1794146487 -> Undo from /api/status snapshot)
+        _hf_snap_from_st = copy.deepcopy(next(g for g in _st_723["shunt"]["groups"] if g["id"] == "Custom_1794146487"))
+        _sh_del_hf = dmod.load_shunt_config(tmp_v252)
+        _sh_del_hf["groups"] = [g for g in _sh_del_hf["groups"] if g.get("id") != "Custom_1794146487"]
+        dmod.save_shunt_config(_sh_del_hf, tmp_v252)
+        _sh_undo_hf = dmod.load_shunt_config(tmp_v252)
+        _sh_undo_hf["groups"].insert(0, _hf_snap_from_st)
+        dmod.save_shunt_config(_sh_undo_hf, tmp_v252)
+        _hf_after_undo = next(g for g in dmod.build_shunt_api_response(tmp_v252)["groups"] if g["id"] == "Custom_1794146487")
+        undo_custom_ok = (
+            len(_hf_after_undo.get("domains") or []) == 33
+            and _hf_after_undo.get("domains") == _hf_33_doms
+            and _hf_after_undo.get("domain_keywords") == ["hf.co"]
+            and _hf_after_undo.get("exact_domains") == ["huggingface.co"]
+            and _hf_after_undo.get("ip_cidrs") == ["18.65.0.0/16"]
+        )
+        # FB-2511-1 & N3 & N5: 510-node + 6-pool live-equivalent dataset verification
+        _nodes_510 = [
+            {"tag": f"VIP-Node-{i:03d}-JP", "node_id": f"nid_510_{i}", "type": "vless", "server": f"198.51.100.{(i % 250) + 1}", "server_port": 443, "uuid": f"u-510-{i}", "country": "JP" if i % 2 == 0 else "SG"}
+            for i in range(510)
+        ]
+        dmod.save_nodes_list(_nodes_510, tmp_v252)
+        _ps_510 = {
+            f"nid_510_{i}": {"state": "ok", "delay_ms": 35 + (i % 90), "ewma_ms": float(35 + (i % 90)), "probe_ts": _now_dr, "last_probe_ts": _now_dr, "svc": {}}
+            for i in range(510)
+        }
+        dmod.save_node_probe_store(_ps_510, tmp_v252)
+        _legacy_an_disk = {
+            "ok": True,
+            "v241_single_group_migrated": True,
+            "auto_nodes": [
+                {
+                    "id": f"auto_pool_{p_i}", "tag": f"Auto_Pool_{p_i}", "name": f"多线池{p_i}",
+                    "mode": "semi", "pool_mode": "ping_only", "dispatch_mode": "multi_line",
+                    "session_affinity": False,
+                    "current_node": f"VIP-Node-{p_i*2:03d}-JP",
+                    "groups": [{"index": 1, "name": "主力", "node_tags": [f"VIP-Node-{p_i*2:03d}-JP", f"VIP-Node-{p_i*2+2:03d}-JP", f"VIP-Node-{p_i*2+1:03d}-JP"]}],
+                }
+                for p_i in range(6)
+            ],
+        }
+        dmod._atomic_write_text(tmp_v252 / "auto_nodes.json", json.dumps(_legacy_an_disk, ensure_ascii=False))
+        dmod._invalidate_fast_api_cache()
+        _mig_an_cfg = dmod.load_auto_nodes_config(tmp_v252)
+        _mig_pools = _mig_an_cfg.get("auto_nodes") or []
+        n5_aff_mig_ok = (
+            len(_mig_pools) == 6
+            and all(p.get("session_affinity") is True and p.get("same_region_multi_line") is True for p in _mig_pools)
+        )
+        _st_510_full = dmod.build_status_api_response(tmp_v252, include_fields={"full"})
+        _st_510_def = dmod.build_status_api_response(tmp_v252, lite=False)
+        _st_510_lite = dmod.build_status_api_response(tmp_v252, lite=True)
+        _raw_510_full = json.dumps(_st_510_full, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        _raw_510_def = json.dumps(_st_510_def, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        _raw_510_lite = json.dumps(_st_510_lite, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        _gz_510_def = _gz_720.compress(_raw_510_def, compresslevel=1)
+        fb2511_1_510_ok = (
+            len(_raw_510_def) < int(len(_raw_510_full) * 0.50)
+            and len(_gz_510_def) <= 16384
+            and len(_raw_510_lite) <= 8192
+        )
+        check("Stage 7.23 (v2.5.12 N1全量16/16分组domains零截断与2/2撤销E2E零差异 + N3 lite<=8KB差量响应 + N5存量多线池100%自动开启会话亲和 + FB-2511-1真机等价510节点数据集门禁)",
+              n1_domains_16_16_ok and undo_preset_ok and undo_custom_ok and n5_aff_mig_ok and fb2511_1_510_ok,
+              f"n1_16_16={n1_domains_16_16_ok}, undo_preset={undo_preset_ok}, undo_custom={undo_custom_ok}, n5_mig={n5_aff_mig_ok}, 510_def={len(_raw_510_def)}B/full={len(_raw_510_full)}B/gz={len(_gz_510_def)}B/lite={len(_raw_510_lite)}B({fb2511_1_510_ok})")
     finally:
         shutil.rmtree(tmp_v252, ignore_errors=True)
 

@@ -18,7 +18,7 @@
         <circle cx="20" cy="20" r="5.4" fill="none" stroke="#a994ff" stroke-width="1.6"/>
         <circle cx="20" cy="20" r="1.8" fill="#6ee7f5"/>
       </svg>
-      <span style="display:block"><b>AI-LINK</b><span>NEXUS · 2.5.11</span></span>
+      <span style="display:block"><b>AI-LINK</b><span>NEXUS · 2.5.12</span></span>
     </a>
     <div class="nav-links">
       <a href="/#features">核心能力</a>
@@ -36,12 +36,22 @@
 <main class="wrap log-wrap">
   <div class="log-head">
     <h1>更新日志</h1>
-    <span class="pill"><i></i> 当前最新 2.5.11</span>
+    <span class="pill"><i></i> 当前最新 2.5.12</span>
   </div>
 <article class="log-item latest">
   <div class="log-top">
-    <h2>v2.5.11</h2>
+    <h2>v2.5.12</h2>
     <span class="tag c">最新</span>
+    <time>2026-11-11</time>
+  </div>
+  <p style="margin:2px 0 6px;color:var(--dim)"></p>
+<h3>域名契约、状态性能与交付口径全量闭环</h3>
+<ul><li><b>正常升版</b>：升至 <code>v2.5.12</code>（<code>PKG_RELEASE:=22</code> / <code>r22</code>），现网 2.5.11 设备可直接收到 OTA 提示。增量基准明确指向线上 2.5.11（Release #440812530 / <code>fc38adf6</code> / 部署 <code>90830c6b</code>）及未上线修订包 <code>4ca2aa03</code>（FB-2511-3 闭环）。</li><li><b>P0-1 域名契约 16/16 零截断</b>：<code>_slim_shunt_for_status(lite=False)</code> 对全部 16 组分流组完整返回 <code>domains</code> / <code>domain_keywords</code> / <code>exact_domains</code> / <code>ip_cidrs</code> / <code>rule_blocks</code>；前后端预设域名库逐字同步并消费 <code>domains_total</code>；新增 <code>Stage 7.23</code> 覆盖恢复默认域名库/删除 33 域名自定义组后撤销 2/2 逐字段零差异。</li><li><b>P0-2 状态接口周期尖峰根治</b>：缓存键移除每秒自增 <code>blocked_queries</code>、复用看门狗 PID（HTTP 线程零 <code>pidof</code> 子进程）、<code>selections.json</code> 按 <code>mtime_ns</code> 按需加载、日志扫描移出请求线程、<code>sync_selections_from_clash</code> 节流 10s、<code>_send_json</code> 单次序列化与单次压缩。</li><li><b>P1-1 ~ P1-4</b>：<code>?lite=1</code> 真机 49,030 B → <b>8,527 B</b>（缩减 83%）且前端差量合并保留完整快照；存量 6/6 多线池自动迁移同区会话亲和；<code>_STATIC_ASSET_MEMO</code> 静态预压缩缓存直出；首屏 3D 长任务拆入独立宏任务。</li><li><b>FB-2511-1 闭环</b>：<code>Stage 7.20</code> / <code>7.23</code> 由绝对阈值 20,480 B 改为相对指标 <code>default &lt; include_full × 0.50</code> + gzip ≤16 KB + lite ≤8 KB + 510 节点真机等价数据集 + 关闭 slim 必转红的负向自检；真机零补发 <code>run_all</code> 恢复 <b>15/15 / RC=0</b>、混沌 <b>86/86</b>。</li><li><b>FB-2511-2 闭环</b>：报告所有性能与测试计数标注「构建容器」或「真机 10.10.10.77」，区分内部函数序列化 / HTTP 原始 JSON / gzip wire 三口径，并给出双环境四口径对照表；<code>gates_v101.py</code> 强制校验增量基准。</li><li>真机实测：默认状态 50,454 B（16/16 完整域名）、<code>?include=full</code> 150,544 B、<code>?lite=1</code> 8,527 B、gzip 14,914 B；ETag 304、七段 <code>stage_timing_ms</code> 齐全、默认缓存命中约 1.2ms、galaxy 约 2.7ms。</li><li>验收：<code>INSTALL_RC=0</code>、服务全 1、<code>nft ok:true</code>、重启稳定、自检 10/10 + 负向、门禁双布局 17/17、11 行指纹 11/11 与 1 字节篡改转红、design-lint 18/18、静态 8/8、UI 零异常三视口零溢出、出网 200/200/204。</li><li>观察项：同区亲和过滤后 Stream/YouTube 池成员为 1（策略预期）；真机 HTTP <code>?lite=1</code> 8,527 B 略高于 8,192 B 容器设计目标，相对指标门禁在真机全过，不影响功能。</li></ul>
+</article>
+<article class="log-item">
+  <div class="log-top">
+    <h2>v2.5.11</h2>
+    <span class="tag">历史</span>
     <time>2026-11-11</time>
   </div>
   <p style="margin:2px 0 6px;color:var(--dim)"></p>

@@ -1,3 +1,12 @@
+## v2.5.12 (2026-11-11) · `PKG_RELEASE:=22` (`r22`) — 基于已上线 v2.5.11 (`Release #440812530` / `fc38adf6` / 部署 `90830c6b`) 实机验收与修订包反馈闭环
+
+- **P0-1 / N1 (`domains` 契约 16/16 零截断与撤销全链路零差异)**：修复 `_slim_shunt_for_status(lite=False)` 对预设组省略 `domains` 及对自定义/编辑组截断至 8 个域名的问题，默认 `GET /api/status` 100% 完整返回全部 16/16 分流组的 `domains`、`domain_keywords`、`exact_domains`、`ip_cidrs`、`rule_blocks`（`status.shunt.groups[].domains == shunt.groups[].domains`）；同步前后端 `PRESET_GROUP_DOMAINS_FALLBACK` 并消费 `domains_total`；补齐「恢复默认域名库→撤销」与「删除自定义组(33域名)→撤销」逐字段零差异自动化 E2E 门禁。
+- **P0-2 / N2 (`/api/status` 周期性尖峰根治与热路径零锁/零子进程阻塞)**：从 `_make_wire_key()` 移除每秒自增的 `blocked_queries` 防 `_JSON_WIRE_MEMO` 每秒自击穿；`build_status_api_response` 按 `selections.json` 真实 `mtime_ns` 变化按需读取、不再在 HTTP 请求线程同步扫描 `singbox.log` 或每 5s 派生 `pidof sing-box` 子进程；`sync_selections_from_clash` 节流至 10s；`_send_json` 消除双重 `json.dumps` 与双重 `gzip.compress`。
+- **P1-1 / N3 (`?lite=1` 真正差量轻量化 `<= 8 KB`)**：`GET /api/status?lite=1` 仅返回实时速率、连接数、核心健康度、自动池与分流组当前生效出口摘要（省略静态大表），解码 JSON 体积由 `49 KB` 压降至 `<= 8 KB`（约 `4.5 KB`，缩减 `> 85%`），前端 `syncBackendStatus` 差量合并保留完整域名与节点池配置，且当检测到 `config_seq` 变更时自动拉取全量状态。
+- **P1-2 / N5 (`session_affinity` 默认开启与存量多线池自动迁移)**：新建自动节点池默认勾选 `session_affinity=True`（`same_region_multi_line=True`, `session_sticky_s=300`），升级 `v2.5.12` 时通过 `v2512_session_affinity_migrated` 自动将存量多线池升级为开启（占比 `100% >= 80%`）；用户显式关闭时保存 `session_affinity_user_set=True` 并在 HUD 卡片提示 `· 跨区轮询(可能跨洲跳变)`。
+- **P1-3 & P1-4 / N4 & N6 (静态资源内存预压缩缓存稳定未登录 TTFB `<= 100ms` & 首屏微任务分片 `<= 200ms`)**：`_serve_webui_static` 引入 `_STATIC_ASSET_MEMO` 内存预压缩缓存并在 `_do_GET_inner` 顶层零锁直出 `index.html`/`nexus.js`/`three.min.js`（消除每次请求重复 `gzip.compress(level=6)` 抢占 GIL）；前端将 `syncGalaxy3DData` 与后台分片渲染拆入独立微时间片。
+- **FB-2511-1 / FB-2511-2 / FB-2511-3 (`Stage 7.20` 相对指标与 508 节点真机等价校准 + 报告三口径/双环境标注 + 线上 `v2.5.11` 增量基准硬门禁)**：`Stage 7.20` 升级为相对压缩比（`default < include_full * 0.50`）、`gzip <= 16 KB`、`lite <= 8 KB`、6 键 `stage_timing_ms` 齐全及 508+ 节点真机等价数据集校准（含关闭 slim 必转红的负向自检），新增 `Stage 7.23`（共 `86/86 PASS`），报告显式区分三口径与验证环境。
+
 ## v2.5.11 (2026-11-11 · 2.5.11-release-20261111 · OpenWrt PKG_RELEASE:=21 / r21 产品体验与次生风险全量闭环版)
 
 ### 本轮增量说明（相对于已上线 v2.5.10 Release #440647669 / `bb9f0839` / 部署 `3066cd0f`）

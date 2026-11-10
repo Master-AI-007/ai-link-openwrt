@@ -1322,7 +1322,7 @@
           ? '直连模式'
           : (isManual
               ? ('手动固定 · ' + cleanNodeDisplayName(g.manual_node || effResolvedNode || g.country || 'JP'))
-              : ('节点池 · ' + ((boundPool && boundPool.name) || g.auto_node_name || '自动节点池') + (isGrpMulti && grpMlCnt >= 2 ? (' · 多线(' + grpMlCnt + '线)') : (g.auto_single_line_protected ? ' · 单线保护' : ''))));
+              : ('节点池 · ' + ((boundPool && boundPool.name) || g.auto_node_name || '自动节点池') + (isGrpMulti && grpMlCnt >= 2 ? (' · 多线(' + grpMlCnt + '线' + ((g.session_affinity || (boundPool && (boundPool.session_affinity || boundPool.same_region_multi_line))) ? '·同区亲和' : '') + ')') : (g.auto_single_line_protected ? ' · 单线保护' : ''))));
         const autoFallbackDirect = !isDir && !isManual && (g.no_available_node || effResolvedNode === 'direct');
         const outNode = isDir
           ? 'DIRECT 宽带直连'
@@ -1333,7 +1333,7 @@
           .concat(g.domains || [])
           .concat((g.domain_keywords || []).map(k => 'keyword:' + k))
           .concat((g.ip_cidrs || []).map(c => 'cidr:' + c));
-        const ruleCnt = rulesArr.length;
+        const ruleCnt = Math.max(rulesArr.length, Number(g.domains_total || 0));
         const canMove = !g.locked_order && !g.locked_bottom && g.id !== 'Domestic_CN' && g.id !== 'Final_Fallback';
         const prioHtml = '<div class="prio-box">' +
           '<span class="prio-badge">#' + String(i + 1).padStart(2, '0') + '</span>' +
@@ -1461,8 +1461,9 @@
                 : '';
               const hasSharedExit = Array.isArray(p.bound_group_targets) && p.bound_group_targets.some(x => x && x.shared_exit);
               const sharedSuffix = (p.dispatch_mode === 'multi_line' && hasSharedExit) ? ' · 组间共享出口' : '';
+              const affSuffix = p.dispatch_mode === 'multi_line' ? ((p.session_affinity !== false || p.same_region_multi_line) ? ' · 同区亲和' : ' · 跨区轮询(可能跨洲跳变)') : '';
               const mlTitleExtra = (p.dispatch_mode === 'multi_line' && mlArr.length) ? (' · 轮询候选：' + mlArr.map(cleanNodeDisplayName).join(' / ') + '（每个分流组同一时刻仅 1 个出口生效；不同分流组可能落在不同节点（每 30 秒轮换，仅对新连接生效，不叠加单流带宽））') : '';
-              return '<strong class="hud-pool-node mono" style="color:' + (isDirectPool ? 'var(--amber)' : 'var(--cyan)') + '" title="当前出口：' + esc(curNode) + ' · 池内 ' + g1Tags.length + ' 个候选' + esc(mlTitleExtra) + '">' + esc(curNode) + ' <small class="hud-pool-scope" style="color:var(--text-3);font-weight:400">· ' + g1Tags.length + ' 候选 · ' + esc(ctryLabel) + '' + mlSuffix + sharedSuffix + (p.bandwidth_prefer ? ' · 带宽择优' : '') + '</small></strong>';
+              return '<strong class="hud-pool-node mono" style="color:' + (isDirectPool ? 'var(--amber)' : 'var(--cyan)') + '" title="当前出口：' + esc(curNode) + ' · 池内 ' + g1Tags.length + ' 个候选' + esc(mlTitleExtra) + '">' + esc(curNode) + ' <small class="hud-pool-scope" style="color:var(--text-3);font-weight:400">· ' + g1Tags.length + ' 候选 · ' + esc(ctryLabel) + '' + mlSuffix + sharedSuffix + affSuffix + (p.bandwidth_prefer ? ' · 带宽择优' : '') + '</small></strong>';
             })() +
             '<span style="flex-shrink:0">' + latBadgeCompact + '</span>' +
           '</div>' +
@@ -2752,10 +2753,10 @@
       const fn = tasks[idx++][1];
       try { fn(); } catch (_) {}
       if (idx < tasks.length) {
-        _deferredRenderTimer = setTimeout(step, 8);
+        _deferredRenderTimer = setTimeout(step, 16);
       }
     };
-    _deferredRenderTimer = setTimeout(step, 8);
+    _deferredRenderTimer = setTimeout(step, 24);
   }
 
   function showPage(page) {
@@ -3247,18 +3248,17 @@
   }
 
   const PRESET_GROUP_DOMAINS_FALLBACK = {
-    AI: ['openai.com', 'chatgpt.com', 'oaistatic.com', 'oaiusercontent.com', 'anthropic.com', 'claude.ai', 'gemini.google.com', 'bard.google.com', 'generativelanguage.googleapis.com', 'aistudio.google.com', 'notebooklm.google.com', 'perplexity.ai', 'poe.com', 'Midjourney.com', 'cursor.sh', 'cursor.com', 'grok.com', 'x.ai', 'huggingface.co'],
-    YouTube: ['youtube.com', 'youtu.be', 'googlevideo.com', 'ytimg.com', 'ggpht.com', 'youtubei.googleapis.com'],
-    TikTok: ['tiktok.com', 'tiktokv.com', 'tiktokcdn.com', 'tiktokcdn-us.com', 'musical.ly', 'byteoversea.com', 'ibytedtos.com', 'ibyteimg.com', 'ipstatp.com', 'tik-tokapi.com'],
-    Netflix: ['netflix.com', 'netflix.net', 'nflxext.com', 'nflximg.net', 'nflxso.net', 'nflxvideo.net', 'disneyplus.com', 'dssott.com', 'hbo.com', 'max.com'],
-    GitHub: ['github.com', 'github.io', 'githubusercontent.com', 'githubassets.com', 'ghcr.io', 'gitlab.com', 'docker.io', 'npmjs.org'],
-    Google: ['google.com', 'googleapis.com', 'gstatic.com', 'googleusercontent.com', 'gmail.com', 'gvt1.com', 'dl.google.com', 'mtalk.google.com'],
-    Microsoft: ['microsoft.com', 'live.com', 'office.com', 'office365.com', 'onedrive.com', 'bing.com', 'azure.com', 'windowsupdate.com'],
-    Apple: ['apple.com', 'icloud.com', 'mzstatic.com', 'itunes.com', 'cdn-apple.com', 'aaplimg.com'],
-    Games: ['steampowered.com', 'steamcommunity.com', 'steamstatic.com', 'epicgames.com', 'playstation.net', 'xboxlive.com', 'nintendo.net', 'riotgames.com'],
-    Outside_CN: ['telegram.org', 't.me', 'tdesktop.com', 'twitter.com', 'x.com', 'twimg.com', 'discord.com', 'discordapp.com', 'reddit.com', 'wikipedia.org'],
-    Domestic_CN: ['baidu.com', 'qq.com', 'weixin.qq.com', 'taobao.com', 'tmall.com', 'jd.com', 'bilibili.com', 'hdslb.com', 'douyin.com', 'douyincdn.com', 'douyinpic.com', 'zijieapi.com', 'amemv.com', '163.com', '126.net', 'zhihu.com', 'weibo.com', 'aliyun.com'],
-    Final_Fallback: []
+    AI: ["openai.com", "chatgpt.com", "oaistatic.com", "oaiusercontent.com", "claude.ai", "anthropic.com", "gemini.google.com", "ai.google.com", "perplexity.ai", "cursor.sh", "copilot.microsoft.com", "copilot.cloud.microsoft", "edgeservices.bing.com", "sydney.bing.com", "edgeservices.microsoft.com", "cloudmessaging.edge.microsoft.com", "edge.microsoft.com", "graph.microsoft.com", "substrate.office.com"],
+    YouTube: ["youtube.com", "googlevideo.com", "ytimg.com", "ggpht.com", "youtu.be"],
+    TikTok: ["tiktok.com", "tiktokv.com", "tiktokcdn.com", "tiktokcdn-us.com", "tiktokcdn-eu.com", "tiktokcdn-in.com", "tiktokw.us", "tiktokw.eu", "ttwstatic.com", "byteoversea.com", "byteoversea.net", "ibytedtos.com", "ibyteimg.com", "sgpstatp.com", "muscdn.com", "musical.ly", "tik-tokapi.com"],
+    Netflix: ["netflix.com", "netflix.net", "nflxvideo.net", "nflximg.net", "disneyplus.com", "bamgrid.com"],
+    GitHub: ["github.com", "githubusercontent.com", "githubassets.com", "ghcr.io", "github.io"],
+    Google: ["google.com", "google.cn", "www.google.cn", "googleapis.com", "googleapis.cn", "services.googleapis.cn", "developers.google.cn", "play-fe.googleapis.com", "clientservices.googleapis.com", "firebaseinstallations.googleapis.com", "fcm.googleapis.com", "android.clients.google.com", "clients1.google.com", "clients2.google.com", "clients3.google.com", "clients4.google.com", "clients5.google.com", "clients6.google.com", "gstatic.com", "gstatic.cn", "connectivitycheck.gstatic.com", "googleusercontent.com", "ggpht.com", "gvt1.com", "gvt2.com", "gvt3.com", "beacons.gvt2.com", "beacons.gcp.gvt2.com", "xn--ngstr-lra8j.com", "dl.google.com", "dl-ssl.google.com", "android.com", "googlezip.net", "ota.googlezip.net", "play.google.com", "mtalk.google.com", "gmail.com", "1e100.net", "pki.goog", "dns.google"],
+    Microsoft: ["microsoft.com", "office.com", "office365.com", "live.com", "msn.com", "windowsupdate.com", "azure.com"],
+    Apple: ["apple.com", "icloud.com", "cdn-apple.com", "mzstatic.com", "itunes.com"],
+    Games: ["steampowered.com", "steamcontent.com", "steamcommunity.com", "epicgames.com", "playstation.net", "xboxlive.com", "nintendo.net"],
+    Outside_CN: ["cloudflare.com", "twitter.com", "x.com", "t.me", "telegram.org", "wikipedia.org", "reddit.com"],
+    Domestic_CN: ["cn", "中国", "baidu.com", "bdstatic.com", "baidupcs.com", "qq.com", "lol.qq.com", "wegame.com.cn", "wegame.com", "tgp.qq.com", "ied-tqos.qq.com", "gcloud.qq.com", "gcloudsdk.com", "ace-anti-cheat.com", "qcloud.com", "weixin.qq.com", "wechat.com", "gtimg.com", "gtimg.cn", "myqcloud.com", "tencent.com", "tencent-cloud.net", "qpic.cn", "riotgames.com", "pvp.net", "leagueoflegends.com", "steamserver.net", "blizzard.cn", "battlenet.com.cn", "taobao.com", "tmall.com", "alicdn.com", "aliyun.com", "aliyuncs.com", "alipay.com", "1688.com", "tbcache.com", "jd.com", "360buyimg.com", "jcloudcs.com", "bilibili.com", "bilivideo.com", "hdslb.com", "biliapi.net", "163.com", "126.com", "126.net", "127.net", "netease.com", "douyin.com", "toutiao.com", "bytedance.com", "byteimg.com", "snssdk.com", "ixigua.com", "feishu.cn", "douyincdn.com", "douyinpic.com", "zijieapi.com", "amemv.com", "webcast.amemv.com", "bytecdn.cn", "pstatp.com", "volccdn.com", "bytegoofy.com", "douyinstatic.com", "douyinliving.com", "pull-flv", "pull-hls", "xiaohongshu.com", "xhscdn.com", "zhihu.com", "zhimg.com", "weibo.com", "weibocdn.com", "sina.com.cn", "sohu.com", "iqiyi.com", "youku.com", "mgtv.com", "kuaishou.com", "yximgs.com", "meituan.com", "dianping.com", "pinduoduo.com", "yangkeduo.com", "ctrip.com", "12306.cn", "mi.com", "xiaomi.com", "xiaomi.net", "huawei.com", "vmall.com", "dbankcdn.com", "hicloud.com", "csdn.net", "gitee.com", "oschina.net", "smzdm.com", "douban.com", "hupu.com", "nga.cn", "ip138.com"],
   };
 
   async function syncBackendStatus(forceNodes, forceImmediate) {
@@ -3385,7 +3385,12 @@
         }
       }
 
+      if (stRes && stRes.lite && state._lastFullConfigSeq != null && stRes.config_seq != null && stRes.config_seq !== state._lastFullConfigSeq) {
+        const fullSt = await callRouterApi('/api/status', 'GET', null, 15000, true);
+        if (fullSt && fullSt.ok !== false) stRes = fullSt;
+      }
       if (stRes && stRes.ok !== false) {
+        if (!stRes.lite && stRes.config_seq != null) state._lastFullConfigSeq = stRes.config_seq;
         state.rawStatus = stRes;
         state.bypassActive = Boolean(stRes.bypass_active);
         state.coreAlive = stRes.core ? Boolean(stRes.core.running !== false) : (stRes.core_running !== false);
@@ -3420,9 +3425,13 @@
             : (Array.isArray(stRes.multi_line_rotation_log) ? stRes.multi_line_rotation_log : (state.multiLineRotationLog || []));
           state.dwellBypassCalls = Number(sh.dwell_bypass_calls != null ? sh.dwell_bypass_calls : (stRes.dwell_bypass_calls != null ? stRes.dwell_bypass_calls : (state.dwellBypassCalls || 0)));
           if (Array.isArray(sh.auto_nodes)) {
+            const prevPoolMap = {};
+            (mock.autoPools || []).forEach(pa => { if (pa && pa.id) prevPoolMap[pa.id] = pa; });
             state.rawAutoNodes = sh.auto_nodes;
-            mock.autoPools = sh.auto_nodes.map(a => {
-              const tSize = Math.max(1, Math.min(10, Number(a.target_size || 5)));
+            mock.autoPools = sh.auto_nodes.map(aRaw => {
+              const prevA = prevPoolMap[aRaw.id] || {};
+              const a = (stRes.lite || sh.lite) ? Object.assign({}, prevA, aRaw) : aRaw;
+              const tSize = Math.max(1, Math.min(10, Number(a.target_size || prevA.target_size || 5)));
               const rThresh = Math.max(1, Math.min(tSize, Number(a.replenish_threshold != null ? a.replenish_threshold : Math.max(1, Math.ceil(tSize / 2)))));
               const rawSrcs = Array.isArray(a.scope_sources) && a.scope_sources.length
                 ? a.scope_sources
@@ -3513,8 +3522,9 @@
           if (Array.isArray(sh.groups)) {
             const prevGrpMap = {};
             (mock.groups || []).forEach(pg => { if (pg && pg.id) prevGrpMap[pg.id] = pg; });
-            mock.groups = sh.groups.map(g => {
-              const prevG = prevGrpMap[g.id] || {};
+            mock.groups = sh.groups.map(gRaw => {
+              const prevG = prevGrpMap[gRaw.id] || {};
+              const g = (stRes.lite || sh.lite) ? Object.assign({}, prevG, gRaw) : gRaw;
               const gMode = g.shunt_mode || g.mode || 'auto';
               const gAid = g.auto_node_id || 'auto_youtube';
               const boundP = gMode === 'auto' ? (mock.autoPools || []).find(p => p.id === gAid || p.tag === gAid || p.name === g.auto_node_name) : null;
@@ -3546,7 +3556,8 @@
                 custom_dns: g.custom_dns || '',
                 rule_blocks: Array.isArray(g.rule_blocks) ? g.rule_blocks : [],
                 rtt: validMs,
-                domains: (Array.isArray(g.domains) && g.domains.length) ? g.domains : ((Array.isArray(prevG.domains) && prevG.domains.length) ? prevG.domains : (PRESET_GROUP_DOMAINS_FALLBACK[g.id] || [])),
+                domains_total: Number(g.domains_total != null ? g.domains_total : (Array.isArray(g.domains) ? g.domains.length : (prevG.domains_total || 0))),
+                domains: Array.isArray(gRaw.domains) ? gRaw.domains : ((Array.isArray(prevG.domains) && prevG.domains.length) ? prevG.domains : (PRESET_GROUP_DOMAINS_FALLBACK[g.id] || [])),
                 domain_keywords: Array.isArray(g.domain_keywords) ? g.domain_keywords : (Array.isArray(prevG.domain_keywords) ? prevG.domain_keywords : []),
                 exact_domains: Array.isArray(g.exact_domains) ? g.exact_domains : (Array.isArray(prevG.exact_domains) ? prevG.exact_domains : []),
                 ip_cidrs: Array.isArray(g.ip_cidrs) ? g.ip_cidrs : (Array.isArray(prevG.ip_cidrs) ? prevG.ip_cidrs : []),
@@ -3799,7 +3810,11 @@
         }
 
         renderTopBarStatus();
-        syncGalaxy3DData();
+        if (window.__MOCK_STATUS) {
+          syncGalaxy3DData();
+        } else {
+          setTimeout(() => { if (!state.authRequiredLock) syncGalaxy3DData(); }, 16);
+        }
       } else {
         state.backendOffline = true;
         mock.services = mock.services.map(s => Object.assign({}, s, { ms: 0, state: 'dead' }));
@@ -4387,7 +4402,7 @@
     let replenishThresh = Math.max(1, Math.min(targetSize, Number((p && p.replenish_threshold != null) ? p.replenish_threshold : Math.max(1, Math.ceil(targetSize / 2)))));
     let dispatchMode = (p && p.dispatch_mode === 'multi_line') ? 'multi_line' : 'single_best';
     let bwPrefer = Boolean(p && p.bandwidth_prefer);
-    let sessAffinity = Boolean(p && (p.session_affinity || p.same_region_multi_line));
+    let sessAffinity = (p && p.session_affinity != null) ? Boolean(p.session_affinity || p.same_region_multi_line) : true;
     let bwIntervalH = Number((p && p.bandwidth_interval_h) || 6);
     let bwLimitMb = Number((p && p.bandwidth_limit_mb) || 16);
     let keywordFilter = String((p && p.keyword_filter) || '');
@@ -4634,6 +4649,7 @@
           bandwidth_limit_mb: Number(($('#mdl-an-bw-limit') && $('#mdl-an-bw-limit').value) || 16),
           session_affinity: Boolean($('#mdl-an-session-affinity') && $('#mdl-an-session-affinity').checked),
           same_region_multi_line: Boolean($('#mdl-an-session-affinity') && $('#mdl-an-session-affinity').checked),
+          session_affinity_user_set: true,
           auto_maintain: true,
           filters: {
             enabled: true,
