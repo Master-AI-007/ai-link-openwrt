@@ -1,3 +1,16 @@
+## [v2.5.13] - 2026-11-11
+### 云端 GeoIP/Geosite 双轨分流引擎与实时归组雷达
+- **正常升版**：升至 `v2.5.13`（`PKG_RELEASE:=23` / `r23`），增量基准明确指向线上 2.5.12（Release #440974555 / `40957a6d` / 部署 `118b5221`）；现网设备可正常收 OTA 提示。
+- **CLOUD-1 双轨规则集**：`CLOUD_SRS_CATALOG` 升级至 26 个云端规则集（8 GeoIP ASN/国家库 + 18 Geosite 应用库），内建 Telegram `AS62041`、Netflix `AS2906`、Google `AS15169` 等核心网段；分流组原生支持 `geosite_sets` / `geoip_sets` / `rule_providers` 三维挂载并编译进 `sing-box.json` 的 `route.rules` / `route.rule_set`；4 阶流量透视器支持纯 IP 命中云端 GeoIP 集合。真机抽验 `route.rule_set` 11 个（10 个 geoip/geosite）、`route.rules` 52 条，AI 组已挂载 5 个 Geosite + 1 个 GeoIP。
+- **CLOUD-2 一键场景包**：6 大高频场景分流包（AI 全家桶 / Telegram 双轨 / 4K 流媒体 / 开发者云原生 / Steam 联机 / Google+FCM），`POST /api/shunt/cloud_apply` 一键下发并支持 8 秒撤销。
+- **CLOUD-3 实时归组雷达**：新增 `GET /api/shunt/live_discover`、`POST /api/shunt/quick_assign` 与分流页「实时流量归组」标签页，按 eTLD+1 / `/24` 聚合未归类流量并推荐归属组与云端集合，单行一键归入 + 8 秒撤销。真机接口返回 12 条实时未归类流量。
+- **S-1~S-5**：T8 组合规则多块编辑（`#1..#N`）、试匹配支持未保存草稿与三态反馈、空目标/兜底严格未命中；POLICY BUILDER 完整保留 `exact_domains` / `ports` / `source_ip_cidrs` 与云端规则集芯片。
+- **O-1~O-7 / A-1~A-8**：`/api/status/schema` 与 `lite_fields` 契约、`state_seq` / `config_seq`、lite 深度合并与全量回拉；`node_tags` 10/10 零截断与动态驻留展示；移除 wire key 时间桶、Clash 同步下沉后台；单线 `active_lines_count == 1` 统一；同区单成员一键关闭、软目标区分、切换事件聚合、L7 提示。
+- **交付机制保持**：`Stage 7.20` 相对指标 + 负向防恒绿自检、报告双环境三口径披露、增量基准指向线上版本；新增 `Stage 7.24`（87/87）、11 行指纹 11/11 与 1 字节篡改转红。
+- 真机实测：默认状态 64,231 B（含完整域名与云端规则集）、`?lite=1` 8,444 B、`?include=full` 171,094 B、gzip wire 17,619 B；`state_seq` / `config_seq`、ETag 304、七段 timing 正常。
+- 验收：`INSTALL_RC=0`、服务全 1、`nft ok:true`、重启稳定、自检 10/10 + 负向、零补发 `run_all 15/15 / RC=0`、混沌 87/87、门禁双布局 17/17、design-lint 18/18、静态 8/8、UI 零异常三视口零溢出、出网 200/200/204。
+- 观察项：真机 HTTP gzip wire 17,619 B 略高于 16,384 B 容器设计目标（容器 8,952 B），相对指标门禁在真机全过、功能不受影响；新增云端规则集使默认状态载荷较 2.5.12 增大约 27%，属预期。
+
 ## [v2.5.12] - 2026-11-11
 ### 域名契约、状态性能与交付口径全量闭环
 - **正常升版**：升至 `v2.5.12`（`PKG_RELEASE:=22` / `r22`），现网 2.5.11 设备可直接收到 OTA 提示。增量基准明确指向线上 2.5.11（Release #440812530 / `fc38adf6` / 部署 `90830c6b`）及未上线修订包 `4ca2aa03`（FB-2511-3 闭环）。

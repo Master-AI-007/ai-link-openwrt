@@ -1,3 +1,15 @@
+## v2.5.13 (2026-11-11 · PKG_RELEASE:=23 / r23 · 云端 GeoIP/Geosite 双轨分流引擎与 v2.5.12 审查全量闭环版)
+
+- **基线说明**：基于已于 2026-11-11 全量发布上线的 `v2.5.12` (`Release #440974555` / 主干 `40957a6d` / 生产部署 `118b5221`) 正式升版至 `v2.5.13` (`PKG_RELEASE:=23` / `r23`)。
+- **云端 GeoIP / Geosite 双轨规则集与实时分流雷达升级**：
+  1. 扩展 `CLOUD_SRS_CATALOG` 与 `SRS_CORE_MAP` 至 26 项云端 `Geosite` + `GeoIP` 规则集（新增 `geoip-telegram` AS62041、`geoip-netflix` AS2906、`geoip-google` AS15169、`geoip-cloudflare` AS13335、`geoip-fastly` AS54113、`geoip-openai`、`geosite-anthropic`、`geosite-google-gemini`、`geosite-cursor`、`geosite-huggingface`、`geosite-telegram`、`geosite-discord`、`geosite-disney`、`geosite-spotify`、`geosite-docker`、`geosite-apple-cn`、`geosite-steam-cn`），支持按分流组绑定 `geosite_sets` 与 `geoip_sets` 并自动编译注入 `sing-box.json` 路由与四阶透视。
+  2. 新增 6 套高频代理用户场景一键订阅包（`AI 生产力与编程算力全栈包`、`Telegram/Discord 纯 IP 与语音防漏包`、`流媒体 4K & Netflix 原生 IP 解锁包`、`GitHub/Docker/HuggingFace 开发者极速包`、`Steam 下载满速直连 + 社区商店代理包`、`Google Play 与 FCM 推送加固包`）与「实时流量归组雷达」（`/api/shunt/live_discover` & `/api/shunt/quick_assign`），支持实时识别纯 IP/兜底连接并一键归入推荐组（附 8s 撤销）。
+- **《AI-LINK_2.5.12-r22_实现与设计审查报告》与《FEEDBACK-云端-v2.5.12》全量闭环**：
+  - **P1-1 (O-5 / A-3)**：`lite` 与 `full` 节点池补齐 `session_sticky_s`、`dwell_s`、`dwell_elapsed_s`，UI 动态渲染实际驻留周期（300 秒）与已驻留秒数。
+  - **P1-2 (O-1 / O-2 / O-3 / A-5)**：新增 `state_seq`、`lite_fields` 显式白名单与 `/api/status/schema`；前端 3 秒 `lite` 心跳对 `state.rawStatus` 与 `state.rawAutoNodes` 执行差量合并，17 个富状态字段实时刷新。
+  - **P1-3 (S-1 ~ S-5)**：`/api/shunt/test_rule_match` 支持未保存草稿 `draft_rule_blocks` 内存预演、返回三态 `matched_by`、对空 `target` 返回 `empty_target`；前端开放组级 `ports`/`exact_domains`/`source_ip_cidrs`/`geosite_sets`/`geoip_sets` 展示与编辑；规则块弹窗支持多块列表增删改与 `mode: "patch"`。
+  - **P1-4 & P2 (A-1 / A-2 / A-4 / A-6 / A-7 / A-8 / O-4 / O-6 / O-7 / FB-2512)**：保留完整 `groups[].node_tags` 并补充 `candidate_count`（HUD 显示真实候选数 `4/7/8/7/4/4`）；同区亲和单成员显式提示并提供一键切换跨区轮询入口；统一 `rotation_members`、`active_egress` 与恒定整数 `active_lines_count`；软目标进度 `below_soft_target` (`4/10`)；共享出口切换按 `switch_event_id` 聚合并加严专线替换 RTT 门槛；移除 `/api/status` 15s/30s 同步重建桶消除长窗口尾部尖峰，HTTP 层 `?lite=1 <= 8KB` 双口径校准。
+
 ## v2.5.12 (2026-11-11) · `PKG_RELEASE:=22` (`r22`) — 基于已上线 v2.5.11 (`Release #440812530` / `fc38adf6` / 部署 `90830c6b`) 实机验收与修订包反馈闭环
 
 - **P0-1 / N1 (`domains` 契约 16/16 零截断与撤销全链路零差异)**：修复 `_slim_shunt_for_status(lite=False)` 对预设组省略 `domains` 及对自定义/编辑组截断至 8 个域名的问题，默认 `GET /api/status` 100% 完整返回全部 16/16 分流组的 `domains`、`domain_keywords`、`exact_domains`、`ip_cidrs`、`rule_blocks`（`status.shunt.groups[].domains == shunt.groups[].domains`）；同步前后端 `PRESET_GROUP_DOMAINS_FALLBACK` 并消费 `domains_total`；补齐「恢复默认域名库→撤销」与「删除自定义组(33域名)→撤销」逐字段零差异自动化 E2E 门禁。

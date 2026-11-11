@@ -4,7 +4,7 @@
 
 **NEXUS 全域 3D 智能网关 · 运行在 OpenWrt 上的智能分流系统**
 
-[![version](https://img.shields.io/badge/version-2.5.12-6ee7f5?style=flat-square)](https://github.com/Master-AI-007/ai-link-openwrt/releases/tag/v2.5.12)
+[![version](https://img.shields.io/badge/version-2.5.13-6ee7f5?style=flat-square)](https://github.com/Master-AI-007/ai-link-openwrt/releases/tag/v2.5.13)
 [![platform](https://img.shields.io/badge/OpenWrt-23.05%20%7C%2024.10%20%7C%20ImmortalWrt-a994ff?style=flat-square)](#环境要求)
 [![core](https://img.shields.io/badge/sing--box-1.14.1-54e6b5?style=flat-square)](#技术架构)
 [![license](https://img.shields.io/badge/license-MIT-f9a8d4?style=flat-square)](#许可与免责)
@@ -30,9 +30,9 @@ AI-LINK 是一套面向 OpenWrt 的**智能分流网关**：用 sing-box 单内�
 
 ---
 
-## 核心能力总览（v2.5.12）
+## 核心能力总览（v2.5.13）
 
-> **v2.5.12 增量**：分流域名 16/16 组零截断与撤销零差异、`/api/status` 周期尖峰根治（HTTP 线程零子进程、单次序列化）、`?lite=1` 真机 49,030 B → 8,527 B、存量多线池同区亲和自动迁移、静态预压缩缓存、首屏长任务拆分；性能门禁改相对指标、报告按双环境三口径披露、增量基准指向线上版本；延续七项交付标准与零补发 15/15。
+> **v2.5.13 增量**：云端 GeoIP/Geosite 双轨分流引擎（26 个规则集 + 三维挂载 + 纯 IP 命中）、6 大一键场景分流包与 8 秒撤销、实时流量归组雷达（`live_discover` / `quick_assign`）、组合规则多块编辑与试匹配三态、高阶字段零丢失、`lite_fields` 契约与 `state_seq`、候选节点零截断、同区单成员一键关闭；延续相对指标门禁、双环境三口径与零补发 15/15。
 
 
 | | 能力 | 说明 |
@@ -185,7 +185,8 @@ sing-box 1.14.1（单内核）
 
 | 版本 | 日期 | 主题 |
 |---|---|---|
-| **2.5.12** | 2026-11-11 | 域名契约、状态性能与交付口径全量闭环 |
+| **2.5.13** | 2026-11-11 | 云端双轨分流引擎与实时归组雷达 |
+| 2.5.12 | 2026-11-11 | 域名契约、状态性能与交付口径全量闭环 |
 | 2.5.11 | 2026-11-11 | 产品体验与次生风险全量闭环 |
 | 2.5.10 | 2026-11-11 | 演练四维隔离 + 正常升版 + 交付增量闭环 |
 | 2.5.9 | 2026-11-10 | 真机写拦截根治 + 演练沙盒化 + 订阅与可观测性契约闭环 |
@@ -229,10 +230,10 @@ sing-box 1.14.1（单内核）
 ## 包指纹
 
 ```
-AI-LINK-v2.5.12.tar.gz
-size   1,067,305 B
-md5    700e29688372ab156e33caaf2a4856f1
-sha256 eed79a99e78f8ac22fc60aee3b570198fd8519852855319a07ea4059933b16b7
+AI-LINK-v2.5.13.tar.gz
+size   1,084,841 B
+md5    203426316856269f0412053010415db2
+sha256 e28a7164994112ff71904c483b3ad5d87f86c8f26d730a39ac9984859e3f54de
 ```
 
 在线清单：<https://ai-link-official.pages.dev/version.json>

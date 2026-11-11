@@ -18,7 +18,7 @@
         <circle cx="20" cy="20" r="5.4" fill="none" stroke="#a994ff" stroke-width="1.6"/>
         <circle cx="20" cy="20" r="1.8" fill="#6ee7f5"/>
       </svg>
-      <span style="display:block"><b>AI-LINK</b><span>NEXUS · 2.5.12</span></span>
+      <span style="display:block"><b>AI-LINK</b><span>NEXUS · 2.5.13</span></span>
     </a>
     <div class="nav-links">
       <a href="/#features">核心能力</a>
@@ -36,12 +36,22 @@
 <main class="wrap log-wrap">
   <div class="log-head">
     <h1>更新日志</h1>
-    <span class="pill"><i></i> 当前最新 2.5.12</span>
+    <span class="pill"><i></i> 当前最新 2.5.13</span>
   </div>
 <article class="log-item latest">
   <div class="log-top">
-    <h2>v2.5.12</h2>
+    <h2>v2.5.13</h2>
     <span class="tag c">最新</span>
+    <time>2026-11-11</time>
+  </div>
+  <p style="margin:2px 0 6px;color:var(--dim)"></p>
+<h3>云端 GeoIP/Geosite 双轨分流引擎与实时归组雷达</h3>
+<ul><li><b>正常升版</b>：升至 <code>v2.5.13</code>（<code>PKG_RELEASE:=23</code> / <code>r23</code>），增量基准明确指向线上 2.5.12（Release #440974555 / <code>40957a6d</code> / 部署 <code>118b5221</code>）；现网设备可正常收 OTA 提示。</li><li><b>CLOUD-1 双轨规则集</b>：<code>CLOUD_SRS_CATALOG</code> 升级至 26 个云端规则集（8 GeoIP ASN/国家库 + 18 Geosite 应用库），内建 Telegram <code>AS62041</code>、Netflix <code>AS2906</code>、Google <code>AS15169</code> 等核心网段；分流组原生支持 <code>geosite_sets</code> / <code>geoip_sets</code> / <code>rule_providers</code> 三维挂载并编译进 <code>sing-box.json</code> 的 <code>route.rules</code> / <code>route.rule_set</code>；4 阶流量透视器支持纯 IP 命中云端 GeoIP 集合。真机抽验 <code>route.rule_set</code> 11 个（10 个 geoip/geosite）、<code>route.rules</code> 52 条，AI 组已挂载 5 个 Geosite + 1 个 GeoIP。</li><li><b>CLOUD-2 一键场景包</b>：6 大高频场景分流包（AI 全家桶 / Telegram 双轨 / 4K 流媒体 / 开发者云原生 / Steam 联机 / Google+FCM），<code>POST /api/shunt/cloud_apply</code> 一键下发并支持 8 秒撤销。</li><li><b>CLOUD-3 实时归组雷达</b>：新增 <code>GET /api/shunt/live_discover</code>、<code>POST /api/shunt/quick_assign</code> 与分流页「实时流量归组」标签页，按 eTLD+1 / <code>/24</code> 聚合未归类流量并推荐归属组与云端集合，单行一键归入 + 8 秒撤销。真机接口返回 12 条实时未归类流量。</li><li><b>S-1~S-5</b>：T8 组合规则多块编辑（<code>#1..#N</code>）、试匹配支持未保存草稿与三态反馈、空目标/兜底严格未命中；POLICY BUILDER 完整保留 <code>exact_domains</code> / <code>ports</code> / <code>source_ip_cidrs</code> 与云端规则集芯片。</li><li><b>O-1~O-7 / A-1~A-8</b>：<code>/api/status/schema</code> 与 <code>lite_fields</code> 契约、<code>state_seq</code> / <code>config_seq</code>、lite 深度合并与全量回拉；<code>node_tags</code> 10/10 零截断与动态驻留展示；移除 wire key 时间桶、Clash 同步下沉后台；单线 <code>active_lines_count == 1</code> 统一；同区单成员一键关闭、软目标区分、切换事件聚合、L7 提示。</li><li><b>交付机制保持</b>：<code>Stage 7.20</code> 相对指标 + 负向防恒绿自检、报告双环境三口径披露、增量基准指向线上版本；新增 <code>Stage 7.24</code>（87/87）、11 行指纹 11/11 与 1 字节篡改转红。</li><li>真机实测：默认状态 64,231 B（含完整域名与云端规则集）、<code>?lite=1</code> 8,444 B、<code>?include=full</code> 171,094 B、gzip wire 17,619 B；<code>state_seq</code> / <code>config_seq</code>、ETag 304、七段 timing 正常。</li><li>验收：<code>INSTALL_RC=0</code>、服务全 1、<code>nft ok:true</code>、重启稳定、自检 10/10 + 负向、零补发 <code>run_all 15/15 / RC=0</code>、混沌 87/87、门禁双布局 17/17、design-lint 18/18、静态 8/8、UI 零异常三视口零溢出、出网 200/200/204。</li><li>观察项：真机 HTTP gzip wire 17,619 B 略高于 16,384 B 容器设计目标（容器 8,952 B），相对指标门禁在真机全过、功能不受影响；新增云端规则集使默认状态载荷较 2.5.12 增大约 27%，属预期。</li></ul>
+</article>
+<article class="log-item">
+  <div class="log-top">
+    <h2>v2.5.12</h2>
+    <span class="tag">历史</span>
     <time>2026-11-11</time>
   </div>
   <p style="margin:2px 0 6px;color:var(--dim)"></p>

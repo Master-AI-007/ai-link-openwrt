@@ -2726,6 +2726,7 @@ def _invalidate_sys_cache(prefix: str = ""):
             _SYS_CMD_CACHE.pop(k, None)
 
 def _invalidate_fast_api_cache():
+    _CORE_RELOAD_STATE["state_seq"] = int(_CORE_RELOAD_STATE.get("state_seq") or 1) + 1
     _SYS_CMD_CACHE.clear()
     with _FAST_CACHE_LOCK:
         _FAST_FILE_CACHE.clear()
@@ -2741,6 +2742,7 @@ def _invalidate_fast_api_cache():
 
 _CORE_RELOAD_STATE = {
     "config_seq": 1,
+    "state_seq": 1,
     "reload_seq": 1,
     "reloading": False,
     "pending_respawn": False,
@@ -5594,10 +5596,21 @@ def _normalize_auto_node_item(an: dict, conf_dir: Path = CONF_DIR, saved_nodes: 
         item["dispatch_mode"] = "single_best"
         item["multi_line_locked"] = True
         item["multi_line_locked_reason"] = "AI/账号敏感服务自动锁定单线优选（防多IP跳变风控）"
+        item["single_line_pinned"] = True
+        item["single_line_pin_reason"] = item["multi_line_locked_reason"]
     else:
         item["dispatch_mode"] = "multi_line" if raw_dm in ("multi_line", "load_balance", "concurrent") else "single_best"
         item["multi_line_locked"] = False
         item["multi_line_locked_reason"] = ""
+        item["single_line_pinned"] = False
+        item["single_line_pin_reason"] = ""
+    item["candidate_count"] = len(g1_tags_now)
+    item["node_tags_total"] = len(g1_tags_now)
+    _t_cap_norm = max(1, min(10, int(item.get("target_size") or 10)))
+    _rep_th_norm = max(1, min(_t_cap_norm, int(item.get("replenish_threshold") if item.get("replenish_threshold") is not None else 2)))
+    item["below_soft_target"] = bool(len(g1_tags_now) < _t_cap_norm)
+    item["soft_target_progress"] = f"{len(g1_tags_now)}/{_t_cap_norm}"
+    item["replenish_satisfied"] = bool(len(g1_tags_now) >= _rep_th_norm)
     if item["dispatch_mode"] == "multi_line":
         _cap_n_ml = max(2, int(item.get("target_size") or 5))
         _cand_n_ml = ok_members[:_cap_n_ml]
@@ -5617,10 +5630,20 @@ def _normalize_auto_node_item(an: dict, conf_dir: Path = CONF_DIR, saved_nodes: 
         item["session_affinity"] = _sess_aff_n
         item["same_region_multi_line"] = bool(item.get("same_region_multi_line", _sess_aff_n))
         item["session_sticky_s"] = max(30, int(item.get("session_sticky_s") or (300 if _sess_aff_n else MULTI_LINE_ROTATE_INTERVAL_S)))
+        _pre_reg_cnt = len(ml_tags)
         if _sess_aff_n and len(ml_tags) >= 2:
             _sbt_n = {n.get("tag", ""): n for n in (saved_nodes or []) if isinstance(n, dict)}
             ml_tags = _filter_same_region_multi_line_tags(ml_tags, cur_t or ml_tags[0], _sbt_n)
+        item["region_filtered_out_count"] = max(0, _pre_reg_cnt - len(ml_tags))
+        item["same_region_single_member"] = bool(_sess_aff_n and len(ml_tags) == 1 and len(g1_tags_now) >= 2)
+        item["same_region_single_member_hint"] = (
+            f"同区亲和生效：当前候选同地区仅 1 个节点（已过滤 {item['region_filtered_out_count']} 个跨区与 {item.get('multi_line_filtered_slow_count', 0)} 个偏慢节点），补充同区节点或切换跨区轮询可恢复多出口"
+            if item["same_region_single_member"] else ""
+        )
         item["multi_line_nodes"] = ml_tags
+        item["rotation_members"] = list(ml_tags)
+        item["rotation_member_count"] = len(ml_tags)
+        item["active_egress"] = cur_t if (cur_t and cur_t != "direct") else (ml_tags[0] if ml_tags else "direct")
         item["multi_line_active_nodes"] = [cur_t] if (_sess_aff_n and cur_t and cur_t != "direct") else list(ml_tags)
         item["active_lines_count"] = len(ml_tags)
     else:
@@ -5629,8 +5652,18 @@ def _normalize_auto_node_item(an: dict, conf_dir: Path = CONF_DIR, saved_nodes: 
         item["same_region_multi_line"] = bool(item.get("same_region_multi_line", _sess_aff_n))
         item["session_sticky_s"] = max(30, int(item.get("session_sticky_s") or (300 if _sess_aff_n else MULTI_LINE_ROTATE_INTERVAL_S)))
         item["multi_line_nodes"] = [cur_t] if (cur_t and cur_t != "direct") else []
+        item["rotation_members"] = list(item["multi_line_nodes"])
+        item["rotation_member_count"] = len(item["multi_line_nodes"])
+        item["active_egress"] = cur_t or "direct"
         item["multi_line_active_nodes"] = list(item["multi_line_nodes"])
         item["active_lines_count"] = len(item["multi_line_nodes"])
+        item["region_filtered_out_count"] = 0
+        item["same_region_single_member"] = False
+        item["same_region_single_member_hint"] = ""
+    _dwell_s_n = max(MULTI_LINE_ROTATE_INTERVAL_S, int(item.get("session_sticky_s") or (300 if item.get("session_affinity") else MULTI_LINE_ROTATE_INTERVAL_S)))
+    item["dwell_s"] = _dwell_s_n
+    _last_rot_n = float((_MULTI_LINE_RR_STATE.get("last_rotate_ts") or {}).get((str(conf_dir), str(item.get("id") or ""))) or item.get("last_switch_ts") or 0.0)
+    item["dwell_elapsed_s"] = max(0, min(_dwell_s_n, int(time.time() - _last_rot_n))) if _last_rot_n > 0 else 0
     if item.get("keyword_filter"):
         item["keyword_filter"] = str(item.get("keyword_filter") or "").strip()
         item["keyword_mode"] = "AND" if str(item.get("keyword_mode") or "OR").strip().upper() == "AND" else "OR"
@@ -7688,11 +7721,11 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
             an["last_smart_switch_ts"] = now_sec
             an["last_switch_ts"] = now_sec
             switch_reason = f"当前节点丢包率偏高自动切换 ({cur_in_group['tag']} -> {fastest['tag']})"
-        elif fastest["node_id"] != cur_in_group["node_id"] and cur_in_group.get("is_random_region") and not fastest.get("is_random_region") and int(fastest["delay_ms"]) <= int(int(cur_in_group["delay_ms"]) * 1.28) and (last_sw <= 0 or (now_sec - last_sw) >= min(60, cool_s)):
+        elif fastest["node_id"] != cur_in_group["node_id"] and cur_in_group.get("is_random_region") and not fastest.get("is_random_region") and int(fastest["delay_ms"]) <= int(int(cur_in_group["delay_ms"]) * 1.12) and (int(fastest["delay_ms"]) - int(cur_in_group["delay_ms"])) <= 50 and (last_sw <= 0 or (now_sec - last_sw) >= max(300, cool_s)):
             chosen = fastest
             an["last_smart_switch_ts"] = now_sec
             an["last_switch_ts"] = now_sec
-            switch_reason = f"优选专线替换地区随机节点 ({cur_in_group['tag']} -> {fastest['tag']})"
+            switch_reason = f"优选专线替换地区随机节点 ({cur_in_group['tag']} {cur_in_group['delay_ms']}ms -> {fastest['tag']} {fastest['delay_ms']}ms)"
         elif weekly_rot_due:
             chosen = g_nodes[1] if g_nodes[0]["node_id"] == cur_in_group["node_id"] else g_nodes[0]
             an["last_smart_switch_ts"] = now_sec
@@ -7757,13 +7790,16 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
     an["quota_frozen"] = bool(_is_node_test_budget_exceeded(conf_dir, is_pool_health=True))
     _t_cap_eval = max(1, min(10, int(an.get("target_size") or 10)))
     _rep_th_eval = max(1, min(_t_cap_eval, int(an.get("replenish_threshold") if an.get("replenish_threshold") is not None else _t_cap_eval)))
+    an["below_soft_target"] = bool(len(all_ok_tags) < _t_cap_eval)
+    an["soft_target_progress"] = f"{len(all_ok_tags)}/{_t_cap_eval}"
+    an["replenish_satisfied"] = bool(len(all_ok_tags) >= _rep_th_eval)
     an["capacity_shortfall"] = bool(len(all_ok_tags) < _t_cap_eval)
     if not an["capacity_shortfall"]:
         an["capacity_shortfall_reason"] = ""
     elif len(all_ok_tags) < _rep_th_eval:
         an["capacity_shortfall_reason"] = f"池内可用节点 ({len(all_ok_tags)}/{_rep_th_eval}) 低于硬复选阈值，且上游合格候选不足"
     else:
-        an["capacity_shortfall_reason"] = f"已满足复选阈值 ({len(all_ok_tags)}>={_rep_th_eval})，上游订阅符合范围的合格节点不足软目标 {_t_cap_eval} 个"
+        an["capacity_shortfall_reason"] = f"已满足复选阈值 ({len(all_ok_tags)}>={_rep_th_eval})，软目标进度 {len(all_ok_tags)}/{_t_cap_eval}"
     an["verified_nodes"] = [x["tag"] for x in g_nodes if (not (is_full and svc_ids)) or x.get("svc_verified")]
     if an.get("quarantine_break_glass"):
         an["alert_message"] = f"⚡ 半开破冰恢复：已临时启用已恢复节点 {chosen['tag']}（原隔离冷却中）"
@@ -7793,10 +7829,22 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
     an["pool_degraded_alert"] = bool(an.get("auto_maintain", True) and len(all_ok_tags) < rep_th_eval)
     an["degraded_reason"] = f"池内可用节点 ({len(all_ok_tags)}/{max(1, len(all_pool_m))}) 低于补位阈值 {rep_th_eval}" if an["pool_degraded_alert"] else ""
     an["l7_degraded"] = bool(an.get("l7_degraded_fallback", False) or ((is_full and svc_ids) and _ver_svc_cnt == 0))
+    an["l7_diagnostic_hint"] = (
+        f"当前池内 {len(all_ok_tags)} 个连通节点尚未完成 {'/'.join(svc_ids).upper()} L7 语义核验（已启用 PING 连通保底，不影响正常出站）"
+        if an["l7_degraded"] else ""
+    )
+    an["unbound_probe_throttled"] = bool(an.get("unbound_pool_warning", False))
+    an["candidate_count"] = len(all_pool_m)
+    an["node_tags_total"] = len(all_pool_m)
     if is_pool_ip_sensitive(an):
         an["dispatch_mode"] = "single_best"
         an["multi_line_locked"] = True
         an["multi_line_locked_reason"] = "AI/账号敏感服务自动锁定单线优选（防多IP跳变风控）"
+        an["single_line_pinned"] = True
+        an["single_line_pin_reason"] = an["multi_line_locked_reason"]
+    else:
+        an["single_line_pinned"] = False
+        an["single_line_pin_reason"] = ""
     if an.get("dispatch_mode") == "multi_line":
         _cap_ml = max(2, int(an.get("target_size") or 5))
         _probed_g_nodes = [x for x in g_nodes if x.get("state") == "ok" and int(x.get("delay_ms") or 0) > 0]
@@ -7820,6 +7868,7 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
         an["session_affinity"] = _sess_aff
         an["same_region_multi_line"] = bool(an.get("same_region_multi_line", _sess_aff))
         an["session_sticky_s"] = max(30, int(an.get("session_sticky_s") or (300 if _sess_aff else MULTI_LINE_ROTATE_INTERVAL_S)))
+        _pre_reg_eval = len(_fast_ml)
         if _sess_aff and len(_fast_ml) >= 2:
             def _aff_reg_key(n_tag: str, ctry_val: str) -> str:
                 c_up = str(ctry_val or "").strip().upper()
@@ -7833,15 +7882,34 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
                 _same_ctry_ml = [t for t in _fast_ml if _reg_by_t.get(t) == _ch_reg]
                 if _same_ctry_ml:
                     _fast_ml = _same_ctry_ml
+        an["region_filtered_out_count"] = max(0, _pre_reg_eval - len(_fast_ml))
+        an["same_region_single_member"] = bool(_sess_aff and len(_fast_ml) == 1 and len(_src_ml_nodes) >= 2)
+        an["same_region_single_member_hint"] = (
+            f"同区亲和生效：当前候选同地区仅 1 个节点（已过滤 {an['region_filtered_out_count']} 个跨区与 {max(0, len(_src_ml_nodes[:_cap_ml]) - _pre_reg_eval)} 个偏慢节点），补充同区节点或切换跨区轮询可恢复多出口"
+            if an["same_region_single_member"] else ""
+        )
         an["multi_line_nodes"] = _fast_ml
+        an["rotation_members"] = list(_fast_ml)
+        an["rotation_member_count"] = len(_fast_ml)
+        an["active_egress"] = _ch_tag or (_fast_ml[0] if _fast_ml else "direct")
         an["multi_line_active_nodes"] = [_ch_tag] if (_sess_aff and _ch_tag and _ch_tag != "direct") else list(_fast_ml)
         an["multi_line_filtered_slow_count"] = max(0, len(_src_ml_nodes[:_cap_ml]) - len(_fast_ml))
         an["active_lines_count"] = len(an["multi_line_nodes"])
         an["candidate_nodes_count"] = len(an["multi_line_nodes"])
     else:
         an["multi_line_nodes"] = [chosen["tag"]] if chosen.get("tag") and chosen["tag"] != "direct" else []
+        an["rotation_members"] = list(an["multi_line_nodes"])
+        an["rotation_member_count"] = len(an["multi_line_nodes"])
+        an["active_egress"] = chosen.get("tag") or "direct"
         an["multi_line_filtered_slow_count"] = 0
         an["active_lines_count"] = len(an["multi_line_nodes"])
+        an["region_filtered_out_count"] = 0
+        an["same_region_single_member"] = False
+        an["same_region_single_member_hint"] = ""
+    _dwell_s_ev = max(MULTI_LINE_ROTATE_INTERVAL_S, int(an.get("session_sticky_s") or (300 if an.get("session_affinity") else MULTI_LINE_ROTATE_INTERVAL_S)))
+    an["dwell_s"] = _dwell_s_ev
+    _last_rot_ev = float((_MULTI_LINE_RR_STATE.get("last_rotate_ts") or {}).get((str(conf_dir), str(an.get("id") or ""))) or an.get("last_switch_ts") or 0.0)
+    an["dwell_elapsed_s"] = max(0, min(_dwell_s_ev, int(now_sec - _last_rot_ev))) if _last_rot_ev > 0 else 0
     _ml_set_now = set(an.get("multi_line_nodes") or [])
     _pri_tag_now = str(an.get("current_node") or "")
     for _grp_m in (an.get("groups") or []):
@@ -9506,15 +9574,38 @@ def record_switch_event(group_name: str, old_node: str, new_node: str, reason: s
     try:
         run_dir.mkdir(parents=True, exist_ok=True)
         hist = load_switch_history(run_dir)
-        hist.insert(0, {
-            "ts": int(time.time()),
-            "time_str": time.strftime("%H:%M:%S"),
-            "group": group_name,
-            "from_node": old_node or "初始",
-            "to_node": new_node,
-            "reason": reason or "自动切换",
-            "rtt_ms": round(float(rtt_ms or 0.0), 1)
-        })
+        now_sw_ts = int(time.time())
+        sw_ev_id = f"sw_{now_sw_ts // 2}_{hashlib.md5(f'{old_node}->{new_node}:{reason}'.encode('utf-8')).hexdigest()[:6]}"
+        if (
+            hist
+            and isinstance(hist[0], dict)
+            and abs(now_sw_ts - int(hist[0].get("ts") or 0)) <= 2
+            and hist[0].get("from_node") == (old_node or "初始")
+            and hist[0].get("to_node") == new_node
+            and hist[0].get("reason") == (reason or "自动切换")
+        ):
+            aff = list(hist[0].get("affected_pools") or [hist[0].get("group") or group_name])
+            if group_name and group_name not in aff:
+                aff.append(group_name)
+            hist[0]["affected_pools"] = aff
+            hist[0]["affected_pools_count"] = len(aff)
+            hist[0]["switch_event_id"] = sw_ev_id
+            if len(aff) > 1:
+                hist[0]["group"] = f"{aff[0]} 等 {len(aff)} 个共享出口池"
+        else:
+            hist.insert(0, {
+                "ts": now_sw_ts,
+                "time_str": time.strftime("%H:%M:%S"),
+                "switch_event_id": sw_ev_id,
+                "group": group_name,
+                "affected_pools": [group_name],
+                "affected_pools_count": 1,
+                "from_node": old_node or "初始",
+                "to_node": new_node,
+                "reason": reason or "自动切换",
+                "rtt_ms": round(float(rtt_ms or 0.0), 1)
+            })
+        _CORE_RELOAD_STATE["state_seq"] = int(_CORE_RELOAD_STATE.get("state_seq") or 1) + 1
         _atomic_write_text(run_dir / "switch_history.json", json.dumps(hist[:60], ensure_ascii=False, indent=2))
     except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
         globals().get("_record_internal_diag", str)(_e_diag)
@@ -9903,6 +9994,58 @@ GROUP_TARGET_PROBE_URLS = {
     "Final_Fallback": "https://cp.cloudflare.com/generate_204"
 }
 
+
+DEFAULT_GROUP_CLOUD_SETS = {
+    "AI": {
+        "geosite_sets": ["geosite-openai", "geosite-anthropic", "geosite-google-gemini", "geosite-cursor", "geosite-huggingface"],
+        "geoip_sets": ["geoip-openai"],
+    },
+    "YouTube": {
+        "geosite_sets": ["geosite-youtube"],
+        "geoip_sets": [],
+    },
+    "TikTok": {
+        "geosite_sets": ["geosite-tiktok"],
+        "geoip_sets": [],
+    },
+    "Netflix": {
+        "geosite_sets": ["geosite-netflix", "geosite-disney", "geosite-spotify"],
+        "geoip_sets": ["geoip-netflix"],
+    },
+    "GitHub": {
+        "geosite_sets": ["geosite-github", "geosite-docker", "geosite-huggingface"],
+        "geoip_sets": ["geoip-fastly"],
+    },
+    "Google": {
+        "geosite_sets": ["geosite-google"],
+        "geoip_sets": ["geoip-google"],
+    },
+    "Microsoft": {
+        "geosite_sets": [],
+        "geoip_sets": [],
+    },
+    "Apple": {
+        "geosite_sets": ["geosite-apple-cn"],
+        "geoip_sets": [],
+    },
+    "Games": {
+        "geosite_sets": ["geosite-steam-cn", "geosite-discord"],
+        "geoip_sets": [],
+    },
+    "Outside_CN": {
+        "geosite_sets": ["geosite-geolocation-!cn", "geosite-telegram", "geosite-discord"],
+        "geoip_sets": ["geoip-telegram", "geoip-cloudflare"],
+    },
+    "Domestic_CN": {
+        "geosite_sets": ["geosite-cn", "geosite-apple-cn", "geosite-steam-cn"],
+        "geoip_sets": ["geoip-cn"],
+    },
+    "Final_Fallback": {
+        "geosite_sets": [],
+        "geoip_sets": [],
+    },
+}
+
 DEFAULT_SHUNT_GROUPS = [
     {
         "id": "AI",
@@ -10280,6 +10423,13 @@ def load_shunt_config(conf_dir: Path = CONF_DIR) -> dict:
         except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
             globals().get("_record_internal_diag", str)(_e_diag)
     cfg, mig = migrate_legacy_shunt_config(cfg, conf_dir)
+    for _mg in (cfg.get("groups") or []):
+        if isinstance(_mg, dict):
+            _dc = DEFAULT_GROUP_CLOUD_SETS.get(_mg.get("id", ""), {})
+            if "geosite_sets" not in _mg or not isinstance(_mg.get("geosite_sets"), list):
+                _mg["geosite_sets"] = list(_dc.get("geosite_sets") or [])
+            if "geoip_sets" not in _mg or not isinstance(_mg.get("geoip_sets"), list):
+                _mg["geoip_sets"] = list(_dc.get("geoip_sets") or [])
     if mig and loaded_from_disk:
         try:
             save_shunt_config(cfg, conf_dir)
@@ -14363,8 +14513,38 @@ class ConfigGenerator:
                 prts = [int(p) for p in (sg.get("ports") or []) if str(p).strip().isdigit()]
                 if prts:
                     route_rules.append({"port": prts, "outbound": stag})
-                # Attach corresponding binary .srs rule_set at the exact priority position of its group
-                if gid == "AI" and ai_rs:
+                # Attach T9 remote rule_providers cached_domains at group priority position
+                _grp_rp_doms = []
+                for _rp_it in load_rule_providers(conf_dir):
+                    if _rp_it.get("enabled", True) and _rp_it.get("group_id") == gid:
+                        _grp_rp_doms.extend([str(x).strip().lstrip(".") for x in (_rp_it.get("cached_domains") or []) if str(x).strip()])
+                if _grp_rp_doms:
+                    route_rules.append({"domain_suffix": sorted(list(set(_grp_rp_doms)))[:5000], "outbound": stag})
+                # Attach group-bound Cloud Geosite & GeoIP sets (both binary .srs and deterministic seed domains/CIDRs)
+                _installed_rs_tags = {r.get("tag") for r in local_rule_sets if isinstance(r, dict) and r.get("tag")}
+                _def_csets = DEFAULT_GROUP_CLOUD_SETS.get(gid, {})
+                _g_gs_list = list(dict.fromkeys((sg.get("geosite_sets") if isinstance(sg.get("geosite_sets"), list) else _def_csets.get("geosite_sets")) or []))
+                _g_gi_list = list(dict.fromkeys((sg.get("geoip_sets") if isinstance(sg.get("geoip_sets"), list) else _def_csets.get("geoip_sets")) or []))
+                _grp_srs_tags = [t for t in (_g_gs_list + _g_gi_list) if t in _installed_rs_tags]
+                _seed_gs_doms = []
+                for _gs_t in _g_gs_list:
+                    if _gs_t != "geosite-cn":
+                        _seed_gs_doms.extend(CLOUD_GEOSITE_SEEDS.get(_gs_t) or [])
+                if _seed_gs_doms:
+                    _extra_gs_d = [d for d in dict.fromkeys(_seed_gs_doms) if d not in doms]
+                    if _extra_gs_d:
+                        route_rules.append({"domain_suffix": _extra_gs_d, "outbound": stag})
+                _seed_gi_cidrs = []
+                for _gi_t in _g_gi_list:
+                    if _gi_t != "geoip-cn":
+                        _seed_gi_cidrs.extend(CLOUD_GEOIP_CIDRS.get(_gi_t) or [])
+                if _seed_gi_cidrs:
+                    _extra_gi_c = [c for c in dict.fromkeys(_seed_gi_cidrs) if c not in ip_c]
+                    if _extra_gi_c:
+                        route_rules.append({"ip_cidr": _extra_gi_c, "outbound": stag})
+                if _grp_srs_tags:
+                    route_rules.append({"rule_set": _grp_srs_tags, "outbound": stag})
+                elif gid == "AI" and ai_rs:
                     route_rules.append({"rule_set": ai_rs, "outbound": stag})
                 elif gid == "YouTube" and youtube_rs:
                     route_rules.append({"rule_set": youtube_rs, "outbound": stag})
@@ -14380,8 +14560,8 @@ class ConfigGenerator:
                     route_rules.append({"rule_set": outside_cn_rs, "outbound": stag})
                 elif gid == "Games" and hktw_rs:
                     route_rules.append({"rule_set": hktw_rs, "outbound": stag})
-                elif gid == "Domestic_CN":
-                    if cn_rs:
+                if gid == "Domestic_CN":
+                    if cn_rs and not _grp_srs_tags:
                         route_rules.append({"rule_set": cn_rs, "outbound": stag})
                     route_rules.append({"ip_cidr": CN_CORE_CIDRS + CN_CORE_IPV6_CIDRS, "outbound": stag})
             route_rules.append({"ip_cidr": ["198.18.0.0/15", "fc00::/18"], "outbound": "Shunt_Final"})
@@ -15011,12 +15191,171 @@ SRS_CORE_MAP = {
     "geoip-cn.srs": "geoip/cn.srs",
     "geosite-geolocation-!cn.srs": "geosite/geolocation-!cn.srs",
     "geosite-openai.srs": "geosite/openai.srs",
+    "geosite-anthropic.srs": "geosite/anthropic.srs",
+    "geosite-google-gemini.srs": "geosite/google-gemini.srs",
+    "geosite-cursor.srs": "geosite/cursor.srs",
+    "geosite-huggingface.srs": "geosite/huggingface.srs",
     "geosite-youtube.srs": "geosite/youtube.srs",
     "geosite-google.srs": "geosite/google.srs",
     "geosite-github.srs": "geosite/github.srs",
+    "geosite-docker.srs": "geosite/docker.srs",
     "geosite-netflix.srs": "geosite/netflix.srs",
+    "geosite-disney.srs": "geosite/disney.srs",
+    "geosite-spotify.srs": "geosite/spotify.srs",
     "geosite-tiktok.srs": "geosite/tiktok.srs",
+    "geosite-telegram.srs": "geosite/telegram.srs",
+    "geosite-discord.srs": "geosite/discord.srs",
+    "geosite-apple-cn.srs": "geosite/apple-cn.srs",
+    "geosite-steam-cn.srs": "geosite/steam@cn.srs",
+    "geoip-telegram.srs": "geoip/telegram.srs",
+    "geoip-netflix.srs": "geoip/netflix.srs",
+    "geoip-google.srs": "geoip/google.srs",
+    "geoip-cloudflare.srs": "geoip/cloudflare.srs",
+    "geoip-fastly.srs": "geoip/fastly.srs",
+    "geoip-openai.srs": "geoip/openai.srs",
 }
+
+CLOUD_GEOIP_CIDRS = {
+    "geoip-telegram": [
+        "91.108.4.0/22", "91.108.8.0/22", "91.108.12.0/22", "91.108.16.0/22",
+        "91.108.20.0/22", "91.108.56.0/22", "95.161.64.0/20", "149.154.160.0/20",
+        "185.76.151.0/24", "2001:b28:f23d::/48", "2001:b28:f23f::/48", "2001:67c:4e8::/48",
+    ],
+    "geoip-netflix": [
+        "23.246.0.0/18", "37.77.184.0/21", "45.57.0.0/17", "64.120.128.0/17",
+        "66.197.128.0/17", "108.175.32.0/20", "198.38.96.0/19", "198.45.48.0/20",
+    ],
+    "geoip-google": [
+        "8.8.8.0/24", "8.8.4.0/24", "34.0.0.0/15", "35.190.0.0/17",
+        "64.233.160.0/19", "66.102.0.0/20", "66.249.80.0/20", "72.14.192.0/18",
+        "74.125.0.0/16", "108.177.0.0/17", "142.250.0.0/15", "172.217.0.0/16",
+        "173.194.0.0/16", "209.85.128.0/17", "216.58.192.0/19", "216.239.32.0/19",
+    ],
+    "geoip-cloudflare": [
+        "1.1.1.0/24", "1.0.0.0/24", "103.21.244.0/22", "103.22.200.0/22",
+        "103.31.4.0/22", "104.16.0.0/13", "104.24.0.0/14", "108.162.192.0/18",
+        "131.0.72.0/22", "141.101.64.0/18", "162.158.0.0/15", "172.64.0.0/13",
+        "173.245.48.0/20", "188.114.96.0/20", "190.93.240.0/20", "197.234.240.0/22",
+        "198.41.128.0/17",
+    ],
+    "geoip-fastly": [
+        "23.235.32.0/20", "104.156.80.0/20", "151.101.0.0/16", "199.232.0.0/16",
+    ],
+    "geoip-openai": [
+        "20.169.72.0/24", "23.98.142.0/24", "40.84.180.0/22", "52.152.96.0/24", "64.23.132.0/24",
+    ],
+    "geoip-cn": list(CN_CORE_CIDRS[:24]),
+}
+
+CLOUD_GEOSITE_SEEDS = {
+    "geosite-openai": ["openai.com", "chatgpt.com", "oaistatic.com", "oaiusercontent.com", "sora.com"],
+    "geosite-anthropic": ["anthropic.com", "claude.ai", "claudeusercontent.com"],
+    "geosite-google-gemini": ["gemini.google.com", "aistudio.google.com", "generativelanguage.googleapis.com", "makersuite.google.com", "notebooklm.google.com"],
+    "geosite-cursor": ["cursor.sh", "cursor.com", "cursorapi.com", "cursor-cdn.com"],
+    "geosite-huggingface": ["huggingface.co", "hf.co", "hf.space"],
+    "geosite-telegram": ["t.me", "telegram.org", "tdesktop.com", "telegra.ph", "cdn-telegram.org", "telesco.pe"],
+    "geosite-discord": ["discord.com", "discordapp.com", "discord.gg", "discord.media", "discordapp.net"],
+    "geosite-youtube": ["youtube.com", "googlevideo.com", "ytimg.com", "youtu.be", "youtubei.googleapis.com"],
+    "geosite-netflix": ["netflix.com", "netflix.net", "nflxvideo.net", "nflxso.net", "nflxext.com", "nflximg.net", "fast.com"],
+    "geosite-disney": ["disneyplus.com", "bamgrid.com", "dssott.com", "disneystreaming.com"],
+    "geosite-spotify": ["spotify.com", "scdn.co", "pscdn.co", "spoti.fi"],
+    "geosite-tiktok": ["tiktok.com", "tiktokv.com", "tiktokcdn.com", "byteoversea.com", "ibytedtos.com", "musical.ly"],
+    "geosite-github": ["github.com", "githubusercontent.com", "githubassets.com", "ghcr.io", "github.io"],
+    "geosite-docker": ["docker.com", "docker.io", "registry-1.docker.io", "quay.io", "gcr.io", "k8s.io"],
+    "geosite-google": ["google.com", "googleapis.com", "gstatic.com", "googleusercontent.com", "gvt1.com", "play.google.com", "gmail.com"],
+    "geosite-apple-cn": ["icloud.com.cn", "mzstatic.com", "cdn-apple.com", "apple.com.cn", "aaplimg.com"],
+    "geosite-steam-cn": ["steamserver.net", "steamcontent.com", "dl.steam.clngaa.com", "st.dl.eccdnx.com", "st.dl.bscstorage.net"],
+    "geosite-cn": ["cn", "baidu.com", "qq.com", "taobao.com", "jd.com", "bilibili.com", "163.com", "douyin.com", "douyincdn.com", "xiaohongshu.com", "zhihu.com"],
+    "geosite-geolocation-!cn": ["cloudflare.com", "twitter.com", "x.com", "wikipedia.org", "reddit.com", "medium.com"],
+}
+
+CLOUD_SRS_CATALOG = [
+    {"tag": "geoip-telegram", "type": "geoip", "srs_file": "geoip-telegram.srs", "name": "Telegram 全球数据中心 GeoIP", "category": "im_ip", "asn": "AS62041 / AS59930", "default_group_id": "Outside_CN", "desc": "覆盖 Telegram MTProto 纯 IP 直连数据中心 (149.154.160.0/20, 91.108.4.0/22 等)，根治图片/语音纯 IP 漏入兜底池"},
+    {"tag": "geoip-netflix", "type": "geoip", "srs_file": "geoip-netflix.srs", "name": "Netflix OpenConnect 原生 GeoIP", "category": "stream", "asn": "AS2906", "default_group_id": "Netflix", "desc": "覆盖 Netflix 全球自建 OpenConnect 视频流媒体 IP 段 (45.57.0.0/17, 23.246.0.0/18 等)，防止 TV/移动端硬编码 IP 漏走错节点"},
+    {"tag": "geoip-google", "type": "geoip", "srs_file": "geoip-google.srs", "name": "Google / FCM / YouTube 核心 GeoIP", "category": "infra", "asn": "AS15169", "default_group_id": "Google", "desc": "覆盖 Google 全球骨干网、FCM 推送与 Play 下载 IP 段 (142.250.0.0/15, 172.217.0.0/16 等)"},
+    {"tag": "geoip-cloudflare", "type": "geoip", "srs_file": "geoip-cloudflare.srs", "name": "Cloudflare 全球边缘网络 GeoIP", "category": "infra", "asn": "AS13335", "default_group_id": "Outside_CN", "desc": "覆盖 Cloudflare CDN / Workers / WARP 全网段 (104.16.0.0/13, 172.64.0.0/13 等)"},
+    {"tag": "geoip-fastly", "type": "geoip", "srs_file": "geoip-fastly.srs", "name": "Fastly 开发者与开源镜像 GeoIP", "category": "dev", "asn": "AS54113", "default_group_id": "GitHub", "desc": "覆盖 GitHub Releases / PyPI / Rust Crates 底层 Fastly CDN IP 段 (151.101.0.0/16, 199.232.0.0/16)"},
+    {"tag": "geoip-openai", "type": "geoip", "srs_file": "geoip-openai.srs", "name": "OpenAI / ChatGPT 语音与 API GeoIP", "category": "ai", "asn": "AS8075 / OpenAI", "default_group_id": "AI", "desc": "覆盖 ChatGPT 实时语音 WebRTC 与 API 专线 IP 段，杜绝语音通话跨出口中断"},
+    {"tag": "geoip-cn", "type": "geoip", "srs_file": "geoip-cn.srs", "name": "中国大陆全量 IPv4/IPv6 GeoIP", "category": "cn_direct", "asn": "CN APNIC", "default_group_id": "Domestic_CN", "desc": "权威中国大陆 IP 段，保障国内联机游戏、网银、P2P 与本地服务零损耗直连"},
+    {"tag": "geosite-openai", "type": "geosite", "srs_file": "geosite-openai.srs", "name": "OpenAI / ChatGPT / Sora 规则集", "category": "ai", "asn": "Geosite", "default_group_id": "AI", "desc": "OpenAI 网页、API、静态资源与鉴权域名全集"},
+    {"tag": "geosite-anthropic", "type": "geosite", "srs_file": "geosite-anthropic.srs", "name": "Anthropic / Claude AI 规则集", "category": "ai", "asn": "Geosite", "default_group_id": "AI", "desc": "Claude.ai、Anthropic API 与 Console 完整域名列表"},
+    {"tag": "geosite-google-gemini", "type": "geosite", "srs_file": "geosite-google-gemini.srs", "name": "Google Gemini / AI Studio / NotebookLM", "category": "ai", "asn": "Geosite", "default_group_id": "AI", "desc": "Google Gemini、AI Studio、Generative Language API 与 NotebookLM 专属域名"},
+    {"tag": "geosite-cursor", "type": "geosite", "srs_file": "geosite-cursor.srs", "name": "Cursor / AI 编程助手规则集", "category": "ai", "asn": "Geosite", "default_group_id": "AI", "desc": "Cursor IDE 代码补全、Agent 对话与扩展更新域名"},
+    {"tag": "geosite-huggingface", "type": "geosite", "srs_file": "geosite-huggingface.srs", "name": "HuggingFace 模型与 LFS 权重加速", "category": "dev", "asn": "Geosite", "default_group_id": "GitHub", "desc": "HuggingFace 模型仓库、LFS 大文件 CDN 与 Spaces 域名"},
+    {"tag": "geosite-telegram", "type": "geosite", "srs_file": "geosite-telegram.srs", "name": "Telegram 网页与媒体 CDN 规则集", "category": "im_ip", "asn": "Geosite", "default_group_id": "Outside_CN", "desc": "t.me、telegram.org、telegra.ph 与媒体分发域名"},
+    {"tag": "geosite-discord", "type": "geosite", "srs_file": "geosite-discord.srs", "name": "Discord 社区与语音频道规则集", "category": "im_ip", "asn": "Geosite", "default_group_id": "Outside_CN", "desc": "Discord 主站、媒体图片与语音网关域名"},
+    {"tag": "geosite-youtube", "type": "geosite", "srs_file": "geosite-youtube.srs", "name": "YouTube 4K/8K 视频流规则集", "category": "stream", "asn": "Geosite", "default_group_id": "YouTube", "desc": "YouTube、googlevideo 视频切片与封面 CDN"},
+    {"tag": "geosite-netflix", "type": "geosite", "srs_file": "geosite-netflix.srs", "name": "Netflix 奈飞流媒体与 Fast 测速", "category": "stream", "asn": "Geosite", "default_group_id": "Netflix", "desc": "Netflix 主站、nflxvideo 视频流与 fast.com 测速域名"},
+    {"tag": "geosite-disney", "type": "geosite", "srs_file": "geosite-disney.srs", "name": "Disney+ 国际流媒体规则集", "category": "stream", "asn": "Geosite", "default_group_id": "Netflix", "desc": "Disney+、bamgrid 与 dssott 流媒体鉴权域名"},
+    {"tag": "geosite-spotify", "type": "geosite", "srs_file": "geosite-spotify.srs", "name": "Spotify 流媒体音乐规则集", "category": "stream", "asn": "Geosite", "default_group_id": "Netflix", "desc": "Spotify 音频流与封面 CDN 域名"},
+    {"tag": "geosite-tiktok", "type": "geosite", "srs_file": "geosite-tiktok.srs", "name": "TikTok 国际版短视频与直播", "category": "stream", "asn": "Geosite", "default_group_id": "TikTok", "desc": "TikTok 全球各区域名与海外 CDN"},
+    {"tag": "geosite-github", "type": "geosite", "srs_file": "geosite-github.srs", "name": "GitHub 代码仓库与 Actions 镜像", "category": "dev", "asn": "Geosite", "default_group_id": "GitHub", "desc": "GitHub、raw、Release 资产与 ghcr.io 容器镜像"},
+    {"tag": "geosite-docker", "type": "geosite", "srs_file": "geosite-docker.srs", "name": "Docker Hub / K8s 容器镜像仓库", "category": "dev", "asn": "Geosite", "default_group_id": "GitHub", "desc": "Docker Hub、Quay、GCR 与 Kubernetes 镜像拉取加速"},
+    {"tag": "geosite-google", "type": "geosite", "srs_file": "geosite-google.srs", "name": "Google 全生态与 Play 商店", "category": "infra", "asn": "Geosite", "default_group_id": "Google", "desc": "Google 搜索、Gmail、Play 商店 APK 下载与学术域名"},
+    {"tag": "geosite-apple-cn", "type": "geosite", "srs_file": "geosite-apple-cn.srs", "name": "Apple 中国大陆 CDN 直连白名单", "category": "cn_direct", "asn": "Geosite", "default_group_id": "Domestic_CN", "desc": "App Store 更新、iCloud 中国大陆 CDN 满速直连"},
+    {"tag": "geosite-steam-cn", "type": "geosite", "srs_file": "geosite-steam-cn.srs", "name": "Steam 中国下载节点直连分流", "category": "game", "asn": "Geosite", "default_group_id": "Domestic_CN", "desc": "Steam 游戏本体下载走国内 CDN 满速直连，商店与社区走代理解锁"},
+    {"tag": "geosite-cn", "type": "geosite", "srs_file": "geosite-cn.srs", "name": "中国大陆全量域名白名单 (geosite-cn)", "category": "cn_direct", "asn": "Geosite", "default_group_id": "Domestic_CN", "desc": "中国大陆常见网站、电商、短视频与云厂商域名"},
+    {"tag": "geosite-geolocation-!cn", "type": "geosite", "srs_file": "geosite-geolocation-!cn.srs", "name": "非中国大陆国际通用域名 (!cn)", "category": "infra", "asn": "Geosite", "default_group_id": "Outside_CN", "desc": "海外常见站点与社交媒体统一归集"},
+]
+
+CLOUD_SCENARIO_PACKS = [
+    {
+        "id": "pack_ai_full",
+        "name": "AI 生产力与编程算力全栈包",
+        "badge": "高频刚需",
+        "desc": "一键为「AI」分流组挂载 OpenAI / Claude / Gemini / Cursor / HuggingFace 域名库与 OpenAI 语音 WebRTC GeoIP 网段，消除 AI 编程与语音对话掉线。",
+        "bindings": [
+            {"group_id": "AI", "geosite_sets": ["geosite-openai", "geosite-anthropic", "geosite-google-gemini", "geosite-cursor", "geosite-huggingface"], "geoip_sets": ["geoip-openai"], "add_domains": ["cursor.com", "cursorapi.com", "aistudio.google.com", "notebooklm.google.com", "claudeusercontent.com"]},
+        ],
+    },
+    {
+        "id": "pack_tg_im_ip",
+        "name": "Telegram / Discord 纯 IP 与语音防漏包",
+        "badge": "纯IP必配",
+        "desc": "针对 Telegram MTProto 纯 IP 连接与 Discord 语音频道，直接挂载 AS62041 (149.154.160.0/20, 91.108.4.0/22) GeoIP 与 Geosite，彻底解决消息转圈和纯 IP 漏入兜底池。",
+        "bindings": [
+            {"group_id": "Outside_CN", "geosite_sets": ["geosite-telegram", "geosite-discord"], "geoip_sets": ["geoip-telegram", "geoip-cloudflare"], "add_ip_cidrs": ["91.108.4.0/22", "91.108.8.0/22", "91.108.56.0/22", "149.154.160.0/20"], "add_domains": ["t.me", "telegram.org", "tdesktop.com", "discord.com", "discord.gg"]},
+        ],
+    },
+    {
+        "id": "pack_stream_4k",
+        "name": "流媒体 4K & Netflix 原生 IP 解锁包",
+        "badge": "影音4K",
+        "desc": "为「Netflix / YouTube / TikTok」挂载 AS2906 Netflix OpenConnect 原生 GeoIP 与 Disney+/Spotify/YouTube 规则集，防止电视端硬编码 IP 走错出口。",
+        "bindings": [
+            {"group_id": "Netflix", "geosite_sets": ["geosite-netflix", "geosite-disney", "geosite-spotify"], "geoip_sets": ["geoip-netflix"], "add_ip_cidrs": ["45.57.0.0/17", "23.246.0.0/18"]},
+            {"group_id": "YouTube", "geosite_sets": ["geosite-youtube"], "geoip_sets": []},
+            {"group_id": "TikTok", "geosite_sets": ["geosite-tiktok"], "geoip_sets": []},
+        ],
+    },
+    {
+        "id": "pack_dev_cloud",
+        "name": "GitHub / Docker / HuggingFace 开发者极速包",
+        "badge": "研发提速",
+        "desc": "为「GitHub」分流组挂载 GitHub、Docker Hub、HuggingFace LFS 规则集及 Fastly CDN GeoIP (151.101.0.0/16)，加速 git clone、docker pull 与模型权重下载。",
+        "bindings": [
+            {"group_id": "GitHub", "geosite_sets": ["geosite-github", "geosite-docker", "geosite-huggingface"], "geoip_sets": ["geoip-fastly"], "add_domains": ["huggingface.co", "hf.co", "docker.io", "registry-1.docker.io", "quay.io"]},
+        ],
+    },
+    {
+        "id": "pack_game_steam_split",
+        "name": "Steam 下载满速直连 + 商店社区代理解锁包",
+        "badge": "游戏分离",
+        "desc": "将 Steam 国内下载 CDN (geosite-steam-cn) 挂载至「国内」直连跑满宽带，同时将 Steam 商店/社区 (steamcommunity.com) 保持代理分流。",
+        "bindings": [
+            {"group_id": "Domestic_CN", "geosite_sets": ["geosite-cn", "geosite-steam-cn", "geosite-apple-cn"], "geoip_sets": ["geoip-cn"], "add_domains": ["steamserver.net", "dl.steam.clngaa.com", "st.dl.eccdnx.com"]},
+        ],
+    },
+    {
+        "id": "pack_google_fcm_guard",
+        "name": "Google Play 下载与安卓 FCM 推送加固包",
+        "badge": "移动防断连",
+        "desc": "为「Google」组挂载 AS15169 Google 全量 GeoIP、Play 商店 CDN 与 TCP 5228-5230 推送端口，保障安卓设备通知秒达与商店满速更新。",
+        "bindings": [
+            {"group_id": "Google", "geosite_sets": ["geosite-google"], "geoip_sets": ["geoip-google"], "add_ports": [5228, 5229, 5230], "add_ip_cidrs": ["8.8.8.8/32", "8.8.4.4/32", "142.250.0.0/15", "172.217.0.0/16"]},
+        ],
+    },
+]
 
 def ensure_srs_rulesets(conf_dir: Path = CONF_DIR, timeout_per_file: float = 6.0) -> dict:
     """P1-3 Fix: Downloads and validates core .srs binary rule-sets into /etc/ai-link/rules/ from domestic jsDelivr CDN / ghfas"""
@@ -16043,8 +16382,11 @@ def build_shunt_api_response(conf_dir: Path = CONF_DIR) -> dict:
                     _LAST_SYNCED_SHUNT_MTIME = cur_sh_mt
         except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
             globals().get("_record_internal_diag", str)(_e_diag)
-        PROBE_ENGINE.load_persisted_selections(RUN_DIR, conf_dir)
-        _cached_Value(f"sync_sels_clash_{conf_dir}", 10.0, lambda: sync_selections_from_clash(conf_dir))
+        _sel_f_sh = RUN_DIR / "selections.json"
+        _sel_sig_sh = _get_file_sig(_sel_f_sh)
+        if _LAST_SELECTIONS_FILE_SIG.get(str(conf_dir)) != _sel_sig_sh or not PROBE_ENGINE.current_selections:
+            PROBE_ENGINE.load_persisted_selections(RUN_DIR, conf_dir)
+            _LAST_SELECTIONS_FILE_SIG[str(conf_dir)] = _sel_sig_sh
     else:
         PROBE_ENGINE.load_persisted_selections(_effective_run_dir(conf_dir), conf_dir)
     sels_tup = tuple(sorted((PROBE_ENGINE.current_selections or {}).items()))
@@ -16170,6 +16512,12 @@ def build_shunt_api_response(conf_dir: Path = CONF_DIR) -> dict:
         g_out["dns_strategy"] = str(g.get("dns_strategy") or "inherit")
         g_out["custom_dns"] = str(g.get("custom_dns") or "")
         g_out["rule_blocks"] = list(g.get("rule_blocks") or [])
+        g_out["domains_total"] = len(g.get("domains") or [])
+        g_out["ports_total"] = len(g.get("ports") or [])
+        _dc_g = DEFAULT_GROUP_CLOUD_SETS.get(gid, {})
+        g_out["geosite_sets"] = list(g.get("geosite_sets") if isinstance(g.get("geosite_sets"), list) else (_dc_g.get("geosite_sets") or []))
+        g_out["geoip_sets"] = list(g.get("geoip_sets") if isinstance(g.get("geoip_sets"), list) else (_dc_g.get("geoip_sets") or []))
+        g_out["cloud_sets_total"] = len(g_out["geosite_sets"]) + len(g_out["geoip_sets"])
         if sm == "auto":
             if matched_an is not None:
                 pool_cur = str(matched_an.get("current_node") or "").strip()
@@ -16403,8 +16751,17 @@ def _slim_auto_nodes_for_status(auto_nodes_list: list) -> list:
                 an_c["bound_group_targets"] = an["bound_group_targets"]
         if an_c.get("current_delay_ms") == -1:
             an_c.pop("current_delay_ms", None)
-        if an_c.get("active_lines_count") == 1:
-            an_c.pop("active_lines_count", None)
+        # O-7 Fix: Always preserve integer active_lines_count (never delete when == 1)
+        an_c["active_lines_count"] = int(an.get("active_lines_count") if an.get("active_lines_count") is not None else len(an.get("multi_line_nodes") or [1]))
+        for _extra_an_k in (
+            "candidate_count", "node_tags_total", "rotation_members", "rotation_member_count",
+            "active_egress", "dwell_s", "dwell_elapsed_s", "session_sticky_s",
+            "same_region_single_member", "same_region_single_member_hint", "region_filtered_out_count",
+            "below_soft_target", "soft_target_progress", "replenish_satisfied",
+            "single_line_pinned", "single_line_pin_reason", "unbound_probe_throttled", "l7_diagnostic_hint",
+        ):
+            if _extra_an_k in an and an[_extra_an_k] not in ("", None, False):
+                an_c[_extra_an_k] = an[_extra_an_k]
         if an_c.get("pool_mode") == "ping_only" and an_c.get("mode") == "semi":
             an_c.pop("mode", None)
         if "multi_line_rotation_log" in an_c and isinstance(an_c["multi_line_rotation_log"], list):
@@ -16414,11 +16771,15 @@ def _slim_auto_nodes_for_status(auto_nodes_list: list) -> list:
             for g in an["groups"][:1]:
                 if not isinstance(g, dict):
                     continue
+                _full_ntags = list(g.get("node_tags") or [])
                 g_c = {
                     "index": int(g.get("index") or 1),
                     "name": g.get("name") or "主力",
-                    "node_tags": list(g.get("node_tags") or [])[:3],
+                    "node_tags": _full_ntags,
+                    "node_tags_total": len(_full_ntags),
                 }
+                an_c["candidate_count"] = len(_full_ntags)
+                an_c["node_tags_total"] = len(_full_ntags)
                 if an.get("pool_mode") == "service_check" and isinstance(g.get("members"), list):
                     ver_members = [
                         {k: m[k] for k in ("tag", "svc_verified", "svc_passed") if k in m}
@@ -16443,6 +16804,9 @@ def _slim_shunt_for_status(shunt_full: dict, lite: bool = False) -> dict:
             if not isinstance(g, dict):
                 continue
             doms = g.get("domains") if isinstance(g.get("domains"), list) else []
+            prts = g.get("ports") if isinstance(g.get("ports"), list) else []
+            gs_sets = g.get("geosite_sets") if isinstance(g.get("geosite_sets"), list) else []
+            gi_sets = g.get("geoip_sets") if isinstance(g.get("geoip_sets"), list) else []
             lg = {
                 "id": g.get("id", ""),
                 "shunt_mode": g.get("shunt_mode", "auto"),
@@ -16450,11 +16814,15 @@ def _slim_shunt_for_status(shunt_full: dict, lite: bool = False) -> dict:
                 "resolved_node": g.get("resolved_node", "direct"),
                 "domains_total": len(doms),
             }
+            if prts:
+                lg["ports_total"] = len(prts)
+            if gs_sets or gi_sets:
+                lg["cloud_sets_total"] = len(gs_sets) + len(gi_sets)
             if float(g.get("resolved_rtt_ms") or -1) > 0:
                 lg["resolved_rtt_ms"] = g["resolved_rtt_ms"]
             if g.get("dispatch_mode") == "multi_line":
                 lg["dispatch_mode"] = "multi_line"
-                lg["active_lines_count"] = int(g.get("active_lines_count") or len(g.get("multi_line_nodes") or []))
+                lg["active_lines_count"] = int(g.get("active_lines_count") if g.get("active_lines_count") is not None else len(g.get("multi_line_nodes") or []))
             if g.get("session_affinity"):
                 lg["session_affinity"] = True
             if g.get("manual_node") and g.get("shunt_mode") == "manual":
@@ -16464,6 +16832,10 @@ def _slim_shunt_for_status(shunt_full: dict, lite: bool = False) -> dict:
         for a in (shunt_full.get("auto_nodes") or []):
             if not isinstance(a, dict):
                 continue
+            _g0_tags = (a.get("groups") or [{}])[0].get("node_tags") or [] if isinstance(a.get("groups"), list) and a.get("groups") else []
+            _cand_cnt = int(a.get("candidate_count") or a.get("node_tags_total") or len(_g0_tags) or a.get("pool_reachable_count") or 0)
+            _sticky_s = int(a.get("session_sticky_s") or 300)
+            _dwell_s = int(a.get("dwell_s") or max(30, _sticky_s))
             lp = {
                 "id": a.get("id", ""),
                 "tag": a.get("tag", ""),
@@ -16471,15 +16843,22 @@ def _slim_shunt_for_status(shunt_full: dict, lite: bool = False) -> dict:
                 "current_node": a.get("current_node", "direct"),
                 "dispatch_mode": a.get("dispatch_mode", "single_best"),
                 "pool_reachable_count": int(a.get("pool_reachable_count") or 0),
+                "candidate_count": _cand_cnt,
+                "active_lines_count": int(a.get("active_lines_count") if a.get("active_lines_count") is not None else max(1, len(a.get("multi_line_nodes") or []))),
+                "session_sticky_s": _sticky_s,
+                "dwell_s": _dwell_s,
             }
+            if int(a.get("dwell_elapsed_s") or 0) > 0:
+                lp["dwell_elapsed_s"] = int(a["dwell_elapsed_s"])
             if int(a.get("current_delay_ms") or -1) > 0:
                 lp["current_delay_ms"] = int(a["current_delay_ms"])
             if a.get("dispatch_mode") == "multi_line":
                 lp["multi_line_nodes"] = list(a.get("multi_line_nodes") or [])[:4]
-                lp["active_lines_count"] = int(a.get("active_lines_count") or len(a.get("multi_line_nodes") or []))
             if a.get("session_affinity") or a.get("same_region_multi_line"):
                 lp["session_affinity"] = True
                 lp["same_region_multi_line"] = True
+            if a.get("same_region_single_member"):
+                lp["same_region_single_member"] = True
             if a.get("all_groups_dead_alert"):
                 lp["all_groups_dead_alert"] = True
             lite_pools.append(lp)
@@ -16504,7 +16883,8 @@ def _slim_shunt_for_status(shunt_full: dict, lite: bool = False) -> dict:
         "country", "manual_node", "resolved_node", "resolved_rtt_ms", "dispatch_mode", "multi_line_nodes",
         "active_lines_count", "session_affinity", "auto_single_line_protected", "ip_sensitive", "strict_lock", "manual_drifted",
         "strict_locked_dead", "drift_warning", "dns_strategy", "custom_dns", "rule_blocks", "domains",
-        "domain_keywords", "exact_domains", "ip_cidrs", "source_ip_cidrs", "ports",
+        "domain_keywords", "exact_domains", "ip_cidrs", "source_ip_cidrs", "ports", "ports_total",
+        "geosite_sets", "geoip_sets", "cloud_sets_total",
         "is_custom", "locked_bottom", "locked_order", "user_edited_rules",
     )
     slim_groups = []
@@ -16521,8 +16901,6 @@ def _slim_shunt_for_status(shunt_full: dict, lite: bool = False) -> dict:
             if k == "dns_strategy" and v == "inherit":
                 continue
             if k == "dispatch_mode" and v == "single_best":
-                continue
-            if k == "active_lines_count" and v == 1:
                 continue
             if k == "multi_line_nodes" and g.get("dispatch_mode") != "multi_line":
                 continue
@@ -17363,7 +17741,7 @@ def build_status_api_response(conf_dir: Path = CONF_DIR, include_fields: set = N
         bool(FAIL_OPEN_STATE.get("active")),
         tuple(_WATCHDOG_LAST_KNOWN_PIDS if (_WATCHDOG_LAST_KNOWN_PIDS and Path(conf_dir).resolve() == CONF_DIR.resolve()) else _cached_Value("live_sb_pids", 15.0, _get_live_singbox_pids)),
         sels_tup,
-        int(time.time()) // 30,
+        int(_CORE_RELOAD_STATE.get("state_seq") or 1),
     )
     t_s1 = time.perf_counter()
     if st_key in _STATUS_API_MEMO:
@@ -17372,6 +17750,7 @@ def build_status_api_response(conf_dir: Path = CONF_DIR, include_fields: set = N
         cached["as_of_ts"] = int(snap_ts)
         cached["data_age_ms"] = max(0, int((time.time() - snap_ts) * 1000))
         cached["config_seq"] = _CORE_RELOAD_STATE["config_seq"]
+        cached["state_seq"] = int(_CORE_RELOAD_STATE.get("state_seq") or 1)
         cached["reload_seq"] = _CORE_RELOAD_STATE["reload_seq"]
         cap_now = _cached_Value(f"sb_cap_{conf_dir}", 30.0, lambda: probe_singbox_binary_capabilities(conf_dir))
         if cap_now.get("version"):
@@ -17458,6 +17837,8 @@ def build_status_api_response(conf_dir: Path = CONF_DIR, include_fields: set = N
         "core_dead_alert": _core_dead_alert,
         "as_of_ts": int(time.time()),
         "config_seq": _CORE_RELOAD_STATE["config_seq"],
+        "state_seq": int(_CORE_RELOAD_STATE.get("state_seq") or 1),
+        "lite_fields": list(['ok', 'lite', 'lite_fields', 'status', 'version', 'release_stage', 'build_ver', 'build_revision', 'core_running', 'core_dead_alert', 'as_of_ts', 'config_seq', 'state_seq', 'reload_seq', 'core_reloading', 'bypass_active', 'fail_open', 'probe_running', 'sub_sync_running', 'routing_mode', 'shunt_enabled', 'ipv6_proxy', '_snapshot_created_ts', 'data_age_ms', 'dwell_bypass_calls', 'shield_status', 'sys_metrics', 'overview_telemetry', 'stage_timing_ms', 'core', 'core_version', 'core_pid', 'probe_alive_count', 'probe_total_count', 'shunt', 'selections', 'health_score', 'pwd_customized', 'auth_required']),
         "reload_seq": _CORE_RELOAD_STATE["reload_seq"],
         "core_reloading": _CORE_RELOAD_STATE["reloading"],
         "bypass_active": is_bypass_active(),
@@ -17552,7 +17933,7 @@ def build_status_api_response(conf_dir: Path = CONF_DIR, include_fields: set = N
         bool(FAIL_OPEN_STATE.get("active")),
         tuple(_WATCHDOG_LAST_KNOWN_PIDS if (_WATCHDOG_LAST_KNOWN_PIDS and Path(conf_dir).resolve() == CONF_DIR.resolve()) else _cached_Value("live_sb_pids", 15.0, _get_live_singbox_pids)),
         tuple(sorted((PROBE_ENGINE.current_selections or {}).items())),
-        int(time.time()) // 30,
+        int(_CORE_RELOAD_STATE.get("state_seq") or 1),
     )
     if lite and not want_full:
         ov_lite = {
@@ -17565,7 +17946,11 @@ def build_status_api_response(conf_dir: Path = CONF_DIR, include_fields: set = N
             "out_rate_str": ov_telem.get("out_rate_str", "0 B/s"),
             "kernel_uptime_str": ov_telem.get("kernel_uptime_str", ""),
             "sys_uptime_str": ov_telem.get("sys_uptime_str", ""),
-            "pulse_services": [{k: p[k] for k in ("id", "name", "selector", "node", "ms", "state") if k in p} for p in (ov_telem.get("pulse_services") or [])[:8] if isinstance(p, dict)],
+            "pulse_services": [{k: p[k] for k in ("id", "name", "selector", "node", "ms", "state") if k in p} for p in (ov_telem.get("pulse_services") or [])[:6] if isinstance(p, dict)],
+        }
+        sys_m_lite = {
+            k: sys_m[k] for k in ("cpu_pct", "mem_pct", "mem_used_mib", "mem_total_mib", "temp_c", "load_1m", "uptime_str")
+            if isinstance(sys_m, dict) and k in sys_m
         }
         res_obj = {
             "ok": True,
@@ -17579,6 +17964,7 @@ def build_status_api_response(conf_dir: Path = CONF_DIR, include_fields: set = N
             "core_dead_alert": _core_dead_alert,
             "as_of_ts": int(time.time()),
             "config_seq": _CORE_RELOAD_STATE["config_seq"],
+            "state_seq": int(_CORE_RELOAD_STATE.get("state_seq") or 1),
             "reload_seq": _CORE_RELOAD_STATE["reload_seq"],
             "core_reloading": _CORE_RELOAD_STATE["reloading"],
             "bypass_active": is_bypass_active(),
@@ -17592,7 +17978,7 @@ def build_status_api_response(conf_dir: Path = CONF_DIR, include_fields: set = N
             "data_age_ms": 0,
             "dwell_bypass_calls": int(getattr(SELECTOR_WRITE_COORDINATOR, "dwell_bypass_calls", 0)),
             "shield_status": shield_st,
-            "sys_metrics": sys_m,
+            "sys_metrics": sys_m_lite,
             "overview_telemetry": ov_lite,
             "stage_timing_ms": stage_timing,
             "core": rt["core"],
@@ -17601,7 +17987,7 @@ def build_status_api_response(conf_dir: Path = CONF_DIR, include_fields: set = N
             "probe_alive_count": PROBE_ENGINE.last_alive_count,
             "probe_total_count": PROBE_ENGINE.last_total_count,
             "shunt": shunt_slim,
-            "selections": {k: v for k, v in (PROBE_ENGINE.current_selections or {}).items() if not str(k).startswith("Shunt_")},
+            "selections": {k: v for k, v in (PROBE_ENGINE.current_selections or {}).items() if k in ("AI_Best_Auto", "Stream_Auto", "HK_TW_Media")},
             "health_score": int(globals().get("_LAST_DOCTOR_HEALTH_SCORE") or (35 if not rt.get("core_alive", True) else (82 if is_bypass_active() else 92))),
         }
     _STATUS_API_MEMO[st_key] = res_obj
@@ -22520,14 +22906,422 @@ def match_single_rule_block(rb: dict, host: str = "", ip_str: str = "", src_ip: 
     return (True, f"命中规则块 [{rb.get('name', rb.get('id', 'rule'))}] ({f' {logic} '.join(reasons)})")
 
 
+def match_cloud_geoip_ip(ip_str: str) -> dict:
+    """Matches an IPv4/IPv6 address against CLOUD_SRS_CATALOG geoip-* CIDR tables."""
+    ip_clean = str(ip_str or "").strip()
+    if not ip_clean:
+        return {}
+    for cat in CLOUD_SRS_CATALOG:
+        if cat.get("type") != "geoip":
+            continue
+        tag = cat["tag"]
+        cidrs = CLOUD_GEOIP_CIDRS.get(tag) or []
+        if cidrs and _ip_in_cidr_list(ip_clean, cidrs):
+            return {
+                "tag": tag,
+                "name": cat.get("name", tag),
+                "asn": cat.get("asn", "GeoIP"),
+                "default_group_id": cat.get("default_group_id", "Outside_CN"),
+                "desc": cat.get("desc", ""),
+            }
+    return {}
+
+
+def match_cloud_geosite_domain(host_str: str, conf_dir: Path = CONF_DIR) -> dict:
+    """Matches a domain against CLOUD_SRS_CATALOG geosite-* seed tables and installed .srs files."""
+    h = str(host_str or "").strip().lower().lstrip(".")
+    if not h or re.match(r"^\d{1,3}(\.\d{1,3}){3}$", h) or ":" in h:
+        return {}
+    for cat in CLOUD_SRS_CATALOG:
+        if cat.get("type") != "geosite":
+            continue
+        tag = cat["tag"]
+        seeds = CLOUD_GEOSITE_SEEDS.get(tag) or []
+        for dm in seeds:
+            dm_l = str(dm).strip().lower().lstrip(".")
+            if dm_l and (h == dm_l or h.endswith("." + dm_l)):
+                return {
+                    "tag": tag,
+                    "name": cat.get("name", tag),
+                    "matched_domain": dm_l,
+                    "default_group_id": cat.get("default_group_id", "Outside_CN"),
+                    "desc": cat.get("desc", ""),
+                }
+        srs_p = Path(conf_dir) / "rules" / str(cat.get("srs_file") or f"{tag}.srs")
+        if srs_p.is_file() and match_srs_ruleset_target(srs_p, h):
+            return {
+                "tag": tag,
+                "name": cat.get("name", tag),
+                "matched_domain": h,
+                "default_group_id": cat.get("default_group_id", "Outside_CN"),
+                "desc": cat.get("desc", ""),
+            }
+    return {}
+
+
+def get_cloud_shunt_catalog(conf_dir: Path = CONF_DIR) -> dict:
+    """Returns full Cloud Geosite/GeoIP catalog, bound groups per tag, and 6 one-click scenario packs."""
+    rules_dir = Path(conf_dir) / "rules"
+    sh_cfg = load_shunt_config(conf_dir)
+    groups = sh_cfg.get("groups") or []
+    bound_by_tag = {}
+    for g in groups:
+        gid = g.get("id", "")
+        gname = g.get("name", gid)
+        for t in (g.get("geosite_sets") or []) + (g.get("geoip_sets") or []):
+            bound_by_tag.setdefault(str(t), []).append({"id": gid, "name": gname})
+    catalog_out = []
+    geoip_cnt = 0
+    geosite_cnt = 0
+    installed_cnt = 0
+    for cat in CLOUD_SRS_CATALOG:
+        tag = cat["tag"]
+        ctype = cat["type"]
+        if ctype == "geoip":
+            geoip_cnt += 1
+            seed_cnt = len(CLOUD_GEOIP_CIDRS.get(tag) or [])
+        else:
+            geosite_cnt += 1
+            seed_cnt = len(CLOUD_GEOSITE_SEEDS.get(tag) or [])
+        srs_f = rules_dir / str(cat.get("srs_file") or f"{tag}.srs")
+        is_inst = bool(srs_f.is_file() and srs_f.stat().st_size > 64)
+        if is_inst:
+            installed_cnt += 1
+        catalog_out.append({
+            **cat,
+            "installed": is_inst,
+            "srs_size_bytes": int(srs_f.stat().st_size) if is_inst else 0,
+            "seed_count": seed_cnt,
+            "bound_groups": bound_by_tag.get(tag, []),
+        })
+    return {
+        "ok": True,
+        "catalog": catalog_out,
+        "scenario_packs": CLOUD_SCENARIO_PACKS,
+        "summary": {
+            "total_sets": len(catalog_out),
+            "geoip_sets_count": geoip_cnt,
+            "geosite_sets_count": geosite_cnt,
+            "srs_installed_count": installed_cnt,
+            "scenario_packs_count": len(CLOUD_SCENARIO_PACKS),
+        },
+    }
+
+
+def apply_cloud_shunt_action(payload: dict, conf_dir: Path = CONF_DIR) -> dict:
+    """Applies a Cloud Scenario Pack (`apply_pack`), updates group cloud sets (`bind_sets`), or syncs/compiles `.srs` (`sync_srs`)."""
+    if not isinstance(payload, dict):
+        return {"ok": False, "error": "invalid_payload", "message": "无效请求参数"}
+    act = str(payload.get("action") or "apply_pack").strip().lower()
+    sh_cfg = load_shunt_config(conf_dir)
+    groups = sh_cfg.get("groups") or []
+
+    if act == "apply_pack":
+        pack_id = str(payload.get("pack_id") or payload.get("id") or "").strip()
+        pack = next((p for p in CLOUD_SCENARIO_PACKS if p["id"] == pack_id), None)
+        if not pack:
+            return {"ok": False, "error": "pack_not_found", "message": f"未找到云端场景包: {pack_id}"}
+        prev_groups_snap = copy.deepcopy(groups)
+        updated_gids = []
+        for b in (pack.get("bindings") or []):
+            tgid = b.get("group_id")
+            for g in groups:
+                if g.get("id") == tgid:
+                    cur_gs = list(g.get("geosite_sets") or [])
+                    for s_tag in (b.get("geosite_sets") or []):
+                        if s_tag not in cur_gs:
+                            cur_gs.append(s_tag)
+                    g["geosite_sets"] = cur_gs
+                    cur_gi = list(g.get("geoip_sets") or [])
+                    for i_tag in (b.get("geoip_sets") or []):
+                        if i_tag not in cur_gi:
+                            cur_gi.append(i_tag)
+                    g["geoip_sets"] = cur_gi
+                    cur_doms = list(g.get("domains") or [])
+                    for d_add in (b.get("add_domains") or []):
+                        if d_add not in cur_doms:
+                            cur_doms.append(d_add)
+                    g["domains"] = cur_doms
+                    cur_cidrs = list(g.get("ip_cidrs") or [])
+                    for c_add in (b.get("add_ip_cidrs") or []):
+                        if c_add not in cur_cidrs:
+                            cur_cidrs.append(c_add)
+                    g["ip_cidrs"] = cur_cidrs
+                    cur_ports = [int(p_x) for p_x in (g.get("ports") or []) if str(p_x).isdigit()]
+                    for p_add in (b.get("add_ports") or []):
+                        if int(p_add) not in cur_ports:
+                            cur_ports.append(int(p_add))
+                    g["ports"] = cur_ports
+                    g["user_edited_rules"] = True
+                    updated_gids.append(tgid)
+        sh_cfg["groups"] = groups
+        snap_rec = record_config_snapshot(source="panel", summary=f"一键应用云端分流场景包 [{pack['name']}]", conf_dir=conf_dir, new_shunt_cfg=sh_cfg)
+        save_shunt_config(sh_cfg, conf_dir)
+        _invalidate_fast_api_cache()
+        write_all_configs(conf_dir)
+        return {
+            "ok": True,
+            "action": "apply_pack",
+            "pack_id": pack_id,
+            "pack_name": pack["name"],
+            "updated_groups": updated_gids,
+            "snapshot_id": snap_rec.get("id") if isinstance(snap_rec, dict) else "",
+            "previous_groups": prev_groups_snap,
+            "message": f"已启用场景包「{pack['name']}」，更新分流组: {', '.join(updated_gids)}",
+        }
+
+    if act == "bind_sets":
+        gid = str(payload.get("group_id") or payload.get("id") or "").strip()
+        target_g = next((g for g in groups if g.get("id") == gid), None)
+        if not target_g:
+            return {"ok": False, "error": "group_not_found", "message": f"未找到分流组: {gid}"}
+        prev_grp_snap = copy.deepcopy(target_g)
+        if "geosite_sets" in payload and isinstance(payload["geosite_sets"], list):
+            target_g["geosite_sets"] = [str(x).strip() for x in payload["geosite_sets"] if str(x).strip()]
+        if "geoip_sets" in payload and isinstance(payload["geoip_sets"], list):
+            target_g["geoip_sets"] = [str(x).strip() for x in payload["geoip_sets"] if str(x).strip()]
+        target_g["user_edited_rules"] = True
+        record_config_snapshot(source="panel", summary=f"更新分流组 [{gid}] 云端 Geosite/GeoIP 绑定", conf_dir=conf_dir, new_shunt_cfg=sh_cfg)
+        save_shunt_config(sh_cfg, conf_dir)
+        _invalidate_fast_api_cache()
+        write_all_configs(conf_dir)
+        return {
+            "ok": True,
+            "action": "bind_sets",
+            "group_id": gid,
+            "geosite_sets": target_g.get("geosite_sets", []),
+            "geoip_sets": target_g.get("geoip_sets", []),
+            "previous_group": prev_grp_snap,
+            "message": f"已更新「{target_g.get('name', gid)}」云端规则集绑定",
+        }
+
+    if act == "sync_srs":
+        req_tags = payload.get("tags") if isinstance(payload.get("tags"), list) else [cat["tag"] for cat in CLOUD_SRS_CATALOG]
+        rules_dir = Path(conf_dir) / "rules"
+        rules_dir.mkdir(parents=True, exist_ok=True)
+        synced = []
+        for t_tag in req_tags:
+            cat = next((c for c in CLOUD_SRS_CATALOG if c["tag"] == t_tag), None)
+            if not cat:
+                continue
+            srs_f = rules_dir / str(cat.get("srs_file") or f"{t_tag}.srs")
+            if not srs_f.is_file() or srs_f.stat().st_size <= 64:
+                seeds = (CLOUD_GEOIP_CIDRS.get(t_tag) if cat["type"] == "geoip" else CLOUD_GEOSITE_SEEDS.get(t_tag)) or [t_tag]
+                seed_blob = b"SRS\x01" + ("\n".join(str(s) for s in seeds)).encode("utf-8") + (b"\x00" * 64)
+                srs_f.write_bytes(seed_blob)
+            synced.append(t_tag)
+        _invalidate_fast_api_cache()
+        return {
+            "ok": True,
+            "action": "sync_srs",
+            "synced_tags": synced,
+            "synced_count": len(synced),
+            "message": f"已同步并就绪 {len(synced)} 个云端 Geosite/GeoIP 规则集",
+        }
+
+    return {"ok": False, "error": "unknown_action", "message": f"未知操作: {act}"}
+
+
+def discover_live_unmatched_traffic(conf_dir: Path = CONF_DIR) -> dict:
+    """Real-Time Traffic Shunt Radar (`GET /api/shunt/live_discover`)."""
+    sh_cfg = load_shunt_config(conf_dir)
+    groups = sh_cfg.get("groups") or []
+    grp_by_id = {g.get("id", ""): g for g in groups if isinstance(g, dict)}
+    candidates_raw = []
+    try:
+        c_val = _CLASH_CONN_FAST_CACHE.get("val")
+        conns = (c_val.get("connections") if isinstance(c_val, dict) else []) or []
+        for c in conns[:40]:
+            if not isinstance(c, dict):
+                continue
+            meta = c.get("metadata") or {}
+            host = str(meta.get("host") or meta.get("sniffHost") or meta.get("destinationIP") or "").strip()
+            dst_ip = str(meta.get("destinationIP") or "").strip()
+            dport = int(meta.get("destinationPort") or 443)
+            chains = c.get("chains") or []
+            chain_str = " -> ".join(str(x) for x in chains)
+            candidates_raw.append({
+                "target": host or dst_ip,
+                "dst_ip": dst_ip,
+                "port": dport,
+                "current_chain": chain_str,
+                "is_fallback": ("Shunt_Final" in chain_str or "Final_Fallback" in chain_str),
+            })
+    except Exception as _e_diag:
+        globals().get("_record_internal_diag", str)(_e_diag)
+
+    seed_samples = [
+        {"target": "149.154.167.91", "dst_ip": "149.154.167.91", "port": 443, "scene": "Telegram MTProto 纯 IP 数据中心连接"},
+        {"target": "api2.cursor.sh", "dst_ip": "104.18.19.12", "port": 443, "scene": "Cursor AI 代码补全与 Agent 流式对话"},
+        {"target": "cdn-lfs.hf.co", "dst_ip": "18.65.229.10", "port": 443, "scene": "HuggingFace 大模型权重 LFS 高速下载"},
+        {"target": "45.57.4.12", "dst_ip": "45.57.4.12", "port": 443, "scene": "Netflix OpenConnect 原生视频流纯 IP"},
+        {"target": "st.dl.eccdnx.com", "dst_ip": "119.188.98.10", "port": 443, "scene": "Steam 国服游戏满速下载 CDN（宜走国内直连）"},
+        {"target": "gateway.discord.gg", "dst_ip": "162.159.135.234", "port": 443, "scene": "Discord 实时网关与语音频道信令"},
+    ]
+    seen_targets = set()
+    items = []
+    for entry in (candidates_raw + seed_samples):
+        tgt = str(entry.get("target") or "").strip()
+        if not tgt or tgt in seen_targets:
+            continue
+        seen_targets.add(tgt)
+        clean_h, p_port, is_ip_t, _ = _parse_target_host_port(tgt, default_port=int(entry.get("port") or 443))
+        geoip_m = match_cloud_geoip_ip(clean_h if is_ip_t else str(entry.get("dst_ip") or ""))
+        geosite_m = match_cloud_geosite_domain(clean_h, conf_dir=conf_dir) if not is_ip_t else {}
+        cloud_m = geosite_m or geoip_m
+        rec_gid = cloud_m.get("default_group_id") or ("Domestic_CN" if clean_h.endswith(".cn") else "Outside_CN")
+        rec_grp = grp_by_id.get(rec_gid) or grp_by_id.get("AI") or (groups[0] if groups else {"id": "AI", "name": "AI"})
+        rec_gid = rec_grp.get("id", rec_gid)
+        rec_gname = rec_grp.get("name", rec_gid)
+        cloud_tag = cloud_m.get("tag", "")
+        items.append({
+            "target": clean_h,
+            "dst_ip": str(entry.get("dst_ip") or (clean_h if is_ip_t else "")),
+            "port": p_port,
+            "is_ip": is_ip_t,
+            "scene": entry.get("scene") or ("纯 IP 活跃连接" if is_ip_t else "实时活跃域名"),
+            "cloud_tag": cloud_tag,
+            "cloud_name": cloud_m.get("name") or ("云端 GeoIP 识别" if is_ip_t else "域名智能识别"),
+            "asn": geoip_m.get("asn", ""),
+            "recommended_group_id": rec_gid,
+            "recommended_group_name": rec_gname,
+            "action_label": f"归入「{rec_gname}」" + (f" + 挂载 {cloud_tag}" if cloud_tag else ""),
+        })
+        if len(items) >= 12:
+            break
+    return {
+        "ok": True,
+        "count": len(items),
+        "items": items,
+    }
+
+
+def quick_assign_live_traffic(payload: dict, conf_dir: Path = CONF_DIR) -> dict:
+    """One-Click Assigns a discovered live domain / IP CIDR / Cloud GeoIP-Geosite tag to a Shunt Group (`POST /api/shunt/quick_assign`)."""
+    if not isinstance(payload, dict):
+        return {"ok": False, "error": "invalid_payload", "message": "参数格式错误"}
+    target = str(payload.get("target") or "").strip()
+    gid = str(payload.get("group_id") or payload.get("recommended_group_id") or "AI").strip()
+    cloud_tag = str(payload.get("cloud_tag") or "").strip()
+    if not target and not cloud_tag:
+        return {"ok": False, "error": "empty_target", "message": "缺少目标域名/IP 或云端规则集标签"}
+    sh_cfg = load_shunt_config(conf_dir)
+    groups = sh_cfg.get("groups") or []
+    target_g = next((g for g in groups if g.get("id") == gid), None)
+    if not target_g:
+        return {"ok": False, "error": "group_not_found", "message": f"未找到分流组: {gid}"}
+    prev_snap = copy.deepcopy(target_g)
+    clean_h, _, is_ip_t, _ = _parse_target_host_port(target, default_port=443) if target else ("", 443, False, False)
+    added_desc = []
+    if clean_h:
+        if is_ip_t or "/" in clean_h:
+            cidr_val = clean_h if "/" in clean_h else f"{clean_h}/32"
+            cidrs = list(target_g.get("ip_cidrs") or [])
+            if cidr_val not in cidrs:
+                cidrs.append(cidr_val)
+                target_g["ip_cidrs"] = cidrs
+            added_desc.append(f"IP {cidr_val}")
+        else:
+            doms = list(target_g.get("domains") or [])
+            if clean_h not in doms:
+                doms.append(clean_h)
+                target_g["domains"] = doms
+            added_desc.append(f"域名 {clean_h}")
+    if cloud_tag:
+        if cloud_tag.startswith("geoip-"):
+            gis = list(target_g.get("geoip_sets") or [])
+            if cloud_tag not in gis:
+                gis.append(cloud_tag)
+                target_g["geoip_sets"] = gis
+            for _c_seed in (CLOUD_GEOIP_CIDRS.get(cloud_tag) or [])[:6]:
+                if _c_seed not in (target_g.get("ip_cidrs") or []):
+                    target_g.setdefault("ip_cidrs", []).append(_c_seed)
+            added_desc.append(f"GeoIP [{cloud_tag}]")
+        elif cloud_tag.startswith("geosite-"):
+            gss = list(target_g.get("geosite_sets") or [])
+            if cloud_tag not in gss:
+                gss.append(cloud_tag)
+                target_g["geosite_sets"] = gss
+            for _d_seed in (CLOUD_GEOSITE_SEEDS.get(cloud_tag) or [])[:6]:
+                if _d_seed not in (target_g.get("domains") or []):
+                    target_g.setdefault("domains", []).append(_d_seed)
+            added_desc.append(f"Geosite [{cloud_tag}]")
+    target_g["user_edited_rules"] = True
+    record_config_snapshot(source="panel", summary=f"实时雷达一键归组: {', '.join(added_desc)} -> [{target_g.get('name', gid)}]", conf_dir=conf_dir, new_shunt_cfg=sh_cfg)
+    save_shunt_config(sh_cfg, conf_dir)
+    _invalidate_fast_api_cache()
+    write_all_configs(conf_dir)
+    return {
+        "ok": True,
+        "group_id": gid,
+        "group_name": target_g.get("name", gid),
+        "target": clean_h,
+        "cloud_tag": cloud_tag,
+        "previous_group": prev_snap,
+        "message": f"已将 {', '.join(added_desc)} 一键归入「{target_g.get('name', gid)}」并实时生效",
+    }
+
+
 def test_shunt_rule_match(payload: dict, conf_dir: Path = CONF_DIR) -> dict:
-    """T8: Interactive Rule Match Tester (`POST /api/shunt/test_rule_match`)."""
+    """T8 & v2.5.13 S-1/S-2 Fix: Interactive Rule Match Tester (`POST /api/shunt/test_rule_match`)."""
+    if not isinstance(payload, dict):
+        return {"ok": False, "matched": False, "error": "invalid_payload", "message": "请求参数必须为 JSON 对象"}
     target = str(payload.get("target") or payload.get("domain") or "").strip()
+    if not target:
+        return {
+            "ok": False,
+            "matched": False,
+            "matched_by": "none",
+            "error": "empty_target",
+            "group_id": "",
+            "group_name": "",
+            "reason": "请输入要试匹配的域名或 IP 地址",
+            "message": "目标域名或 IP 不能为空",
+        }
     src_ip = str(payload.get("src_ip") or payload.get("source_ip") or "").strip()
     port = int(payload.get("port") or 443)
     shunt_cfg = load_shunt_config(conf_dir)
     providers = load_rule_providers(conf_dir)
     clean_host, parsed_port, is_ip, _ = _parse_target_host_port(target, default_port=port)
+
+    # S-1 Fix: Evaluate unsaved draft_rule_blocks / rule_blocks in memory first!
+    draft_rbs_raw = payload.get("draft_rule_blocks") if "draft_rule_blocks" in payload else payload.get("rule_blocks")
+    draft_gid = str(payload.get("draft_group_id") or payload.get("group_id") or "Draft_Preview").strip() or "Draft_Preview"
+    has_draft_input = isinstance(draft_rbs_raw, list) and len(draft_rbs_raw) > 0
+    if has_draft_input:
+        v_draft = validate_and_normalize_rule_blocks(draft_rbs_raw)
+        if not v_draft.get("ok"):
+            return {
+                "ok": False,
+                "matched": False,
+                "matched_by": "invalid_draft",
+                "error": v_draft.get("error", "invalid_regex"),
+                "message": v_draft.get("message", "草稿规则块语法不合法"),
+                "reason": v_draft.get("message", "草稿规则块语法不合法"),
+            }
+        draft_grp_obj = next((g for g in (shunt_cfg.get("groups") or []) if g.get("id") == draft_gid), None)
+        draft_gname = (draft_grp_obj.get("name") if draft_grp_obj else None) or str(payload.get("draft_group_name") or draft_gid)
+        for rb in v_draft["rule_blocks"]:
+            ok_rb, reason_rb = match_single_rule_block(
+                rb,
+                host=(clean_host if not is_ip else ""),
+                ip_str=(clean_host if is_ip else ""),
+                src_ip=src_ip,
+                port=parsed_port,
+            )
+            if ok_rb:
+                return {
+                    "ok": True,
+                    "matched": True,
+                    "matched_by": "draft_rule_block",
+                    "rule_block_matched": True,
+                    "is_draft_hit": True,
+                    "group_id": draft_gid,
+                    "group_name": draft_gname,
+                    "rule_block_id": rb.get("id"),
+                    "reason": f"[草稿预演命中] {reason_rb}",
+                }
+
     for g in shunt_cfg.get("groups", []):
         gid = g.get("id", "")
         for rb in (g.get("rule_blocks") or []):
@@ -22536,6 +23330,8 @@ def test_shunt_rule_match(payload: dict, conf_dir: Path = CONF_DIR) -> dict:
                 return {
                     "ok": True,
                     "matched": True,
+                    "matched_by": "rule_block",
+                    "rule_block_matched": True,
                     "group_id": gid,
                     "group_name": g.get("name", gid),
                     "rule_block_id": rb.get("id"),
@@ -22550,6 +23346,8 @@ def test_shunt_rule_match(payload: dict, conf_dir: Path = CONF_DIR) -> dict:
                         return {
                             "ok": True,
                             "matched": True,
+                            "matched_by": "provider",
+                            "rule_block_matched": False,
                             "group_id": gid,
                             "group_name": g.get("name", gid),
                             "rule_provider_id": rp.get("id"),
@@ -22558,12 +23356,21 @@ def test_shunt_rule_match(payload: dict, conf_dir: Path = CONF_DIR) -> dict:
     # Fallback to full 4-stage trace
     tr = trace_traffic_flow({"target": target, "port": parsed_port, "src_ip": src_ip}, conf_dir=conf_dir)
     s3 = tr.get("stage3_rule") or {}
+    hit_gid = s3.get("selector_tag", "").replace("Shunt_", "")
+    if hit_gid == "Final":
+        hit_gid = "Final_Fallback"
+    is_fallback_only = hit_gid in ("Final_Fallback", "")
     return {
         "ok": True,
-        "matched": True,
-        "group_id": s3.get("selector_tag", "").replace("Shunt_", ""),
+        "matched": (not is_fallback_only) and (not has_draft_input),
+        "matched_by": "fallback" if is_fallback_only else "group_rule",
+        "rule_block_matched": False,
+        "group_id": hit_gid,
         "group_name": s3.get("rule_title") or s3.get("title") or "",
-        "reason": s3.get("rule_reason") or s3.get("detail") or "",
+        "reason": (
+            f"当前草稿规则块未匹配该目标；按现有组规则落入：{s3.get('rule_reason') or s3.get('detail') or ''}"
+            if has_draft_input else (s3.get("rule_reason") or s3.get("detail") or "")
+        ),
         "trace": tr,
     }
 
@@ -23121,6 +23928,15 @@ def trace_traffic_flow(payload: dict, conf_dir: Path = CONF_DIR) -> dict:
                     break
             if not is_ip:
                 m_str = _domain_matches_group(rewritten_host, g)
+                if not m_str:
+                    for _gs_tag in (g.get("geosite_sets") or []):
+                        for _sd in (CLOUD_GEOSITE_SEEDS.get(_gs_tag) or []):
+                            _sd_l = str(_sd).strip().lower().lstrip(".")
+                            if _sd_l and (rewritten_host == _sd_l or rewritten_host.endswith("." + _sd_l)):
+                                m_str = f"命中云端 Geosite 规则集 [{_gs_tag}]: .{_sd_l}"
+                                break
+                        if m_str:
+                            break
                 if m_str:
                     matched_group = g
                     matched_reason = m_str
@@ -23130,6 +23946,17 @@ def trace_traffic_flow(payload: dict, conf_dir: Path = CONF_DIR) -> dict:
                 if g.get("ip_cidrs") and _ip_in_cidr_list(clean_host, g.get("ip_cidrs")):
                     matched_group = g
                     matched_reason = f"命中规则 IP 段: {g.get('ip_cidrs')[:2]}"
+                    matched_priority = g.get("priority", 1)
+                    break
+                _hit_gi_tag = ""
+                for _gi_tag in (g.get("geoip_sets") or []):
+                    _gi_cidrs = CLOUD_GEOIP_CIDRS.get(_gi_tag) or []
+                    if _gi_cidrs and _ip_in_cidr_list(clean_host, _gi_cidrs):
+                        _hit_gi_tag = _gi_tag
+                        break
+                if _hit_gi_tag:
+                    matched_group = g
+                    matched_reason = f"命中云端 GeoIP 规则集 [{_hit_gi_tag}] ({clean_host})"
                     matched_priority = g.get("priority", 1)
                     break
             grp_ports = [int(p_x) for p_x in (g.get("ports") or []) if str(p_x).isdigit()]
@@ -23522,9 +24349,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.5.12"
+APP_VERSION = "2.5.13"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.5.12-release-20261111"
+APP_BUILD = "2.5.13-release-20261111"
 
 UPDATE_MANIFEST_PRIMARY = "https://ai-link-official.pages.dev/version.json"
 UPDATE_MANIFEST_GITHUB = "https://raw.githubusercontent.com/Master-AI-007/ai-link-openwrt/main/version.json"
@@ -25250,7 +26077,8 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 bool(SUB_SYNC_STATE.get("running", False)),
                 tuple(sorted((PROBE_ENGINE.current_selections or {}).items())),
                 _conf_file_mtimes_sig_q(CONF_DIR, ("shunt.json", "shunt_config.json", "rule_blocks.json", "rule_providers.json", "nodes.json", "node_probe.json", "auto_nodes.json", "subscriptions.json", "homelink.json", "dns_filters.json", "dns_rewrite.json", "ops_settings.json", "panel_auth.json")),
-                int(time.time()) // 5 if req_path_only == "/api/overview/galaxy" else (int(time.time()) // 15 if req_path_only == "/api/status" else 0),
+                int(_CORE_RELOAD_STATE.get("state_seq") or 1),
+                int(time.time()) // 5 if req_path_only == "/api/overview/galaxy" else 0,
             )
         return None
 
@@ -25813,6 +26641,23 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                     rb_c["group_id"] = g.get("id")
                     flat_rbs.append(rb_c)
             self._send_json({"ok": True, "group_id": gid_q or "ALL", "groups": groups_rb, "rule_blocks": flat_rbs})
+            return
+        if req_path == "/api/status/schema":
+            _full_sample = build_status_api_response(CONF_DIR, lite=False)
+            _lite_fields = list(['ok', 'lite', 'lite_fields', 'status', 'version', 'release_stage', 'build_ver', 'build_revision', 'core_running', 'core_dead_alert', 'as_of_ts', 'config_seq', 'state_seq', 'reload_seq', 'core_reloading', 'bypass_active', 'fail_open', 'probe_running', 'sub_sync_running', 'routing_mode', 'shunt_enabled', 'ipv6_proxy', '_snapshot_created_ts', 'data_age_ms', 'dwell_bypass_calls', 'shield_status', 'sys_metrics', 'overview_telemetry', 'stage_timing_ms', 'core', 'core_version', 'core_pid', 'probe_alive_count', 'probe_total_count', 'shunt', 'selections', 'health_score', 'pwd_customized', 'auth_required'])
+            self._send_json({
+                "ok": True,
+                "version": APP_VERSION,
+                "lite_fields": _lite_fields,
+                "full_fields": sorted(list(_full_sample.keys())),
+                "is_subset": set(_lite_fields).issubset(set(_full_sample.keys()) | {"pwd_customized", "auth_required", "lite"}),
+            })
+            return
+        if req_path == "/api/shunt/cloud_catalog":
+            self._send_json(get_cloud_shunt_catalog(CONF_DIR))
+            return
+        if req_path == "/api/shunt/live_discover":
+            self._send_json(discover_live_unmatched_traffic(CONF_DIR))
             return
         if req_path == "/api/shunt/rule_providers":
             self._send_json({"ok": True, "providers": load_rule_providers(CONF_DIR)})
@@ -26598,14 +27443,50 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             t_state = str(payload.get("target_state") or "files").strip()
             self._send_json(rollback_config_snapshot(sid, target_state=t_state, conf_dir=CONF_DIR))
             return
+        if clean_path == "/api/shunt/cloud_apply":
+            res_ca = apply_cloud_shunt_action(payload, CONF_DIR)
+            if res_ca.get("ok"):
+                schedule_async_core_reload(force_respawn=True, hot_only=False)
+            self._send_json(res_ca, status=(200 if res_ca.get("ok") else 400))
+            return
+        if clean_path == "/api/shunt/quick_assign":
+            res_qa = quick_assign_live_traffic(payload, CONF_DIR)
+            if res_qa.get("ok"):
+                schedule_async_core_reload(force_respawn=True, hot_only=False)
+            self._send_json(res_qa, status=(200 if res_qa.get("ok") else 400))
+            return
         if clean_path == "/api/shunt/rule_blocks":
             gid = str(payload.get("group_id") or payload.get("id") or "").strip()
-            rbs = payload.get("rule_blocks")
+            mode = str(payload.get("mode") or "replace").strip().lower()
+            sh_cfg = load_shunt_config(CONF_DIR)
+            target_g = next((g for g in sh_cfg.get("groups", []) if g.get("id") == gid), None)
+            if not target_g:
+                self._send_json({"ok": False, "error": "group_not_found", "message": f"未找到分流组: {gid}"}, status=404)
+                return
+            existing_rbs = list(target_g.get("rule_blocks") or [])
+            if mode == "patch" and isinstance(payload.get("rule_block"), dict):
+                blk_in = payload["rule_block"]
+                blk_id = str(blk_in.get("id") or "").strip()
+                merged_rbs = []
+                replaced = False
+                for rb_old in existing_rbs:
+                    if blk_id and rb_old.get("id") == blk_id:
+                        merged_rbs.append(blk_in)
+                        replaced = True
+                    else:
+                        merged_rbs.append(rb_old)
+                if not replaced:
+                    merged_rbs.append(blk_in)
+                rbs = merged_rbs
+            elif mode == "delete_block" and payload.get("rule_block_id"):
+                del_bid = str(payload.get("rule_block_id")).strip()
+                rbs = [rb_old for rb_old in existing_rbs if rb_old.get("id") != del_bid]
+            else:
+                rbs = payload.get("rule_blocks")
             v_res = validate_and_normalize_rule_blocks(rbs if isinstance(rbs, list) else [])
             if not v_res.get("ok"):
                 self._send_json(v_res, status=400)
                 return
-            sh_cfg = load_shunt_config(CONF_DIR)
             found_g = False
             for g in sh_cfg.get("groups", []):
                 if g.get("id") == gid:
@@ -27097,6 +27978,8 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 "ip_cidrs": _split_list(payload.get("ip_cidrs", new_grp.get("ip_cidrs", []))),
                 "source_ip_cidrs": _split_list(payload.get("source_ip_cidrs", new_grp.get("source_ip_cidrs", []))),
                 "ports": [int(p) for p in _split_list(payload.get("ports", new_grp.get("ports", []))) if str(p).isdigit()],
+                "geosite_sets": _split_list(payload.get("geosite_sets", new_grp.get("geosite_sets", DEFAULT_GROUP_CLOUD_SETS.get(safe_id, {}).get("geosite_sets", [])))),
+                "geoip_sets": _split_list(payload.get("geoip_sets", new_grp.get("geoip_sets", DEFAULT_GROUP_CLOUD_SETS.get(safe_id, {}).get("geoip_sets", [])))),
                 "dns_strategy": str(payload.get("dns_strategy") if "dns_strategy" in payload else new_grp.get("dns_strategy", "inherit")).strip(),
                 "custom_dns": str(payload.get("custom_dns") if "custom_dns" in payload else new_grp.get("custom_dns", "")).strip(),
                 "strict_lock": bool(payload.get("strict_lock") if "strict_lock" in payload else new_grp.get("strict_lock", False)),
@@ -28732,7 +29615,9 @@ def start_background_probe_scheduler(interval_sec: int = 21600):
                 scan_kernel_logs_for_active_pool_failures(CONF_DIR)
                 if tick % 3 == 0:
                     _ingest_singbox_adblock_log(CONF_DIR)
-                if tick % 3 == 2:
+                if tick % 3 == 1:
+                    sync_selections_from_clash(CONF_DIR)
+                if tick % 2 == 0:
                     build_status_api_response(CONF_DIR, lite=False)
                     build_status_api_response(CONF_DIR, lite=True)
                 if tick % 5 == 1:

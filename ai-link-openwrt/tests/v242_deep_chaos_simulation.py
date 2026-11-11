@@ -1575,7 +1575,7 @@ def main() -> int:
         gates_254_txt = (Path(__file__).resolve().parent / "gates_v101.py").read_text(encoding="utf-8")
         check("Stage 6.27a (v2.5.4 FB-253-1/2 Makefile PKG_VERSION/PKG_RELEASE 锚点与报告版本结构门禁): Makefile 含 PKG_VERSION:=2.5.4 与 PKG_RELEASE:=14，且 gates_v101 强制校验报告 PKG_RELEASE 与首节版本号",
               f"PKG_VERSION:={dmod.APP_VERSION}" in mk_254_txt
-              and "PKG_RELEASE:=22" in mk_254_txt
+              and "PKG_RELEASE:=23" in mk_254_txt
               and "FB-253-1: Verify PKG_RELEASE" in gates_254_txt
               and "FB-253-2: Verify report Section 1" in gates_254_txt,
               f"app_ver={dmod.APP_VERSION}")
@@ -3070,6 +3070,106 @@ def main() -> int:
         check("Stage 7.23 (v2.5.12 N1全量16/16分组domains零截断与2/2撤销E2E零差异 + N3 lite<=8KB差量响应 + N5存量多线池100%自动开启会话亲和 + FB-2511-1真机等价510节点数据集门禁)",
               n1_domains_16_16_ok and undo_preset_ok and undo_custom_ok and n5_aff_mig_ok and fb2511_1_510_ok,
               f"n1_16_16={n1_domains_16_16_ok}, undo_preset={undo_preset_ok}, undo_custom={undo_custom_ok}, n5_mig={n5_aff_mig_ok}, 510_def={len(_raw_510_def)}B/full={len(_raw_510_full)}B/gz={len(_gz_510_def)}B/lite={len(_raw_510_lite)}B({fb2511_1_510_ok})")
+
+        # Stage 7.24: v2.5.13 Cloud GeoIP/Geosite Dual-Track Shunt Engine + Live Traffic Shunt Radar + v2.5.12 Design Review Closure (O-1..O-7, S-1..S-5, A-1..A-8, FB-2512):
+        # (1) Cloud GeoIP/Geosite Catalog (26 sets + 6 scenario packs) & Pure-IP GeoIP Routing (Telegram AS62041 149.154.167.91 & Netflix AS2906 45.57.4.12)
+        _cat_724 = dmod.get_cloud_shunt_catalog(tmp_v252)
+        _pack_res_724 = dmod.apply_cloud_shunt_action({"action": "apply_pack", "pack_id": "pack_tg_im_ip"}, conf_dir=tmp_v252)
+        _sync_srs_724 = dmod.apply_cloud_shunt_action({"action": "sync_srs", "tags": ["geoip-telegram", "geoip-netflix", "geosite-cursor"]}, conf_dir=tmp_v252)
+        _tr_tg_ip_724 = dmod.trace_traffic_flow({"target": "149.154.167.91:443"}, conf_dir=tmp_v252)
+        _tr_nf_ip_724 = dmod.trace_traffic_flow({"target": "45.57.4.12:443"}, conf_dir=tmp_v252)
+        _disc_724 = dmod.discover_live_unmatched_traffic(tmp_v252)
+        _qa_724 = dmod.quick_assign_live_traffic({"target": "api2.cursor.sh", "group_id": "AI", "cloud_tag": "geosite-cursor"}, conf_dir=tmp_v252)
+        _tr_cursor_724 = dmod.trace_traffic_flow({"target": "api2.cursor.sh:443"}, conf_dir=tmp_v252)
+        cloud_geoip_shunt_ok = (
+            _cat_724.get("ok") is True
+            and int(_cat_724.get("summary", {}).get("geoip_sets_count", 0)) >= 7
+            and int(_cat_724.get("summary", {}).get("scenario_packs_count", 0)) == 6
+            and _pack_res_724.get("ok") is True
+            and _sync_srs_724.get("ok") is True
+            and _tr_tg_ip_724.get("stage3_rule", {}).get("selector_tag") == "Shunt_Outside_CN"
+            and _tr_nf_ip_724.get("stage3_rule", {}).get("selector_tag") == "Shunt_Netflix"
+            and _disc_724.get("ok") is True and int(_disc_724.get("count", 0)) >= 5
+            and _qa_724.get("ok") is True
+            and _tr_cursor_724.get("stage3_rule", {}).get("selector_tag") == "Shunt_AI"
+        )
+        # (2) S-1 & S-2: Draft Rule Match Tester (empty target rejected, unsaved draft regex matches in-memory, unmatched draft returns matched=False & matched_by=fallback)
+        _tm_empty_724 = dmod.test_shunt_rule_match({"target": "", "src_ip": ""}, conf_dir=tmp_v252)
+        _tm_draft_hit_724 = dmod.test_shunt_rule_match({
+            "target": "brand-new-test-only-domain.example",
+            "draft_group_id": "AI",
+            "draft_group_name": "AI",
+            "draft_rule_blocks": [{"id": "rb_draft_1", "name": "草稿正则测试", "logic": "AND", "domain_regex": ["^brand-new-test-only-domain\\.example$"]}],
+        }, conf_dir=tmp_v252)
+        _tm_draft_miss_724 = dmod.test_shunt_rule_match({
+            "target": "unmatched-random-domain-999.example",
+            "draft_group_id": "AI",
+            "draft_rule_blocks": [{"id": "rb_draft_1", "name": "草稿正则测试", "logic": "AND", "domain_regex": ["^brand-new-test-only-domain\\.example$"]}],
+        }, conf_dir=tmp_v252)
+        s1_s2_tester_ok = (
+            _tm_empty_724.get("ok") is False
+            and _tm_empty_724.get("matched") is False
+            and _tm_empty_724.get("error") == "empty_target"
+            and _tm_draft_hit_724.get("ok") is True
+            and _tm_draft_hit_724.get("matched") is True
+            and _tm_draft_hit_724.get("matched_by") == "draft_rule_block"
+            and _tm_draft_miss_724.get("matched") is False
+            and _tm_draft_miss_724.get("matched_by") == "fallback"
+        )
+        # (3) O-4, O-5/A-3, O-7, A-1, A-2, A-4, A-6: 7-candidate pool preserves all 7 node_tags in status (zero [:3] truncation), includes dwell_s=300, active_lines_count=1 when 1 same-region member, and aggregates shared-exit switch events
+        _pool7_tags = [f"VIP-Node-{i*2:03d}-JP" for i in range(7)]
+        _pool1_reg_tags = ["VIP-Node-000-JP", "VIP-Node-001-SG", "VIP-Node-003-SG", "VIP-Node-005-SG"]
+        dmod.save_auto_nodes_config({
+            "auto_nodes": [
+                {
+                    "id": "auto_7cand", "tag": "Auto_7Cand", "name": "七候选测试池",
+                    "mode": "semi", "pool_mode": "ping_only", "dispatch_mode": "multi_line",
+                    "target_size": 10, "replenish_threshold": 2,
+                    "session_affinity": True, "same_region_multi_line": True, "session_sticky_s": 300,
+                    "current_node": _pool7_tags[0],
+                    "groups": [{"index": 1, "name": "主力", "node_tags": _pool7_tags}],
+                },
+                {
+                    "id": "auto_1reg", "tag": "Auto_1Reg", "name": "同区单成员池",
+                    "mode": "semi", "pool_mode": "ping_only", "dispatch_mode": "multi_line",
+                    "target_size": 10, "replenish_threshold": 2,
+                    "session_affinity": True, "same_region_multi_line": True, "session_sticky_s": 300,
+                    "current_node": "VIP-Node-000-JP",
+                    "groups": [{"index": 1, "name": "主力", "node_tags": _pool1_reg_tags}],
+                },
+            ]
+        }, tmp_v252)
+        _st_724_def = dmod.build_status_api_response(tmp_v252, lite=False)
+        _st_724_lite = dmod.build_status_api_response(tmp_v252, lite=True)
+        _an_def_map = {a["id"]: a for a in (_st_724_def.get("shunt", {}).get("auto_nodes") or [])}
+        _an_lite_map = {a["id"]: a for a in (_st_724_lite.get("shunt", {}).get("auto_nodes") or [])}
+        _p7_def = _an_def_map.get("auto_7cand", {})
+        _p1_def = _an_def_map.get("auto_1reg", {})
+        _p1_lite = _an_lite_map.get("auto_1reg", {})
+        dmod.record_switch_event("多线负载", "Node-Old", "Node-New", reason="评分/延迟显著领先切换", rtt_ms=42.0, run_dir=tmp_v252)
+        dmod.record_switch_event("HuggingFace 下载多线并发池", "Node-Old", "Node-New", reason="评分/延迟显著领先切换", rtt_ms=42.0, run_dir=tmp_v252)
+        _sw_hist_724 = dmod.load_switch_history(tmp_v252)
+        _nx_724 = (SITE / "root/usr/share/ai-link/webui/nexus.js").read_text("utf-8")
+        pool_and_contract_724_ok = (
+            len((_p7_def.get("groups") or [{}])[0].get("node_tags") or []) == 7
+            and _p7_def.get("candidate_count") == 7
+            and _p7_def.get("dwell_s") == 300
+            and _p7_def.get("below_soft_target") is True
+            and _p7_def.get("soft_target_progress") == "7/10"
+            and _p1_def.get("active_lines_count") == 1
+            and _p1_def.get("same_region_single_member") is True
+            and bool(_p1_def.get("same_region_single_member_hint"))
+            and _p1_lite.get("candidate_count") == 4
+            and _p1_lite.get("dwell_s") == 300
+            and _p1_lite.get("active_lines_count") == 1
+            and isinstance(_st_724_lite.get("state_seq"), int)
+            and isinstance(_st_724_def.get("lite_fields"), list)
+            and len(_sw_hist_724) >= 1 and _sw_hist_724[0].get("affected_pools_count") == 2
+            and "每 30 秒轮换" not in _nx_724
+        )
+        check("Stage 7.24 (v2.5.13 云端GeoIP/Geosite双轨规则集与实时流量雷达 + S-1/S-2草稿试匹配三态校验 + O-1..O-7/A-1..A-6候选数零截断/300s驻留同步/state_seq差量合并/共享切换聚合门禁)",
+              cloud_geoip_shunt_ok and s1_s2_tester_ok and pool_and_contract_724_ok,
+              f"cloud_geoip={cloud_geoip_shunt_ok}, tester={s1_s2_tester_ok}, pool_contract={pool_and_contract_724_ok}")
     finally:
         shutil.rmtree(tmp_v252, ignore_errors=True)
 

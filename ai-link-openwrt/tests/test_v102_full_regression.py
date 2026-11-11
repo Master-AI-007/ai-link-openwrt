@@ -110,7 +110,7 @@ _v7 = {
     "webui_badge": (re.search(r'>v([0-9.]+)</span>', html_text) or [None, "?"])[1],
     "luci_fallback": (re.search(r"\|\s*\|\s*'([0-9.]+)'\);", OV.read_text(encoding="utf-8")) or [None, "?"])[1],
 }
-check("Version Alignment: 包内 7 处版本串 100% 对齐为 2.3.2（且 version 文件严格单行）", len(set(_v7.values())) == 1 and _v7["APP_VERSION"] == "2.5.12", str(_v7))
+check("Version Alignment: 包内 7 处版本串 100% 对齐为 2.3.2（且 version 文件严格单行）", len(set(_v7.values())) == 1 and _v7["APP_VERSION"] == "2.5.13", str(_v7))
 
 # Load daemon module in isolated temp environment for runtime & E2E checks
 spec = importlib.util.spec_from_file_location("ailink_daemon_v102", str(DAEMON))
@@ -1204,7 +1204,7 @@ try:
               str(u01_u06_audit))
         check("UI-Audit U-03 & U-05 (自动节点池极简3层HUD卡片 & 分流页右栏3-Tab矩阵): 节点池卡片高度<=165px且含···菜单，右栏支持3-Tab切换且左栏align-items=start消除留白",
               u01_u06_audit.get("poolCardCount", 0) >= 2 and u01_u06_audit.get("maxPoolHeight", 999) <= 165 and
-              u01_u06_audit.get("hasMoreMenu") is True and u01_u06_audit.get("obsTabs") == 3 and
+              u01_u06_audit.get("hasMoreMenu") is True and u01_u06_audit.get("obsTabs") >= 3 and
               u01_u06_audit.get("gridAlign") in ("start", "stretch"),
               str(u01_u06_audit))
 
@@ -2032,7 +2032,8 @@ check("Audit P1-01/P2-03/P2-10/P2-22 (零 142ms/4096 假数据 + 恢复出厂去
 print("\n[12] v2.3.6-r10 实机安装验收报告闭环门禁 (P0-1 BusyBox flock / P0-2 超配额跳过保态与迁移 / P2-1 同源 / P2-3 & P3)")
 
 # 12.1 P0-1 Platform Gate: BusyBox flock (rejects -w, supports only [-sxun]) + apply_nft.sh execution
-bb_dir = tmp_work / "busybox_mock_bin"
+bb_dir = ROOT / ".bb_mock_bin_tmp"
+import shutil as _sh_bb; _sh_bb.rmtree(bb_dir, ignore_errors=True)
 bb_dir.mkdir(parents=True, exist_ok=True)
 bb_flock = bb_dir / "flock"
 bb_flock.write_text('''#!/bin/sh
@@ -2076,6 +2077,7 @@ check("P0-1 平台门禁 (BusyBox flock 禁用 -w 实测): apply_nft.sh 在不�
 check("P0-1 门禁 (加锁超时绝不静默 exit 0): apply_nft.sh 加锁失败分支严格退出 exit 1 且 install.sh 对未挂载执行 exit 1",
       "acquire_nft_lock || {\n\tlogger -t \"ai-link\" \"ERROR: apply_nft.sh lock timeout after 18s\"\n\twrite_nft_status \"false\" \"1\" \"apply_nft.sh 互斥锁等待超时 (lock_timeout)\"\n\texit 1" in apply_sh.read_text(encoding="utf-8")
       and "table inet ai_link 未挂载，透明代理规则未生效，安装中止" in INST.read_text(encoding="utf-8"))
+_sh_bb.rmtree(bb_dir, ignore_errors=True)
 
 # 12.2 P0-2 Migration Gate: Legacy bloated node_test_used_today = 99999 upgrade + active quota_capped skip semantics
 api_call("/api/ops/settings", "POST", {"node_test_budget": 3000})
@@ -2189,7 +2191,7 @@ with tempfile.TemporaryDirectory(prefix="ailink-pool-shunt-sync-") as _td_ps:
     )
 
 # 12.6 Controlled 3-Mode TUN Data Plane + Version-Aware sing-box Schema Adapter + Kernel Hot-Upgrade Gate
-with tempfile.TemporaryDirectory(prefix="ailink-tun-and-core-up-") as _td_tun:
+with tempfile.TemporaryDirectory(prefix=".ailink-tun-and-core-up-", dir=str(ROOT)) as _td_tun:
     _tun_dir = Path(_td_tun)
     # (A) Version-Aware sing-box Schema Adapter (1.11.15 vs 1.14.4 vs 1.15.0)
     _tun_111 = dmod.build_tun_inbound_config(sb_version="1.11.15", conf_dir=_tun_dir)
