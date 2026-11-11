@@ -1575,7 +1575,7 @@ def main() -> int:
         gates_254_txt = (Path(__file__).resolve().parent / "gates_v101.py").read_text(encoding="utf-8")
         check("Stage 6.27a (v2.5.4 FB-253-1/2 Makefile PKG_VERSION/PKG_RELEASE 锚点与报告版本结构门禁): Makefile 含 PKG_VERSION:=2.5.4 与 PKG_RELEASE:=14，且 gates_v101 强制校验报告 PKG_RELEASE 与首节版本号",
               f"PKG_VERSION:={dmod.APP_VERSION}" in mk_254_txt
-              and "PKG_RELEASE:=26" in mk_254_txt
+              and "PKG_RELEASE:=27" in mk_254_txt
               and "FB-253-1: Verify PKG_RELEASE" in gates_254_txt
               and "FB-253-2: Verify report Section 1" in gates_254_txt,
               f"app_ver={dmod.APP_VERSION}")
@@ -3256,7 +3256,7 @@ def main() -> int:
               f"srs_radar={srs_and_radar_725_ok}(ms={_ld_ms:.1f}), ui_dns={ui_and_dns_725_ok}(slim_m={_slim_m_cnt}, presets={_preset_cnt})")
 
         # ------------------------------------------------------------------
-        # Stage 7.26: v2.5.15 (r26) 全量闭环门禁 (P0-1/R-1 30海外IP零误判国内 + P1-1/R-2 失效Token快速失败 + P1-2/R-3 首屏three/qrcode懒加载 + P2-2 APP_BUILD含r26 + P2-4 lite<=8KB + S-6 实写回滚一致性)
+        # Stage 7.26: v2.5.16 (r27) 全量闭环门禁 (P0-1/R-1 30海外IP零误判国内 + P1-1/R-2 失效Token快速失败 + P1-2/R-3 首屏three/qrcode懒加载 + P2-2 APP_BUILD含r27 + P2-4 lite<=8KB + S-6 实写回滚一致性)
         # ------------------------------------------------------------------
         _overseas_30 = [
             "1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4", "9.9.9.9", "103.86.96.100",
@@ -3283,18 +3283,78 @@ def main() -> int:
         # P3: Invalid port returns Chinese reason
         _inv_p_726 = dmod.test_shunt_rule_match({"target": "chatgpt.com", "port": "99999"}, conf_dir=tmp_v252)
         _p3_port_ok = (_inv_p_726.get("ok") is False and _inv_p_726.get("error") == "invalid_parameter" and "端口号不合法" in str(_inv_p_726.get("reason") or ""))
-        # R-2 / R-3 / P2-2: Check lazy script attributes, fast-fail 401 token clear, and APP_BUILD r26
+        # R-2 / R-3 / P2-2: Check lazy script attributes, fast-fail 401 token clear, and APP_BUILD r27
         _r2_r3_ok = (
-            "r26" in str(getattr(dmod, "APP_BUILD", ""))
+            "r27" in str(getattr(dmod, "APP_BUILD", ""))
             and 'id="lazy-three-js" data-lazy-src=' in _html_725
             and 'id="lazy-qrcode-js" data-lazy-src=' in _html_725
             and "配置网络与加速镜像" in _html_725
             and "登录已过期，请重新登录" in _js_725
             and "ensureThreeLoaded" in _js_725
         )
-        check("Stage 7.26 (v2.5.15 P0-1/R-1 30海外IP零误判国内 + R-2失效Token秒级拦截 + R-3/G-6首屏three/qrcode懒加载 + S-6快照实写回滚100%还原 + P2-2 APP_BUILD含r26 + P3非法端口中文提示门禁)",
+        check("Stage 7.26 (v2.5.16 P0-1/R-1 30海外IP零误判国内 + R-2失效Token秒级拦截 + R-3/G-6首屏three/qrcode懒加载 + S-6快照实写回滚100%还原 + P2-2 APP_BUILD含r27 + P3非法端口中文提示门禁)",
               _r1_cidr_ok and _s6_rollback_ok and _p3_port_ok and _r2_r3_ok,
               f"r1={_r1_cidr_ok}(fp={len(_false_pos_726)}/30,dom={len(_dom_hits_726)}/10), s6_rb={_s6_rollback_ok}, p3_port={_p3_port_ok}, r2_r3={_r2_r3_ok}")
+
+        # ------------------------------------------------------------------
+        # Stage 7.27: v2.5.16 (r27) 全量闭环门禁 (FB-2515-1 雷达O(1)冷<50ms/热<=5ms与负向区分 + P2-3 221.204.14.20国内20/20召回与海外0/31 + AutoPool P0-1/P0-2真实dial日志域名提取与单目标黑洞秒切 + LuCI P0-1/P0-2/P3鉴权桥接与adblock_rules>0 + N-1 3D<50ms轻材质 + N-2/N-3/N-4 strict_same_region_lock/ping_fallback/single_line_pin_reason)
+        # ------------------------------------------------------------------
+        dmod._LIVE_DISCOVER_MEMO.clear()
+        dmod._SHUNT_DOMAIN_FAST_MEMO["sig"] = None
+        _t_cold0 = time.perf_counter()
+        _ld_cold_res = dmod.discover_live_unmatched_traffic(tmp_v252)
+        _ld_cold_ms = (time.perf_counter() - _t_cold0) * 1000.0
+        _t_warm0 = time.perf_counter()
+        _ld_warm_res = dmod.discover_live_unmatched_traffic(tmp_v252)
+        _ld_warm_ms = (time.perf_counter() - _t_warm0) * 1000.0
+        _radar_perf_ok = bool(_ld_cold_res.get("ok") and _ld_cold_ms < 50.0 and _ld_warm_ms <= 5.0 and _ld_cold_ms > _ld_warm_ms)
+        # P2-3: 31 overseas IPs (0 false positives) + 20 domestic IPs (including 221.204.14.20 Shanxi Telecom, 20/20 recall)
+        _overseas_31 = _overseas_30 + ["198.51.100.1"]
+        _domestic_20 = _domestic_10 + [
+            "221.204.14.20", "114.80.1.1", "36.128.1.1", "39.128.1.1", "58.32.1.1",
+            "61.128.1.1", "106.32.1.1", "113.64.1.1", "117.128.1.1", "180.96.1.1",
+        ]
+        _fp_31 = [ip for ip in _overseas_31 if dmod._classify_existing_shunt_group_fast(ip, ip, True, _grps_726)[0] == "Domestic_CN"]
+        _dom_20 = [ip for ip in _domestic_20 if dmod._classify_existing_shunt_group_fast(ip, ip, True, _grps_726)[0] == "Domestic_CN"]
+        _cidr_31_20_ok = (len(_fp_31) == 0 and len(_dom_20) == 20)
+        # AutoPool P0-1 & P0-2: Real sing-box dial log (`open connection to x.com:443 using outbound/vless[<node>]: dial tcp ...: connect: no route to host`)
+        _real_dial_ln = "connection: open connection to x.com:443 using outbound/vless[VIP-Node-000-JP]: dial tcp 3.112.67.101:443: connect: no route to host"
+        _ext_x = dmod._extract_log_target_host(_real_dial_ln, "VIP-Node-000-JP")
+        dmod._KERNEL_LOG_FAILOVER_STATE["node_err_streaks"].clear()
+        _dial_scan_res = dmod.scan_kernel_logs_for_active_pool_failures(
+            tmp_v252,
+            log_lines_override=[_real_dial_ln, _real_dial_ln],
+            recheck_before_switch=False,
+            force_pool_id="auto_7cand",
+            only_pool_id="auto_7cand",
+            sandbox_drill=True,
+        )
+        _autopool_dial_ok = (_ext_x == "x.com" and _dial_scan_res.get("triggered") is True and not _dial_scan_res.get("single_target_suppressed"))
+        # LuCI P0-1 / P0-2 / P3 verification
+        _ov_js_727 = (Path(__file__).resolve().parents[1] / "htdocs/luci-static/resources/view/ai-link/overview.js").read_text(encoding="utf-8")
+        _bt_727 = dmod.get_luci_bridge_token(create=False)
+        _luci_ok_727 = (
+            "ensureLuciToken" in _ov_js_727
+            and "/etc/ai-link/panel_token" in _ov_js_727
+            and "applyStatusFailureState" in _ov_js_727
+            and "luci-btn-unlock-panel" in _ov_js_727
+            and len(_bt_727) >= 32
+        )
+        # N-1 / N-2 / N-3 / N-4 verification
+        _js3d_727 = (Path(__file__).resolve().parents[1] / "root/usr/share/ai-link/webui/nexus3d.js").read_text(encoding="utf-8")
+        _js_727 = (Path(__file__).resolve().parents[1] / "root/usr/share/ai-link/webui/nexus.js").read_text(encoding="utf-8")
+        _n1_n4_ok = (
+            "MeshPhysicalMaterial" not in _js3d_727
+            and "MeshLambertMaterial" in _js3d_727
+            and "strict_same_region_lock" in _js_727
+            and "连通可用（未做业务验证）" in _js_727
+            and "single_line_pin_reason" in _js_727
+            and "UX-2516-MODAL-GUARD" in _js_727
+            and "if (event.target.id === 'modal') closeModal();" not in _js_727
+        )
+        check("Stage 7.27 (v2.5.16 FB-2515-1雷达O(1)冷启动<50ms/热缓存<=5ms + P2-3海外0/31误判与国内20/20全召回含221.204.14.20 + AutoPool P0-1/P0-2真实dial黑洞日志域名提取与单目标秒切 + LuCI跨源panel_token桥接与过期自动续期 + N-1..N-4 3D轻材质/亲和锁定/ping_fallback/单线原因门禁)",
+              _radar_perf_ok and _cidr_31_20_ok and _autopool_dial_ok and _luci_ok_727 and _n1_n4_ok,
+              f"radar={_radar_perf_ok}(cold={_ld_cold_ms:.2f}ms,warm={_ld_warm_ms:.2f}ms), cidr={_cidr_31_20_ok}(fp={len(_fp_31)}/31,dom={len(_dom_20)}/20), dial={_autopool_dial_ok}(ext={_ext_x}), luci={_luci_ok_727}, n1_n4={_n1_n4_ok}")
     finally:
         shutil.rmtree(tmp_v252, ignore_errors=True)
 

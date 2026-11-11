@@ -4,7 +4,7 @@
 
 **NEXUS 全域 3D 智能网关 · 运行在 OpenWrt 上的智能分流系统**
 
-[![version](https://img.shields.io/badge/version-2.5.15-6ee7f5?style=flat-square)](https://github.com/Master-AI-007/ai-link-openwrt/releases/tag/v2.5.15)
+[![version](https://img.shields.io/badge/version-2.5.16-6ee7f5?style=flat-square)](https://github.com/Master-AI-007/ai-link-openwrt/releases/tag/v2.5.16)
 [![platform](https://img.shields.io/badge/OpenWrt-23.05%20%7C%2024.10%20%7C%20ImmortalWrt-a994ff?style=flat-square)](#环境要求)
 [![core](https://img.shields.io/badge/sing--box-1.14.1-54e6b5?style=flat-square)](#技术架构)
 [![license](https://img.shields.io/badge/license-MIT-f9a8d4?style=flat-square)](#许可与免责)
@@ -30,9 +30,9 @@ AI-LINK 是一套面向 OpenWrt 的**智能分流网关**：用 sing-box 单内�
 
 ---
 
-## 核心能力总览（v2.5.15）
+## 核心能力总览（v2.5.16）
 
-> **v2.5.15 增量**：海外 IP 误判修正（精细国内段 + 海外豁免表，Stage 7.26 双向回归）、失效 Token 401 请求 9→1 且锁屏 <100ms、首屏请求 7→2 / 资源 2.13MB→~790KB（WebGL/QR 懒加载）、星图 5 秒强清移除改 mtime 长缓存、`/api/status` 写盘击穿与 660x 抖动根治、lite 再精简约 550B、规则试匹配内存快筛；已知雷达冷启动 58–64ms 超 50ms 门禁，已反馈待优化。
+> **v2.5.16 增量**：雷达冷启动 O(1) 首字节分桶（58–64ms → 毫秒级，运行期零 `ipaddress` 解析）、国内召回 20/20 与海外 0/31、自动池按真实 dial 错误 2 次秒切（黑洞 68s → <15s）、池低于 target_size 自动补齐、LuCI 跨源令牌自动注入（4 KPI 与 OTA 401 修复）、3D 星图首视觉 7s → <1s（轻量材质）、弹窗拖拽防误关；真机 `run_all 15/15`、混沌 90/90。
 
 
 | | 能力 | 说明 |
@@ -185,7 +185,8 @@ sing-box 1.14.1（单内核）
 
 | 版本 | 日期 | 主题 |
 |---|---|---|
-| **2.5.15** | 2026-11-11 | 海外 IP 精准分流 + 失效 Token 拦截 + 首屏与状态加固（r26） |
+| **2.5.16** | 2026-11-11 | 雷达毫秒级冷启动 + 自动池秒切 + LuCI 鉴权与星图提速（r27） |
+| 2.5.15 | 2026-11-11 | 海外 IP 精准分流 + 失效 Token 拦截 + 首屏与状态加固（r26） |
 | 2.5.14 | 2026-11-11 | 规则集同步修复 + 全站防跳变 + 真实 L7/地区准入（r25） |
 | 2.5.13 | 2026-11-11 | 云端双轨分流引擎与实时归组雷达 |
 | 2.5.12 | 2026-11-11 | 域名契约、状态性能与交付口径全量闭环 |
@@ -232,10 +233,10 @@ sing-box 1.14.1（单内核）
 ## 包指纹
 
 ```
-AI-LINK-v2.5.15.tar.gz
-size   1,108,718 B
-md5    c9816e5fa1bd80aba58a7117145ab28b
-sha256 ffde49d6538c1c51dda726284a07dd9e0cb93854aedab3359c6fd3b08cf4097d
+AI-LINK-v2.5.16.tar.gz
+size   1,116,217 B
+md5    ee7916845913d7eaa13db64582c9d43e
+sha256 0f897e2cf63bd480ff7e3c788d6ed96dff36fe497a3742e8b703362ca37fb7dd
 ```
 
 在线清单：<https://ai-link-official.pages.dev/version.json>

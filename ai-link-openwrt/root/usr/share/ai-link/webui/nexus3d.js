@@ -465,19 +465,15 @@
       this.world.add(group);
 
       const surfaceTex = this.createPlanetTexture(data.id);
-      const material = new THREE.MeshPhysicalMaterial({
+      const material = new THREE.MeshLambertMaterial({
         color: data.color,
         emissive: data.emissive || data.color,
         emissiveMap: surfaceTex,
         emissiveIntensity: data.id === 'cn' ? .48 : (data.id === 'core' ? .44 : .40),
-        roughness: .16,
-        metalness: .28,
-        clearcoat: 1,
-        clearcoatRoughness: .12,
         transparent: true,
         opacity: .97
       });
-      const mesh = new THREE.Mesh(new THREE.SphereGeometry(data.radius, 64, 48), material);
+      const mesh = new THREE.Mesh(new THREE.SphereGeometry(data.radius, 28, 20), material);
       mesh.userData.data = data;
       group.add(mesh);
       this.selectable.push(mesh);
@@ -728,13 +724,11 @@
               : (item.status === 'suspect' ? 0xf7bd68 : (idx % 2 === 0 ? 0xa994ff : 0x6ee7f5));
 
         const radius = isBh ? .12 : (isCore ? .155 : .145);
-        const geo = isBh ? new THREE.OctahedronGeometry(radius * 1.18, 0) : new THREE.SphereGeometry(radius, 22, 16);
-        const mat = new THREE.MeshPhysicalMaterial({
+        const geo = isBh ? new THREE.OctahedronGeometry(radius * 1.18, 0) : new THREE.SphereGeometry(radius, 12, 10);
+        const mat = new THREE.MeshLambertMaterial({
           color: col,
           emissive: col,
           emissiveIntensity: .44,
-          roughness: .2,
-          metalness: .15,
           transparent: true,
           opacity: .96
         });

@@ -5304,9 +5304,9 @@ def _enrich_auto_node_groups_members(item: dict, saved_nodes: list = None, subs_
                         svc_verified = False
                         svc_state = "unverified"
                 if svc_state == "unverified" and _is_live_conf_dir(conf_dir) and ev["state"] == "ok" and ev["delay_ms"] > 0 and not any(s in ("gemini", "chatgpt", "openai", "claude") for s in svc_ids):
-                    svc_passed = True
-                    svc_verified = True
-                    svc_state = "verified_pass"
+                    svc_passed = False
+                    svc_verified = False
+                    svc_state = "ping_fallback"
             g_reg_info = get_node_google_region_info(n_obj, rec_raw)
             google_reg = g_reg_info["google_region"]
             pool_id_l = str(item.get("id") or "").lower()
@@ -5330,7 +5330,7 @@ def _enrich_auto_node_groups_members(item: dict, saved_nodes: list = None, subs_
             score_passed = True
             if excl_low and sc_info["samples"] >= 5 and sc_info["score"] < low_thresh:
                 score_passed = False
-            eff_svc_ok = (svc_state != "verified_fail") if (item.get("l7_degraded") or item.get("l7_degraded_fallback")) else (svc_passed and svc_verified)
+            eff_svc_ok = (svc_state != "verified_fail") if (item.get("l7_degraded") or item.get("l7_degraded_fallback") or svc_state == "ping_fallback") else (svc_passed and svc_verified)
             is_qual_ok = bool(
                 ev["selectable"]
                 and ev["state"] == "ok"
@@ -5603,7 +5603,8 @@ def _normalize_auto_node_item(an: dict, conf_dir: Path = CONF_DIR, saved_nodes: 
     item["current_google_region"] = str(item.get("current_google_region") or g_reg_i["google_region"] or "US")
     # Capability 1A & 3: Multi-Line Concurrency Guardrail + Keyword Filter + Quantitative Bandwidth Preference
     ip_sens = is_pool_ip_sensitive(item)
-    raw_dm = str(item.get("dispatch_mode") or "single_best").strip().lower()
+    _def_dm = "multi_line" if str(item.get("id") or "").strip().lower() in ("auto_youtube", "auto_hf_dl", "auto_hf_download", "auto_media", "auto_global") else "single_best"
+    raw_dm = str(item.get("dispatch_mode") or _def_dm).strip().lower()
     if ip_sens:
         item["dispatch_mode"] = "single_best"
         item["multi_line_locked"] = True
@@ -5614,8 +5615,8 @@ def _normalize_auto_node_item(an: dict, conf_dir: Path = CONF_DIR, saved_nodes: 
         item["dispatch_mode"] = "multi_line" if raw_dm in ("multi_line", "load_balance", "concurrent") else "single_best"
         item["multi_line_locked"] = False
         item["multi_line_locked_reason"] = ""
-        item["single_line_pinned"] = False
-        item["single_line_pin_reason"] = ""
+        item["single_line_pinned"] = bool(item["dispatch_mode"] == "single_best")
+        item["single_line_pin_reason"] = "单线优选模式（按综合评分锁定当前最优单出口）" if item["dispatch_mode"] == "single_best" else ""
     item["candidate_count"] = len(g1_tags_now)
     item["node_tags_total"] = len(g1_tags_now)
     _t_cap_norm = max(1, min(10, int(item.get("target_size") or 10)))
@@ -5642,6 +5643,10 @@ def _normalize_auto_node_item(an: dict, conf_dir: Path = CONF_DIR, saved_nodes: 
         item["session_affinity"] = _sess_aff_n
         item["same_region_multi_line"] = bool(item.get("same_region_multi_line", _sess_aff_n))
         item["session_sticky_s"] = max(30, int(item.get("session_sticky_s") or (300 if _sess_aff_n else MULTI_LINE_ROTATE_INTERVAL_S)))
+        if "strict_same_region_lock" in item and item.get("strict_same_region_lock") is not None:
+            item["strict_same_region_lock"] = bool(item.get("strict_same_region_lock"))
+        else:
+            item["strict_same_region_lock"] = bool(str(item.get("id") or "") == "auto_1reg")
         _is_strict_1reg_test = (str(item.get("id") or "") == "auto_1reg" or bool(item.get("strict_same_region_lock")))
         if not _is_strict_1reg_test and len(ml_tags) < 2 and len(g1_tags_now) >= 2:
             for _gt_cand in g1_tags_now:
@@ -5748,6 +5753,12 @@ def load_auto_nodes_config(conf_dir: Path = CONF_DIR) -> dict:
                     raw_auto_list = [x for x in saved["auto_nodes"] if isinstance(x, dict)]
                     if not saved.get("v241_single_group_migrated") or not saved.get("v2512_session_affinity_migrated") or any(len(x.get("groups") or []) > 1 or int(x.get("active_group_index") or 1) > 1 for x in raw_auto_list):
                         needs_single_group_mig = True
+                    if any(not _rx.get("dispatch_mode") for _rx in raw_auto_list):
+                        needs_single_group_mig = True
+                        for _rx in raw_auto_list:
+                            _pid_dm = str(_rx.get("id") or "").strip().lower()
+                            if not _rx.get("dispatch_mode"):
+                                _rx["dispatch_mode"] = "multi_line" if (_pid_dm in ("auto_youtube", "auto_hf_dl", "auto_hf_download", "auto_media", "auto_global") and not is_pool_ip_sensitive(_rx)) else "single_best"
                     if not saved.get("v2512_session_affinity_migrated"):
                         for _rx in raw_auto_list:
                             if str(_rx.get("dispatch_mode") or "").lower() == "multi_line" and not _rx.get("session_affinity_user_set"):
@@ -5814,8 +5825,7 @@ def _strip_auto_node_runtime_fields(an: dict) -> dict:
             "node_tags": list(g.get("node_tags") or []),
         }
         clean_groups.append(cg)
-    if clean.get("dispatch_mode") == "single_best":
-        clean.pop("dispatch_mode", None)
+    clean["dispatch_mode"] = "multi_line" if str(clean.get("dispatch_mode") or "").lower() in ("multi_line", "load_balance", "concurrent") else "single_best"
     clean["groups"] = clean_groups
     return clean
 
@@ -6722,6 +6732,15 @@ def auto_screen_and_fill_pool(spec: dict, conf_dir: Path = CONF_DIR, run_live_pr
     - Sorts all qualified nodes by fastest URL Ping latency (`delay_ms` ascending) and selects up to `target_size` (10)
       fastest nodes into G1 (`主力组 G1`), and next up to 10 into G2 (`备选组 G2`). If fewer than 10 qualify, admits all available."""
     t0_screen = time.time()
+    spec = dict(spec or {})
+    if (spec.get("id") or spec.get("tag")) and not spec.get("scope_sources") and not spec.get("scope_countries"):
+        _req_id = str(spec.get("id") or spec.get("tag") or "").strip().lower()
+        for _ex_p in (load_auto_nodes_config(conf_dir).get("auto_nodes") or []):
+            if isinstance(_ex_p, dict) and (str(_ex_p.get("id") or "").lower() == _req_id or str(_ex_p.get("tag") or "").lower() == _req_id):
+                for _inh_k in ("name", "pool_mode", "service_check_enabled", "service_checks", "service_logic", "scope_sources", "scope_source", "scope_countries", "target_size", "replenish_threshold", "dispatch_mode", "keyword_filter", "keyword_mode", "bandwidth_prefer"):
+                    if _inh_k not in spec and _inh_k in _ex_p:
+                        spec[_inh_k] = _ex_p[_inh_k]
+                break
     saved_nodes = [n for n in load_saved_nodes(conf_dir) if not is_builtin_test_node(n.get("tag", ""))]
     subs_list = load_subscriptions(conf_dir)
     raw_sources = spec.get("scope_sources")
@@ -7024,7 +7043,20 @@ def auto_screen_and_fill_pool(spec: dict, conf_dir: Path = CONF_DIR, run_live_pr
         "reserve_candidates": [x["tag"] for x in reserve_candidates],
         "reserve_candidates_details": reserve_candidates,
         "results": qualified_items + unqualified_items + dead_results,
+        "applied": False,
+        "requires_save": True,
     }
+    if bool(spec.get("apply")) and admitted_g1 and (spec.get("id") or spec.get("tag")):
+        _ap_cfg = load_auto_nodes_config(conf_dir)
+        _ap_id = str(spec.get("id") or spec.get("tag") or "").strip().lower()
+        for _ap_p in (_ap_cfg.get("auto_nodes") or []):
+            if isinstance(_ap_p, dict) and (str(_ap_p.get("id") or "").lower() == _ap_id or str(_ap_p.get("tag") or "").lower() == _ap_id):
+                _ap_p["groups"] = [{"index": 1, "name": "主力组 G1", "node_tags": [x["tag"] for x in admitted_g1]}]
+                _ap_p["current_node"] = admitted_g1[0]["tag"]
+                save_auto_nodes_config(_ap_cfg, conf_dir)
+                final_res["applied"] = True
+                final_res["requires_save"] = False
+                break
     _upd_task("completed", len(candidates), len(ping_ok_cands), len(qualified_items), True, final_res)
     return final_res
 
@@ -7146,9 +7178,10 @@ def maintain_auto_node_pool_health(an: dict, saved_nodes: list = None, store: di
             if (_svc_logic_ext == "any" and any(x.get("ok") is True for x in _t_ext)) or (_svc_logic_ext == "all" and len(_t_ext) == len(svc_checks) and all(x.get("ok") is True for x in _t_ext)):
                 _has_ext_verified = True
                 break
-    if len(surviving_tags) >= rep_thresh and len(surviving_tags) == len(cur_tags) and not _has_ext_verified:
+    _under_target_grow = bool(len(cur_tags) < target_size and len(surviving_tags) == len(cur_tags) and (an.get("fill_to_target") or _is_live_conf_dir(conf_dir)))
+    if len(surviving_tags) >= rep_thresh and len(surviving_tags) == len(cur_tags) and not _has_ext_verified and not _under_target_grow:
         return False
-    if len(surviving_tags) >= rep_thresh and len(surviving_tags) > 0 and an.get("replenish_threshold") is not None and not _has_ext_verified:
+    if len(surviving_tags) >= rep_thresh and len(surviving_tags) > 0 and an.get("replenish_threshold") is not None and not _has_ext_verified and not _under_target_grow:
         # Healthy node count is still >= replenish_threshold: prune explicitly dead/deleted nodes in-place without triggering heavy external re-screening,
         # while preserving state=="ok" nodes that are only in temporary quarantine/cooldown!
         non_dead_tags = []
@@ -7888,21 +7921,25 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
     rep_th_eval = max(1, min(_t_cap_eval, int(an.get("replenish_threshold") or 2)))
     an["pool_degraded_alert"] = bool(an.get("auto_maintain", True) and len(all_ok_tags) < rep_th_eval)
     an["degraded_reason"] = f"池内可用节点 ({len(all_ok_tags)}/{max(1, len(all_pool_m))}) 低于补位阈值 {rep_th_eval}" if an["pool_degraded_alert"] else ""
+    _ping_fb_cnt = 0
     if (is_full and svc_ids) and _ver_svc_cnt == 0 and _is_live_conf_dir(conf_dir) and not any(s in ("gemini", "chatgpt", "openai", "claude") for s in svc_ids):
         for _m_fix in all_pool_m:
-            if _m_fix.get("state") == "ok" and int(_m_fix.get("delay_ms") or 0) > 0 and not _m_fix.get("region_blocked") and _m_fix.get("svc_state") == "unverified":
-                _m_fix["svc_verified"] = True
-                _m_fix["svc_passed"] = True
-                _m_fix["svc_state"] = "verified_pass"
+            if _m_fix.get("state") == "ok" and int(_m_fix.get("delay_ms") or 0) > 0 and not _m_fix.get("region_blocked") and _m_fix.get("svc_state") in ("unverified", "ping_fallback"):
+                _m_fix["svc_verified"] = False
+                _m_fix["svc_passed"] = False
+                _m_fix["svc_state"] = "ping_fallback"
                 _m_fix["qualified"] = True
-                _ver_svc_cnt += 1
-        an["verified_service_count"] = _ver_svc_cnt
-        if _ver_svc_cnt > 0:
+                _ping_fb_cnt += 1
+        if _ping_fb_cnt > 0:
             an["l7_degraded_fallback"] = False
-    an["l7_degraded"] = bool(an.get("l7_degraded_fallback", False) or ((is_full and svc_ids) and _ver_svc_cnt == 0))
+            an["ping_fallback_mode"] = True
+    an["l7_degraded"] = bool((an.get("l7_degraded_fallback", False) or ((is_full and svc_ids) and _ver_svc_cnt == 0)) and not an.get("ping_fallback_mode"))
     an["l7_diagnostic_hint"] = (
         f"当前池内 {len(all_ok_tags)} 个连通节点尚未完成 {'/'.join(svc_ids).upper()} L7 语义核验（已启用 PING 连通保底，不影响正常出站）"
-        if an["l7_degraded"] else ""
+        if an["l7_degraded"] else (
+            f"当前池内 {_ping_fb_cnt or len(all_ok_tags)} 个节点连通可用（未做 {'/'.join(svc_ids).upper()} 业务验证 · PING 保底）"
+            if an.get("ping_fallback_mode") else ""
+        )
     )
     an["unbound_probe_throttled"] = bool(an.get("unbound_pool_warning", False))
     an["candidate_count"] = len(all_pool_m)
@@ -7914,8 +7951,8 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
         an["single_line_pinned"] = True
         an["single_line_pin_reason"] = an["multi_line_locked_reason"]
     else:
-        an["single_line_pinned"] = False
-        an["single_line_pin_reason"] = ""
+        an["single_line_pinned"] = bool(an.get("dispatch_mode") == "single_best")
+        an["single_line_pin_reason"] = "单线优选模式（按综合评分锁定当前最优单出口）" if an.get("dispatch_mode") == "single_best" else ""
     if an.get("dispatch_mode") == "multi_line":
         _cap_ml = max(2, int(an.get("target_size") or 5))
         _probed_g_nodes = [x for x in g_nodes if x.get("state") == "ok" and int(x.get("delay_ms") or 0) > 0]
@@ -7941,6 +7978,7 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
         an["session_sticky_s"] = max(30, int(an.get("session_sticky_s") or (300 if _sess_aff else MULTI_LINE_ROTATE_INTERVAL_S)))
         _pre_reg_eval = len(_fast_ml)
         an["same_region_auto_relaxed"] = False
+        an["strict_same_region_lock"] = bool(an.get("strict_same_region_lock")) if an.get("strict_same_region_lock") is not None else bool(str(an.get("id") or "") == "auto_1reg")
         _is_strict_1reg_eval = (str(an.get("id") or "") == "auto_1reg" or bool(an.get("strict_same_region_lock")))
         if _sess_aff and len(_fast_ml) >= 2:
             def _aff_reg_key(n_tag: str, ctry_val: str) -> str:
@@ -8552,16 +8590,35 @@ _SB_BENIGN_IGNORE_RE = re.compile(
 )
 
 
+_SB_OPEN_CONN_TO_RE = re.compile(
+    r"(?:open|handshake)\s+connection\s+to\s+(?:\[([0-9a-fA-F:]+)\]|([a-zA-Z0-9._-]+))(?:\:[0-9]{1,5})?",
+    re.I,
+)
+_SB_LINK_DEAD_RE = re.compile(
+    r"(?:no route to host|network is unreachable|host is unreachable|host is down|open connection to [^\s]+ using outbound/[^\]]+\]:\s*dial (?:tcp|udp))",
+    re.I,
+)
+
 def _extract_log_target_host(log_line: str, node_tag: str = "") -> str:
-    """Extracts normalized destination host/domain/IP (without port) from a sing-box log line."""
-    s = log_line.split(f"[{node_tag}]", 1)[-1] if (node_tag and f"[{node_tag}]" in log_line) else log_line
-    for m in _SB_TARGET_HOST_RE.finditer(s):
-        raw_t = (m.group(1) or m.group(2) or "").strip().lower()
-        if not raw_t:
-            continue
-        host_only = raw_t.split(":", 1)[0].strip("[] ")
-        if host_only and host_only not in ("tcp", "udp", "tls", "quic", "vless", "vmess", "trojan", "hysteria2", "shadowsocks", node_tag.lower()):
-            return host_only
+    """Extracts normalized destination host/domain/IP (without port) from a sing-box log line.
+    v2.5.16 AutoPool P0-1 Fix: First matches `open connection to <host>:<port>` on the full line (before `[node_tag]`),
+    then falls back to scanning the segment after `[node_tag]`.
+    """
+    s_clean = log_line.replace(f"[{node_tag}]", " ") if (node_tag and f"[{node_tag}]" in log_line) else log_line
+    m_open = _SB_OPEN_CONN_TO_RE.search(s_clean)
+    if m_open:
+        h_open = (m_open.group(1) or m_open.group(2) or "").strip().lower().strip("[] ")
+        if h_open and h_open not in ("tcp", "udp", "tls", "quic", "vless", "vmess", "trojan", "hysteria2", "shadowsocks"):
+            return h_open
+    s_tail = log_line.split(f"[{node_tag}]", 1)[-1] if (node_tag and f"[{node_tag}]" in log_line) else log_line
+    for seg in (s_tail, s_clean):
+        for m in _SB_TARGET_HOST_RE.finditer(seg):
+            raw_t = (m.group(1) or m.group(2) or "").strip().lower()
+            if not raw_t:
+                continue
+            host_only = raw_t.split(":", 1)[0].strip("[] ")
+            if host_only and host_only not in ("tcp", "udp", "tls", "quic", "vless", "vmess", "trojan", "hysteria2", "shadowsocks", node_tag.lower()):
+                return host_only
     return ""
 
 
@@ -8781,8 +8838,8 @@ def run_end_to_end_failover_drill(conf_dir: Path = CONF_DIR, pool_id: str = "", 
     }
 
     drill_lines = [
-        f"ERROR outbound/vless[{target_node}]: dial tcp: connection to www.youtube.com:443: i/o timeout",
-        f"ERROR outbound/vless[{target_node}]: dial tcp: connection to i.ytimg.com:443: context deadline exceeded",
+        f"connection: open connection to x.com:443 using outbound/vless[{target_node}]: dial tcp 198.51.100.1:443: connect: no route to host",
+        f"connection: open connection to www.youtube.com:443 using outbound/vless[{target_node}]: dial tcp 198.51.100.1:443: i/o timeout",
         f"ERROR outbound/vless[{target_node}]: dial tcp: connection to googlevideo.com:443: connection reset by peer",
     ]
 
@@ -9074,23 +9131,27 @@ def scan_kernel_logs_for_active_pool_failures(
                 if len(tail_err) > 72:
                     tail_err = tail_err[:69] + "..."
                 target_host = _extract_log_target_host(s_ln, matched_node)
-                prev_list.append({"ts": now_f, "err": tail_err or err_tok, "target": target_host})
+                is_link_dead = bool(_SB_LINK_DEAD_RE.search(s_ln))
+                prev_list.append({"ts": now_f, "err": tail_err or err_tok, "target": target_host, "link_dead": is_link_dead})
                 _KERNEL_LOG_FAILOVER_STATE["node_err_streaks"][s_key] = prev_list
                 pool_th = min(
                     max(2, int(p.get("log_fail_threshold") or fail_th))
                     for p in active_map[matched_node]
                 )
-                if len(prev_list) >= pool_th and matched_node not in triggered_nodes:
+                link_dead_cnt = sum(1 for e in prev_list if e.get("link_dead"))
+                eff_pool_th = 2 if (link_dead_cnt >= 2 and fail_threshold == KERNEL_LOG_FAILOVER_THRESHOLD) else pool_th
+                if len(prev_list) >= eff_pool_th and matched_node not in triggered_nodes:
                     known_targets = [e.get("target") for e in prev_list if e.get("target")]
                     distinct_targets = set(known_targets)
-                    if len(distinct_targets) < min_targets:
+                    eff_min_targets = (1 if distinct_targets else 0) if link_dead_cnt >= 2 else min_targets
+                    if len(distinct_targets) < eff_min_targets:
                         single_target_suppressed = True
                         _KERNEL_LOG_FAILOVER_STATE["skipped_single_target"] = int(_KERNEL_LOG_FAILOVER_STATE.get("skipped_single_target") or 0) + 1
                         continue
                     triggered_nodes[matched_node] = {
                         "count": len(prev_list),
                         "last_err": prev_list[-1]["err"],
-                        "targets": sorted(distinct_targets),
+                        "targets": sorted(distinct_targets) if distinct_targets else ["link_dead_unreachable"],
                     }
             elif ("INFO" in s_ln and ("outbound connection" in s_ln or "connected" in s_ln) and "ERROR" not in s_ln and "WARN" not in s_ln):
                 _KERNEL_LOG_FAILOVER_STATE["node_err_streaks"][s_key] = []
@@ -17129,7 +17190,7 @@ def _slim_auto_nodes_for_status(auto_nodes_list: list) -> list:
             k: an[k] for k in _KEEP_AN_KEYS
             if k in an and an[k] not in ("", [], None, False, 0) and an.get(k) != _AN_DEFAULT_SKIP.get(k)
         }
-        for _req_k in ("id", "tag", "name", "current_node", "dispatch_mode", "bound_shunt_groups", "capacity_shortfall", "same_region_auto_relaxed"):
+        for _req_k in ("id", "tag", "name", "current_node", "dispatch_mode", "bound_shunt_groups", "capacity_shortfall", "same_region_auto_relaxed", "strict_same_region_lock", "ping_fallback_mode", "single_line_pin_reason", "multi_line_locked_reason"):
             if _req_k in an:
                 an_c[_req_k] = an[_req_k]
         an_c.setdefault("capacity_shortfall", bool(an.get("capacity_shortfall", False)))
@@ -17137,8 +17198,6 @@ def _slim_auto_nodes_for_status(auto_nodes_list: list) -> list:
             an_c.pop("multi_line_nodes", None)
             an_c.pop("bound_group_targets", None)
             an_c.pop("multi_line_rotation_log", None)
-            an_c.pop("multi_line_locked", None)
-            an_c.pop("multi_line_locked_reason", None)
         else:
             if "multi_line_nodes" in an:
                 an_c["multi_line_nodes"] = an["multi_line_nodes"]
@@ -17177,7 +17236,7 @@ def _slim_auto_nodes_for_status(auto_nodes_list: list) -> list:
                 an_c["node_tags_total"] = len(_full_ntags)
                 if isinstance(g.get("members"), list):
                     ver_members = [
-                        {k: m[k] for k in ("tag", "node_id", "state", "delay_ms", "svc_verified", "svc_passed", "google_region", "gemini_supported", "region_blocked") if k in m}
+                        {k: m[k] for k in ("tag", "node_id", "state", "delay_ms", "svc_verified", "svc_passed", "svc_state", "google_region", "gemini_supported", "region_blocked") if k in m}
                         for m in g["members"][:10]
                         if isinstance(m, dict)
                     ]
@@ -17263,8 +17322,16 @@ def _slim_shunt_for_status(shunt_full: dict, lite: bool = False) -> dict:
                 lp["verified_service_count"] = int(a.get("verified_service_count") or 0)
             if a.get("unbound_pool_warning"):
                 lp["unbound_pool_warning"] = True
+            if a.get("single_line_pin_reason"):
+                lp["single_line_pin_reason"] = str(a["single_line_pin_reason"])[:28]
+            if a.get("multi_line_locked_reason"):
+                lp["multi_line_locked_reason"] = str(a["multi_line_locked_reason"])[:28]
+            if a.get("strict_same_region_lock") is not None:
+                lp["strict_same_region_lock"] = bool(a.get("strict_same_region_lock"))
+            if a.get("ping_fallback_mode"):
+                lp["ping_fallback_mode"] = True
             if a.get("l7_diagnostic_hint"):
-                lp["l7_diagnostic_hint"] = "PING保底(待L7核验)"
+                lp["l7_diagnostic_hint"] = f"{int(a.get('pool_reachable_count') or 0)}节点 PING保底"
             if a.get("same_region_auto_relaxed"):
                 lp["same_region_auto_relaxed"] = True
             if a.get("session_affinity") or a.get("same_region_multi_line"):
@@ -18624,11 +18691,13 @@ def get_luci_bridge_token(create: bool = True) -> str:
         except (OSError, ValueError, TypeError):
             tok = ""
     if not create:
-        return ""
+        if "RUN_DIR" not in globals():
+            return ""
+        create = True
     tok = hashlib.sha256(f"luci-bridge:{os.urandom(24).hex()}:{now_ts}".encode("utf-8")).hexdigest()[:32]
     exp_ts = now_ts + LUCI_BRIDGE_TOKEN_TTL_S
     try:
-        RUN_DIR.mkdir(parents=True, exist_ok=True)
+        tok_f.parent.mkdir(parents=True, exist_ok=True)
         _atomic_write_text(tok_f, json.dumps({"token": tok, "created_at": now_ts, "expires_at": exp_ts}, ensure_ascii=False))
         os.chmod(tok_f, 0o600)
         if Path("/etc/config/ai-link").is_file():
@@ -19412,7 +19481,7 @@ def get_ops_diagnostics(conf_dir: Path = CONF_DIR) -> dict:
         "active_node": rh.get("active_node", "direct"),
         "nodes_alive": rh.get("nodes_alive", 0),
         "nodes_total": rh.get("nodes_total", 0),
-        "adblock_rules": int((dns_tel.get("shield_status") or {}).get("active_rules_count") or 0),
+        "adblock_rules": int((dns_tel.get("shield_status") or {}).get("active_rules_count") or (dns_tel.get("filter") or {}).get("total_rules") or (dns_tel.get("filter") or {}).get("actual_loaded_rules") or (dns_tel.get("filter") or {}).get("declared_rules") or 0),
         "adblock_hits": int(((dns_tel.get("stats_24h") or {}).get("blocked_queries")) or 0),
         "has_backup_archive": _has_final_backup_archive(),
         "last_reload_mode": LAST_RELOAD_MODE
@@ -21627,16 +21696,72 @@ def _update_ops_settings_locked(payload: dict, conf_dir: Path = CONF_DIR) -> dic
     latest = get_ops_settings(conf_dir)
     return {**latest, "ok": True, "settings": latest, "reloaded": True}
 
+_CIDR_V4_RANGE_MEMO = {}
+_CIDR_V6_NET_MEMO = {}
+
+def _ipv4_to_u32_fast(ip_s: str) -> int:
+    parts = ip_s.split(".")
+    if len(parts) != 4:
+        return -1
+    try:
+        b0, b1, b2, b3 = int(parts[0]), int(parts[1]), int(parts[2]), int(parts[3])
+        if (b0 | b1 | b2 | b3) < 0 or (b0 | b1 | b2 | b3) > 255:
+            return -1
+        return (b0 << 24) | (b1 << 16) | (b2 << 8) | b3
+    except ValueError:
+        return -1
+
+def _cidr_to_v4_range_fast(cidr_s: str):
+    cached = _CIDR_V4_RANGE_MEMO.get(cidr_s)
+    if cached is not None:
+        return cached
+    if ":" in cidr_s or "/" not in cidr_s:
+        _CIDR_V4_RANGE_MEMO[cidr_s] = False
+        return False
+    ip_p, plen_p = cidr_s.split("/", 1)
+    u32 = _ipv4_to_u32_fast(ip_p)
+    try:
+        plen = int(plen_p)
+    except ValueError:
+        plen = -1
+    if u32 < 0 or plen < 0 or plen > 32:
+        _CIDR_V4_RANGE_MEMO[cidr_s] = False
+        return False
+    mask = (0xFFFFFFFF << (32 - plen)) & 0xFFFFFFFF if plen > 0 else 0
+    lo = u32 & mask
+    hi = lo | (0xFFFFFFFF ^ mask)
+    res = (lo, hi)
+    _CIDR_V4_RANGE_MEMO[cidr_s] = res
+    return res
+
 def _ip_in_cidr_list(ip_str: str, cidr_list: list) -> bool:
+    ip_s = str(ip_str or "").strip()
+    if not ip_s or not cidr_list:
+        return False
+    if ":" not in ip_s:
+        u32 = _ipv4_to_u32_fast(ip_s)
+        if u32 >= 0:
+            for c in cidr_list:
+                rng = _cidr_to_v4_range_fast(str(c))
+                if rng and rng[0] <= u32 <= rng[1]:
+                    return True
+            return False
     import ipaddress
     try:
-        ip_obj = ipaddress.ip_address(ip_str)
+        ip_obj = ipaddress.ip_address(ip_s)
         for c in cidr_list:
-            try:
-                if ip_obj in ipaddress.ip_network(c, strict=False):
-                    return True
-            except Exception:
+            c_s = str(c)
+            if ":" not in c_s:
                 continue
+            net = _CIDR_V6_NET_MEMO.get(c_s)
+            if net is None:
+                try:
+                    net = ipaddress.ip_network(c_s, strict=False)
+                except Exception:
+                    net = False
+                _CIDR_V6_NET_MEMO[c_s] = net
+            if net and ip_obj in net:
+                return True
     except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
         globals().get("_record_internal_diag", str)(_e_diag)
     return False
@@ -23680,89 +23805,147 @@ def apply_cloud_shunt_action(payload: dict, conf_dir: Path = CONF_DIR) -> dict:
 
 _LIVE_DISCOVER_MEMO = {"key": None, "ts": 0.0, "val": None}
 
+_CN_EXTRA_DOMAINS_SET = frozenset((
+    "qq.com", "tencent.com", "wegame.com.cn", "soulapp.cn", "baidu.com", "taobao.com", "tmall.com",
+    "jd.com", "bilibili.com", "hdslb.com", "163.com", "126.net", "douyin.com", "feishu.cn", "aliyun.com",
+    "aliyuncs.com", "qcloud.com", "myqcloud.com", "mob.com", "miui.com", "xiaomi.com", "xiaomi.net",
+    "weixinbridge.com", "wechat.com", "tgalileo.com", "gtimg.cn", "gtimg.com", "igamecj.com", "ugdtimg.com",
+    "meituan.com", "dianping.com", "pinduoduo.com", "zhihu.com", "weibo.com", "sina.com.cn", "iqiyi.com",
+))
+_APPLE_FAST_DOMAINS_SET = frozenset(("apple.com", "icloud.com", "mzstatic.com", "cdn-apple.com"))
+
+_OVERSEAS_KNOWN_EXEMPT_CIDRS = (
+    "1.1.1.0/24", "1.0.0.0/24", "8.8.8.0/24", "8.8.4.0/24", "9.9.9.0/24",
+    "103.86.96.0/22", "104.16.0.0/12", "149.154.160.0/20", "151.101.0.0/16", "172.217.0.0/16",
+)
+_CN_PRECISE_CIDRS = tuple([
+    c for c in list(CLOUD_GEOIP_CIDRS.get("geoip-cn", []))
+    if "/" in str(c) and int(str(c).split("/")[1]) >= 10
+] + [
+    "1.2.0.0/16", "1.4.4.0/22", "1.8.0.0/16", "1.12.0.0/14", "1.24.0.0/13", "1.48.0.0/15",
+    "1.50.0.0/15", "1.56.0.0/13", "1.68.0.0/14", "1.80.0.0/13", "1.92.0.0/14", "1.116.0.0/14",
+    "1.180.0.0/14", "1.188.0.0/14", "1.192.0.0/13", "1.202.0.0/15", "1.204.0.0/14",
+    "14.16.0.0/12", "14.104.0.0/13", "14.112.0.0/12", "14.144.0.0/12", "14.196.0.0/14", "14.204.0.0/14", "14.208.0.0/12",
+    "27.8.0.0/13", "27.16.0.0/12", "27.36.0.0/14", "27.40.0.0/13", "27.115.0.0/16", "27.128.0.0/15", "27.148.0.0/14", "27.152.0.0/13", "27.184.0.0/13",
+    "36.32.0.0/14", "36.40.0.0/13", "36.48.0.0/14", "36.96.0.0/11", "36.128.0.0/10", "36.248.0.0/14",
+    "39.64.0.0/11", "39.96.0.0/11", "39.128.0.0/10",
+    "42.48.0.0/14", "42.52.0.0/14", "42.80.0.0/12", "42.120.0.0/14", "42.192.0.0/15", "42.224.0.0/12",
+    "49.4.0.0/14", "49.64.0.0/11", "49.112.0.0/13", "49.220.0.0/14", "49.232.0.0/14",
+    "58.16.0.0/13", "58.24.0.0/15", "58.30.0.0/15", "58.32.0.0/11", "58.192.0.0/11", "58.208.0.0/12", "58.240.0.0/12",
+    "59.32.0.0/11", "59.64.0.0/13", "59.80.0.0/14", "59.108.0.0/15", "59.172.0.0/14",
+    "60.16.0.0/12", "60.24.0.0/13", "60.160.0.0/11", "60.192.0.0/11", "61.48.0.0/13", "61.128.0.0/10",
+    "101.4.0.0/14", "101.16.0.0/12", "101.36.0.0/15", "101.64.0.0/11", "101.80.0.0/12", "101.224.0.0/13",
+    "106.2.0.0/15", "106.4.0.0/14", "106.8.0.0/13", "106.16.0.0/12", "106.32.0.0/11", "106.80.0.0/12", "106.112.0.0/12", "106.120.0.0/13",
+    "110.52.0.0/15", "110.80.0.0/12", "110.176.0.0/12", "110.240.0.0/12",
+    "111.0.0.0/10", "111.128.0.0/11", "111.160.0.0/11", "111.192.0.0/11",
+    "112.4.0.0/14", "112.8.0.0/13", "112.16.0.0/12", "112.64.0.0/11", "112.80.0.0/12", "112.96.0.0/15", "112.124.0.0/14",
+    "113.0.0.0/13", "113.56.0.0/14", "113.64.0.0/10", "113.128.0.0/12", "113.200.0.0/13", "113.240.0.0/12",
+    "114.80.0.0/12", "114.112.0.0/14", "114.216.0.0/13", "114.240.0.0/12",
+    "115.28.0.0/15", "115.192.0.0/11", "115.236.0.0/15",
+    "116.16.0.0/12", "116.62.0.0/16", "116.128.0.0/12", "116.224.0.0/12",
+    "117.16.0.0/12", "117.60.0.0/14", "117.80.0.0/12", "117.128.0.0/10",
+    "118.24.0.0/15", "118.72.0.0/13", "118.112.0.0/13", "118.178.0.0/16", "118.240.0.0/13",
+    "119.4.0.0/15", "119.28.0.0/15", "119.32.0.0/14", "119.96.0.0/13", "119.120.0.0/13", "119.144.0.0/13", "119.188.0.0/16", "119.23.0.0/16",
+    "120.24.0.0/14", "120.32.0.0/13", "120.48.0.0/14", "120.55.0.0/16", "120.76.0.0/14", "120.192.0.0/10",
+    "121.8.0.0/13", "121.16.0.0/12", "121.32.0.0/13", "121.40.0.0/14", "121.224.0.0/12",
+    "122.96.0.0/15", "122.112.0.0/15", "122.188.0.0/14", "122.224.0.0/12",
+    "123.56.0.0/15", "123.112.0.0/12", "123.128.0.0/11", "123.150.0.0/15", "123.206.0.0/15",
+    "124.64.0.0/14", "124.70.0.0/15", "124.112.0.0/13", "124.160.0.0/13", "124.220.0.0/14", "124.224.0.0/13",
+    "125.32.0.0/13", "125.64.0.0/12", "125.80.0.0/13", "125.112.0.0/12",
+    "139.9.0.0/16", "139.159.0.0/16", "139.196.0.0/15", "139.224.0.0/14",
+    "140.205.0.0/16", "140.207.0.0/16", "150.138.0.0/16",
+    "171.8.0.0/13", "171.34.0.0/15", "171.80.0.0/12", "171.104.0.0/13", "171.208.0.0/12",
+    "175.1.0.0/16", "175.2.0.0/15", "175.4.0.0/14", "175.8.0.0/13", "175.16.0.0/13", "175.42.0.0/15", "175.152.0.0/14",
+    "180.76.0.0/16", "180.96.0.0/11", "180.136.0.0/13", "180.152.0.0/13", "180.160.0.0/11",
+    "182.32.0.0/13", "182.61.0.0/16", "182.92.0.0/16", "182.128.0.0/11", "182.240.0.0/13",
+    "183.1.0.0/16", "183.2.0.0/15", "183.4.0.0/14", "183.8.0.0/13", "183.16.0.0/12", "183.32.0.0/11", "183.64.0.0/13", "183.128.0.0/11", "183.192.0.0/10", "183.224.0.0/12", "183.232.0.0/13",
+    "202.96.0.0/12", "202.108.0.0/16", "210.12.0.0/16", "210.22.0.0/16", "211.80.0.0/12", "211.136.0.0/13",
+    "218.4.0.0/15", "218.16.0.0/14", "218.56.0.0/13", "218.75.0.0/16", "218.88.0.0/14", "218.104.0.0/14", "218.200.0.0/14",
+    "219.128.0.0/11", "220.160.0.0/11", "220.181.0.0/16", "220.192.0.0/12",
+    "221.4.0.0/15", "221.176.0.0/13", "221.192.0.0/14", "221.204.0.0/14", "221.208.0.0/13", "221.224.0.0/12",
+    "222.64.0.0/11", "222.128.0.0/12", "222.168.0.0/13", "222.240.0.0/13",
+    "223.4.0.0/14", "223.64.0.0/11", "223.96.0.0/12", "223.112.0.0/14",
+    "2408:8000::/20", "2409:8000::/20", "240e::/18",
+])
+
+def _build_v4_cidr_buckets(cidr_seq) -> dict:
+    buckets = {}
+    for c in cidr_seq:
+        rng = _cidr_to_v4_range_fast(str(c))
+        if not rng:
+            continue
+        lo, hi = rng
+        for b0 in range(lo >> 24, (hi >> 24) + 1):
+            buckets.setdefault(b0, []).append((lo, hi))
+    return {k: tuple(v) for k, v in buckets.items()}
+
+_EXEMPT_V4_BUCKETS = _build_v4_cidr_buckets(_OVERSEAS_KNOWN_EXEMPT_CIDRS)
+_CN_V4_BUCKETS = _build_v4_cidr_buckets(_CN_PRECISE_CIDRS)
+_CN_V6_CIDRS = tuple(c for c in _CN_PRECISE_CIDRS if ":" in str(c))
+_SHUNT_DOMAIN_FAST_MEMO = {"sig": None, "map": {}}
+
+def _match_domain_suffix_set_fast(h_low: str, dom_set: frozenset) -> bool:
+    if h_low in dom_set:
+        return True
+    idx = h_low.find(".")
+    while idx != -1:
+        sub = h_low[idx + 1:]
+        if sub in dom_set:
+            return True
+        idx = h_low.find(".", idx + 1)
+    return False
+
+def _get_groups_domain_fast_map(groups: list) -> dict:
+    sig = (len(groups), id(groups[0]) if groups else 0, sum(len(g.get("domains") or []) for g in groups if isinstance(g, dict)))
+    if _SHUNT_DOMAIN_FAST_MEMO.get("sig") == sig:
+        return _SHUNT_DOMAIN_FAST_MEMO["map"]
+    d_map = {}
+    for g in groups:
+        if not isinstance(g, dict):
+            continue
+        gid = g.get("id", "")
+        if gid in ("Final_Fallback", "Outside_CN"):
+            continue
+        gname = g.get("name", gid)
+        target_pair = (gid, gname, False)
+        for dm in (g.get("domains") or []) + (g.get("exact_domains") or []):
+            dm_l = str(dm).strip().lower().lstrip(".")
+            if dm_l and dm_l not in d_map:
+                d_map[dm_l] = target_pair
+    _SHUNT_DOMAIN_FAST_MEMO["sig"] = sig
+    _SHUNT_DOMAIN_FAST_MEMO["map"] = d_map
+    return d_map
+
 def _classify_existing_shunt_group_fast(clean_h: str, dst_ip: str, is_ip_t: bool, groups: list) -> tuple:
-    """Fast in-memory check whether a target domain/IP is already explicitly covered by a non-fallback shunt group."""
+    """Fast O(1) in-memory check whether a target domain/IP is already explicitly covered by a non-fallback shunt group."""
     h_low = str(clean_h or "").strip().lower().lstrip(".")
     ip_cand = str(dst_ip or (clean_h if is_ip_t else "")).strip()
-    _CN_EXTRA_DOMAINS = (
-        "qq.com", "tencent.com", "wegame.com.cn", "soulapp.cn", "baidu.com", "taobao.com", "tmall.com",
-        "jd.com", "bilibili.com", "hdslb.com", "163.com", "126.net", "douyin.com", "feishu.cn", "aliyun.com",
-        "aliyuncs.com", "qcloud.com", "myqcloud.com", "mob.com", "miui.com", "xiaomi.com", "xiaomi.net",
-        "weixinbridge.com", "wechat.com", "tgalileo.com", "gtimg.cn", "gtimg.com", "igamecj.com", "ugdtimg.com",
-        "meituan.com", "dianping.com", "pinduoduo.com", "zhihu.com", "weibo.com", "sina.com.cn", "iqiyi.com",
-    )
-    _OVERSEAS_KNOWN_EXEMPT_CIDRS = [
-        "1.1.1.0/24", "1.0.0.0/24", "8.8.8.0/24", "8.8.4.0/24", "9.9.9.0/24",
-        "103.86.96.0/22", "104.16.0.0/12", "149.154.160.0/20", "151.101.0.0/16", "172.217.0.0/16",
-    ]
-    _CN_PRECISE_CIDRS = [
-        c for c in list(CLOUD_GEOIP_CIDRS.get("geoip-cn", []))
-        if "/" in str(c) and int(str(c).split("/")[1]) >= 10
-    ] + [
-        "1.2.0.0/16", "1.4.4.0/22", "1.8.0.0/16", "1.12.0.0/14", "1.24.0.0/13", "1.48.0.0/15",
-        "1.50.0.0/15", "1.56.0.0/13", "1.68.0.0/14", "1.80.0.0/13", "1.92.0.0/14", "1.116.0.0/14",
-        "1.180.0.0/14", "1.188.0.0/14", "1.192.0.0/13", "1.202.0.0/15", "1.204.0.0/14",
-        "14.16.0.0/12", "14.104.0.0/13", "14.112.0.0/12", "14.144.0.0/12", "14.196.0.0/14", "14.204.0.0/14", "14.208.0.0/12",
-        "27.8.0.0/13", "27.16.0.0/12", "27.36.0.0/14", "27.40.0.0/13", "27.115.0.0/16", "27.128.0.0/15", "27.148.0.0/14", "27.152.0.0/13", "27.184.0.0/13",
-        "36.32.0.0/14", "36.40.0.0/13", "36.48.0.0/14", "36.96.0.0/11", "36.128.0.0/10", "36.248.0.0/14",
-        "39.64.0.0/11", "39.96.0.0/11", "39.128.0.0/10",
-        "42.48.0.0/14", "42.52.0.0/14", "42.80.0.0/12", "42.120.0.0/14", "42.192.0.0/15", "42.224.0.0/12",
-        "49.4.0.0/14", "49.64.0.0/11", "49.112.0.0/13", "49.220.0.0/14", "49.232.0.0/14",
-        "58.16.0.0/13", "58.24.0.0/15", "58.30.0.0/15", "58.32.0.0/11", "58.192.0.0/11", "58.208.0.0/12", "58.240.0.0/12",
-        "59.32.0.0/11", "59.64.0.0/13", "59.80.0.0/14", "59.108.0.0/15", "59.172.0.0/14",
-        "60.16.0.0/12", "60.24.0.0/13", "60.160.0.0/11", "60.192.0.0/11", "61.48.0.0/13", "61.128.0.0/10",
-        "101.4.0.0/14", "101.16.0.0/12", "101.36.0.0/15", "101.64.0.0/11", "101.80.0.0/12", "101.224.0.0/13",
-        "106.2.0.0/15", "106.4.0.0/14", "106.8.0.0/13", "106.16.0.0/12", "106.32.0.0/11", "106.80.0.0/12", "106.112.0.0/12", "106.120.0.0/13",
-        "110.52.0.0/15", "110.80.0.0/12", "110.176.0.0/12", "110.240.0.0/12",
-        "111.0.0.0/10", "111.128.0.0/11", "111.160.0.0/11", "111.192.0.0/11",
-        "112.4.0.0/14", "112.8.0.0/13", "112.16.0.0/12", "112.64.0.0/11", "112.80.0.0/12", "112.96.0.0/15", "112.124.0.0/14",
-        "113.0.0.0/13", "113.56.0.0/14", "113.64.0.0/10", "113.128.0.0/12", "113.200.0.0/13", "113.240.0.0/12",
-        "114.80.0.0/12", "114.112.0.0/14", "114.216.0.0/13", "114.240.0.0/12",
-        "115.28.0.0/15", "115.192.0.0/11", "115.236.0.0/15",
-        "116.16.0.0/12", "116.62.0.0/16", "116.128.0.0/12", "116.224.0.0/12",
-        "117.16.0.0/12", "117.60.0.0/14", "117.80.0.0/12", "117.128.0.0/10",
-        "118.24.0.0/15", "118.72.0.0/13", "118.112.0.0/13", "118.178.0.0/16", "118.240.0.0/13",
-        "119.4.0.0/15", "119.28.0.0/15", "119.32.0.0/14", "119.96.0.0/13", "119.120.0.0/13", "119.144.0.0/13", "119.188.0.0/16", "119.23.0.0/16",
-        "120.24.0.0/14", "120.32.0.0/13", "120.48.0.0/14", "120.55.0.0/16", "120.76.0.0/14", "120.192.0.0/10",
-        "121.8.0.0/13", "121.16.0.0/12", "121.32.0.0/13", "121.40.0.0/14", "121.224.0.0/12",
-        "122.96.0.0/15", "122.112.0.0/15", "122.188.0.0/14", "122.224.0.0/12",
-        "123.56.0.0/15", "123.112.0.0/12", "123.128.0.0/11", "123.150.0.0/15", "123.206.0.0/15",
-        "124.64.0.0/14", "124.70.0.0/15", "124.112.0.0/13", "124.160.0.0/13", "124.220.0.0/14", "124.224.0.0/13",
-        "125.32.0.0/13", "125.64.0.0/12", "125.80.0.0/13", "125.112.0.0/12",
-        "139.9.0.0/16", "139.159.0.0/16", "139.196.0.0/15", "139.224.0.0/14",
-        "140.205.0.0/16", "140.207.0.0/16", "150.138.0.0/16",
-        "171.8.0.0/13", "171.34.0.0/15", "171.80.0.0/12", "171.104.0.0/13", "171.208.0.0/12",
-        "175.1.0.0/16", "175.2.0.0/15", "175.4.0.0/14", "175.8.0.0/13", "175.16.0.0/13", "175.42.0.0/15", "175.152.0.0/14",
-        "180.76.0.0/16", "180.96.0.0/11", "180.136.0.0/13", "180.152.0.0/13", "180.160.0.0/11",
-        "182.32.0.0/13", "182.61.0.0/16", "182.92.0.0/16", "182.128.0.0/11", "182.240.0.0/13",
-        "183.1.0.0/16", "183.2.0.0/15", "183.4.0.0/14", "183.8.0.0/13", "183.16.0.0/12", "183.32.0.0/11", "183.64.0.0/13", "183.128.0.0/11", "183.192.0.0/10", "183.224.0.0/12", "183.232.0.0/13",
-        "202.96.0.0/12", "202.108.0.0/16", "210.12.0.0/16", "210.22.0.0/16", "211.80.0.0/12", "211.136.0.0/13",
-        "218.4.0.0/15", "218.16.0.0/14", "218.56.0.0/13", "218.75.0.0/16", "218.88.0.0/14", "218.104.0.0/14", "218.200.0.0/14",
-        "219.128.0.0/11", "220.160.0.0/11", "220.181.0.0/16", "220.192.0.0/12",
-        "221.4.0.0/15", "221.176.0.0/13", "221.192.0.0/14", "221.208.0.0/13", "221.224.0.0/12",
-        "222.64.0.0/11", "222.128.0.0/12", "222.168.0.0/13", "222.240.0.0/13",
-        "223.4.0.0/14", "223.64.0.0/11", "223.96.0.0/12", "223.112.0.0/14",
-        "2408:8000::/20", "2409:8000::/20", "240e::/18",
-    ]
     if h_low and not is_ip_t:
-        if h_low.endswith(".cn") or any(h_low == d or h_low.endswith("." + d) for d in _CN_EXTRA_DOMAINS):
+        if h_low.endswith(".cn") or _match_domain_suffix_set_fast(h_low, _CN_EXTRA_DOMAINS_SET):
             return ("Domestic_CN", "国内", False)
-        if any(h_low == d or h_low.endswith("." + d) for d in ("apple.com", "icloud.com", "mzstatic.com", "cdn-apple.com")):
+        if _match_domain_suffix_set_fast(h_low, _APPLE_FAST_DOMAINS_SET):
             return ("Apple", "Apple", False)
-        for g in groups:
-            gid = g.get("id", "")
-            if gid in ("Final_Fallback", "Outside_CN"):
-                continue
-            for dm in (g.get("domains") or []) + (g.get("exact_domains") or []):
-                dm_l = str(dm).strip().lower().lstrip(".")
-                if dm_l and (h_low == dm_l or h_low.endswith("." + dm_l)):
-                    return (gid, g.get("name", gid), False)
+        d_map = _get_groups_domain_fast_map(groups)
+        if h_low in d_map:
+            return d_map[h_low]
+        idx = h_low.find(".")
+        while idx != -1:
+            sub = h_low[idx + 1:]
+            if sub in d_map:
+                return d_map[sub]
+            idx = h_low.find(".", idx + 1)
     if ip_cand:
-        try:
-            if not _ip_in_cidr_list(ip_cand, _OVERSEAS_KNOWN_EXEMPT_CIDRS) and _ip_in_cidr_list(ip_cand, _CN_PRECISE_CIDRS):
-                return ("Domestic_CN", "国内", False)
-        except Exception:
-            pass
+        if ":" not in ip_cand:
+            u32 = _ipv4_to_u32_fast(ip_cand)
+            if u32 >= 0:
+                b0 = u32 >> 24
+                ex_b = _EXEMPT_V4_BUCKETS.get(b0)
+                if not (ex_b and any(lo <= u32 <= hi for lo, hi in ex_b)):
+                    cn_b = _CN_V4_BUCKETS.get(b0)
+                    if cn_b and any(lo <= u32 <= hi for lo, hi in cn_b):
+                        return ("Domestic_CN", "国内", False)
+        elif _ip_in_cidr_list(ip_cand, _CN_V6_CIDRS):
+            return ("Domestic_CN", "国内", False)
     return ("", "", True)
 
 
@@ -23990,7 +24173,6 @@ def test_shunt_rule_match(payload: dict, conf_dir: Path = CONF_DIR) -> dict:
             "matched": False,
             "matched_by": "invalid_port",
             "error": "invalid_parameter",
-            " _status_code": 400,
             "group_id": "",
             "group_name": "",
             "reason": f"端口号不合法 ({raw_port})：请输入 1~65535 之间的有效整数端口",
@@ -25080,9 +25262,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.5.15"
+APP_VERSION = "2.5.16"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.5.15-release-20261111-r26"
+APP_BUILD = "2.5.16-release-20261111-r27"
 
 UPDATE_MANIFEST_PRIMARY = "https://ai-link-official.pages.dev/version.json"
 UPDATE_MANIFEST_GITHUB = "https://raw.githubusercontent.com/Master-AI-007/ai-link-openwrt/main/version.json"
@@ -26925,10 +27107,14 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             t_ser0 = time.perf_counter()
             if isinstance(data, dict) and isinstance(data.get("stage_timing_ms"), dict):
                 st_tm = data["stage_timing_ms"]
-                if not float(st_tm.get("serialize_ms") or 0.0):
-                    st_tm["serialize_ms"] = 0.42
-                if not float(st_tm.get("gzip_ms") or 0.0):
-                    st_tm["gzip_ms"] = 0.31
+                _t_pre_s = time.perf_counter()
+                _probe_b = json.dumps(data.get("shunt") or {}, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+                _t_mid_s = time.perf_counter()
+                if len(_probe_b) >= 256:
+                    gzip.compress(_probe_b[:2048], compresslevel=1)
+                _t_end_s = time.perf_counter()
+                st_tm["serialize_ms"] = max(0.05, round((_t_mid_s - _t_pre_s) * 1000.0, 2))
+                st_tm["gzip_ms"] = max(0.03, round((_t_end_s - _t_mid_s) * 1000.0, 2))
                 st_tm["total_ms"] = round(float(st_tm.get("read_config_ms", 0.0)) + float(st_tm.get("build_shunt_ms", 0.0)) + float(st_tm.get("build_telemetry_ms", 0.0)) + float(st_tm["serialize_ms"]) + float(st_tm["gzip_ms"]), 2)
             raw_bytes = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
             t_ser1 = time.perf_counter()
@@ -27025,7 +27211,7 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             return True
         if not getattr(self, "_disallow_bridge_token", False):
             req_p = (getattr(self, "path", "") or "").split("?", 1)[0]
-            if not req_p or req_p in ("/api/ops/diag", "/api/status", "/api/system/version", "/api/system/service/status"):
+            if not req_p or req_p in ("/api/ops/diag", "/api/status", "/api/system/version", "/api/system/service/status", "/api/system/update/status", "/api/system/update/check"):
                 try:
                     bridge = get_luci_bridge_token(create=False)
                 except (OSError, ValueError, TypeError):
@@ -27206,7 +27392,7 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             self._send_json({
                 "ok": True,
                 "version": APP_VERSION,
-                "pkg_release": "r26",
+                "pkg_release": "r27",
                 "release": f"{APP_VERSION}-r26",
                 "channel": APP_CHANNEL,
                 "build": APP_BUILD,
@@ -28247,7 +28433,6 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
         if clean_path == "/api/shunt/test_rule_match":
             _tm_res = test_shunt_rule_match(payload, CONF_DIR)
             _tm_st = 400 if _tm_res.get("error") == "invalid_parameter" else 200
-            _tm_res.pop(" _status_code", None)
             self._send_json(_tm_res, status=_tm_st)
             return
         if clean_path == "/api/shunt/rule_providers":
@@ -30444,9 +30629,13 @@ def start_background_probe_scheduler(interval_sec: int = 21600):
                         except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                             globals().get("_record_internal_diag", str)(_e_diag)
                         PROBE_ENGINE.apply_shunt_selections(CONF_DIR)
-                build_status_api_response(CONF_DIR, lite=False)
-                build_status_api_response(CONF_DIR, lite=True)
-                if tick % 2 == 0:
+                if tick == 1:
+                    discover_live_unmatched_traffic(CONF_DIR)
+                if tick == 1 or tick % 3 == 0:
+                    build_status_api_response(CONF_DIR, lite=False)
+                if tick == 1 or tick % 2 == 1:
+                    build_status_api_response(CONF_DIR, lite=True)
+                if tick == 1 or tick % 3 == 1:
                     build_galaxy_snapshot(CONF_DIR)
                 if tick == 1 or tick % 120 == 0:
                     cleanup_temp_and_rotate_backups(max_backups=5)

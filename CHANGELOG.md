@@ -1,3 +1,14 @@
+## [v2.5.16] - 2026-11-11
+### 雷达毫秒级冷启动 + 自动池秒切 + LuCI 鉴权与星图提速（PKG_RELEASE 27）
+- **正常升版**：升至 `v2.5.16`（`PKG_RELEASE:=27` / `r27`），增量基准指向线上 2.5.15（Release #441436442 / `e7617a50` / 部署 `063d6465`）；现网设备可正常收 OTA 提示。
+- **FB-2515-1 闭环（雷达冷启动）**：模块加载期把 `_CN_PRECISE_CIDRS` / `_OVERSEAS_KNOWN_EXEMPT_CIDRS` 预编译为按 IPv4 首字节分桶的 32 位整数区间表（`_CN_V4_BUCKETS` / `_EXEMPT_V4_BUCKETS`），运行期 **0 次 `ipaddress.ip_network` 解析**；新增 `_SHUNT_DOMAIN_FAST_MEMO` 域名后缀哈希表与 watchdog 首拍预热；补齐 `221.204.0.0/14`。真机 `run_all` 恢复 **15/15 / RC=0**、混沌 **90/90**，`Stage 7.27` 冷启动毫秒级、海外 0/31、国内 20/20。
+- **AutoPool P0 真实 dial 秒切**：`_extract_log_target_host` 改为全文优先匹配 `open connection to <host>:<port>`（不再被 `[node_tag]` 截断）；新增 `_SB_LINK_DEAD_RE` 链路级失联分档（`no route to host` / `dial tcp` 等 2 次即切、允许单目标/纯 IP），黑洞从 68s 降至 **<15s**；演练注入真实 dial 错误形态。
+- **AutoPool P1-2 池补齐**：`_under_target_grow` 在成员数低于 `target_size` 时自动补齐（香港池 3/10 不再卡住）；仅传 `id/tag` 时继承已存池范围与服务配置，支持 `apply:true` 落盘。
+- **LuCI P0 跨源鉴权**：`ensureLuciToken()` 通过 `fs.read('/etc/ai-link/panel_token')` 注入 `X-AI-Link-Token`（401 自动重读）、后端令牌过期自动续期、`/api/system/update/status|check` 入白名单；`refreshStatus` 与 OTA 增加「未授权 / 获取失败」状态机与解锁按钮；`adblock_rules` 改读 `dns_tel.filter.total_rules`。
+- **3D 星图首视觉**：鉴权通过后 60~180ms 内异步加载 three.js、画布立即按容器真实宽高布局；母星与卫星改用 `MeshLambertMaterial` 并收敛分段，消除 PBR 编译卡顿（首屏长任务 ≤1、单任务 <25ms）。
+- **交互与体验**：移除弹窗背景点击关闭（仅关闭按钮/确认/Escape），新增 `_pointerDownInPopupOrModal` 与选区守卫防拖拽误关；前后端对齐 `strict_same_region_lock`；引入 `svc_state="ping_fallback"`；自动迁移回填 `dispatch_mode`（`auto_youtube` 恢复 `multi_line`）并保留 `single_line_pin_reason` / `multi_line_locked_reason`；watchdog 隔拍错峰预热。
+- 验收：`INSTALL_RC=0`、服务全 1、`nft ok:true`、重启稳定、自检 10/10 + 负向、零补发 `run_all 15/15 / RC=0`、混沌 **90/90**、门禁双布局 17/17、11 行指纹 11/11 与 1 字节篡改转红、design-lint 18/18、静态 8/8、UI 零异常三视口零溢出、出网 200/200/204。
+
 ## [v2.5.15] - 2026-11-11
 ### 海外 IP 精准分流 + 失效 Token 拦截 + 首屏与状态性能加固（PKG_RELEASE 26）
 - **正常升版**：升至 `v2.5.15`（`PKG_RELEASE:=26` / `r26`），增量基准指向线上 2.5.14（Release #441274023 / `c6a7027a` / 部署 `2f601400`）；现网设备可正常收 OTA 提示。

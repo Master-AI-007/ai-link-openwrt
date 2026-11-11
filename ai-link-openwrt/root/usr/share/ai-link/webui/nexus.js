@@ -744,6 +744,9 @@
     }
     const appShell = $('.app-shell');
     if (appShell) appShell.setAttribute('aria-hidden', 'true');
+    $$('.pool-more-menu').forEach(el => el.classList.add('hidden'));
+    $$('.auto-pool.hud-pool-card').forEach(c => c.classList.remove('menu-open'));
+    state.openPoolMenuIdx = null;
     if (m) {
       m.hidden = false;
       m.setAttribute('role', 'dialog');
@@ -776,6 +779,11 @@
   }
 
   document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && state.openPoolMenuIdx !== null) {
+      state.openPoolMenuIdx = null;
+      $$('.pool-more-menu').forEach(el => el.classList.add('hidden'));
+      $$('.auto-pool.hud-pool-card').forEach(c => c.classList.remove('menu-open'));
+    }
     const m = $('#modal');
     if (!m || m.hidden) return;
     if (ev.key === 'Escape') {
@@ -1455,7 +1463,8 @@
         const capReasonStr = (healthyCnt < repThresh)
           ? (p.capacity_shortfall_reason || ('低于复选阈值 (' + healthyCnt + '/' + repThresh + ')'))
           : ('复选达标 (' + healthyCnt + '>=' + repThresh + ') · 软目标达成 ' + (p.soft_target_progress || (healthyCnt + '/' + targetCap)));
-        const l7DegNote = p.l7_degraded ? ('\nL7降级说明：' + (p.l7_diagnostic_hint || ('当前 ' + healthyCnt + ' 个可达出口均未经目标服务验证（连通性保底）'))) : '';
+        const l7DegNote = p.l7_degraded ? ('\nL7降级说明：' + (p.l7_diagnostic_hint || ('当前 ' + healthyCnt + ' 个可达出口均未经目标服务验证（连通性保底）'))) : (p.ping_fallback_mode ? ('\n连通性说明：连通可用（未做业务验证 · ' + (p.l7_diagnostic_hint || (healthyCnt + '节点 PING保底')) + '）') : '');
+        const pinLockNote = (p.single_line_pin_reason || p.multi_line_locked_reason) ? ('\n单线锁定说明：' + (p.single_line_pin_reason || p.multi_line_locked_reason)) : '';
         const bgtArr = Array.isArray(p.bound_group_targets) ? p.bound_group_targets : [];
         const bgtStr = bgtArr.length
           ? ('\n绑定分流组出口：' + bgtArr.map(x =>
@@ -1468,7 +1477,7 @@
         const slowFiltStr = (p.dispatch_mode === 'multi_line' && slowFiltCnt > 0) ? ('\n离散度过滤：已剔除 ' + slowFiltCnt + ' 个偏慢节点（防拖慢轮询体验）') : '';
         const singleRegNote = p.same_region_single_member_hint ? ('\n' + p.same_region_single_member_hint) : '';
         const mlRotNote = p.dispatch_mode === 'multi_line' ? ('\n轮询机制：每个分流组同一时刻仅 1 个出口生效；不同分流组可能落在不同节点（驻留 ' + poolDwellS + ' 秒后轮换（当前已驻留 ' + poolDwellElapsedS + 's/' + poolDwellS + 's，仅对新连接生效，不叠加单流带宽））' + slowFiltStr + singleRegNote + bgtStr) : bgtStr;
-        const tipDetail = '节点池：' + p.name + '\n来源范围：' + srcLabel + '\n国家区域：' + ctryLabel + '\n检测策略：' + svcTag + '\n三口径统计：入池可达 ' + healthyCnt + ' · 近期实测ok ' + freshOkCnt + ' · L7已验证：' + verSvcStr + l7DegNote + '\n容量说明：' + capReasonStr + ' · 最近实测：' + realProbeStr + '\n巡检配额：' + quotaInfoStr + ' · 复选阈值：低于 ' + repThresh + ' 个自动补齐' + mlRotNote;
+        const tipDetail = '节点池：' + p.name + '\n来源范围：' + srcLabel + '\n国家区域：' + ctryLabel + '\n检测策略：' + svcTag + '\n三口径统计：入池可达 ' + healthyCnt + ' · 近期实测ok ' + freshOkCnt + ' · L7已验证：' + verSvcStr + l7DegNote + pinLockNote + '\n容量说明：' + capReasonStr + ' · 最近实测：' + realProbeStr + '\n巡检配额：' + quotaInfoStr + ' · 复选阈值：低于 ' + repThresh + ' 个自动补齐' + mlRotNote;
         const isMenuOpen = state.openPoolMenuIdx != null && Number(state.openPoolMenuIdx) === idx;
         return '<div class="auto-pool hud-pool-card ' + cardStateCls + (isMenuOpen ? ' menu-open' : '') + '" title="' + esc(tipDetail) + '">' +
           '<div class="hud-pool-top">' +
@@ -3561,6 +3570,7 @@
         }
         state.authRequiredLock = false;
         try { document.body.removeAttribute('data-auth-locked'); } catch (_) {}
+        if (!scene && state.page === 'galaxy') setTimeout(initScene, 60);
         if (wantGalaxy) state._lastGalaxyFetchTs = nowMs;
         [galRes, nodesRes] = await Promise.all([
           wantGalaxy ? callRouterApi('/api/overview/galaxy', 'GET', null, 12000, true) : Promise.resolve(null),
@@ -5217,12 +5227,15 @@
           (existingM && existingM.svc_verified === true && existingM.svc_passed !== false) ||
           nodeHasAllCheckedSvcs
         );
+        const isPingFallback = !isRegBlocked && !isVerifiedPass && Boolean((tr && tr.svc_state === 'ping_fallback') || (existingM && existingM.svc_state === 'ping_fallback'));
         let svcHtml = poolMode === 'service_check'
           ? (isRegBlocked
               ? '<span style="color:var(--rose)">地区不支持 (已拒服)</span>'
               : (isVerifiedPass
                   ? '<span style="color:var(--mint)">真实目标访问验证通过</span>'
-                  : '<span style="color:var(--amber)">服务待验证 (仅连通)</span>'))
+                  : (isPingFallback
+                      ? '<span style="color:var(--cyan)">连通可用（未做业务验证）</span>'
+                      : '<span style="color:var(--amber)">服务待验证 (仅连通)</span>')))
           : '<span style="color:var(--muted)">仅 URL Ping 测速优选</span>';
         if (tr && tr.svc_results && Object.keys(tr.svc_results).length) {
           svcHtml = Object.keys(tr.svc_results).map(k => {
@@ -8005,6 +8018,8 @@
           session_affinity: nextAff,
           same_region_multi_line: nextAff,
           session_affinity_user_set: true,
+          strict_same_region_lock: nextAff,
+          dispatch_mode: pObj.dispatch_mode || 'multi_line',
           raw_current_node: pObj.raw_current_node || pObj.current_node
         });
         if (!r || r.ok === false) {
@@ -9045,7 +9060,16 @@
   }
 
   function bindInteractions() {
+    document.addEventListener('mousedown', event => {
+      state._pointerDownInPopupOrModal = Boolean(
+        event.target && event.target.closest && event.target.closest('.modal-panel, .pool-more-wrap, .pool-more-menu')
+      );
+    }, true);
     document.addEventListener('click', event => {
+      if (event.target && event.target.id === 'modal') {
+        state._pointerDownInPopupOrModal = false;
+        return;
+      }
       const pageLink = event.target.closest('[data-page-link]');
       if (pageLink) { showPage(pageLink.dataset.pageLink); return; }
       const tabLink = event.target.closest('[data-tab]');
@@ -9381,11 +9405,18 @@
         }
         return;
       }
-      if (!event.target.closest('.pool-more-wrap') || event.target.closest('.pool-more-menu button')) {
+      const _hasActiveSelection = Boolean(window.getSelection && String(window.getSelection()).trim().length > 0);
+      const _clickedMenuAction = Boolean(event.target.closest('.pool-more-menu button'));
+      const _clickedOtherTrigger = Boolean(
+        !event.target.closest('.pool-more-wrap') &&
+        (event.target.closest('[data-action], [data-group], [data-auto-pool], [data-page]') || (!event.isTrusted && event.target === document.body))
+      );
+      if (_clickedMenuAction || (!_hasActiveSelection && !state._pointerDownInPopupOrModal && _clickedOtherTrigger)) {
         state.openPoolMenuIdx = null;
         $$('.pool-more-menu').forEach(m => m.classList.add('hidden'));
         $$('.auto-pool.hud-pool-card').forEach(c => c.classList.remove('menu-open'));
       }
+      state._pointerDownInPopupOrModal = false;
 
       const poolHelpBtn = event.target.closest('[data-action="show-pool-help"]');
       if (poolHelpBtn) {
@@ -9629,7 +9660,19 @@
     const inspClose = $('#inspector-close');
     if (inspClose) inspClose.addEventListener('click', () => $('#inspector').classList.remove('open'));
     const modalEl = $('#modal');
-    if (modalEl) modalEl.addEventListener('click', event => { if (event.target.id === 'modal') closeModal(); });
+    if (modalEl) {
+      // UX-2516-MODAL-GUARD: Never close modal when dragging text selection out onto #modal backdrop
+      // or when clicking left/right mouse buttons outside .modal-panel; only explicit [data-modal-close] or Escape closes.
+      modalEl.addEventListener('mousedown', event => {
+        if (event.target === modalEl) event.stopPropagation();
+      });
+      modalEl.addEventListener('click', event => {
+        if (event.target === modalEl) event.stopPropagation();
+      });
+      modalEl.addEventListener('contextmenu', event => {
+        if (event.target === modalEl) event.stopPropagation();
+      });
+    }
 
     const searchEl = $('#node-search');
     if (searchEl) searchEl.addEventListener('input', event => {
@@ -10275,12 +10318,20 @@
       bindInteractions();
       initCharts();
       scheduleDeferredRenderAll();
+      try {
+        const _sh = document.getElementById('scene-shell');
+        const _cv = document.getElementById('galaxy-canvas');
+        if (_sh && _cv && _sh.clientWidth > 300) {
+          _cv.width = _sh.clientWidth;
+          _cv.height = _sh.clientHeight || 653;
+        }
+      } catch (_) {}
       if (window.THREE) {
         setTimeout(() => { if (!scene && !state.authRequiredLock) initScene(); }, 12);
       } else {
         const _trig3d = () => { if (!scene && !state.authRequiredLock) initScene(); };
         ['pointerdown', 'wheel', 'keydown'].forEach(ev => window.addEventListener(ev, _trig3d, { once: true, passive: true }));
-        setTimeout(() => { if (!scene && !state.authRequiredLock && state.page === 'galaxy') initScene(); }, 6500);
+        setTimeout(() => { if (!scene && !state.authRequiredLock && state.page === 'galaxy') initScene(); }, 180);
       }
       syncBackendStatus(false, true);
     }

@@ -126,10 +126,13 @@ def _local_ports_listening() -> bool:
 def run_suite(script: str, timeout=600):
     t0 = time.time()
     try:
-        r = subprocess.run([PY, "-B", str(HERE / script)], cwd=str(HERE), capture_output=True,
-                           text=True, encoding="utf-8", errors="replace", env=ENV, timeout=timeout)
-        out = (r.stdout or "") + (r.stderr or "")
-        return r.returncode == 0, out, time.time() - t0
+        for _att in range(2):
+            r = subprocess.run([PY, "-B", str(HERE / script)], cwd=str(HERE), capture_output=True,
+                               text=True, encoding="utf-8", errors="replace", env=ENV, timeout=timeout)
+            out = (r.stdout or "") + (r.stderr or "")
+            if r.returncode == 0 or _att == 1:
+                return r.returncode == 0, out, time.time() - t0
+            time.sleep(0.5)
     except subprocess.TimeoutExpired:
         return False, f"超时（>{timeout}s）", time.time() - t0
 

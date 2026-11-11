@@ -23,10 +23,32 @@ return view.extend({
 		var pwdIsCustom = (pwdCustFlag === '1') || (uciSecretRaw !== '' && (uciSecretRaw === '__custom__' || /^sha256:/i.test(uciSecretRaw) || uciSecretRaw !== 'ai-link-2026'));
 		var uciSecret = pwdIsCustom ? '' : (uciSecretRaw || '请见 /etc/ai-link/initial_password 或执行 ai-link password');
 		var luciToken = (function() { try { return String(localStorage.getItem('ailink_panel_token') || ''); } catch(e) { return ''; } })();
-		var currentVer = String(uci.get('ai-link', 'global', 'app_version') || '2.5.15');
+		function ensureLuciToken(forceReload) {
+			if (luciToken && !forceReload) return Promise.resolve(luciToken);
+			return Promise.resolve(fs.read('/etc/ai-link/panel_token')).then(function(r) {
+				var raw = (typeof r === 'string') ? r : ((r && r.data) ? r.data : '');
+				var t = String(raw || '').trim().split(/\s+/)[0] || '';
+				if (t) {
+					luciToken = t;
+					try { localStorage.setItem('ailink_panel_token', luciToken); } catch(e) {}
+					return luciToken;
+				}
+				return Promise.resolve(fs.read('/var/run/ai-link/luci_bridge_token.json')).then(function(rb) {
+					var bRaw = (typeof rb === 'string') ? rb : ((rb && rb.data) ? rb.data : '');
+					var bObj = JSON.parse(String(bRaw || '{}'));
+					if (bObj && bObj.token) {
+						luciToken = String(bObj.token).trim();
+						return luciToken;
+					}
+					return '';
+				}).catch(function() { return ''; });
+			}).catch(function() { return ''; });
+		}
+		var currentVer = String(uci.get('ai-link', 'global', 'app_version') || '2.5.16');
+		var unlockBtnHtml = ' <button type="button" id="luci-btn-unlock-panel" style="padding:2px 8px; border-radius:5px; border:1px solid rgba(56,189,248,0.35); background:rgba(14,116,144,0.25); color:#7dd3fc; font-size:11px; cursor:pointer;">🔓 解锁状态</button>';
 		var pwdFieldHtml = pwdIsCustom
-			? '<span style="font-size:12px; color:#94a3b8; display:inline-flex; align-items:center; gap:6px;">面板密码: <code id="luci-panel-pwd-mask" style="background:#0f172a; padding:2px 7px; border-radius:5px; color:#e2e8f0; border:1px solid rgba(148,163,184,0.2);">已自定义 · 不回显</code> <span style="font-size:11px; color:#64748b;">（忘记可执行 ai-link password 重置）</span></span>'
-			: '<span style="font-size:12px; color:#94a3b8; display:inline-flex; align-items:center; gap:6px;">面板密码: <code id="luci-panel-pwd-mask" style="background:#0f172a; padding:2px 7px; border-radius:5px; color:#e2e8f0; border:1px solid rgba(148,163,184,0.2);">••••••••</code> <button type="button" id="luci-btn-toggle-pwd" style="padding:2px 8px; border-radius:5px; border:1px solid rgba(148,163,184,0.3); background:rgba(30,41,59,0.8); color:#cbd5e1; font-size:11px; cursor:pointer;">查看</button></span>';
+			? '<span style="font-size:12px; color:#94a3b8; display:inline-flex; align-items:center; gap:6px;">面板密码: <code id="luci-panel-pwd-mask" style="background:#0f172a; padding:2px 7px; border-radius:5px; color:#e2e8f0; border:1px solid rgba(148,163,184,0.2);">已自定义 · 不回显</code>' + unlockBtnHtml + ' <span style="font-size:11px; color:#64748b;">（忘记可执行 ai-link password 重置）</span></span>'
+			: '<span style="font-size:12px; color:#94a3b8; display:inline-flex; align-items:center; gap:6px;">面板密码: <code id="luci-panel-pwd-mask" style="background:#0f172a; padding:2px 7px; border-radius:5px; color:#e2e8f0; border:1px solid rgba(148,163,184,0.2);">••••••••</code> <button type="button" id="luci-btn-toggle-pwd" style="padding:2px 8px; border-radius:5px; border:1px solid rgba(148,163,184,0.3); background:rgba(30,41,59,0.8); color:#cbd5e1; font-size:11px; cursor:pointer;">查看</button>' + unlockBtnHtml + '</span>';
 		var panelUrl = 'http://' + host + ':' + port + '/';
 		var apiBase = 'http://' + host + ':' + port + '/api';
 		var pwdVisible = false;
@@ -43,7 +65,7 @@ return view.extend({
 		}
 
 		m = new form.Map('ai-link', _('AI-LINK 智能分流网关'),
-			_('专为全屋智能分流、抗 DNS 污染、回家内网穿透与多区域故障自愈设计的轻量透明代理网关（v2.5.2 正式版 · 纯血 Sing-box 内核）。'));
+			_('专为全屋智能分流、抗 DNS 污染、回家内网穿透与多区域故障自愈设计的轻量透明代理网关（v2.5.16 正式版 · 纯血 Sing-box 内核）。'));
 
 		s = m.section(form.NamedSection, 'global', globalSecType, _('运行状态概览与基础控制'));
 		s.anonymous = true;
@@ -169,16 +191,39 @@ return view.extend({
 				box.textContent = txt;
 			};
 
-			var callApi = function(path, method, bodyObj) {
-				var opts = { method: method || 'GET', headers: {} };
-				if (luciToken) {
-					opts.headers['X-AI-Link-Token'] = luciToken;
+			var callApi = function(path, method, bodyObj, _retried) {
+				return ensureLuciToken(Boolean(_retried)).then(function(tok) {
+					var opts = { method: method || 'GET', headers: {} };
+					if (tok) {
+						opts.headers['X-AI-Link-Token'] = tok;
+					}
+					if (bodyObj !== undefined) {
+						opts.headers['Content-Type'] = 'application/json';
+						opts.body = JSON.stringify(bodyObj);
+					}
+					return fetch(apiBase + path, opts).then(function(r) { return r.json(); }).then(function(res) {
+						if (res && res.error === 'unauthorized' && !_retried) {
+							luciToken = '';
+							try { localStorage.removeItem('ailink_panel_token'); } catch(e) {}
+							return callApi(path, method, bodyObj, true);
+						}
+						return res;
+					});
+				});
+			};
+
+			var applyStatusFailureState = function(unauth) {
+				var badge = mapEl.querySelector('#luci-ailink-badge');
+				if (badge) {
+					badge.textContent = unauth ? '🔒 未授权 · 需解锁面板' : '⚠️ 状态获取失败';
+					badge.style.background = 'rgba(239,68,68,0.2)';
+					badge.style.color = '#fca5a5';
+					badge.style.borderColor = 'rgba(239,68,68,0.45)';
 				}
-				if (bodyObj !== undefined) {
-					opts.headers['Content-Type'] = 'application/json';
-					opts.body = JSON.stringify(bodyObj);
-				}
-				return fetch(apiBase + path, opts).then(function(r) { return r.json(); });
+				['#luci-kpi-core', '#luci-kpi-nft', '#luci-kpi-ipv6', '#luci-kpi-nodes'].forEach(function(sel) {
+					var el = mapEl.querySelector(sel);
+					if (el) el.textContent = unauth ? '🔒 未授权（请点击上方「解锁状态」）' : '⚠️ 状态获取失败';
+				});
 			};
 
 			var refreshStatus = function() {
@@ -188,7 +233,10 @@ return view.extend({
 				]).then(function(results) {
 					var d = results[0] || {};
 					var st = results[1] || {};
-					if (!d || !d.ok) return;
+					if (!d || !d.ok) {
+						applyStatusFailureState(Boolean(d && d.error === 'unauthorized'));
+						return;
+					}
 					var ops = st.ops_settings || {};
 					var isActive = (d.routing_state === 'proxy') && (ops.enabled !== false) && !st.bypass_active;
 					currentState.enabled = isActive;
@@ -236,12 +284,7 @@ return view.extend({
 							' &nbsp;|&nbsp; 🛡️ 拦截 ' + (d.adblock_hits || 0) + ' 次 <span style="font-size:11px; color:#94a3b8;">(' + (d.adblock_rules || 0) + '条)</span>';
 					}
 				}).catch(function() {
-					var badge = mapEl.querySelector('#luci-ailink-badge');
-					if (badge) {
-						badge.textContent = '⚠️ 守护进程未响应 (请检查服务)';
-						badge.style.background = 'rgba(239,68,68,0.2)';
-						badge.style.color = '#fca5a5';
-					}
+					applyStatusFailureState(false);
 				});
 			};
 
@@ -472,6 +515,34 @@ return view.extend({
 				otaTimer = setInterval(otaPollOnce, 2000);
 			};
 
+			bindBtn('#luci-btn-unlock-panel', function() {
+				ensureLuciToken(true).then(function(tok) {
+					if (tok) {
+						showMsg('✅ 已自动读取本机面板授权令牌，正在同步状态...', false);
+						refreshStatus();
+						return;
+					}
+					var pwd = window.prompt('请输入 AI-LINK 面板密码以解锁状态与在线更新：', '');
+					if (!pwd) return;
+					fetch(apiBase + '/login', {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({ password: pwd })
+					}).then(function(r) { return r.json(); }).then(function(res) {
+						if (res && res.ok && res.token) {
+							luciToken = String(res.token).trim();
+							try { localStorage.setItem('ailink_panel_token', luciToken); } catch(e) {}
+							showMsg('✅ 面板状态区已解锁！', false);
+							refreshStatus();
+						} else {
+							showMsg('❌ 密码验证失败：' + ((res && res.message) || '密码不正确'), true);
+						}
+					}).catch(function(e) {
+						showMsg('❌ 登录请求异常：' + e.message, true);
+					});
+				});
+			});
+
 			bindBtn('#luci-btn-ota-check', function() {
 				var btn = mapEl.querySelector('#luci-btn-ota-check');
 				var applyBtn = mapEl.querySelector('#luci-btn-ota-apply');
@@ -484,8 +555,11 @@ return view.extend({
 					btn.disabled = false;
 					btn.textContent = '🔍 检查更新';
 					if (!r || !r.ok) {
-						showMsg('❌ ' + ((r && r.message) || '版本检查失败，请检查网络后重试'), true);
-						if (sub) sub.textContent = '当前 v' + currentVer + ' · 版本检查失败（网络不通或清单不可达）';
+						var unauth = Boolean(r && r.error === 'unauthorized');
+						showMsg('❌ ' + (unauth ? '未授权：请先点击上方「🔓 解锁状态」或登录 :9099 面板' : ((r && r.message) || '版本检查失败，请检查网络后重试')), true);
+						if (sub) sub.textContent = unauth
+							? ('当前 v' + currentVer + ' · 未授权，无法检查更新')
+							: ('当前 v' + currentVer + ' · 版本检查失败（清单不可达）');
 						return;
 					}
 					if (notes && r.notes_url) {
