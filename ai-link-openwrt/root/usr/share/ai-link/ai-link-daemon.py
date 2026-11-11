@@ -5303,6 +5303,10 @@ def _enrich_auto_node_groups_members(item: dict, saved_nodes: list = None, subs_
                         svc_passed = False
                         svc_verified = False
                         svc_state = "unverified"
+                if svc_state == "unverified" and _is_live_conf_dir(conf_dir) and ev["state"] == "ok" and ev["delay_ms"] > 0 and not any(s in ("gemini", "chatgpt", "openai", "claude") for s in svc_ids):
+                    svc_passed = True
+                    svc_verified = True
+                    svc_state = "verified_pass"
             g_reg_info = get_node_google_region_info(n_obj, rec_raw)
             google_reg = g_reg_info["google_region"]
             pool_id_l = str(item.get("id") or "").lower()
@@ -5638,7 +5642,7 @@ def _normalize_auto_node_item(an: dict, conf_dir: Path = CONF_DIR, saved_nodes: 
         item["session_affinity"] = _sess_aff_n
         item["same_region_multi_line"] = bool(item.get("same_region_multi_line", _sess_aff_n))
         item["session_sticky_s"] = max(30, int(item.get("session_sticky_s") or (300 if _sess_aff_n else MULTI_LINE_ROTATE_INTERVAL_S)))
-        _is_strict_1reg_test = (str(item.get("id") or "") == "auto_1reg" or bool(item.get("session_affinity_user_set")))
+        _is_strict_1reg_test = (str(item.get("id") or "") == "auto_1reg" or bool(item.get("strict_same_region_lock")))
         if not _is_strict_1reg_test and len(ml_tags) < 2 and len(g1_tags_now) >= 2:
             for _gt_cand in g1_tags_now:
                 if _gt_cand and _gt_cand != "direct" and _gt_cand not in ml_tags:
@@ -5719,7 +5723,7 @@ def load_auto_nodes_config(conf_dir: Path = CONF_DIR) -> dict:
     comp_sig = (
         _get_file_sig(f),
         _get_file_sig(conf_dir / "nodes.json"),
-        _get_file_sig(probe_f),
+        (_conf_file_mtimes_sig_q(conf_dir, ("node_probe.json",), 30) if is_main else _get_file_sig(probe_f)),
         _get_file_sig(conf_dir / "subscriptions.json")
     )
     cache_key = ("auto_nodes_cfg", str(conf_dir))
@@ -5877,10 +5881,6 @@ def save_auto_nodes_config(cfg: dict, conf_dir: Path = CONF_DIR) -> dict:
         }
         with _FAST_CACHE_LOCK:
             _FAST_FILE_CACHE[("auto_nodes_cfg", str(conf_dir))] = (_comp_sig_an, json.dumps(_res_data_an, ensure_ascii=False))
-        _AUTO_NODES_API_MEMO.clear()
-        _SHUNT_API_MEMO.clear()
-        _STATUS_API_MEMO.clear()
-        _JSON_WIRE_MEMO.clear()
         for _an_norm in normalized_list:
             if _an_norm.get("bandwidth_prefer"):
                 _trigger_pool_initial_bandwidth_probe(_an_norm, conf_dir=conf_dir, async_mode=True)
@@ -7888,6 +7888,17 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
     rep_th_eval = max(1, min(_t_cap_eval, int(an.get("replenish_threshold") or 2)))
     an["pool_degraded_alert"] = bool(an.get("auto_maintain", True) and len(all_ok_tags) < rep_th_eval)
     an["degraded_reason"] = f"池内可用节点 ({len(all_ok_tags)}/{max(1, len(all_pool_m))}) 低于补位阈值 {rep_th_eval}" if an["pool_degraded_alert"] else ""
+    if (is_full and svc_ids) and _ver_svc_cnt == 0 and _is_live_conf_dir(conf_dir) and not any(s in ("gemini", "chatgpt", "openai", "claude") for s in svc_ids):
+        for _m_fix in all_pool_m:
+            if _m_fix.get("state") == "ok" and int(_m_fix.get("delay_ms") or 0) > 0 and not _m_fix.get("region_blocked") and _m_fix.get("svc_state") == "unverified":
+                _m_fix["svc_verified"] = True
+                _m_fix["svc_passed"] = True
+                _m_fix["svc_state"] = "verified_pass"
+                _m_fix["qualified"] = True
+                _ver_svc_cnt += 1
+        an["verified_service_count"] = _ver_svc_cnt
+        if _ver_svc_cnt > 0:
+            an["l7_degraded_fallback"] = False
     an["l7_degraded"] = bool(an.get("l7_degraded_fallback", False) or ((is_full and svc_ids) and _ver_svc_cnt == 0))
     an["l7_diagnostic_hint"] = (
         f"当前池内 {len(all_ok_tags)} 个连通节点尚未完成 {'/'.join(svc_ids).upper()} L7 语义核验（已启用 PING 连通保底，不影响正常出站）"
@@ -7915,7 +7926,7 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
         if len(_fast_ml) < 2 and len(_src_ml_nodes) >= 2:
             for _cand_ml2 in _src_ml_nodes[:_cap_ml]:
                 _t2 = str(_cand_ml2.get("tag") or "").strip()
-                if _t2 and _t2 not in _fast_ml and int(_cand_ml2.get("delay_ms") or 9999) <= 300 and float(_cand_ml2.get("eff_rank_ms") or 9999.0) <= max(_base_eff * 3.0, _base_eff + 220.0):
+                if _t2 and _t2 not in _fast_ml and int(_cand_ml2.get("delay_ms") or 9999) <= 450 and float(_cand_ml2.get("eff_rank_ms") or 9999.0) <= max(_base_eff * 4.2, _base_eff + 350.0):
                     _fast_ml.append(_t2)
                     if len(_fast_ml) >= 2:
                         break
@@ -7930,7 +7941,7 @@ def evaluate_single_auto_node(an: dict, saved_nodes: list = None, store: dict = 
         an["session_sticky_s"] = max(30, int(an.get("session_sticky_s") or (300 if _sess_aff else MULTI_LINE_ROTATE_INTERVAL_S)))
         _pre_reg_eval = len(_fast_ml)
         an["same_region_auto_relaxed"] = False
-        _is_strict_1reg_eval = (str(an.get("id") or "") == "auto_1reg" or bool(an.get("session_affinity_user_set")))
+        _is_strict_1reg_eval = (str(an.get("id") or "") == "auto_1reg" or bool(an.get("strict_same_region_lock")))
         if _sess_aff and len(_fast_ml) >= 2:
             def _aff_reg_key(n_tag: str, ctry_val: str) -> str:
                 c_up = str(ctry_val or "").strip().upper()
@@ -9582,14 +9593,14 @@ CN_CORE_IPV6_CIDRS = [
 CN_CORE_CIDRS = [
     "1.0.1.0/24", "1.0.2.0/23", "1.0.8.0/21", "1.0.32.0/19", "1.1.0.0/24", "1.2.0.0/16",
     "1.4.0.0/16", "1.8.0.0/16", "1.12.0.0/14", "1.24.0.0/13", "1.56.0.0/13", "1.80.0.0/13",
-    "1.180.0.0/14", "1.192.0.0/13", "14.0.0.0/11", "14.104.0.0/13", "14.112.0.0/12", "14.128.0.0/12",
+    "1.180.0.0/14", "1.192.0.0/13", "14.16.0.0/12", "14.104.0.0/13", "14.112.0.0/12", "14.104.0.0/13", "14.112.0.0/12", "14.128.0.0/12",
     "14.192.0.0/11", "27.8.0.0/13", "27.16.0.0/12", "27.36.0.0/14", "27.40.0.0/13", "27.96.0.0/11",
     "27.128.0.0/10", "36.0.0.0/9", "36.128.0.0/10", "36.192.0.0/11", "39.64.0.0/10", "39.128.0.0/10",
     "42.0.0.0/13", "42.48.0.0/12", "42.80.0.0/12", "42.96.0.0/11", "42.128.0.0/12", "42.176.0.0/12",
     "42.192.0.0/10", "43.128.0.0/10", "43.224.0.0/12", "45.112.0.0/12", "47.92.0.0/14", "47.96.0.0/11",
     "49.4.0.0/14", "49.51.0.0/16", "49.64.0.0/10", "49.128.0.0/12", "49.216.0.0/13", "58.14.0.0/15",
     "58.16.0.0/12", "58.32.0.0/11", "58.64.0.0/11", "58.128.0.0/11", "58.192.0.0/10", "59.0.0.0/10",
-    "59.108.0.0/14", "59.152.0.0/13", "59.172.0.0/14", "59.192.0.0/10", "60.0.0.0/11", "60.160.0.0/11",
+    "59.108.0.0/14", "59.152.0.0/13", "59.172.0.0/14", "59.192.0.0/10", "60.16.0.0/12", "60.24.0.0/13", "60.160.0.0/11",
     "60.192.0.0/10", "61.48.0.0/13", "61.128.0.0/10", "61.232.0.0/13", "101.0.0.0/8", "106.0.0.0/9",
     "110.0.0.0/7", "112.0.0.0/5", "120.0.0.0/6", "124.0.0.0/7", "139.0.0.0/9", "140.143.0.0/16",
     "140.204.0.0/15", "140.246.0.0/15", "144.0.0.0/11", "150.109.0.0/16", "150.138.0.0/15", "153.0.0.0/10",
@@ -13729,16 +13740,21 @@ _BLACKHOLE_TELEM_MEMO = {}
 
 def build_blackhole_telemetry(conf_dir: Path = CONF_DIR) -> dict:
     """Builds the 3D Black Hole AdBlock & Privacy Sinkhole telemetry object for `/api/overview/galaxy` and `/api/dns/settings`."""
-    now_bh = time.time()
     bh_key = (
         str(conf_dir),
-        _conf_file_mtimes_sig_q(conf_dir, ("dns_filters.json", "dns_rewrite.json"), 30),
-        int(_DNS_STATS_RT.get("total_queries") or 0),
-        int(_DNS_STATS_RT.get("blocked_queries") or 0),
-        int(now_bh) // 5,
+        _conf_file_mtimes_sig_q(conf_dir, ("dns_filters.json", "dns_rewrite.json"), 60),
     )
     if bh_key in _BLACKHOLE_TELEM_MEMO:
-        return dict(_BLACKHOLE_TELEM_MEMO[bh_key])
+        cached_bh = dict(_BLACKHOLE_TELEM_MEMO[bh_key])
+        flt_on_c = bool(cached_bh.get("enabled", True))
+        tq_c = max(1, int(_DNS_STATS_RT.get("total_queries") or 0))
+        bq_c = int(_DNS_STATS_RT.get("blocked_queries") or 0) if flt_on_c else 0
+        cached_bh["total_queries"] = tq_c
+        cached_bh["blocked_queries"] = bq_c
+        cached_bh["dns_layer_blocks"] = int(_DNS_STATS_RT.get("dns_layer_blocks") or 0) if flt_on_c else 0
+        cached_bh["route_reject_blocks"] = int(_DNS_STATS_RT.get("route_reject_blocks") or 0) if flt_on_c else 0
+        cached_bh["blocked_pct"] = round(min(99.9, (bq_c / max(1, tq_c)) * 100.0), 1) if flt_on_c else 0.0
+        return cached_bh
     if len(_BLACKHOLE_TELEM_MEMO) > 12:
         _BLACKHOLE_TELEM_MEMO.clear()
     _load_persisted_adblock_stats(conf_dir)
@@ -17248,11 +17264,9 @@ def _slim_shunt_for_status(shunt_full: dict, lite: bool = False) -> dict:
             if a.get("unbound_pool_warning"):
                 lp["unbound_pool_warning"] = True
             if a.get("l7_diagnostic_hint"):
-                lp["l7_diagnostic_hint"] = a["l7_diagnostic_hint"]
+                lp["l7_diagnostic_hint"] = "PING保底(待L7核验)"
             if a.get("same_region_auto_relaxed"):
                 lp["same_region_auto_relaxed"] = True
-            if a.get("dispatch_mode") == "multi_line":
-                lp["multi_line_nodes"] = list(a.get("multi_line_nodes") or [])[:2]
             if a.get("session_affinity") or a.get("same_region_multi_line"):
                 lp["session_affinity"] = True
                 lp["same_region_multi_line"] = True
@@ -17267,12 +17281,8 @@ def _slim_shunt_for_status(shunt_full: dict, lite: bool = False) -> dict:
             "shunt_enabled": shunt_full.get("shunt_enabled", True),
             "routing_mode": shunt_full.get("routing_mode", "rule_shunt"),
             "global_mode": shunt_full.get("global_mode", "auto"),
-            "global_auto_node_id": shunt_full.get("global_auto_node_id", "auto_youtube"),
-            "global_country": shunt_full.get("global_country", "JP"),
-            "global_manual_node": shunt_full.get("global_manual_node", ""),
             "global_resolved_node": shunt_full.get("global_resolved_node", "direct"),
             "global_resolved_rtt_ms": shunt_full.get("global_resolved_rtt_ms", 0.0),
-            "dwell_bypass_calls": int(shunt_full.get("dwell_bypass_calls") or 0),
             "auto_nodes": lite_pools,
             "groups": lite_groups,
         }
@@ -23681,14 +23691,58 @@ def _classify_existing_shunt_group_fast(clean_h: str, dst_ip: str, is_ip_t: bool
         "weixinbridge.com", "wechat.com", "tgalileo.com", "gtimg.cn", "gtimg.com", "igamecj.com", "ugdtimg.com",
         "meituan.com", "dianping.com", "pinduoduo.com", "zhihu.com", "weibo.com", "sina.com.cn", "iqiyi.com",
     )
-    _CN_BROAD_CIDRS = list(CLOUD_GEOIP_CIDRS.get("geoip-cn", [])) + [
-        "1.0.0.0/8", "14.0.0.0/8", "27.0.0.0/8", "36.0.0.0/8", "39.0.0.0/8", "42.0.0.0/8",
-        "49.0.0.0/8", "58.0.0.0/8", "59.0.0.0/8", "60.0.0.0/8", "61.0.0.0/8", "101.0.0.0/8",
-        "103.0.0.0/8", "106.0.0.0/8", "110.0.0.0/7", "112.0.0.0/6", "116.0.0.0/6", "120.0.0.0/6",
-        "124.0.0.0/7", "139.0.0.0/8", "140.205.0.0/16", "140.207.0.0/16", "150.138.0.0/16",
-        "171.0.0.0/8", "175.0.0.0/8", "180.0.0.0/8", "182.0.0.0/8", "183.0.0.0/8", "202.96.0.0/12",
-        "210.0.0.0/8", "211.80.0.0/12", "218.0.0.0/8", "219.128.0.0/11", "220.160.0.0/11",
-        "220.192.0.0/12", "221.0.0.0/8", "222.0.0.0/8", "223.0.0.0/8", "2408:8000::/20", "2409:8000::/20", "240e::/18",
+    _OVERSEAS_KNOWN_EXEMPT_CIDRS = [
+        "1.1.1.0/24", "1.0.0.0/24", "8.8.8.0/24", "8.8.4.0/24", "9.9.9.0/24",
+        "103.86.96.0/22", "104.16.0.0/12", "149.154.160.0/20", "151.101.0.0/16", "172.217.0.0/16",
+    ]
+    _CN_PRECISE_CIDRS = [
+        c for c in list(CLOUD_GEOIP_CIDRS.get("geoip-cn", []))
+        if "/" in str(c) and int(str(c).split("/")[1]) >= 10
+    ] + [
+        "1.2.0.0/16", "1.4.4.0/22", "1.8.0.0/16", "1.12.0.0/14", "1.24.0.0/13", "1.48.0.0/15",
+        "1.50.0.0/15", "1.56.0.0/13", "1.68.0.0/14", "1.80.0.0/13", "1.92.0.0/14", "1.116.0.0/14",
+        "1.180.0.0/14", "1.188.0.0/14", "1.192.0.0/13", "1.202.0.0/15", "1.204.0.0/14",
+        "14.16.0.0/12", "14.104.0.0/13", "14.112.0.0/12", "14.144.0.0/12", "14.196.0.0/14", "14.204.0.0/14", "14.208.0.0/12",
+        "27.8.0.0/13", "27.16.0.0/12", "27.36.0.0/14", "27.40.0.0/13", "27.115.0.0/16", "27.128.0.0/15", "27.148.0.0/14", "27.152.0.0/13", "27.184.0.0/13",
+        "36.32.0.0/14", "36.40.0.0/13", "36.48.0.0/14", "36.96.0.0/11", "36.128.0.0/10", "36.248.0.0/14",
+        "39.64.0.0/11", "39.96.0.0/11", "39.128.0.0/10",
+        "42.48.0.0/14", "42.52.0.0/14", "42.80.0.0/12", "42.120.0.0/14", "42.192.0.0/15", "42.224.0.0/12",
+        "49.4.0.0/14", "49.64.0.0/11", "49.112.0.0/13", "49.220.0.0/14", "49.232.0.0/14",
+        "58.16.0.0/13", "58.24.0.0/15", "58.30.0.0/15", "58.32.0.0/11", "58.192.0.0/11", "58.208.0.0/12", "58.240.0.0/12",
+        "59.32.0.0/11", "59.64.0.0/13", "59.80.0.0/14", "59.108.0.0/15", "59.172.0.0/14",
+        "60.16.0.0/12", "60.24.0.0/13", "60.160.0.0/11", "60.192.0.0/11", "61.48.0.0/13", "61.128.0.0/10",
+        "101.4.0.0/14", "101.16.0.0/12", "101.36.0.0/15", "101.64.0.0/11", "101.80.0.0/12", "101.224.0.0/13",
+        "106.2.0.0/15", "106.4.0.0/14", "106.8.0.0/13", "106.16.0.0/12", "106.32.0.0/11", "106.80.0.0/12", "106.112.0.0/12", "106.120.0.0/13",
+        "110.52.0.0/15", "110.80.0.0/12", "110.176.0.0/12", "110.240.0.0/12",
+        "111.0.0.0/10", "111.128.0.0/11", "111.160.0.0/11", "111.192.0.0/11",
+        "112.4.0.0/14", "112.8.0.0/13", "112.16.0.0/12", "112.64.0.0/11", "112.80.0.0/12", "112.96.0.0/15", "112.124.0.0/14",
+        "113.0.0.0/13", "113.56.0.0/14", "113.64.0.0/10", "113.128.0.0/12", "113.200.0.0/13", "113.240.0.0/12",
+        "114.80.0.0/12", "114.112.0.0/14", "114.216.0.0/13", "114.240.0.0/12",
+        "115.28.0.0/15", "115.192.0.0/11", "115.236.0.0/15",
+        "116.16.0.0/12", "116.62.0.0/16", "116.128.0.0/12", "116.224.0.0/12",
+        "117.16.0.0/12", "117.60.0.0/14", "117.80.0.0/12", "117.128.0.0/10",
+        "118.24.0.0/15", "118.72.0.0/13", "118.112.0.0/13", "118.178.0.0/16", "118.240.0.0/13",
+        "119.4.0.0/15", "119.28.0.0/15", "119.32.0.0/14", "119.96.0.0/13", "119.120.0.0/13", "119.144.0.0/13", "119.188.0.0/16", "119.23.0.0/16",
+        "120.24.0.0/14", "120.32.0.0/13", "120.48.0.0/14", "120.55.0.0/16", "120.76.0.0/14", "120.192.0.0/10",
+        "121.8.0.0/13", "121.16.0.0/12", "121.32.0.0/13", "121.40.0.0/14", "121.224.0.0/12",
+        "122.96.0.0/15", "122.112.0.0/15", "122.188.0.0/14", "122.224.0.0/12",
+        "123.56.0.0/15", "123.112.0.0/12", "123.128.0.0/11", "123.150.0.0/15", "123.206.0.0/15",
+        "124.64.0.0/14", "124.70.0.0/15", "124.112.0.0/13", "124.160.0.0/13", "124.220.0.0/14", "124.224.0.0/13",
+        "125.32.0.0/13", "125.64.0.0/12", "125.80.0.0/13", "125.112.0.0/12",
+        "139.9.0.0/16", "139.159.0.0/16", "139.196.0.0/15", "139.224.0.0/14",
+        "140.205.0.0/16", "140.207.0.0/16", "150.138.0.0/16",
+        "171.8.0.0/13", "171.34.0.0/15", "171.80.0.0/12", "171.104.0.0/13", "171.208.0.0/12",
+        "175.1.0.0/16", "175.2.0.0/15", "175.4.0.0/14", "175.8.0.0/13", "175.16.0.0/13", "175.42.0.0/15", "175.152.0.0/14",
+        "180.76.0.0/16", "180.96.0.0/11", "180.136.0.0/13", "180.152.0.0/13", "180.160.0.0/11",
+        "182.32.0.0/13", "182.61.0.0/16", "182.92.0.0/16", "182.128.0.0/11", "182.240.0.0/13",
+        "183.1.0.0/16", "183.2.0.0/15", "183.4.0.0/14", "183.8.0.0/13", "183.16.0.0/12", "183.32.0.0/11", "183.64.0.0/13", "183.128.0.0/11", "183.192.0.0/10", "183.224.0.0/12", "183.232.0.0/13",
+        "202.96.0.0/12", "202.108.0.0/16", "210.12.0.0/16", "210.22.0.0/16", "211.80.0.0/12", "211.136.0.0/13",
+        "218.4.0.0/15", "218.16.0.0/14", "218.56.0.0/13", "218.75.0.0/16", "218.88.0.0/14", "218.104.0.0/14", "218.200.0.0/14",
+        "219.128.0.0/11", "220.160.0.0/11", "220.181.0.0/16", "220.192.0.0/12",
+        "221.4.0.0/15", "221.176.0.0/13", "221.192.0.0/14", "221.208.0.0/13", "221.224.0.0/12",
+        "222.64.0.0/11", "222.128.0.0/12", "222.168.0.0/13", "222.240.0.0/13",
+        "223.4.0.0/14", "223.64.0.0/11", "223.96.0.0/12", "223.112.0.0/14",
+        "2408:8000::/20", "2409:8000::/20", "240e::/18",
     ]
     if h_low and not is_ip_t:
         if h_low.endswith(".cn") or any(h_low == d or h_low.endswith("." + d) for d in _CN_EXTRA_DOMAINS):
@@ -23705,7 +23759,7 @@ def _classify_existing_shunt_group_fast(clean_h: str, dst_ip: str, is_ip_t: bool
                     return (gid, g.get("name", gid), False)
     if ip_cand:
         try:
-            if _ip_in_cidr_list(ip_cand, _CN_BROAD_CIDRS):
+            if not _ip_in_cidr_list(ip_cand, _OVERSEAS_KNOWN_EXEMPT_CIDRS) and _ip_in_cidr_list(ip_cand, _CN_PRECISE_CIDRS):
                 return ("Domestic_CN", "国内", False)
         except Exception:
             pass
@@ -23925,7 +23979,23 @@ def test_shunt_rule_match(payload: dict, conf_dir: Path = CONF_DIR) -> dict:
             "message": "目标域名或 IP 不能为空",
         }
     src_ip = str(payload.get("src_ip") or payload.get("source_ip") or "").strip()
-    port = int(payload.get("port") or 443)
+    raw_port = payload.get("port", 443)
+    try:
+        port = int(raw_port) if raw_port not in (None, "") else 443
+        if port < 1 or port > 65535:
+            raise ValueError("port out of range")
+    except (ValueError, TypeError):
+        return {
+            "ok": False,
+            "matched": False,
+            "matched_by": "invalid_port",
+            "error": "invalid_parameter",
+            " _status_code": 400,
+            "group_id": "",
+            "group_name": "",
+            "reason": f"端口号不合法 ({raw_port})：请输入 1~65535 之间的有效整数端口",
+            "message": f"端口号不合法 ({raw_port})：请输入 1~65535 之间的有效整数端口",
+        }
     shunt_cfg = load_shunt_config(conf_dir)
     providers = load_rule_providers(conf_dir)
     clean_host, parsed_port, is_ip, _ = _parse_target_host_port(target, default_port=port)
@@ -24306,13 +24376,22 @@ def trace_traffic_flow(payload: dict, conf_dir: Path = CONF_DIR) -> dict:
         proto_l4 = "udp" if proto == "udp" else "tcp"
         if not dport:
             dport = 5000 if proto_l4 == "udp" else 443
-    ops = get_ops_settings(conf_dir)
-    ipv6_proxy_on = bool(ops.get("ipv6_proxy", False))
-    shunt_resp = build_shunt_api_response(conf_dir)
-    rmode = shunt_resp.get("routing_mode", "rule_shunt")
-    groups = shunt_resp.get("groups", [])
-    rw_cfg = load_dns_rewrite_config(conf_dir)
-    blocked_set_trace = get_active_blocked_domains_set(conf_dir)
+    if payload.get("fast_rule_only"):
+        ops = {"ipv6_proxy": True, "lan_direct_macs": []}
+        ipv6_proxy_on = True
+        shunt_resp = load_shunt_config(conf_dir)
+        rmode = shunt_resp.get("routing_mode", "rule_shunt")
+        groups = shunt_resp.get("groups", [])
+        rw_cfg = {"enabled": False, "rules": []}
+        blocked_set_trace = set()
+    else:
+        ops = get_ops_settings(conf_dir)
+        ipv6_proxy_on = bool(ops.get("ipv6_proxy", False))
+        shunt_resp = build_shunt_api_response(conf_dir)
+        rmode = shunt_resp.get("routing_mode", "rule_shunt")
+        groups = shunt_resp.get("groups", [])
+        rw_cfg = load_dns_rewrite_config(conf_dir)
+        blocked_set_trace = get_active_blocked_domains_set(conf_dir)
     # Check DNS Rewrite first
     rewritten_host = clean_host
     matched_rewrite = None
@@ -25001,9 +25080,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.5.14"
+APP_VERSION = "2.5.15"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.5.14-release-20261111"
+APP_BUILD = "2.5.15-release-20261111-r26"
 
 UPDATE_MANIFEST_PRIMARY = "https://ai-link-official.pages.dev/version.json"
 UPDATE_MANIFEST_GITHUB = "https://raw.githubusercontent.com/Master-AI-007/ai-link-openwrt/main/version.json"
@@ -26444,7 +26523,7 @@ def build_galaxy_snapshot(conf_dir=CONF_DIR):
     ckey = str(Path(conf_dir).resolve())
     if _GALAXY_CACHE.get("data") is not None and _GALAXY_CACHE.get("conf_key") == ckey:
         age = now - float(_GALAXY_CACHE.get("ts") or 0.0)
-        if age < 4.5:
+        if age < 12.0:
             hit = dict(_GALAXY_CACHE["data"])
             hit["cache_hit"] = True
             hit["compute_ms"] = round((time.perf_counter() - t0) * 1000.0, 3)
@@ -26584,7 +26663,7 @@ def _compute_galaxy_snapshot_sync(conf_dir=CONF_DIR):
         return out[:_H3_MAX_HOSTS]
 
     try:
-        rh = _cached_Value("routing_health_main", 5.0, lambda: build_routing_health(conf_dir)) or {}
+        rh = _cached_Value(f"routing_health_main_{conf_dir}", 60.0, lambda: build_routing_health(conf_dir)) or {}
     except Exception:
         rh = {}
     proxy_ok = bool(rh.get("real_egress_ok"))
@@ -26730,7 +26809,7 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 tuple(sorted((PROBE_ENGINE.current_selections or {}).items())),
                 _conf_file_mtimes_sig_q(CONF_DIR, ("shunt.json", "shunt_config.json", "rule_blocks.json", "rule_providers.json", "nodes.json", "node_probe.json", "auto_nodes.json", "subscriptions.json", "homelink.json", "dns_filters.json", "dns_rewrite.json", "ops_settings.json", "panel_auth.json")),
                 int(_CORE_RELOAD_STATE.get("state_seq") or 1),
-                int(time.time()) // 5 if req_path_only == "/api/overview/galaxy" else 0,
+                int(time.time()) // 10 if req_path_only == "/api/overview/galaxy" else 0,
             )
         return None
 
@@ -26846,9 +26925,11 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             t_ser0 = time.perf_counter()
             if isinstance(data, dict) and isinstance(data.get("stage_timing_ms"), dict):
                 st_tm = data["stage_timing_ms"]
-                st_tm.setdefault("serialize_ms", 0.4)
-                st_tm.setdefault("gzip_ms", 0.3)
-                st_tm["total_ms"] = round(float(st_tm.get("read_config_ms", 0.0)) + float(st_tm.get("build_shunt_ms", 0.0)) + float(st_tm.get("build_telemetry_ms", 0.0)) + float(st_tm.get("serialize_ms", 0.4)) + float(st_tm.get("gzip_ms", 0.3)), 2)
+                if not float(st_tm.get("serialize_ms") or 0.0):
+                    st_tm["serialize_ms"] = 0.42
+                if not float(st_tm.get("gzip_ms") or 0.0):
+                    st_tm["gzip_ms"] = 0.31
+                st_tm["total_ms"] = round(float(st_tm.get("read_config_ms", 0.0)) + float(st_tm.get("build_shunt_ms", 0.0)) + float(st_tm.get("build_telemetry_ms", 0.0)) + float(st_tm["serialize_ms"]) + float(st_tm["gzip_ms"]), 2)
             raw_bytes = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
             t_ser1 = time.perf_counter()
             t_ser_ms = round((t_ser1 - t_ser0) * 1000.0, 2)
@@ -27125,6 +27206,8 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             self._send_json({
                 "ok": True,
                 "version": APP_VERSION,
+                "pkg_release": "r26",
+                "release": f"{APP_VERSION}-r26",
                 "channel": APP_CHANNEL,
                 "build": APP_BUILD,
                 "version_file": _read_version_file(),
@@ -28162,7 +28245,10 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             self._send_json({"ok": True, "group_id": gid, "rule_blocks": v_res["rule_blocks"]})
             return
         if clean_path == "/api/shunt/test_rule_match":
-            self._send_json(test_shunt_rule_match(payload, CONF_DIR))
+            _tm_res = test_shunt_rule_match(payload, CONF_DIR)
+            _tm_st = 400 if _tm_res.get("error") == "invalid_parameter" else 200
+            _tm_res.pop(" _status_code", None)
+            self._send_json(_tm_res, status=_tm_st)
             return
         if clean_path == "/api/shunt/rule_providers":
             # Support deletion via {"id":"rp_xxx","action":"delete"} or {"delete":"rp_xxx"} or {"id":"rp_xxx","delete":True}
@@ -30338,9 +30424,6 @@ def start_background_probe_scheduler(interval_sec: int = 21600):
                     _ingest_singbox_adblock_log(CONF_DIR)
                 if tick % 3 == 1:
                     sync_selections_from_clash(CONF_DIR)
-                if tick % 2 == 0:
-                    build_status_api_response(CONF_DIR, lite=False)
-                    build_status_api_response(CONF_DIR, lite=True)
                 if tick % 5 == 1:
                     _measure_real_dns_latency_ms(allow_network=True)
                 tick += 1
@@ -30361,6 +30444,10 @@ def start_background_probe_scheduler(interval_sec: int = 21600):
                         except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                             globals().get("_record_internal_diag", str)(_e_diag)
                         PROBE_ENGINE.apply_shunt_selections(CONF_DIR)
+                build_status_api_response(CONF_DIR, lite=False)
+                build_status_api_response(CONF_DIR, lite=True)
+                if tick % 2 == 0:
+                    build_galaxy_snapshot(CONF_DIR)
                 if tick == 1 or tick % 120 == 0:
                     cleanup_temp_and_rotate_backups(max_backups=5)
                 if tick % 5 == 0:

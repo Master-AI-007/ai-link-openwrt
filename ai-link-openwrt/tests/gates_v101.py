@@ -132,7 +132,7 @@ def versions():
     d = DAEMON.read_text(encoding="utf-8")
     m = re.search(r'^APP_VERSION = "([^"]+)"', d, re.M)
     app = m.group(1) if m else "?"
-    mb = re.search(r'^APP_BUILD = "([0-9.]+)-release-\d+"', d, re.M)
+    mb = re.search(r'^APP_BUILD = "([0-9.]+)-release-[0-9a-z-]+"', d, re.M)
     build_v = mb.group(1) if mb else "?"
     inst = re.search(r'^VERSION="([^"]+)"', INST.read_text(encoding="utf-8"), re.M)
     inst = inst.group(1) if inst else "?"
@@ -416,7 +416,7 @@ def fb250_packaging_and_luci_gate():
                 if actual_cn != cn_nums[:len(actual_cn)] or len(actual_cn) < 5:
                     fp_mismatches.append(f"{doc_name}:non_consecutive_h2={actual_cn}")
                 # FB-257-2: Verify report contains post-injected run_all summary and environment note
-                for _req_tok in ("验证环境", "本轮增量说明", "（构建容器）", "合计 15 套，通过 15，失败 0", "115/115", "152/152", "88/88", "Stage 7.25", "#441095950", "c7cd5c41", "live_write_leaked"):
+                for _req_tok in ("验证环境", "本轮增量说明", "（构建容器）", "合计 15 套，通过 15，失败 0", "115/115", "152/152", "89/89", "Stage 7.26", "#441274023", "c6a7027a", "live_write_leaked"):
                     if _req_tok not in doc_txt:
                         fp_mismatches.append(f"{doc_name}:missing_fb257_2_token({_req_tok})")
             rows = re.findall(r"^\|\s*`([^`]+)`\s*\|\s*[^|]*?`(\d+)`[^|]*\|\s*`([0-9a-f]{32})`\s*\|\s*`([0-9a-f]{64})`\s*\|", doc_txt, re.M)

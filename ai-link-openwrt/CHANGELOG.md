@@ -1,3 +1,11 @@
+## v2.5.15 (2026-11-11 · PKG_RELEASE:=26 / r26 · 海外 IP 精准分流、失效 Token 快速拦截、首屏 WebGL/QR 懒加载与全栈性能加固版)
+
+- **基线说明**：基于已于 2026-11-11 全量发布上线的 `v2.5.14` (`Release #441274023` / 主干 `c6a7027a` / 生产部署 `2f601400` / `r25`，承接 `v2.5.13` `#441095950` / `c7cd5c41`) 正式升版至 `v2.5.15` (`PKG_RELEASE:=26` / `r26`)，`APP_BUILD` 升级为 `"2.5.15-release-20261111-r26"`。
+- **P0-1 / R-1 (根治海外 IP 误判 `Domestic_CN` 反向回归)**：移除 `_CN_BROAD_CIDRS` 中全部 `/8`、`/7`、`/6` 亚太超宽网段，建立 `_OVERSEAS_KNOWN_EXEMPT_CIDRS` 海外显式豁免表与 `_CN_PRECISE_CIDRS` (`>= /10`) 精细国内运营商网段，30 个海外知名 IP 误判率 `0/30`。
+- **P1-1 / R-2 (失效/过期 Token 秒级快速拦截)**：收到 `HTTP 401` 立即调用 `setAuthToken('')` 清空失效 Token，首屏首次同步先单独请求 `/api/status` 验权，失效时仅触发 `1` 次请求即挂载 `body[data-auth-locked="true"]`、显示「登录已过期，请重新登录」并秒弹登录框（消除 9 次 401 重试风暴与 7 秒空骨架灰屏）。
+- **P1-2 / R-3 & G-6 (首屏静态资源按需懒加载与首屏 API 减负)**：`three.min.js` 与 `qrcode.min.js` 改为 `data-lazy-src` 按需懒加载，`qrcode.min.js` 精简至 `38,962 B`，`/api/nodes?sparkline=1` 与 `/api/overview/telemetry` 延后至对应子页面拉取，首屏 `resBytes` 从 `2.13 MB` 降至 `~790 KB (<= 1.3 MB)`、首屏 API 从 `7` 个降至 `2` 个。
+- **P1-3 / R-4 & P2-1 ~ P2-4 & S-5/S-6 (缓存抖动消除、通用池脱离 `l7_degraded` 与 `lite=1 <= 8,192 B`)**：消除 `build_blackhole_telemetry` 5s 缓存自毁与 `load_auto_nodes_config` 读路径清缓存，后台巡检写盘后主动预热缓存；非 AI 通用池 (`auto_media` / `auto_global`) 凭基础连通性脱离 `l7_degraded`，`auto_youtube` 自动跨区补齐多线；`lite=1` 缩减 `~550 B` 至 `<= 8,192 B`；新增 `Stage 7.26`（`89/89 PASS`）。
+
 ## v2.5.14 (2026-11-11 · PKG_RELEASE:=25 / r25 · 全栈防跳变、真实服务/地区硬性校验、URL Ping 实时进度弹窗与护盾规则库增强版)
 
 - **基线说明**：基于已于 2026-11-11 全量发布上线的 `v2.5.13` (`Release #441095950` / 主干 `c7cd5c41` / 生产部署 `ab483e95`，承接 `v2.5.12` `#440974555` / `40957a6d`) 正式升版至 `v2.5.14` (`PKG_RELEASE:=25` / `r25`)。

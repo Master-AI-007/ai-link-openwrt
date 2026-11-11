@@ -1575,7 +1575,7 @@ def main() -> int:
         gates_254_txt = (Path(__file__).resolve().parent / "gates_v101.py").read_text(encoding="utf-8")
         check("Stage 6.27a (v2.5.4 FB-253-1/2 Makefile PKG_VERSION/PKG_RELEASE 锚点与报告版本结构门禁): Makefile 含 PKG_VERSION:=2.5.4 与 PKG_RELEASE:=14，且 gates_v101 强制校验报告 PKG_RELEASE 与首节版本号",
               f"PKG_VERSION:={dmod.APP_VERSION}" in mk_254_txt
-              and "PKG_RELEASE:=25" in mk_254_txt
+              and "PKG_RELEASE:=26" in mk_254_txt
               and "FB-253-1: Verify PKG_RELEASE" in gates_254_txt
               and "FB-253-2: Verify report Section 1" in gates_254_txt,
               f"app_ver={dmod.APP_VERSION}")
@@ -3254,6 +3254,47 @@ def main() -> int:
         check("Stage 7.25 (v2.5.14 .srs真实zlib编译校验 + 雷达<50ms与快照撤销 + 自动池10/10验证状态保留与L7/地区硬性准入 + 全站防跳变深合并 + URL Ping实时进度弹窗 + 护盾规则库开关/单库更新/10套GitHub预设/设置页移除更新按钮门禁)",
               srs_and_radar_725_ok and ui_and_dns_725_ok,
               f"srs_radar={srs_and_radar_725_ok}(ms={_ld_ms:.1f}), ui_dns={ui_and_dns_725_ok}(slim_m={_slim_m_cnt}, presets={_preset_cnt})")
+
+        # ------------------------------------------------------------------
+        # Stage 7.26: v2.5.15 (r26) 全量闭环门禁 (P0-1/R-1 30海外IP零误判国内 + P1-1/R-2 失效Token快速失败 + P1-2/R-3 首屏three/qrcode懒加载 + P2-2 APP_BUILD含r26 + P2-4 lite<=8KB + S-6 实写回滚一致性)
+        # ------------------------------------------------------------------
+        _overseas_30 = [
+            "1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4", "9.9.9.9", "103.86.96.100",
+            "101.102.103.104", "27.0.0.1", "36.0.0.1", "42.0.0.1", "49.0.0.1", "58.0.0.1",
+            "59.0.0.1", "60.0.0.1", "61.0.0.1", "106.0.0.1", "110.0.0.1", "112.0.0.1",
+            "116.0.0.1", "120.0.0.1", "124.0.0.1", "14.0.0.1", "210.0.0.1", "218.0.0.1",
+            "221.0.0.1", "222.0.0.1", "223.0.0.1", "104.16.0.1", "172.217.0.1", "151.101.0.1",
+        ]
+        _domestic_10 = [
+            "114.114.114.114", "223.5.5.5", "119.29.29.29", "122.96.96.251", "140.207.176.101",
+            "59.83.207.176", "220.196.42.1", "180.76.76.76", "202.96.128.86", "119.188.98.10",
+        ]
+        _grps_726 = dmod.load_shunt_config(tmp_v252).get("groups") or []
+        _false_pos_726 = [ip for ip in _overseas_30 if dmod._classify_existing_shunt_group_fast(ip, ip, True, _grps_726)[0] == "Domestic_CN"]
+        _dom_hits_726 = [ip for ip in _domestic_10 if dmod._classify_existing_shunt_group_fast(ip, ip, True, _grps_726)[0] == "Domestic_CN"]
+        _r1_cidr_ok = (len(_false_pos_726) == 0 and len(_dom_hits_726) == len(_domestic_10))
+        # S-6: Real write + snapshot rollback bit-for-bit verification
+        _sh_before_726 = (tmp_v252 / "shunt.json").read_bytes() if (tmp_v252 / "shunt.json").is_file() else b""
+        _qa_w_726 = dmod.quick_assign_live_traffic({"target": "live-rollback-verify-726.example", "group_id": "AI"}, conf_dir=tmp_v252)
+        _snap_id_726 = _qa_w_726.get("snapshot_id")
+        _rb_res_726 = dmod.rollback_config_snapshot(_snap_id_726, target_state="before", conf_dir=tmp_v252) if _snap_id_726 else {"ok": False}
+        _sh_after_726 = (tmp_v252 / "shunt.json").read_bytes() if (tmp_v252 / "shunt.json").is_file() else b""
+        _s6_rollback_ok = bool(_qa_w_726.get("ok") and _rb_res_726.get("ok") and _sh_before_726 == _sh_after_726)
+        # P3: Invalid port returns Chinese reason
+        _inv_p_726 = dmod.test_shunt_rule_match({"target": "chatgpt.com", "port": "99999"}, conf_dir=tmp_v252)
+        _p3_port_ok = (_inv_p_726.get("ok") is False and _inv_p_726.get("error") == "invalid_parameter" and "端口号不合法" in str(_inv_p_726.get("reason") or ""))
+        # R-2 / R-3 / P2-2: Check lazy script attributes, fast-fail 401 token clear, and APP_BUILD r26
+        _r2_r3_ok = (
+            "r26" in str(getattr(dmod, "APP_BUILD", ""))
+            and 'id="lazy-three-js" data-lazy-src=' in _html_725
+            and 'id="lazy-qrcode-js" data-lazy-src=' in _html_725
+            and "配置网络与加速镜像" in _html_725
+            and "登录已过期，请重新登录" in _js_725
+            and "ensureThreeLoaded" in _js_725
+        )
+        check("Stage 7.26 (v2.5.15 P0-1/R-1 30海外IP零误判国内 + R-2失效Token秒级拦截 + R-3/G-6首屏three/qrcode懒加载 + S-6快照实写回滚100%还原 + P2-2 APP_BUILD含r26 + P3非法端口中文提示门禁)",
+              _r1_cidr_ok and _s6_rollback_ok and _p3_port_ok and _r2_r3_ok,
+              f"r1={_r1_cidr_ok}(fp={len(_false_pos_726)}/30,dom={len(_dom_hits_726)}/10), s6_rb={_s6_rollback_ok}, p3_port={_p3_port_ok}, r2_r3={_r2_r3_ok}")
     finally:
         shutil.rmtree(tmp_v252, ignore_errors=True)
 

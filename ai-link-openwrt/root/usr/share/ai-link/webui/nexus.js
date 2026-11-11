@@ -582,7 +582,7 @@
     const isMutating = method && method.toUpperCase() !== 'GET';
     const isBgPoll = !isMutating && (epBase === '/api/status' || epBase === '/api/overview/galaxy' || epBase === '/api/ops/logs' || String(endpoint || '').startsWith('/api/nodes?sparkline=1'));
     const tok = getAuthToken();
-    if (state.authRequiredLock && !tok && epBase !== '/api/login' && epBase !== '/api/system/version') {
+    if (state.authRequiredLock && epBase !== '/api/login' && epBase !== '/api/system/version') {
       return { ok: false, error: 'unauthorized', _httpStatus: 401, _shortCircuitedUnauth: true };
     }
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
@@ -600,7 +600,13 @@
       let data = {};
       try { data = await res.json(); } catch (_) {}
       if (res.status === 401 && epBase !== '/api/login') {
+        setAuthToken('');
         state.authRequiredLock = true;
+        try {
+          document.body.setAttribute('data-auth-locked', 'true');
+          const mEl = document.getElementById('top-mode-main');
+          if (mEl) mEl.textContent = '登录已过期，请重新登录';
+        } catch (_) {}
         if (!state._loginPromptedOnce) {
           state._loginPromptedOnce = true;
           promptPanelLoginModal();
@@ -816,6 +822,7 @@
         if (res && res.ok && res.token) {
           state.authRequiredLock = false;
           state._loginPromptedOnce = false;
+          try { document.body.removeAttribute('data-auth-locked'); } catch (_) {}
           setAuthToken(res.token);
           closeModal();
           if (!scene) initScene();
@@ -2707,7 +2714,7 @@
     }
     return items.map(it => {
       const srcBadge = it.source === 'seed' ? '<span class="version-chip" style="padding:1px 5px;margin-left:4px;opacity:0.75">示例</span>' : '<span class="version-chip" style="padding:1px 5px;margin-left:4px;color:var(--mint)">实时</span>';
-      const fbBadge = it.is_fallback ? '<span class="version-chip" style="padding:1px 5px;margin-left:4px;color:var(--amber)">兜底待归类</span>' : (it.already_matched ? '<span class="version-chip" style="padding:1px 5px;margin-left:4px;color:var(--cyan)">已命中常规组</span>' : '');
+      const fbBadge = (it.is_fallback !== false && !it.already_matched) ? '<span class="version-chip" style="padding:1px 5px;margin-left:4px;color:var(--amber)">兜底待归类</span>' : '<span class="version-chip" style="padding:1px 5px;margin-left:4px;color:var(--cyan)">已命中常规组</span>';
       return '<div class="trace-stage" style="padding:8px 11px;align-items:center">' +
         '<i>' + (it.is_ip ? 'IP' : 'DNS') + '</i>' +
         '<div style="min-width:0;flex:1">' +
@@ -3023,6 +3030,9 @@
       scene.setActive(normalized === 'galaxy');
       if (normalized === 'galaxy') setTimeout(() => scene.resize(), 50);
     }
+    if (normalized === 'galaxy' && !scene && !state.authRequiredLock) setTimeout(initScene, 20);
+    if (normalized === 'nodes' || normalized === 'homelink') ensureQrCodeLoaded();
+    if (normalized === 'nodes' && !state.rawNodes.length && !state.authRequiredLock && !window.__MOCK_STATUS) syncBackendStatus(true, false);
     if (normalized === 'overview') setTimeout(drawTrafficChart, 60);
     if (normalized === 'overview' && !state.authRequiredLock && !window.__MOCK_STATUS) {
       if (!state.overviewTelemetryFull || !Array.isArray(state.overviewTelemetryFull.matrix_7x24) || (Date.now() - Number(state._lastOvFullTs || 0)) > 12000) {
@@ -3523,16 +3533,25 @@
   };
 
   async function syncBackendStatus(forceNodes, forceImmediate) {
-    if (state.authRequiredLock && !getAuthToken() && !forceImmediate) return;
+    if (state.authRequiredLock && !forceImmediate) return;
     try {
       const statusEp = (!forceImmediate && state.rawStatus) ? '/api/status?lite=1' : '/api/status';
       let stRes = null;
       let galRes = null;
       let nodesRes = null;
-      if (!getAuthToken() && !window.__MOCK_STATUS) {
+      const nowMs = Date.now();
+      const wantGalaxy = Boolean(window.__MOCK_STATUS || (state.page === 'galaxy' && (forceImmediate || !state._lastGalaxyFetchTs || (nowMs - state._lastGalaxyFetchTs) >= 4800)));
+      const wantNodes = Boolean(forceNodes || ((window.__MOCK_STATUS || state.page === 'nodes') && !state.rawNodes.length));
+      if (!state.rawStatus && !window.__MOCK_STATUS) {
         stRes = await callRouterApi(statusEp, 'GET', null, 15000, true);
         if (!stRes || stRes._httpStatus === 401 || stRes.auth_required) {
+          setAuthToken('');
           state.authRequiredLock = true;
+          try {
+            document.body.setAttribute('data-auth-locked', 'true');
+            const mEl = document.getElementById('top-mode-main');
+            if (mEl) mEl.textContent = '登录已过期，请重新登录';
+          } catch (_) {}
           if (stRes && stRes.pwd_customized != null) state.pwdCustomized = Boolean(stRes.pwd_customized);
           if (!state._loginPromptedOnce) {
             state._loginPromptedOnce = true;
@@ -3541,19 +3560,27 @@
           return;
         }
         state.authRequiredLock = false;
-        if (!scene) initScene();
+        try { document.body.removeAttribute('data-auth-locked'); } catch (_) {}
+        if (wantGalaxy) state._lastGalaxyFetchTs = nowMs;
         [galRes, nodesRes] = await Promise.all([
-          callRouterApi('/api/overview/galaxy', 'GET', null, 12000, true),
-          (forceNodes || !state.rawNodes.length) ? callRouterApi('/api/nodes?sparkline=1', 'GET', null, 15000, true) : Promise.resolve(null)
+          wantGalaxy ? callRouterApi('/api/overview/galaxy', 'GET', null, 12000, true) : Promise.resolve(null),
+          wantNodes ? callRouterApi('/api/nodes?sparkline=1', 'GET', null, 15000, true) : Promise.resolve(null)
         ]);
       } else {
+        if (wantGalaxy) state._lastGalaxyFetchTs = nowMs;
         [stRes, galRes, nodesRes] = await Promise.all([
           callRouterApi(statusEp, 'GET', null, 15000, true),
-          callRouterApi('/api/overview/galaxy', 'GET', null, 12000, true),
-          (forceNodes || !state.rawNodes.length) ? callRouterApi('/api/nodes?sparkline=1', 'GET', null, 15000, true) : Promise.resolve(null)
+          wantGalaxy ? callRouterApi('/api/overview/galaxy', 'GET', null, 12000, true) : Promise.resolve(null),
+          wantNodes ? callRouterApi('/api/nodes?sparkline=1', 'GET', null, 15000, true) : Promise.resolve(null)
         ]);
         if (stRes && (stRes._httpStatus === 401 || stRes.auth_required) && !window.__MOCK_STATUS) {
+          setAuthToken('');
           state.authRequiredLock = true;
+          try {
+            document.body.setAttribute('data-auth-locked', 'true');
+            const mEl = document.getElementById('top-mode-main');
+            if (mEl) mEl.textContent = '登录已过期，请重新登录';
+          } catch (_) {}
           if (!state._loginPromptedOnce) {
             state._loginPromptedOnce = true;
             promptPanelLoginModal();
@@ -3697,7 +3724,7 @@
         } else {
           state.rawStatus = Object.assign({}, prevRawSt, stRes);
         }
-        if (!window.__MOCK_STATUS && !state._fetchingOvFull && (!state.overviewTelemetryFull || !Array.isArray(state.overviewTelemetryFull.matrix_7x24) || (state.page === 'overview' && (Date.now() - Number(state._lastOvFullTs || 0)) > 30000))) {
+        if (!window.__MOCK_STATUS && !state._fetchingOvFull && state.page === 'overview' && (!state.overviewTelemetryFull || !Array.isArray(state.overviewTelemetryFull.matrix_7x24) || (Date.now() - Number(state._lastOvFullTs || 0)) > 30000)) {
           state._fetchingOvFull = true;
           callRouterApi('/api/overview/telemetry', 'GET', null, 8000, true).then(ovRes => {
             state._fetchingOvFull = false;
@@ -4420,14 +4447,28 @@
     if (!n) return;
     const shareRes = await callRouterApi('/api/nodes/share_uri?tag=' + encodeURIComponent(n.tag || n.name), 'GET');
     const shareUri = (shareRes && shareRes.uri) ? shareRes.uri : '';
-    let qrHtml = '';
-    if (shareUri && typeof window.qrcode === 'function') {
-      try {
-        const qr = window.qrcode(0, 'M');
-        qr.addData(shareUri);
-        qr.make();
-        qrHtml = '<div class="qr-wrap">' + qr.createSvgTag(3, 0) + '</div>';
-      } catch (_) {}
+    let qrHtml = shareUri ? '<div class="qr-wrap" id="modal-qr-slot"></div>' : '';
+    if (shareUri) {
+      if (typeof window.qrcode === 'function') {
+        try {
+          const qr = window.qrcode(0, 'M');
+          qr.addData(shareUri);
+          qr.make();
+          qrHtml = '<div class="qr-wrap" id="modal-qr-slot">' + qr.createSvgTag(3, 0) + '</div>';
+        } catch (_) {}
+      } else {
+        ensureQrCodeLoaded(() => {
+          try {
+            const slot = document.getElementById('modal-qr-slot');
+            if (slot && typeof window.qrcode === 'function') {
+              const qr = window.qrcode(0, 'M');
+              qr.addData(shareUri);
+              qr.make();
+              slot.innerHTML = qr.createSvgTag(3, 0);
+            }
+          } catch (_) {}
+        });
+      }
     }
     openModal(
       '节点详情与编辑 · ' + n.name,
@@ -7719,14 +7760,26 @@
         const nid = el && el.dataset.node;
         const hlNode = (state.rawHomelink && Array.isArray(state.rawHomelink.nodes) && state.rawHomelink.nodes.find(x => x.id === nid)) || mock.homelinkNodes.find(x => x.id === nid) || mock.homelinkNodes[0];
         const uri = (hlNode && (hlNode.uri || hlNode.share_uri)) || ('vless://ailink-homelink@' + (window.location.hostname || 'home.example.com') + ':' + (hlNode ? hlNode.listen_port || 18443 : 18443) + '#AI-LINK-Home');
-        let qrHtml = '';
+        let qrHtml = '<div class="qr-wrap" id="modal-qr-slot"></div>';
         if (typeof window.qrcode === 'function') {
           try {
             const qr = window.qrcode(0, 'M');
             qr.addData(uri);
             qr.make();
-            qrHtml = '<div class="qr-wrap">' + qr.createSvgTag(4, 0) + '</div>';
+            qrHtml = '<div class="qr-wrap" id="modal-qr-slot">' + qr.createSvgTag(4, 0) + '</div>';
           } catch (_) {}
+        } else {
+          ensureQrCodeLoaded(() => {
+            try {
+              const slot = document.getElementById('modal-qr-slot');
+              if (slot && typeof window.qrcode === 'function') {
+                const qr = window.qrcode(0, 'M');
+                qr.addData(uri);
+                qr.make();
+                slot.innerHTML = qr.createSvgTag(4, 0);
+              }
+            } catch (_) {}
+          });
         }
         openModal(
           '分享回家配置 · ' + (hlNode ? hlNode.name : ''),
@@ -10116,7 +10169,7 @@
 
   async function updateTelemetryTick() {
     if (telemetryInFlight) return;
-    if (state.authRequiredLock && !getAuthToken()) return;
+    if (state.authRequiredLock) return;
     if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
       const nowMs = Date.now();
       if (nowMs - lastHiddenPollTs < 15000) return;
@@ -10149,7 +10202,40 @@
     }
   }
 
+  let _threeLazyLoading = false;
+  function ensureThreeLoaded(cb) {
+    if (window.THREE) { if (cb) cb(); return true; }
+    const el = document.getElementById('lazy-three-js');
+    if (el && el.dataset && el.dataset.lazySrc) {
+      if (cb) el.addEventListener('load', () => cb(), { once: true });
+      if (!_threeLazyLoading) {
+        _threeLazyLoading = true;
+        el.src = el.dataset.lazySrc;
+      }
+      return false;
+    }
+    return Boolean(window.THREE);
+  }
+  let _qrLazyLoading = false;
+  function ensureQrCodeLoaded(cb) {
+    if (typeof window.qrcode === 'function') { if (cb) cb(); return true; }
+    const el = document.getElementById('lazy-qrcode-js');
+    if (el && el.dataset && el.dataset.lazySrc) {
+      if (cb) el.addEventListener('load', () => cb(), { once: true });
+      if (!_qrLazyLoading) {
+        _qrLazyLoading = true;
+        el.src = el.dataset.lazySrc;
+      }
+      return false;
+    }
+    return false;
+  }
+
   function initScene() {
+    if (!window.THREE) {
+      ensureThreeLoaded(() => { if (!scene && !state.authRequiredLock) initScene(); });
+      return;
+    }
     if (!window.NexusScene) {
       showSceneFallback('ASSET_LOAD_FAILED');
       return;
@@ -10189,10 +10275,14 @@
       bindInteractions();
       initCharts();
       scheduleDeferredRenderAll();
-      if (getAuthToken()) {
+      if (window.THREE) {
         setTimeout(() => { if (!scene && !state.authRequiredLock) initScene(); }, 12);
+      } else {
+        const _trig3d = () => { if (!scene && !state.authRequiredLock) initScene(); };
+        ['pointerdown', 'wheel', 'keydown'].forEach(ev => window.addEventListener(ev, _trig3d, { once: true, passive: true }));
+        setTimeout(() => { if (!scene && !state.authRequiredLock && state.page === 'galaxy') initScene(); }, 6500);
       }
-      syncBackendStatus(true, true);
+      syncBackendStatus(false, true);
     }
     if (window.innerWidth < 1240 && $('#inspector')) $('#inspector').classList.remove('open');
     let lastNarrow = window.innerWidth < 1240;

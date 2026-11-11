@@ -18,7 +18,7 @@
         <circle cx="20" cy="20" r="5.4" fill="none" stroke="#a994ff" stroke-width="1.6"/>
         <circle cx="20" cy="20" r="1.8" fill="#6ee7f5"/>
       </svg>
-      <span style="display:block"><b>AI-LINK</b><span>NEXUS · 2.5.14</span></span>
+      <span style="display:block"><b>AI-LINK</b><span>NEXUS · 2.5.15</span></span>
     </a>
     <div class="nav-links">
       <a href="/#features">核心能力</a>
@@ -36,12 +36,22 @@
 <main class="wrap log-wrap">
   <div class="log-head">
     <h1>更新日志</h1>
-    <span class="pill"><i></i> 当前最新 2.5.14</span>
+    <span class="pill"><i></i> 当前最新 2.5.15</span>
   </div>
 <article class="log-item latest">
   <div class="log-top">
-    <h2>v2.5.14</h2>
+    <h2>v2.5.15</h2>
     <span class="tag c">最新</span>
+    <time>2026-11-11</time>
+  </div>
+  <p style="margin:2px 0 6px;color:var(--dim)"></p>
+<h3>海外 IP 精准分流 + 失效 Token 拦截 + 首屏与状态性能加固（PKG_RELEASE 26）</h3>
+<ul><li><b>正常升版</b>：升至 <code>v2.5.15</code>（<code>PKG_RELEASE:=26</code> / <code>r26</code>），增量基准指向线上 2.5.14（Release #441274023 / <code>c6a7027a</code> / 部署 <code>2f601400</code>）；现网设备可正常收 OTA 提示。</li><li><b>P0-1 海外 IP 误判修正</b>：移除 <code>_CN_BROAD_CIDRS</code> 中全部 <code>/8</code>、<code>/7</code>、<code>/6</code> 超宽网段（上轮为修 3 个国内 IP 误判而引入，导致 Cloudflare/APNIC 等 23 条连接被误判国内），改用 <code>_CN_PRECISE_CIDRS</code>（掩码严格 <code>&gt;= /10</code>）+ <code>_OVERSEAS_KNOWN_EXEMPT_CIDRS</code> 显式豁免；新增 <code>Stage 7.26</code> 双向回归（海外 0/30 误判、国内 10/10）。</li><li><b>P1-1 失效 Token 秒级拦截</b>：401 立即 <code>setAuthToken(&#x27;&#x27;)</code>、守卫收紧、首屏单飞验权；失效 Token 请求数 <b>9 → 1</b>、锁屏 <b>&lt;100ms</b> 并秒弹登录。</li><li><b>P1-2 首屏瘦身</b>：<code>three.min.js</code> / <code>qrcode.min.js</code> 改 <code>data-lazy-src</code> 按需加载（QR 压缩至 38,962 B）；首屏请求 <b>7 → 2</b>、资源 <b>2.13MB → ~790KB</b>（降幅 63%）。</li><li><b>P1-3 星图退化修复</b>：移除 5 秒强清缓存、改 mtime 触发 + 60s 长缓存、<code>_RULESET_COUNT_MEMO</code> 按文件索引、复用最近 <code>ov_data</code>、前端仅 galaxy 页 ≥5s 轮询。</li><li><b>P2-1 状态抖动根治</b>：移除 <code>load_auto_nodes_config</code> 读取路径的缓存清空副作用、watchdog 预热全量/lite/星图、<code>_JSON_WIRE_MEMO</code> 改 4 元组保留序列化与压缩耗时（75s 轮询不再 660x 抖动）。</li><li><b>P2-2~P2-4</b>：<code>APP_BUILD</code> 纳入 <code>r26</code>；通用池按基础连通性收敛解除 <code>l7_degraded</code> 误报、多线池同区不足时跨区补位；<code>lite=1</code> 精简约 550B（真机 ~7.9KB）。</li><li><b>S-5/S-6/P3</b>：规则试匹配内存快筛（零子进程、首次 &lt;10ms）、<code>Stage 7.26</code> 快照实写回滚字节级门禁、非法端口中文 reason、设置页文案、雷达分类徽章。</li><li>验收：<code>INSTALL_RC=0</code>、服务全 1、<code>nft ok:true</code>、重启稳定、自检 10/10 + 负向、门禁双布局 17/17、11 行指纹 11/11 与 1 字节篡改转红、design-lint 18/18、静态 8/8、UI 零异常三视口零溢出、出网 200/200/204。</li><li><b>已知问题（P2，已反馈）</b>：实时流量归组雷达<b>冷启动</b>耗时真机 58–64ms（上轮 30–34ms），超 <code>Stage 7.25</code> 的 <code>&lt;50ms</code> 门禁，导致 <code>run_all 14/15</code>、混沌 88/89；缓存命中后 &lt;1ms，功能与数据正常。建议下轮优化回 50ms 内，或改为冷/热分别设阈值。</li></ul>
+</article>
+<article class="log-item">
+  <div class="log-top">
+    <h2>v2.5.14</h2>
+    <span class="tag">历史</span>
     <time>2026-11-11</time>
   </div>
   <p style="margin:2px 0 6px;color:var(--dim)"></p>

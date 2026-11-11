@@ -103,7 +103,7 @@ _d_txt = DAEMON.read_text(encoding="utf-8")
 _v_lines = [ln for ln in (ROOT / "root/etc/ai-link/version").read_text(encoding="utf-8").splitlines() if ln.strip()]
 _v7 = {
     "APP_VERSION": (re.search(r'^APP_VERSION = "([^"]+)"', _d_txt, re.M) or [None, "?"])[1],
-    "APP_BUILD": (re.search(r'^APP_BUILD = "([0-9.]+)-release-\d+"', _d_txt, re.M) or [None, "?"])[1],
+    "APP_BUILD": (re.search(r'^APP_BUILD = "([0-9.]+)-release-[0-9a-z-]+"', _d_txt, re.M) or [None, "?"])[1],
     "version_file": (_v_lines[0].split()[0] if len(_v_lines) == 1 else f"lines={len(_v_lines)}"),
     "install.sh": (re.search(r'^VERSION="([^"]+)"', INST.read_text(encoding="utf-8"), re.M) or [None, "?"])[1],
     "uci_app_version": (re.search(r"^\toption app_version '([^']+)'$", UCI_CFG.read_text(encoding="utf-8"), re.M) or [None, "?"])[1],

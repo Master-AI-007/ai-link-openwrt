@@ -103,14 +103,14 @@ _d_txt = DAEMON.read_text(encoding="utf-8")
 _v_lines = [ln for ln in (ROOT / "root/etc/ai-link/version").read_text(encoding="utf-8").splitlines() if ln.strip()]
 _v7 = {
     "APP_VERSION": (re.search(r'^APP_VERSION = "([^"]+)"', _d_txt, re.M) or [None, "?"])[1],
-    "APP_BUILD": (re.search(r'^APP_BUILD = "([0-9.]+)-release-\d+"', _d_txt, re.M) or [None, "?"])[1],
+    "APP_BUILD": (re.search(r'^APP_BUILD = "([0-9.]+)-release-[0-9a-z-]+"', _d_txt, re.M) or [None, "?"])[1],
     "version_file": (_v_lines[0].split()[0] if len(_v_lines) == 1 else f"lines={len(_v_lines)}"),
     "install.sh": (re.search(r'^VERSION="([^"]+)"', INST.read_text(encoding="utf-8"), re.M) or [None, "?"])[1],
     "uci_app_version": (re.search(r"^\toption app_version '([^']+)'$", UCI_CFG.read_text(encoding="utf-8"), re.M) or [None, "?"])[1],
     "webui_badge": (re.search(r'>v([0-9.]+)</span>', html_text) or [None, "?"])[1],
     "luci_fallback": (re.search(r"\|\s*\|\s*'([0-9.]+)'\);", OV.read_text(encoding="utf-8")) or [None, "?"])[1],
 }
-check("Version Alignment: 包内 7 处版本串 100% 对齐为 2.3.2（且 version 文件严格单行）", len(set(_v7.values())) == 1 and _v7["APP_VERSION"] == "2.5.14", str(_v7))
+check("Version Alignment: 包内 7 处版本串 100% 对齐为 2.3.2（且 version 文件严格单行）", len(set(_v7.values())) == 1 and _v7["APP_VERSION"] == "2.5.15", str(_v7))
 
 # Load daemon module in isolated temp environment for runtime & E2E checks
 spec = importlib.util.spec_from_file_location("ailink_daemon_v102", str(DAEMON))

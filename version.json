@@ -1,19 +1,36 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.5.14",
+  "latest": "2.5.15",
   "release_date": "2026-11-11",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.5.14",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.5.15",
   "highlights": [
-    "正常升版至 v2.5.14（PKG_RELEASE 25）：现网 2.5.13 设备可直接收到 OTA 更新提示",
-    "修复云端规则集同步：DNS 规则剔除 geoip-* 规则集，彻底解决 sing-box 1.14 的 Legacy 地址过滤字段报错",
-    "规则集同步改为临时目录编译 + 独立预检 + 失败原子回滚，预检失败不再污染规则目录",
-    "GeoIP 规则集按 sing-box IPSet 规范编码（item_type=6），并校验压缩流完整结束",
-    "全站防跳变：流量波形不再退回假正弦、7×24 矩阵不清零、护盾拦截榜固定 8 行",
-    "自动节点池真实 L7 服务与地区硬性准入：Gemini 不支持地区强制拦截，删除配额跳过假通过",
-    "URL Ping 实时进度弹窗、护盾规则库单库开关/更新/10 套 GitHub 预设、雷达分组命中分支与国内 CIDR 扩充"
+    "正常升版至 v2.5.15（PKG_RELEASE 26）：现网 2.5.14 设备可直接收到 OTA 更新提示",
+    "修正海外 IP 误判：移除超宽网段，改用精细国内运营商段 + 海外豁免表，海外 30 个知名 IP 零误判、国内 10/10 命中",
+    "失效/过期 Token 秒级拦截：401 立即清令牌，请求数从 9 次降到 1 次，锁屏 <100ms 并直接弹登录",
+    "首屏瘦身：WebGL 与二维码库改按需懒加载，首屏请求 7 次降到 2 次、资源从 2.13MB 降到约 790KB",
+    "星图与状态接口抖动根治：规则集计数缓存、写盘不再击穿状态缓存、后台预热，75 秒轮询不再 660 倍抖动",
+    "心跳载荷再精简约 550B（lite 真机约 7.9KB），规则试匹配改内存快筛（零子进程、首次 <10ms）",
+    "通用池解除降级误报，多线池在同区不足时自动补位；构建号纳入发行号 r26 便于运行态识别"
   ],
   "changelog": [
+    {
+      "version": "2.5.15",
+      "date": "2026-11-11",
+      "type": "fix",
+      "title": "海外 IP 精准分流 + 失效 Token 拦截 + 首屏与状态性能加固",
+      "items": [
+        "正常升版至 `v2.5.15`（`PKG_RELEASE:=26` / `r26`），现网 2.5.14 设备可直接收到 OTA 提示",
+        "P0-1：移除 `_CN_BROAD_CIDRS` 中全部 `/8`、`/7`、`/6` 超宽网段，改为 `_CN_PRECISE_CIDRS`（掩码严格 `>= /10`）+ `_OVERSEAS_KNOWN_EXEMPT_CIDRS` 显式海外豁免；仅纯 IP 明确属于精细国内段才归 `Domestic_CN`；新增 `Stage 7.26` 双向回归（海外 0/30 误判、国内 10/10）",
+        "P1-1：`callRouterApi` / `syncBackendStatus` 收到 401 立即 `setAuthToken('')`；守卫收紧为 `authRequiredLock && !forceImmediate`；首屏先单飞验权，失效 Token 请求数 9 → 1、锁屏 <100ms 并秒弹登录",
+        "P1-2：`three.min.js` 与 `qrcode.min.js` 改 `data-lazy-src` 按需加载（交互或 6.5s 空闲后加载 WebGL、进入节点/回家/二维码时加载 QR，QR 压缩至 38,962 B）；首屏仅请求 `/api/status` 与 `/api/overview/galaxy`，请求数 7 → 2、资源 2.13MB → ~790KB",
+        "P1-3：移除 `build_blackhole_telemetry` 5 秒强清缓存，改 `(dns.json, adblock.conf)` mtime 触发 + 60s 长缓存；新增 `_RULESET_COUNT_MEMO` 按文件 `(mtime_ns,size)` 索引；`build_galaxy_snapshot` 复用最近 `ov_data`；前端仅 galaxy 页且间隔 ≥5s 轮询",
+        "P2-1：移除 `load_auto_nodes_config` 读取路径中的 `_STATUS_API_MEMO.clear()` 等副作用；watchdog 在 `apply_shunt_selections` 后预热全量与 lite 状态及星图；`_JSON_WIRE_MEMO` 改 4 元组保留序列化/压缩耗时",
+        "P2-2 / P2-3 / P2-4：`APP_BUILD` 纳入 `r26` 并在 `build_revision` 暴露；通用池（`auto_media` / `auto_global`）按基础连通性收敛、解除 `l7_degraded` 误报，多线池 `len(ml_tags) < 2` 且非用户锁区时跨区补位；`lite=1` 精简 `lite_pools` 与 `ov_lite.summary` 约 550B（真机约 7.9KB）",
+        "S-5 / S-6 / P3：`_match_srs_ruleset_cached` 在 `fast_rule_only=True` 时直接解析本地 `.srs`（零子进程、首次 <10ms）；`Stage 7.26` 新增 `quick_assign` 实写 + `rollback_config_snapshot` 字节级比对；非法端口返回中文 reason；设置页按钮文案调整；雷达每行显式分类徽章",
+        "七项交付标准保持：11 行指纹逐行校验与 1 字节篡改转红、连续中文章节、交接包布局声明、12 夹具随包、测试数值实跑后置注入、自检正负双向门禁、零补发回归"
+      ]
+    },
     {
       "version": "2.5.14",
       "date": "2026-11-11",
@@ -484,13 +501,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.5.14/AI-LINK-v2.5.14.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.5.15/AI-LINK-v2.5.15.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.5.14.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.5.15.tar.gz"
       ],
-      "size": 1106096,
-      "md5": "a4d9fb1fa263ae86b225b062187119dc",
-      "sha256": "6e9e683e47653357d9b3d73d1ee070599fffb338e4cb1bf97c1d4caeefc62fc0"
+      "size": 1108718,
+      "md5": "c9816e5fa1bd80aba58a7117145ab28b",
+      "sha256": "ffde49d6538c1c51dda726284a07dd9e0cb93854aedab3359c6fd3b08cf4097d"
     }
   }
 }
