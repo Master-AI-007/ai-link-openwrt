@@ -1474,8 +1474,20 @@
           '</div>' +
           '<div class="hud-pool-mid">' +
             (function() {
-              const mlArr = Array.isArray(p.multi_line_nodes) ? p.multi_line_nodes : [];
-              const mlCnt = mlArr.length || Number(p.active_lines_count != null ? p.active_lines_count : 0);
+              const mlArr = (Array.isArray(p.rotation_members) && p.rotation_members.length) ? p.rotation_members : (Array.isArray(p.multi_line_nodes) ? p.multi_line_nodes : []);
+              const mlCnt = Number(p.rotation_member_count != null ? p.rotation_member_count : (p.active_lines_count != null ? p.active_lines_count : mlArr.length));
+              const formatDistinctPoolNames = (tagsArr) => {
+                const cleaned = (tagsArr || []).map(t => cleanNodeDisplayName(t));
+                const counts = {};
+                cleaned.forEach(c => { counts[c] = (counts[c] || 0) + 1; });
+                return (tagsArr || []).map((rawT, idx) => {
+                  const c = cleaned[idx];
+                  if (counts[c] <= 1) return c;
+                  const parts = String(rawT || '').split('|').map(s => s.trim()).filter(Boolean);
+                  const distinguisher = parts.length >= 3 ? parts[2] : ('#' + (idx + 1));
+                  return c + '(' + distinguisher + ')';
+                });
+              };
               const isAffOn = Boolean(p.session_affinity !== false || p.same_region_multi_line);
               const mlSuffix = p.dispatch_mode === 'multi_line'
                 ? (mlCnt >= 2 ? (' · 多出口轮询(' + mlCnt + '线·驻留' + poolDwellS + 's)') : (mlCnt === 1 ? (isAffOn && candTotalCnt >= 2 ? ' · 同区仅1节点(单线生效)' : ' · 多出口轮询(1线·单线降级)') : ' · 多出口轮询(0线·无可用)'))
@@ -1483,7 +1495,7 @@
               const hasSharedExit = Array.isArray(p.bound_group_targets) && p.bound_group_targets.some(x => x && x.shared_exit);
               const sharedSuffix = (p.dispatch_mode === 'multi_line' && hasSharedExit) ? ' · 组间共享出口' : '';
               const affSuffix = p.dispatch_mode === 'multi_line' ? (isAffOn ? ' · 同区亲和' : ' · 跨区轮询(可能跨洲跳变)') : '';
-              const mlTitleExtra = (p.dispatch_mode === 'multi_line' && mlArr.length) ? (' · 轮换候选(' + mlCnt + '个)：' + mlArr.map(cleanNodeDisplayName).join(' / ') + '（当前生效出口：' + cleanNodeDisplayName(p.active_egress || curNode) + '；驻留 ' + poolDwellS + ' 秒后轮换，已驻留 ' + poolDwellElapsedS + 's/' + poolDwellS + 's，仅对新连接生效）') : '';
+              const mlTitleExtra = (p.dispatch_mode === 'multi_line' && mlArr.length) ? (' · 轮换候选(' + mlCnt + '个)：' + formatDistinctPoolNames(mlArr).join(' / ') + '（当前生效出口：' + cleanNodeDisplayName(p.active_egress || curNode) + '；驻留 ' + poolDwellS + ' 秒后轮换，已驻留 ' + poolDwellElapsedS + 's/' + poolDwellS + 's，仅对新连接生效）') : '';
               return '<strong class="hud-pool-node mono" style="color:' + (isDirectPool ? 'var(--amber)' : 'var(--cyan)') + '" title="当前出口：' + esc(curNode) + ' · 池内 ' + candTotalCnt + ' 个候选' + esc(mlTitleExtra) + '">' + esc(curNode) + ' <small class="hud-pool-scope" style="color:var(--text-3);font-weight:400">· ' + candTotalCnt + ' 候选 · ' + esc(ctryLabel) + '' + mlSuffix + sharedSuffix + affSuffix + (p.bandwidth_prefer ? ' · 带宽择优' : '') + '</small></strong>';
             })() +
             '<span style="flex-shrink:0">' + latBadgeCompact + '</span>' +
@@ -1547,6 +1559,9 @@
       shHeroMode.textContent = mInfo ? mInfo.name : '精细规则分流';
     }
     renderShuntHitLeaderboard();
+    if (state.shuntObsTab === 'radar' || !state.liveTrafficRadar) {
+      renderLiveTrafficRadar(false);
+    }
   }
 
   /* T4: Render 1-Hour Sliding Window Shunt Rule Hit Leaderboard */
@@ -1840,9 +1855,41 @@
 
     const flList = $('#dns-filter-lists');
     if (flList) {
+      const enabledFlCnt = mock.filterLists.filter(l => l && l.enabled !== false).length;
+      const sumSubEl = $('#dns-filter-lists-summary');
+      if (sumSubEl) {
+        const totRulesDecl = mock.filterLists.reduce((acc, l) => acc + (l && l.enabled !== false ? Number(l.rules_count || 0) : 0), 0);
+        sumSubEl.textContent = '共挂载 ' + mock.filterLists.length + ' 个规则源（已启用 ' + enabledFlCnt + ' 个 · 覆盖 ' + totRulesDecl.toLocaleString('zh-CN') + ' 条规则）';
+      }
       flList.innerHTML = mock.filterLists.length
-        ? mock.filterLists.map(l => '<div class="trace-stage" style="padding:9px 12px"><i>库</i><div><b>' + esc(l.name) + '</b><span>' + esc(l.category || '云端规则') + ' · ' + Number(l.rules_count || 0).toLocaleString('zh-CN') + ' 条 · ' + esc(l.updated_at || '已同步') + '</span></div><strong>' + (l.enabled !== false ? '已启用' : '已停用') + '</strong></div>').join('')
-        : '<div class="trace-stage" style="padding:9px 12px"><i>库</i><div><b>暂未配置外部过滤订阅列表</b><span>内置基础隐私保护已生效，可点击上方按钮添加自定义 AdGuard / Hosts 规则源</span></div><strong>内置守护</strong></div>';
+        ? mock.filterLists.map((l, idx) => {
+            const lid = l.id || l.url || l.name || ('list_' + idx);
+            const isEn = l.enabled !== false;
+            const isBuiltinCore = ['anti-ad', 'adguard-dns', 'easylist-cn', 'oisd-small', 'stevenblack'].includes(String(l.id || ''));
+            let shortUrl = String(l.url || '');
+            try {
+              if (shortUrl.startsWith('http')) {
+                const uo = new URL(shortUrl);
+                shortUrl = uo.host + uo.pathname.slice(0, 28) + (uo.pathname.length > 28 ? '...' : '');
+              }
+            } catch (_) {}
+            const delBtnHtml = !isBuiltinCore
+              ? '<button type="button" class="button danger compact" style="padding:0 8px" data-action="dns-list-delete-one" data-list-id="' + esc(lid) + '" data-list-name="' + esc(l.name) + '" title="移除此自定义规则库">移除</button>'
+              : '';
+            return '<div class="trace-stage" style="padding:8px 12px;align-items:center" data-dns-list-row="' + esc(lid) + '">' +
+              '<i>' + (isEn ? '启用' : '停用') + '</i>' +
+              '<div style="min-width:0;flex:1">' +
+                '<b style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + esc(l.name + (l.url ? (' (' + l.url + ')') : '')) + '">' + esc(l.name) + '</b>' +
+                '<span style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(l.category || '云端规则') + ' · ' + Number(l.rules_count || 0).toLocaleString('zh-CN') + ' 条 · ' + esc(l.updated_at || '已同步') + (shortUrl ? (' · ' + esc(shortUrl)) : '') + '</span>' +
+              '</div>' +
+              '<div class="button-row" style="gap:6px;flex-shrink:0;align-items:center">' +
+                '<button type="button" class="button ghost compact" style="padding:0 9px" data-action="dns-list-sync-one" data-list-id="' + esc(lid) + '" data-list-name="' + esc(l.name) + '" title="立即拉取更新此规则库">更新</button>' +
+                delBtnHtml +
+                '<button type="button" class="switch ' + (isEn ? 'on' : 'off') + '" role="switch" aria-checked="' + (isEn ? 'true' : 'false') + '" data-action="dns-list-toggle-one" data-list-id="' + esc(lid) + '" data-list-name="' + esc(l.name) + '" aria-label="切换规则库启停"><i></i></button>' +
+              '</div>' +
+            '</div>';
+          }).join('')
+        : '<div class="trace-stage" style="padding:9px 12px"><i>库</i><div><b>暂未配置外部过滤订阅列表</b><span>内置基础隐私保护已生效，可点击右上角「+ 添加 / 预设规则库」挂载主流 GitHub 规则源</span></div><strong>内置守护</strong></div>';
     }
     renderMusicUnlockSection();
   }
@@ -2555,15 +2602,18 @@
           box.textContent = '试匹配未通过：' + ((r && (r.message || r.reason || r.error)) || '参数或正则不合法');
           return;
         }
-        if (r.matched_by === 'draft_rule_block') {
+        if (r.is_draft_hit || r.matched_by === 'draft_rule_block') {
           box.style.color = 'var(--emerald, #38e0b2)';
           box.textContent = '[草稿命中] ' + (r.group_name || r.group_id) + ' · ' + (r.reason || '');
-        } else if (r.matched_by === 'fallback' || !r.matched) {
-          box.style.color = 'var(--amber)';
-          box.textContent = '未命中当前规则块（落入兜底保底出口）：' + (r.reason || '未命中上方特定分流规则');
-        } else {
+        } else if (r.matched_by === 'rule_block' || r.matched_by === 'provider') {
           box.style.color = 'var(--cyan)';
-          box.textContent = '命中现有分流规则 [' + (r.matched_by || 'group_rule') + ']：' + (r.group_name || r.group_id) + ' · ' + (r.reason || '默认规则');
+          box.textContent = '[命中已保存规则块] ' + (r.group_name || r.group_id) + ' · ' + (r.reason || '');
+        } else if (r.matched_by === 'group_rule') {
+          box.style.color = 'var(--cyan)';
+          box.textContent = '未命中当前草稿规则块 · 已由「' + (r.group_name || r.group_id) + '」常规规则接管（' + (r.reason || '常规分流规则') + '）';
+        } else {
+          box.style.color = 'var(--amber)';
+          box.textContent = '未命中任何特定分流规则（落入最终兜底出口）：' + (r.reason || '未命中上方特定分流规则');
         }
       };
     }
@@ -2651,26 +2701,46 @@
     );
   }
 
-  async function renderLiveTrafficRadar() {
-    const box = $('#shunt-live-radar-list');
-    if (!box) return;
-    const res = state.liveTrafficRadar || (await callRouterApi('/api/shunt/live_discover', 'GET')) || {};
-    state.liveTrafficRadar = res;
-    const items = Array.isArray(res.items) ? res.items : [];
-    if (!items.length) {
-      box.innerHTML = '<div class="trace-stage"><i>OK</i><div><b>当前全部活跃连接均已命中最佳分流组</b><span>点击右上角「扫描实时连接」可重新识别最新域名与纯 IP 流量</span></div><strong>已优化</strong></div>';
-      return;
+  function _buildRadarItemsHtml(items) {
+    if (!Array.isArray(items) || !items.length) {
+      return '<div class="trace-stage"><i>OK</i><div><b>当前全部活跃连接均已命中最佳分流组</b><span>点击右上角「扫描实时连接」可重新识别最新域名与纯 IP 流量</span></div><strong>已优化</strong></div>';
     }
-    box.innerHTML = items.map(it =>
-      '<div class="trace-stage" style="padding:8px 11px;align-items:center">' +
+    return items.map(it => {
+      const srcBadge = it.source === 'seed' ? '<span class="version-chip" style="padding:1px 5px;margin-left:4px;opacity:0.75">示例</span>' : '<span class="version-chip" style="padding:1px 5px;margin-left:4px;color:var(--mint)">实时</span>';
+      const fbBadge = it.is_fallback ? '<span class="version-chip" style="padding:1px 5px;margin-left:4px;color:var(--amber)">兜底待归类</span>' : (it.already_matched ? '<span class="version-chip" style="padding:1px 5px;margin-left:4px;color:var(--cyan)">已命中常规组</span>' : '');
+      return '<div class="trace-stage" style="padding:8px 11px;align-items:center">' +
         '<i>' + (it.is_ip ? 'IP' : 'DNS') + '</i>' +
         '<div style="min-width:0;flex:1">' +
-          '<b class="mono">' + esc(it.target) + ':' + Number(it.port || 443) + ' <span class="version-chip" style="padding:1px 6px">' + esc(it.cloud_tag || (it.is_ip ? 'GeoIP' : 'Geosite')) + '</span></b>' +
+          '<b class="mono">' + esc(it.target) + ':' + Number(it.port || 443) + ' <span class="version-chip" style="padding:1px 6px">' + esc(it.cloud_tag || (it.is_ip ? 'GeoIP' : 'Geosite')) + '</span>' + srcBadge + fbBadge + '</b>' +
           '<span style="display:block;color:var(--muted)">' + esc(it.scene || '') + ' · 识别为 <b>' + esc(it.cloud_name || '') + (it.asn ? (' (' + esc(it.asn) + ')') : '') + '</b></span>' +
         '</div>' +
         '<button type="button" class="button secondary compact" data-action="quick-assign-shunt" data-target="' + esc(it.target) + '" data-gid="' + esc(it.recommended_group_id) + '" data-cloud-tag="' + esc(it.cloud_tag || '') + '">' + esc(it.action_label || ('归入 ' + it.recommended_group_name)) + '</button>' +
-      '</div>'
-    ).join('');
+      '</div>';
+    }).join('');
+  }
+
+  async function renderLiveTrafficRadar(forceRefresh = false) {
+    const initBox = $('#shunt-live-radar-list');
+    if (initBox) {
+      if (state.liveTrafficRadar && Array.isArray(state.liveTrafficRadar.items) && state.liveTrafficRadar.items.length) {
+        initBox.innerHTML = _buildRadarItemsHtml(state.liveTrafficRadar.items);
+      } else if (!initBox.children.length) {
+        initBox.innerHTML = '<div class="trace-stage"><i>SCAN</i><div><b>正在扫描实时活跃连接并匹配 26 套云端 GeoIP / Geosite 规则集...</b><span>自动聚合未细分纯 IP 与域名流量</span></div><strong>扫描中</strong></div>';
+      }
+    }
+    if (!forceRefresh && state.liveTrafficRadar && Array.isArray(state.liveTrafficRadar.items) && state.liveTrafficRadar.items.length) {
+      return state.liveTrafficRadar;
+    }
+    const res = (await callRouterApi('/api/shunt/live_discover', 'GET')) || {};
+    if (res && Array.isArray(res.items)) {
+      state.liveTrafficRadar = res;
+    }
+    const freshBox = $('#shunt-live-radar-list');
+    if (freshBox) {
+      const items = (state.liveTrafficRadar && Array.isArray(state.liveTrafficRadar.items)) ? state.liveTrafficRadar.items : [];
+      freshBox.innerHTML = _buildRadarItemsHtml(items);
+    }
+    return state.liveTrafficRadar;
   }
 
   async function openConfigHistoryModal() {
@@ -2954,13 +3024,24 @@
       if (normalized === 'galaxy') setTimeout(() => scene.resize(), 50);
     }
     if (normalized === 'overview') setTimeout(drawTrafficChart, 60);
-    if (normalized === 'overview' && !state.authRequiredLock && !window.__MOCK_STATUS && (!state.rawStatus || !state.rawStatus.overview_telemetry || !Array.isArray(state.rawStatus.overview_telemetry.matrix_7x24))) {
-      callRouterApi('/api/overview/telemetry', 'GET', null, 8000, true).then(ovRes => {
-        if (ovRes && ovRes.ok !== false && state.rawStatus) {
-          state.rawStatus.overview_telemetry = Object.assign({}, state.rawStatus.overview_telemetry || {}, ovRes);
-          if (state.page === 'overview') { renderOverviewDashboard(); drawTrafficChart(); }
-        }
-      });
+    if (normalized === 'overview' && !state.authRequiredLock && !window.__MOCK_STATUS) {
+      if (!state.overviewTelemetryFull || !Array.isArray(state.overviewTelemetryFull.matrix_7x24) || (Date.now() - Number(state._lastOvFullTs || 0)) > 12000) {
+        callRouterApi('/api/overview/telemetry', 'GET', null, 8000, true).then(ovRes => {
+          if (ovRes && ovRes.ok !== false) {
+            state.overviewTelemetryFull = ovRes;
+            state._lastOvFullTs = Date.now();
+            if (!state.rawStatus) state.rawStatus = { ok: true };
+            state.rawStatus.overview_telemetry = Object.assign({}, ovRes, state.rawStatus.overview_telemetry || {}, {
+              waveform_24h: ovRes.waveform_24h || (state.rawStatus.overview_telemetry && state.rawStatus.overview_telemetry.waveform_24h),
+              waveform_7d: ovRes.waveform_7d,
+              waveform_30d: ovRes.waveform_30d,
+              matrix_7x24: ovRes.matrix_7x24,
+              insight_data: ovRes.insight_data || (state.rawStatus.overview_telemetry && state.rawStatus.overview_telemetry.insight_data)
+            });
+            if (state.page === 'overview') { renderOverviewDashboard(); drawTrafficChart(); }
+          }
+        });
+      }
     }
     if (normalized === 'settings' && !state.authRequiredLock) {
       callRouterApi('/api/clash/connections', 'GET', null, 12000, true).then(res => {
@@ -3578,12 +3659,62 @@
         if (fullSt && fullSt.ok !== false) stRes = fullSt;
       }
       if (stRes && stRes.ok !== false) {
+        const prevRawSt = state.rawStatus || {};
+        const prevOv = Object.assign({}, state.overviewTelemetryFull || {}, prevRawSt.overview_telemetry || {});
+        const prevDns = prevRawSt.dns_telemetry || {};
+        if (stRes.overview_telemetry) {
+          const mergedOv = Object.assign({}, prevOv, stRes.overview_telemetry);
+          if (Array.isArray(prevOv.waveform_24h) && prevOv.waveform_24h.length && (!Array.isArray(stRes.overview_telemetry.waveform_24h) || !stRes.overview_telemetry.waveform_24h.length)) {
+            mergedOv.waveform_24h = prevOv.waveform_24h;
+          }
+          if (Array.isArray(prevOv.waveform_7d) && prevOv.waveform_7d.length && (!Array.isArray(stRes.overview_telemetry.waveform_7d) || !stRes.overview_telemetry.waveform_7d.length)) {
+            mergedOv.waveform_7d = prevOv.waveform_7d;
+          }
+          if (Array.isArray(prevOv.waveform_30d) && prevOv.waveform_30d.length && (!Array.isArray(stRes.overview_telemetry.waveform_30d) || !stRes.overview_telemetry.waveform_30d.length)) {
+            mergedOv.waveform_30d = prevOv.waveform_30d;
+          }
+          if (Array.isArray(prevOv.matrix_7x24) && prevOv.matrix_7x24.length === 168 && (!Array.isArray(stRes.overview_telemetry.matrix_7x24) || stRes.overview_telemetry.matrix_7x24.length !== 168)) {
+            mergedOv.matrix_7x24 = prevOv.matrix_7x24;
+          }
+          if (prevOv.insight_data && !stRes.overview_telemetry.insight_data) {
+            mergedOv.insight_data = prevOv.insight_data;
+          }
+          stRes.overview_telemetry = mergedOv;
+        } else if (Object.keys(prevOv).length) {
+          stRes.overview_telemetry = prevOv;
+        }
+        if (stRes.dns_telemetry) {
+          const prevS24 = prevDns.stats_24h || {};
+          const nextS24 = Object.assign({}, prevS24, stRes.dns_telemetry.stats_24h || {});
+          stRes.dns_telemetry = Object.assign({}, prevDns, stRes.dns_telemetry, { stats_24h: nextS24 });
+        } else if (Object.keys(prevDns).length) {
+          stRes.dns_telemetry = prevDns;
+        }
         if (!stRes.lite) {
           if (stRes.config_seq != null) state._lastFullConfigSeq = stRes.config_seq;
           if (stRes.state_seq != null) state._lastFullStateSeq = stRes.state_seq;
           state.rawStatus = stRes;
         } else {
-          state.rawStatus = Object.assign({}, state.rawStatus || {}, stRes);
+          state.rawStatus = Object.assign({}, prevRawSt, stRes);
+        }
+        if (!window.__MOCK_STATUS && !state._fetchingOvFull && (!state.overviewTelemetryFull || !Array.isArray(state.overviewTelemetryFull.matrix_7x24) || (state.page === 'overview' && (Date.now() - Number(state._lastOvFullTs || 0)) > 30000))) {
+          state._fetchingOvFull = true;
+          callRouterApi('/api/overview/telemetry', 'GET', null, 8000, true).then(ovRes => {
+            state._fetchingOvFull = false;
+            if (ovRes && ovRes.ok !== false) {
+              state.overviewTelemetryFull = ovRes;
+              state._lastOvFullTs = Date.now();
+              if (state.rawStatus) {
+                state.rawStatus.overview_telemetry = Object.assign({}, ovRes, state.rawStatus.overview_telemetry || {}, {
+                  waveform_24h: ovRes.waveform_24h,
+                  waveform_7d: ovRes.waveform_7d,
+                  waveform_30d: ovRes.waveform_30d,
+                  matrix_7x24: ovRes.matrix_7x24
+                });
+              }
+              if (state.page === 'overview') { renderOverviewDashboard(); drawTrafficChart(); }
+            }
+          }).catch(() => { state._fetchingOvFull = false; });
         }
         state.bypassActive = Boolean(stRes.bypass_active);
         state.coreAlive = stRes.core ? Boolean(stRes.core.running !== false) : (stRes.core_running !== false);
@@ -3734,7 +3865,7 @@
               const gMode = g.shunt_mode || g.mode || 'auto';
               const gAid = g.auto_node_id || 'auto_youtube';
               const boundP = gMode === 'auto' ? (mock.autoPools || []).find(p => p.id === gAid || p.tag === gAid || p.name === g.auto_node_name) : null;
-              const rawMs = (boundP && boundP.current_delay_ms > 0) ? boundP.current_delay_ms : (g.resolved_rtt_ms != null ? g.resolved_rtt_ms : g.delay_ms);
+              const rawMs = (boundP && boundP.current_delay_ms > 0) ? boundP.current_delay_ms : (g.resolved_rtt_ms != null ? g.resolved_rtt_ms : (g.delay_ms != null ? g.delay_ms : g.rtt));
               const validMs = (rawMs != null && Number(rawMs) > 0) ? Math.round(Number(rawMs)) : null;
               const resolvedN = (boundP && boundP.current_node && boundP.current_node !== 'direct')
                 ? boundP.current_node
@@ -3842,14 +3973,28 @@
           if (s24.blocked_pct != null) mock.dnsBlockedPct = Number(s24.blocked_pct);
           mock.dnsAvgMs = (s24.avg_resolve_ms != null && Number(s24.avg_resolve_ms) >= 0) ? Number(s24.avg_resolve_ms) : null;
 
+          if (Array.isArray(dt.preset_catalog) && dt.preset_catalog.length) {
+            state.dnsPresetCatalog = dt.preset_catalog;
+          }
+          if (dt.filter && Array.isArray(dt.filter.custom_blocked)) {
+            state.dnsCustomBlocked = dt.filter.custom_blocked;
+          }
+          if (dt.filter && Array.isArray(dt.filter.custom_allowed)) {
+            state.dnsCustomAllowed = dt.filter.custom_allowed;
+          }
           const topDom = s24.top_blocked_domains || dt.top_blocked_domains || shd.top_blocked_domains;
-          if (Array.isArray(topDom)) {
-            mock.blocked = topDom.slice(0, 8).map(d => [
+          if (Array.isArray(topDom) && topDom.length) {
+            const mappedTop = topDom.slice(0, 8).map(d => [
               d.domain || d[0],
               d.category || d.reason || '净网护盾拦截',
               Number(d.count || d.hits || d[2] || 1),
               d.layer || 'DNS/路由阻断'
             ]);
+            if (!Array.isArray(mock.blocked) || mappedTop.length >= mock.blocked.length || mappedTop[0][0] !== (mock.blocked[0] && mock.blocked[0][0])) {
+              mock.blocked = mappedTop;
+            } else {
+              mock.blocked = mappedTop.concat(mock.blocked.slice(mappedTop.length, 8));
+            }
           }
           if (dt.rewrite && Array.isArray(dt.rewrite.rules)) {
             mock.rewriteRules = dt.rewrite.rules;
@@ -3858,8 +4003,10 @@
             }
           }
           if (dt.filter && Array.isArray(dt.filter.lists)) {
-            mock.filterLists = dt.filter.lists;
-            mock.dnsRawRuleLines = dt.filter.lists.reduce((acc, fl) => acc + (fl && fl.enabled !== false ? Number(fl.rules_count || fl.rules || 0) : 0), 0);
+            const prevFlMap = {};
+            (mock.filterLists || []).forEach(fl => { if (fl && (fl.id || fl.url)) prevFlMap[fl.id || fl.url] = fl; });
+            mock.filterLists = dt.filter.lists.map(fl => Object.assign({}, prevFlMap[fl.id || fl.url] || {}, fl));
+            mock.dnsRawRuleLines = mock.filterLists.reduce((acc, fl) => acc + (fl && fl.enabled !== false ? Number(fl.rules_count || fl.rules || 0) : 0), 0);
           }
         }
 
@@ -3949,8 +4096,11 @@
 
           const pulseArr = Array.isArray(ovt.pulse_services) ? ovt.pulse_services : [];
           if (pulseArr.length) {
-            mock.services = pulseArr.slice(0, 8).map(p => {
-              const sid = String(p.id || p.name || '').toLowerCase();
+            const prevSvcById = {};
+            (mock.services || []).forEach(ps => { if (ps && ps.id) prevSvcById[String(ps.id).toLowerCase()] = ps; });
+            mock.services = pulseArr.slice(0, 8).map(pRaw => {
+              const sid = String(pRaw.id || pRaw.name || '').toLowerCase();
+              const p = Object.assign({}, prevSvcById[sid] || {}, pRaw);
               const sel = p.selector || 'Shunt_AI';
               const grpId = sel.startsWith('Shunt_') ? sel.slice(6) : sel;
               const fromGroup = mock.groups.find(g => g.id === grpId || ('Shunt_' + g.id) === sel);
@@ -5009,15 +5159,34 @@
         const existingM = (p && p.groups && p.groups[0] && Array.isArray(p.groups[0].members))
           ? p.groups[0].members.find(m => m && (m.tag === tag || m.node_id === tag))
           : null;
+        const checkedSvcsNow = poolMode === 'service_check' ? $$('.chk-an-svc:checked').map(el => el.value) : [];
+        const nodeSvcMap = (n && n.svc && typeof n.svc === 'object') ? n.svc : {};
+        const nodeHasAllCheckedSvcs = checkedSvcsNow.length > 0 && checkedSvcsNow.every(s => {
+          const se = nodeSvcMap[s] || (s === 'chatgpt' ? nodeSvcMap.openai : (s === 'openai' ? nodeSvcMap.chatgpt : null));
+          return Boolean(se && se.ok === true);
+        });
+        const isRegBlocked = Boolean(
+          (tr && tr.region_blocked) ||
+          (existingM && existingM.region_blocked) ||
+          n.region_blocked ||
+          (checkedSvcsNow.some(s => ['gemini', 'chatgpt', 'openai', 'claude'].includes(s)) && (n.gemini_supported === false || ['HK', 'CN', 'MO', 'RU', 'BY', 'IR', 'KP'].includes(cCode)))
+        );
+        const isVerifiedPass = !isRegBlocked && Boolean(
+          (tr && tr.svc_passed && tr.svc_verified !== false) ||
+          (existingM && existingM.svc_verified === true && existingM.svc_passed !== false) ||
+          nodeHasAllCheckedSvcs
+        );
         let svcHtml = poolMode === 'service_check'
-          ? ((existingM && existingM.svc_verified === true && existingM.svc_passed !== false)
-              ? '<span style="color:var(--mint)">真实目标访问验证通过</span>'
-              : '<span style="color:var(--amber)">服务待验证 (仅连通)</span>')
+          ? (isRegBlocked
+              ? '<span style="color:var(--rose)">地区不支持 (已拒服)</span>'
+              : (isVerifiedPass
+                  ? '<span style="color:var(--mint)">真实目标访问验证通过</span>'
+                  : '<span style="color:var(--amber)">服务待验证 (仅连通)</span>'))
           : '<span style="color:var(--muted)">仅 URL Ping 测速优选</span>';
         if (tr && tr.svc_results && Object.keys(tr.svc_results).length) {
           svcHtml = Object.keys(tr.svc_results).map(k => {
             const item = tr.svc_results[k];
-            const ok = Boolean(item && item.ok);
+            const ok = Boolean(item && item.ok) && !isRegBlocked;
             const ms = (item && item.ms) ? (' ' + item.ms + 'ms') : '';
             return '<span class="status-pill" style="padding:2px 6px;color:' + (ok ? 'var(--mint)' : 'var(--rose)') + ';border-color:' + (ok ? 'var(--ok-border)' : 'var(--err-border)') + '">' + esc(k.toUpperCase() + (ok ? ' 可用' : ' 受限') + ms) + '</span>';
           }).join(' ');
@@ -5140,12 +5309,31 @@
           toast('未找到符合条件的节点，请尝试勾选更多订阅源或国家区域', 'warn');
         }
       } else {
-        const fallbackCands = getScopeFilteredNodes().filter(n => getNodeTwoState(n) === 'ok').sort((a, b) => (a.rtt || 999) - (b.rtt || 999));
+        const needAiCheck = poolMode === 'service_check' && checkedSvcs.some(s => ['gemini', 'chatgpt', 'openai', 'claude'].includes(s));
+        const fallbackCands = getScopeFilteredNodes().filter(n => {
+          if (getNodeTwoState(n) !== 'ok') return false;
+          const cCode = classifyNodeCountry(n);
+          if (needAiCheck && (n.region_blocked || n.gemini_supported === false || ['HK', 'CN', 'MO', 'RU', 'BY', 'IR', 'KP'].includes(cCode))) return false;
+          if (poolMode === 'service_check' && checkedSvcs.length) {
+            const sMap = (n.svc && typeof n.svc === 'object') ? n.svc : {};
+            if (svcLogic === 'all') {
+              return checkedSvcs.every(s => {
+                const se = sMap[s] || (s === 'chatgpt' ? sMap.openai : (s === 'openai' ? sMap.chatgpt : null));
+                return Boolean(se && se.ok === true);
+              });
+            }
+            return checkedSvcs.some(s => {
+              const se = sMap[s] || (s === 'chatgpt' ? sMap.openai : (s === 'openai' ? sMap.chatgpt : null));
+              return Boolean(se && se.ok === true);
+            });
+          }
+          return true;
+        }).sort((a, b) => (a.rtt || 999) - (b.rtt || 999));
         selectedSet.clear();
         fallbackCands.slice(0, targetSize).forEach(n => selectedSet.add(n.tag || n.name));
-        setProgressState(true, 100, '后台探测仍在运行，当前暂用已缓存健康数据预填 ' + selectedSet.size + ' 个节点');
+        setProgressState(true, 100, selectedSet.size ? ('已从本地已验证缓存中选入 ' + selectedSet.size + ' 个达标节点') : '未找到通过真实服务与地区校验的可用节点');
         renderSelectedTable();
-        toast('后台探测耗时较长，已暂用本地缓存健康节点预填', 'warn');
+        toast(selectedSet.size ? ('已选入 ' + selectedSet.size + ' 个已验证达标节点') : '未找到符合服务可用性与地区要求的节点', 'warn');
       }
     }
 
@@ -5408,6 +5596,192 @@
       });
     }
   }
+
+  async function runUrlPingWithModal(opts) {
+    opts = opts || {};
+    if (state._urlPingModalRunning) {
+      toast('URL Ping 测速任务正在进行中，请查看弹窗进度', 'warn');
+      return null;
+    }
+    const title = opts.title || '节点 URL Ping 实时测速进度与结果';
+    let targetNodes = [];
+    if (Array.isArray(opts.tags) && opts.tags.length) {
+      const tagSet = new Set(opts.tags);
+      targetNodes = mock.nodes.filter(n => tagSet.has(n.tag) || tagSet.has(n.name) || tagSet.has(n.id));
+      if (!targetNodes.length) {
+        targetNodes = opts.tags.map((t, i) => ({ id: 'nd-' + i, tag: t, name: cleanNodeDisplayName(t), region: classifyNodeCountry({ tag: t }), protocol: 'PROXY', sub_name: '节点', status: 'untested', rtt: null }));
+      }
+    } else if (opts.source === 'custom') {
+      targetNodes = mock.nodes.filter(n => isNodeManualCustom(n));
+    } else if (opts.sub_id || opts.sub_url) {
+      targetNodes = mock.nodes.filter(n => nodeMatchesSubscription(n, opts.sub_id || opts.sub_url));
+    } else {
+      targetNodes = mock.nodes.slice();
+    }
+    if (!targetNodes.length) {
+      toast('当前筛选范围内没有可测速的节点', 'warn');
+      return null;
+    }
+    state._urlPingModalRunning = true;
+    const totalCnt = targetNodes.length;
+    const buildRowsHtml = (nodesList) => nodesList.map((n, idx) => {
+      const rowKey = esc(n.tag || n.name || ('idx_' + idx));
+      return '<tr id="url-ping-row-' + idx + '" data-ping-tag="' + rowKey + '">' +
+        '<td><span class="status-pill">#' + (idx + 1) + '</span></td>' +
+        '<td><b>' + esc(n.name || cleanNodeDisplayName(n.tag)) + '</b><small class="mono" style="display:block;color:var(--muted)">' + esc(n.sub_name || (isNodeManualCustom(n) ? '手动添加' : '订阅节点')) + '</small></td>' +
+        '<td>' + renderGoogleRegionBadgeHtml(n, false) + '</td>' +
+        '<td id="url-ping-lat-' + idx + '"><span class="node-status pending">排队待测</span></td>' +
+        '<td id="url-ping-st-' + idx + '" style="text-align:right"><span class="status-pill">等待中</span></td>' +
+      '</tr>';
+    }).join('');
+
+    openModal(
+      title,
+      '<div class="modal-form" id="url-ping-progress-modal">' +
+        '<div class="sub-health-box" style="padding:var(--sp-3)">' +
+          '<div class="sub-health-top">' +
+            '<span id="url-ping-stage-title" style="font-weight:500;color:var(--text)">正在初始化 URL Ping 真连接并发测速通道...</span>' +
+            '<span class="sub-expire-pill" id="url-ping-pct-label">5%</span>' +
+          '</div>' +
+          '<div class="sub-health-bar" style="height:8px"><i id="url-ping-prog-fill" style="width:5%"></i></div>' +
+          '<div class="sub-health-meta">' +
+            '<span id="url-ping-subhint">通过节点隧道发起真实 HTTP 204 握手校验与 RTT 采样</span>' +
+            '<span id="url-ping-counter">0 / ' + totalCnt + ' 已完成</span>' +
+          '</div>' +
+        '</div>' +
+        '<div class="traffic-kpi-strip" style="grid-template-columns:repeat(4,minmax(0,1fr));margin:10px 0">' +
+          '<div class="traffic-kpi-item"><span>已测进度</span><b class="num" id="url-ping-kpi-done">0 / ' + totalCnt + '</b></div>' +
+          '<div class="traffic-kpi-item"><span>可用节点</span><b class="num" id="url-ping-kpi-ok" style="color:var(--mint)">0 个</b></div>' +
+          '<div class="traffic-kpi-item"><span>超时不可达</span><b class="num" id="url-ping-kpi-dead" style="color:var(--rose)">0 个</b></div>' +
+          '<div class="traffic-kpi-item"><span>最快 / 均值</span><b class="num" id="url-ping-kpi-avg" style="color:var(--cyan)">-- / --</b></div>' +
+        '</div>' +
+        '<div class="table-wrap" style="max-height:310px;overflow-y:auto">' +
+          '<table>' +
+            '<thead><tr><th style="width:52px">序号</th><th>节点名称 · 所属来源</th><th>国家地区 · 协议</th><th>实测延迟</th><th style="text-align:right">状态判定</th></tr></thead>' +
+            '<tbody id="url-ping-results-tbody">' + buildRowsHtml(targetNodes) + '</tbody>' +
+          '</table>' +
+        '</div>' +
+      '</div>',
+      'URL PING LIVE TELEMETRY',
+      () => { closeModal(); },
+      '测速进行中...'
+    );
+
+    const confirmBtn = $('#modal-confirm');
+    if (confirmBtn) confirmBtn.disabled = true;
+
+    const setPingProgress = (pct, stageTxt) => {
+      const pFill = $('#url-ping-prog-fill');
+      const pLbl = $('#url-ping-pct-label');
+      const sTitle = $('#url-ping-stage-title');
+      const clamped = Math.max(5, Math.min(100, Math.round(pct)));
+      if (pFill) pFill.style.width = clamped + '%';
+      if (pLbl) pLbl.textContent = clamped + '%';
+      if (sTitle && stageTxt) sTitle.textContent = stageTxt;
+    };
+
+    let doneCnt = 0;
+    let okCnt = 0;
+    let deadCnt = 0;
+    let rttSum = 0;
+    let minRtt = null;
+    const chunkSize = totalCnt <= 4 ? 1 : (totalCnt <= 24 ? 8 : 16);
+
+    try {
+      for (let start = 0; start < totalCnt; start += chunkSize) {
+        const chunk = targetNodes.slice(start, start + chunkSize);
+        const chunkTags = chunk.map(n => n.tag || n.name);
+        for (let j = 0; j < chunk.length; j++) {
+          const rIdx = start + j;
+          const latEl = $('#url-ping-lat-' + rIdx);
+          const stEl = $('#url-ping-st-' + rIdx);
+          if (latEl) latEl.innerHTML = '<span class="node-status pending" style="color:var(--cyan)">正在握手测速...</span>';
+          if (stEl) stEl.innerHTML = '<span class="status-pill" style="color:var(--cyan);border-color:var(--accent-border)">探测中</span>';
+        }
+        const startPct = 8 + (start / totalCnt) * 84;
+        setPingProgress(startPct, '正在并发探测第 ' + (start + 1) + '~' + Math.min(totalCnt, start + chunk.length) + ' 个节点 (共 ' + totalCnt + ' 个)...');
+
+        const apiEp = opts.endpoint || '/api/probe/url_ping';
+        const res = await callRouterApi(apiEp, 'POST', {
+          tags: chunkTags,
+          timeout_ms: opts.timeout_ms || 3000,
+          force: true
+        }, 45000);
+
+        const resMap = (res && res.results && typeof res.results === 'object') ? res.results : {};
+        const byTagRes = {};
+        Object.keys(resMap).forEach(k => {
+          const item = resMap[k];
+          if (item && typeof item === 'object') {
+            byTagRes[k] = item;
+            if (item.tag) byTagRes[item.tag] = item;
+            if (item.node_id) byTagRes[item.node_id] = item;
+          }
+        });
+
+        for (let j = 0; j < chunk.length; j++) {
+          const rIdx = start + j;
+          const nd = chunk[j];
+          const rec = byTagRes[nd.tag] || byTagRes[nd.id] || byTagRes[nd.name] || null;
+          const dMs = rec && Number(rec.delay_ms) > 0 ? Math.round(Number(rec.delay_ms)) : null;
+          const isOk = Boolean(rec && rec.state === 'ok' && dMs != null && dMs > 0);
+          doneCnt++;
+          if (isOk) {
+            okCnt++;
+            rttSum += dMs;
+            if (minRtt === null || dMs < minRtt) minRtt = dMs;
+            nd.status = 'ok';
+            nd.rtt = dMs;
+          } else {
+            deadCnt++;
+            nd.status = 'dead';
+            nd.rtt = null;
+          }
+          const latEl = $('#url-ping-lat-' + rIdx);
+          const stEl = $('#url-ping-st-' + rIdx);
+          if (latEl) {
+            latEl.innerHTML = isOk ? formatLatencyBadge(dMs, 'ok', false) : '<span class="lat-badge dead">超时不可达</span>';
+          }
+          if (stEl) {
+            stEl.innerHTML = isOk
+              ? '<span class="node-status ok">可用</span>'
+              : '<span class="node-status dead" title="' + esc((rec && rec.fail_reason) || '连接超时') + '">不可达</span>';
+          }
+        }
+
+        const cntEl = $('#url-ping-counter');
+        if (cntEl) cntEl.textContent = doneCnt + ' / ' + totalCnt + ' 已完成';
+        const kDone = $('#url-ping-kpi-done');
+        if (kDone) kDone.textContent = doneCnt + ' / ' + totalCnt;
+        const kOk = $('#url-ping-kpi-ok');
+        if (kOk) kOk.textContent = okCnt + ' 个';
+        const kDead = $('#url-ping-kpi-dead');
+        if (kDead) kDead.textContent = deadCnt + ' 个';
+        const kAvg = $('#url-ping-kpi-avg');
+        if (kAvg) {
+          const avgMs = okCnt > 0 ? Math.round(rttSum / okCnt) : null;
+          kAvg.textContent = (minRtt != null ? (minRtt + 'ms') : '--') + ' / ' + (avgMs != null ? (avgMs + 'ms') : '--');
+        }
+        const endPct = 8 + (doneCnt / totalCnt) * 88;
+        setPingProgress(endPct, '已完成 ' + doneCnt + '/' + totalCnt + ' 个节点测速（可用 ' + okCnt + ' 个 · 不可达 ' + deadCnt + ' 个）...');
+      }
+
+      setPingProgress(100, 'URL Ping 测速全部完成：共测 ' + totalCnt + ' 个节点，可用 ' + okCnt + ' 个，不可达 ' + deadCnt + ' 个');
+      await syncBackendStatus(true, true);
+    } finally {
+      state._urlPingModalRunning = false;
+      const cBtn = $('#modal-confirm');
+      if (cBtn) {
+        cBtn.disabled = false;
+        cBtn.textContent = '完成并关闭';
+      }
+      const fNote = $('#modal-foot-note');
+      if (fNote) {
+        fNote.textContent = '节点延迟、健康状态与自动节点池选路已实时同步';
+      }
+    }
+  }
+  window.runUrlPingWithModal = runUrlPingWithModal;
 
   async function runSubscriptionSyncWithModal(opts) {
     opts = opts || {};
@@ -6318,12 +6692,7 @@
         break;
       }
       case 'probe-all': {
-        if (el) el.disabled = true;
-        toast('已启动全量节点 URL Ping 真连接体检...');
-        const res = await callRouterApi('/api/probe/run', 'POST', { scope: 'all', force: true });
-        if (el) el.disabled = false;
-        toast((res && res.message) || '全量节点 URL Ping 探测已刷新');
-        await syncBackendStatus(true, true);
+        await runUrlPingWithModal({ title: '全量节点 URL Ping 实时测速进度与结果' });
         break;
       }
       case 'recover': {
@@ -6379,10 +6748,7 @@
       case 'probe-single-node': {
         const nodeTag = el && el.dataset.node;
         if (!nodeTag) return;
-        toast('正在测速节点 ' + nodeTag + '...');
-        await callRouterApi('/api/probe/url_ping', 'POST', { tags: [nodeTag] });
-        await syncBackendStatus(true, true);
-        toast('节点 ' + nodeTag + ' URL Ping 测速完成');
+        await runUrlPingWithModal({ title: '单节点 URL Ping 实时测速 · ' + cleanNodeDisplayName(nodeTag), tags: [nodeTag] });
         break;
       }
       case 'set-exit':
@@ -6735,22 +7101,20 @@
       case 'node-real-delay': {
         const nodeTag = el && el.dataset.node;
         if (!nodeTag) return;
-        toast('正在对节点「' + nodeTag + '」执行真实握手测速...');
-        const res = await callRouterApi('/api/nodes/test_real_delay', 'POST', { tags: [nodeTag] });
-        if (res && res.ok !== false) {
-          await syncBackendStatus(true, true);
-          toast('节点「' + nodeTag + '」真实延迟测试完成');
-        }
+        await runUrlPingWithModal({
+          title: '单节点 URL Ping 真连接测速 · ' + cleanNodeDisplayName(nodeTag),
+          tags: [nodeTag],
+          endpoint: '/api/nodes/test_real_delay'
+        });
         break;
       }
       case 'test-real-delay-batch': {
-        const visibleTags = filteredNodes().map(n => n.tag || n.name).slice(0, 40);
-        toast('正在对当前列表 (' + visibleTags.length + ' 个节点) 执行真实握手延迟测试...');
-        const res = await callRouterApi('/api/nodes/test_real_delay', 'POST', { tags: visibleTags });
-        if (res && res.ok !== false) {
-          await syncBackendStatus(true, true);
-          toast('批量真实握手延迟测试完成');
-        }
+        const visibleTags = filteredNodes().map(n => n.tag || n.name);
+        await runUrlPingWithModal({
+          title: '当前筛选列表真实握手测速 (' + visibleTags.length + ' 个节点)',
+          tags: visibleTags,
+          endpoint: '/api/nodes/test_real_delay'
+        });
         break;
       }
       case 'new-rule':
@@ -7530,15 +7894,19 @@
         break;
       }
       case 'sync-cloud-srs': {
-        toast('正在从多镜像 CDN 同步并编译云端 Geosite/GeoIP .srs 规则集...');
+        toast('正在校验并编译本地/云端 Geosite 与 GeoIP .srs 二进制规则集...');
         const r = await callRouterApi('/api/shunt/cloud_apply', 'POST', { action: 'sync_srs' });
-        toast((r && r.message) || '云端 .srs 规则集同步完成');
+        if (!r || r.ok === false) {
+          toast((r && (r.message || r.check_error)) || '规则集编译校验未通过', 'warn');
+          break;
+        }
+        toast(r.message || '云端 .srs 二进制规则集校验就绪');
         await openCloudShuntHubModal();
         break;
       }
       case 'refresh-live-radar': {
         state.liveTrafficRadar = null;
-        await renderLiveTrafficRadar();
+        await renderLiveTrafficRadar(true);
         toast('已扫描实时活跃流量并匹配云端 GeoIP/Geosite 库');
         break;
       }
@@ -7551,9 +7919,18 @@
           toast((r && r.message) || '一键归组失败', 'warn');
           break;
         }
+        state.liveTrafficRadar = null;
         await syncBackendStatus(false, true);
+        await renderLiveTrafficRadar(true);
         toastWithUndo(r.message || '已一键归入分流组', async () => {
-          if (r.previous_group) {
+          if (r.snapshot_id) {
+            const uRes = await callRouterApi('/api/ops/config_rollback', 'POST', { snapshot_id: r.snapshot_id, target_state: 'before' });
+            if (!uRes || uRes.ok === false) return;
+            toast('已通过配置快照完整撤销归组变更');
+            state.liveTrafficRadar = null;
+            await syncBackendStatus(false, true);
+            await renderLiveTrafficRadar(true);
+          } else if (r.previous_group) {
             const uRes = await callRouterApi('/api/shunt/custom_rule', 'POST', r.previous_group);
             if (!uRes || uRes.ok === false) return;
             toast('已撤销归组并恢复原分流组规则');
@@ -7568,17 +7945,22 @@
         const pObj = (mock.autoPools || []).find(x => x.id === pid);
         if (!pObj) break;
         const nextAff = !curAff;
-        const r = await callRouterApi('/api/auto_nodes/save', 'POST', Object.assign({}, pObj, {
+        const r = await callRouterApi('/api/auto_nodes/save', 'POST', {
           id: pObj.id,
+          name: pObj.name,
+          mode: 'patch',
           session_affinity: nextAff,
           same_region_multi_line: nextAff,
-          session_affinity_user_set: true
-        }));
-        if (r && r.ok !== false) {
-          state.openPoolMenuIdx = null;
-          toast(nextAff ? ('已为「' + pObj.name + '」开启同区亲和（防跨国跳变）') : ('已为「' + pObj.name + '」切换为跨区轮询（恢复多线覆盖）'));
-          await syncBackendStatus(false, true);
+          session_affinity_user_set: true,
+          raw_current_node: pObj.raw_current_node || pObj.current_node
+        });
+        if (!r || r.ok === false) {
+          toast('切换同区亲和状态失败: ' + ((r && (r.message || r.error)) || '请求异常'), 'warn');
+          break;
         }
+        state.openPoolMenuIdx = null;
+        toast(nextAff ? ('已为「' + pObj.name + '」开启同区亲和（保持当前出口不变）') : ('已为「' + pObj.name + '」切换为跨区轮询（恢复多线覆盖）'));
+        await syncBackendStatus(false, true);
         break;
       }
       case 'open-config-history': {
@@ -7736,33 +8118,152 @@
         await syncBackendStatus(false, true);
         break;
       }
+      case 'dns-list-toggle-one': {
+        const lid = el && el.dataset.listId;
+        const lname = (el && el.dataset.listName) || lid;
+        if (!lid) break;
+        const targetFl = (mock.filterLists || []).find(l => (l.id || l.url || l.name) === lid);
+        const nextEn = targetFl ? !(targetFl.enabled !== false) : !el.classList.contains('on');
+        if (targetFl) targetFl.enabled = nextEn;
+        setSwitchState(el, nextEn);
+        renderDnsAndFilterSection();
+        const res = await callRouterApi('/api/dns/filter/toggle', 'POST', { list_id: lid, list_enabled: nextEn });
+        if (res && res.ok !== false) {
+          if (res.filter && Array.isArray(res.filter.lists)) mock.filterLists = res.filter.lists;
+          renderDnsAndFilterSection();
+          toast('规则库「' + lname + '」已' + (nextEn ? '启用并挂载' : '停用'));
+          await syncBackendStatus(false, true);
+        } else {
+          if (targetFl) targetFl.enabled = !nextEn;
+          renderDnsAndFilterSection();
+          toast('切换规则库状态失败', 'warn');
+        }
+        break;
+      }
+      case 'dns-list-sync-one': {
+        const lid = el && el.dataset.listId;
+        const lname = (el && el.dataset.listName) || lid;
+        if (!lid) break;
+        if (el) { el.disabled = true; el.textContent = '更新中...'; }
+        toast('正在拉取并更新规则库「' + lname + '」...');
+        try {
+          const res = await callRouterApi('/api/dns/filter/sync', 'POST', { list_id: lid }, 30000);
+          if (res && res.ok !== false) {
+            if (res.filter && Array.isArray(res.filter.lists)) mock.filterLists = res.filter.lists;
+            renderDnsAndFilterSection();
+            toast('规则库「' + lname + '」已同步至最新');
+            await syncBackendStatus(false, true);
+          } else {
+            toast('更新规则库「' + lname + '」失败', 'warn');
+          }
+        } finally {
+          if (el) { el.disabled = false; el.textContent = '更新'; }
+        }
+        break;
+      }
+      case 'dns-list-delete-one': {
+        const lid = el && el.dataset.listId;
+        const lname = (el && el.dataset.listName) || lid;
+        if (!lid) break;
+        const res = await callRouterApi('/api/dns/filter/toggle', 'POST', { delete_list_id: lid });
+        if (res && res.ok !== false) {
+          if (res.filter && Array.isArray(res.filter.lists)) mock.filterLists = res.filter.lists;
+          renderDnsAndFilterSection();
+          toast('已移除规则库「' + lname + '」');
+          await syncBackendStatus(false, true);
+        }
+        break;
+      }
+      case 'dns-preset-pick': {
+        const pid = el && el.dataset.presetId;
+        const pname = el && el.dataset.presetName;
+        const purl = el && el.dataset.presetUrl;
+        const pcat = el && el.dataset.presetCat;
+        const pcnt = Number((el && el.dataset.presetCnt) || 18000);
+        if (!purl) break;
+        if ($('#mdl-flt-name')) $('#mdl-flt-name').value = pname || '';
+        if ($('#mdl-flt-url')) $('#mdl-flt-url').value = purl || '';
+        if ($('#mdl-flt-cat')) $('#mdl-flt-cat').value = pcat || 'GitHub 开源规则';
+        const res = await callRouterApi('/api/dns/filter/toggle', 'POST', {
+          add_list: { id: pid, name: pname, url: purl, category: pcat, rules_count: pcnt }
+        });
+        if (res && res.ok !== false) {
+          if (res.filter && Array.isArray(res.filter.lists)) mock.filterLists = res.filter.lists;
+          if (el) {
+            el.textContent = '已挂载';
+            el.disabled = true;
+          }
+          renderDnsAndFilterSection();
+          toast('已挂载主流规则库「' + pname + '」');
+          await syncBackendStatus(false, true);
+        }
+        break;
+      }
       case 'dns-rules': {
-        openModal(
-          '添加自定义云端过滤列表与黑白名单',
-          '<div class="modal-form">' +
-            '<div class="modal-grid-2">' +
-              '<div class="modal-field"><label>新规则源名称</label><input id="mdl-flt-name" placeholder="如：AdGuard DNS Filter"></div>' +
-              '<div class="modal-field"><label>规则源 URL</label><input id="mdl-flt-url" placeholder="https://..."></div>' +
+        const defaultPresets = [
+          { id: 'cats-adrules', name: 'Cats-Team AdRules 黄金中文广告过滤规则', repo: 'Cats-Team/AdRules', category: '中文全网广告', rules_count: 92300, url: 'https://raw.githubusercontent.com/Cats-Team/AdRules/main/dns.txt' },
+          { id: 'heidai-adblock', name: '217heidai AdBlockFilters 聚合去重 DNS 规则', repo: '217heidai/adblockfilters', category: '多源聚合去重', rules_count: 128400, url: 'https://raw.githubusercontent.com/217heidai/adblockfilters/main/rules/adblockdns.txt' },
+          { id: 'awavenue-ads', name: 'AWAvenue 秋风广告规则 (移动端/TV防开屏)', repo: 'TG-Twilight/AWAvenue-Ads-Rule', category: '移动端/开屏/TV', rules_count: 18650, url: 'https://raw.githubusercontent.com/TG-Twilight/AWAvenue-Ads-Rule/main/Filters/AWAvenue-Ads-Rule-hosts.txt' },
+          { id: 'hagezi-pro', name: 'HaGeZi Multi PRO 专业级防追踪与恶意域名库', repo: 'hagezi/dns-blocklists', category: '专业隐私/防追踪', rules_count: 164200, url: 'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/pro.txt' },
+          { id: '1hosts-lite', name: '1Hosts Lite 轻量零误杀移动追踪拦截', repo: 'badmojr/1Hosts', category: '轻量防追踪', rules_count: 48900, url: 'https://raw.githubusercontent.com/badmojr/1Hosts/master/Lite/domains.txt' },
+          { id: 'halflife-ad', name: 'HalfLife 合并乘风/EasyListChina 国内视频过滤', repo: 'o0HalfLife0o/list', category: '国内视频/网页', rules_count: 54300, url: 'https://raw.githubusercontent.com/o0HalfLife0o/list/master/ad.txt' },
+          { id: 'neodev-host', name: 'NEO DEV HOST 全平台广告与遥测阻断', repo: 'neodevpro/neodevhost', category: '全平台遥测阻断', rules_count: 105800, url: 'https://raw.githubusercontent.com/neodevpro/neodevhost/master/domain' },
+          { id: 'anti-ad', name: 'Anti-AD 中文区精准广告与 PCDN 过滤', repo: 'privacy-protection-tools/anti-AD', category: '中文广告/PCDN', rules_count: 84260, url: 'https://raw.githubusercontent.com/privacy-protection-tools/anti-AD/master/anti-ad-domains.txt' }
+        ];
+        const presets = (Array.isArray(state.dnsPresetCatalog) && state.dnsPresetCatalog.length) ? state.dnsPresetCatalog : defaultPresets;
+        const mountedSet = new Set((mock.filterLists || []).map(l => String(l.url || '').trim()));
+        const mountedIdSet = new Set((mock.filterLists || []).map(l => String(l.id || '').trim()));
+        const presetCardsHtml = presets.map(p => {
+          const isMounted = mountedSet.has(p.url) || mountedIdSet.has(p.id);
+          return '<div class="trace-stage" style="padding:8px 10px;align-items:center">' +
+            '<i>GH</i>' +
+            '<div style="min-width:0;flex:1">' +
+              '<b style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + esc(p.name) + '">' + esc(p.name) + '</b>' +
+              '<span class="mono" style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(p.repo || p.category) + ' · ~' + Number(p.rules_count || 15000).toLocaleString('zh-CN') + ' 条</span>' +
             '</div>' +
-            '<div class="modal-field"><label>自定义黑名单域名（每行或逗号分隔）</label><textarea id="mdl-custom-block" rows="2" placeholder="ad.example.com, tracker.example.com"></textarea></div>' +
-            '<div class="modal-field"><label>自定义白名单豁免域名（每行或逗号分隔）</label><textarea id="mdl-custom-allow" rows="2" placeholder="safe.example.com"></textarea></div>' +
+            '<button type="button" class="button ' + (isMounted ? 'ghost' : 'secondary') + ' compact" style="padding:0 9px;flex-shrink:0" data-action="dns-preset-pick" data-preset-id="' + esc(p.id) + '" data-preset-name="' + esc(p.name) + '" data-preset-url="' + esc(p.url) + '" data-preset-cat="' + esc(p.category || 'GitHub 规则') + '" data-preset-cnt="' + Number(p.rules_count || 15000) + '" ' + (isMounted ? 'disabled' : '') + '>' + (isMounted ? '已挂载' : '+ 一键挂载') + '</button>' +
+          '</div>';
+        }).join('');
+        const curBlockedStr = Array.isArray(state.dnsCustomBlocked) ? state.dnsCustomBlocked.join(', ') : '';
+        const curAllowedStr = Array.isArray(state.dnsCustomAllowed) ? state.dnsCustomAllowed.join(', ') : '';
+        openModal(
+          '管理云端过滤规则库、GitHub 预设源与黑白名单',
+          '<div class="modal-form">' +
+            '<div class="modal-field">' +
+              '<label>GitHub 社区主流开源过滤规则库（点击「+ 一键挂载」立即加入护盾规则库）</label>' +
+              '<div class="trace-stages" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:8px;max-height:210px;overflow-y:auto;padding-right:4px">' + presetCardsHtml + '</div>' +
+            '</div>' +
+            '<div class="modal-grid-2" style="margin-top:8px">' +
+              '<div class="modal-field"><label>自定义规则列表名称</label><input id="mdl-flt-name" placeholder="如：My Custom AdBlock List"></div>' +
+              '<div class="modal-field"><label>分类标签</label><input id="mdl-flt-cat" placeholder="如：自定义 GitHub 规则" value="自定义规则"></div>' +
+            '</div>' +
+            '<div class="modal-field"><label>自定义规则列表链接 URL（支持 GitHub Raw / AdGuard / Hosts / Domains 列表链接）</label><input id="mdl-flt-url" class="mono" placeholder="https://raw.githubusercontent.com/..."></div>' +
+            '<div class="modal-grid-2">' +
+              '<div class="modal-field"><label>自定义黑名单域名（每行或逗号分隔）</label><textarea id="mdl-custom-block" rows="2" placeholder="ad.example.com, tracker.example.com">' + esc(curBlockedStr) + '</textarea></div>' +
+              '<div class="modal-field"><label>自定义白名单豁免域名（每行或逗号分隔）</label><textarea id="mdl-custom-allow" rows="2" placeholder="safe.example.com">' + esc(curAllowedStr) + '</textarea></div>' +
+            '</div>' +
           '</div>',
-          'DNS SHIELD LISTS',
+          'DNS SHIELD RULE HUB',
           async () => {
             const name = ($('#mdl-flt-name') && $('#mdl-flt-name').value.trim()) || '';
+            const cat = ($('#mdl-flt-cat') && $('#mdl-flt-cat').value.trim()) || '自定义规则';
             const url = ($('#mdl-flt-url') && $('#mdl-flt-url').value.trim()) || '';
             const bRaw = ($('#mdl-custom-block') && $('#mdl-custom-block').value.trim()) || '';
             const aRaw = ($('#mdl-custom-allow') && $('#mdl-custom-allow').value.trim()) || '';
             const payload = {};
-            if (url) payload.add_list = { name: name || '自定义规则列表', url };
-            if (bRaw) payload.custom_blocked = bRaw.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean);
-            if (aRaw) payload.custom_allowed = aRaw.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean);
-            await callRouterApi('/api/dns/filter/toggle', 'POST', payload);
+            if (url) payload.add_list = { name: name || '自定义规则列表', url, category: cat };
+            if ($('#mdl-custom-block')) payload.custom_blocked = bRaw ? bRaw.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean) : [];
+            if ($('#mdl-custom-allow')) payload.custom_allowed = aRaw ? aRaw.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean) : [];
+            const res = await callRouterApi('/api/dns/filter/toggle', 'POST', payload);
+            if (res && res.filter && Array.isArray(res.filter.lists)) {
+              mock.filterLists = res.filter.lists;
+            }
             closeModal();
-            toast('DNS 过滤列表与黑白名单已保存');
+            renderDnsAndFilterSection();
+            toast(url ? ('已添加自定义规则库「' + (name || url) + '」并保存黑白名单') : 'DNS 过滤规则库与黑白名单设置已保存');
             await syncBackendStatus(false, true);
           },
-          '保存过滤设置'
+          '保存并应用'
         );
         break;
       }
@@ -7999,10 +8500,10 @@
         break;
       }
       case 'probe-custom-nodes': {
-        toast('正在对所有手动添加节点执行 URL Ping 真连接测速...');
-        await callRouterApi('/api/probe/url_ping', 'POST', { source: 'custom' });
-        await syncBackendStatus(true, true);
-        toast('手动添加节点 URL Ping 测速完成并已全局同步');
+        await runUrlPingWithModal({
+          title: '手动添加节点 URL Ping 实时测速',
+          source: 'custom'
+        });
         break;
       }
       case 'sub-sync-one': {
@@ -8021,10 +8522,11 @@
         const idx = Number(el && el.dataset.sub);
         const sub = mock.subscriptions[idx];
         if (!sub) return;
-        toast('正在对订阅「' + sub.name + '」下属节点执行 URL Ping...');
-        await callRouterApi('/api/probe/url_ping', 'POST', { sub_id: sub.id, sub_url: sub.url });
-        toast('订阅「' + sub.name + '」节点测速完成');
-        await syncBackendStatus(true, true);
+        await runUrlPingWithModal({
+          title: '订阅「' + sub.name + '」节点 URL Ping 实时测速',
+          sub_id: sub.id,
+          sub_url: sub.url
+        });
         break;
       }
       case 'sub-edit-one': {
@@ -8058,11 +8560,11 @@
         break;
       }
       case 'probe-category': {
-        const visibleTags = filteredNodes().map(n => n.tag || n.name).slice(0, 40);
-        toast('正在对当前筛选分类 (' + visibleTags.length + ' 个节点) 执行 URL Ping...');
-        await callRouterApi('/api/probe/url_ping', 'POST', { tags: visibleTags });
-        await syncBackendStatus(true, true);
-        toast('当前分类节点 URL Ping 测速已完成');
+        const visibleTags = filteredNodes().map(n => n.tag || n.name);
+        await runUrlPingWithModal({
+          title: '当前筛选分类 URL Ping 实时测速 (' + visibleTags.length + ' 个节点)',
+          tags: visibleTags
+        });
         break;
       }
       case 'ipv6-check': {
@@ -9265,7 +9767,7 @@
         const d = new Date(now.getTime() - (count - 1 - i) * 86400000);
         lbl = String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
       }
-      const isZeroMode = Boolean(state.rawStatus && !ov);
+      const isZeroMode = Boolean(state.rawStatus);
       const baseScale = rng === '30d' ? 2.4 : (rng === '7d' ? 1.8 : 0.35);
       const db = isZeroMode ? 0 : Math.round((85 + 240 * (Math.sin(i * 0.45 + 0.8) * 0.5 + 0.5)) * baseScale * 1048576);
       const ub = isZeroMode ? 0 : Math.round((22 + 75 * (Math.cos(i * 0.38 + 1.2) * 0.5 + 0.5)) * baseScale * 1048576);
@@ -9446,6 +9948,19 @@
     const downPts = drawSmoothSeries(buckets.map(b => b.downBytes), '#6ee7f5', 'rgba(110,231,245,0.25)', '#8FE3FF');
     const upPts = drawSmoothSeries(buckets.map(b => b.upBytes), '#a994ff', 'rgba(169,148,255,0.18)', '#c4b5fd');
 
+    /* 1a. Explicit Empty / Disconnected Telemetry Hint (N-7 Fix) */
+    if (sumTotal <= 0 && !window.__MOCK_STATUS) {
+      ctx.save();
+      ctx.font = '500 12px "Noto Sans SC", "Inter", sans-serif';
+      ctx.fillStyle = 'rgba(148,163,184,0.78)';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const emptyMsg = (!state.rawStatus || !state.rawStatus.overview_telemetry)
+        ? '暂无实时遥测数据 · 正在同步网关流量账本...'
+        : '当前窗口暂无历史流量数据 · 产生流量后实时绘制';
+      ctx.fillText(emptyMsg, pad.left + plotW / 2, pad.top + plotH / 2);
+      ctx.restore();
+    }
     /* 1b. Average Reference Dashed Line + Right Label & Live Rightmost Pulse Anchor */
     if (sumTotal > 0 && buckets.length > 1) {
       const avgBucketBytes = sumTotal / buckets.length;

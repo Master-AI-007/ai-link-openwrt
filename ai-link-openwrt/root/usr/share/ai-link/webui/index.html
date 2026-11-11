@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="color-scheme" content="dark">
   <title>AI-LINK NEXUS · 全域 3D 智能网关指挥舱</title>
-  <link rel="icon" type="image/svg+xml" href="./favicon.svg?v=2.5.13-8b1d6b14">
-  <link rel="alternate icon" href="./favicon.ico?v=2.5.13-218c306e">
-  <link rel="apple-touch-icon" href="./apple-touch-icon.png?v=2.5.13-89c068d7">
-  <link rel="stylesheet" href="./nexus.css?v=2.5.13-9b10589b">
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg?v=2.5.14-8b1d6b14">
+  <link rel="alternate icon" href="./favicon.ico?v=2.5.14-218c306e">
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png?v=2.5.14-89c068d7">
+  <link rel="stylesheet" href="./nexus.css?v=2.5.14-9b10589b">
 </head>
 <body>
   <a class="skip-link" href="#main-stage">跳至主内容</a>
@@ -74,7 +74,7 @@
     <div class="workspace">
       <header class="topbar">
         <div class="page-heading">
-          <span class="eyebrow">AI-LINK / NEXUS 3D · <span class="version-chip">v2.5.13</span></span>
+          <span class="eyebrow">AI-LINK / NEXUS 3D · <span class="version-chip">v2.5.14</span></span>
           <h1 id="page-title">全域星图</h1>
         </div>
         <div class="global-route" style="cursor:pointer" data-page-link="shunt" title="点击进入分流与出口编排">
@@ -444,7 +444,7 @@
                 </div>
               </article>
 
-              <!-- v2.5.13: Real-Time Traffic Shunt Radar & Cloud GeoIP/Geosite 1-Click Assign -->
+              <!-- v2.5.14: Real-Time Traffic Shunt Radar & Cloud GeoIP/Geosite 1-Click Assign -->
               <article id="shunt-live-radar-card" data-shunt-obs-pane="radar" class="glass-card shunt-obs-hidden">
                 <div class="card-head" style="margin-bottom:8px">
                   <div>
@@ -457,7 +457,7 @@
                   </div>
                 </div>
                 <p style="color:var(--muted);margin:0 0 8px">自动识别当前落入兜底出口或纯 IP 直连的活跃目标（如 Telegram AS62041 纯 IP、Cursor、HuggingFace、Netflix CDN），支持一键归入对应分流组并挂载云端 GeoIP/Geosite 列表。</p>
-                <div id="shunt-live-radar-list" class="trace-stages" style="gap:6px"></div>
+                <div id="shunt-live-radar-list" class="trace-stages" style="gap:6px"><div class="trace-stage"><i>SCAN</i><div><b>正在扫描实时活跃连接并匹配 26 套云端 GeoIP / Geosite 规则集...</b><span>点击右上角「扫描实时连接」可刷新实时未归类域名与纯 IP</span></div><strong>就绪</strong></div></div>
               </article>
 
               <!-- T4: 1-Hour Sliding Window Shunt Rule Hit Leaderboard -->
@@ -582,8 +582,18 @@
               <div class="card-head"><div><span>INTERCEPTION INSIGHT</span><h3>高频拦截广告与追踪域名排行</h3></div><span class="status-pill">实时统计</span></div>
               <div id="blocked-domains" class="blocked-list"></div>
               <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line)">
-                <div class="card-head" style="margin-bottom:10px"><div><span>ACTIVE RULE SOURCES</span><h3>已挂载云端过滤规则库</h3></div><button class="button ghost compact" data-action="dns-rules">管理黑白名单与规则源</button></div>
-                <div id="dns-filter-lists" class="trace-stages"></div>
+                <div class="card-head" style="margin-bottom:10px">
+                  <div>
+                    <span>ACTIVE RULE SOURCES</span>
+                    <h3>已挂载云端过滤规则库</h3>
+                    <small id="dns-filter-lists-summary" style="color:var(--muted);display:block;margin-top:2px">支持独立启停开关、单库更新与 GitHub 主流规则源一键挂载</small>
+                  </div>
+                  <div class="button-row" style="gap:6px">
+                    <button type="button" class="button ghost compact" data-action="dns-sync">全部更新</button>
+                    <button type="button" class="button secondary compact" data-action="dns-rules">+ 添加 / 预设规则库</button>
+                  </div>
+                </div>
+                <div id="dns-filter-lists" class="trace-stages" style="max-height:260px;overflow-y:auto;padding-right:4px"></div>
               </div>
             </article>
 
@@ -759,10 +769,9 @@
             <article class="glass-card system-card">
               <span class="card-index">01 / CORE LIFECYCLE</span>
               <div class="system-title">
-                <div><h3 id="sys-core-title">sing-box --</h3><p id="sys-core-sub">AI-LINK v2.5.13 · 单一真相源架构</p></div>
+                <div><h3 id="sys-core-title">sing-box --</h3><p id="sys-core-sub">AI-LINK v2.5.14 · 单一真相源架构</p></div>
                 <div class="core-head-right">
                   <span class="status-pill" id="settings-proxy-status-pill">运行正常</span>
-                  <button class="button secondary compact" id="btn-check-core-update" data-action="check-core-update">检查内核更新</button>
                 </div>
               </div>
               <div class="core-ota-inline-row">
@@ -782,26 +791,23 @@
               </div>
             </article>
 
-            <!-- Card 2: Online Update Center & Sync -->
+            <!-- Card 2: Component & Rule Runtime Summary (Update buttons removed per v2.5.14 spec; rule updates managed directly in Shield/Shunt pages) -->
             <article class="glass-card">
-              <span class="card-index">02 / OTA UPDATE CENTER</span>
-              <h3>在线更新与规则同步</h3>
+              <span class="card-index">02 / COMPONENT & RULE STATUS</span>
+              <h3>组件版本与规则运行概览</h3>
               <div class="update-row">
-                <div><b>AI-LINK 插件版本</b><span id="ota-sub">点击「检查更新」获取云端最新版本状态</span></div>
+                <div><b>AI-LINK 插件版本</b><span id="ota-sub">当前已运行最新稳定版全栈架构</span></div>
                 <div class="button-row">
-                  <span class="version-chip">v2.5.13</span>
-                  <button class="button secondary compact" data-action="check-update">检查更新</button>
-                  <button class="button ghost compact" data-action="ota-status">升级状态</button>
-                  <button id="btn-ota-apply" class="button primary compact hidden" data-action="apply-update">立即升级</button>
+                  <span class="version-chip">v2.5.14</span>
                 </div>
               </div>
               <div class="update-row">
-                <div><b>机场订阅与节点库</b><span>一键拉取全部已启用订阅源并更新入核池</span></div>
-                <button class="button ghost compact" data-action="sync">同步订阅</button>
+                <div><b>机场订阅与节点库</b><span>于「节点管理」页管理订阅同步与实时测速</span></div>
+                <span class="status-pill">节点管理页管控</span>
               </div>
               <div class="update-row">
-                <div><b>Sing-box 分流规则集 (.srs)</b><span id="srs-rulesets-sub">-- 组官方与自定义编译规则集</span></div>
-                <button class="button ghost compact" data-action="sync-rulesets">同步规则集</button>
+                <div><b>Sing-box 分流与净网规则库</b><span id="srs-rulesets-sub">-- 组官方与自定义编译规则集</span></div>
+                <span class="status-pill">护盾/分流页管控</span>
               </div>
               <div class="update-row">
                 <div><b>GitHub 官方开源仓库</b><span class="mono">github.com/Master-AI-007/ai-link-openwrt</span></div>
@@ -963,10 +969,10 @@
     </div>
   </div>
 
-  <script src="./static/qrcode.min.js?v=2.5.13-6e6189e2"></script>
-  <script src="./assets/three.min.js?v=2.5.13-eb854986"></script>
-  <script src="./nexus3d.js?v=2.5.13-c2a8a250"></script>
-  <script src="./nexus.js?v=2.5.13-d3bf78dc"></script>
+  <script src="./static/qrcode.min.js?v=2.5.14-6e6189e2"></script>
+  <script src="./assets/three.min.js?v=2.5.14-eb854986"></script>
+  <script src="./nexus3d.js?v=2.5.14-c2a8a250"></script>
+  <script src="./nexus.js?v=2.5.14-7ce25d33"></script>
 <!-- NEXUS-UI-CONTRACT: sub-health-box | 仅入池检测达标项 | 免测直接加入池 | delete-custom-group | sub-card-custom | 手动添加节点 | btn-an-auto-screen | btn-an-mode-ping | btn-an-mode-svc | 同步时间: -->
 </body>
 </html>

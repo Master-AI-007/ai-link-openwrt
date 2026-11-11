@@ -18,7 +18,7 @@
         <circle cx="20" cy="20" r="5.4" fill="none" stroke="#a994ff" stroke-width="1.6"/>
         <circle cx="20" cy="20" r="1.8" fill="#6ee7f5"/>
       </svg>
-      <span style="display:block"><b>AI-LINK</b><span>NEXUS · 2.5.13</span></span>
+      <span style="display:block"><b>AI-LINK</b><span>NEXUS · 2.5.14</span></span>
     </a>
     <div class="nav-links">
       <a href="/#features">核心能力</a>
@@ -36,12 +36,22 @@
 <main class="wrap log-wrap">
   <div class="log-head">
     <h1>更新日志</h1>
-    <span class="pill"><i></i> 当前最新 2.5.13</span>
+    <span class="pill"><i></i> 当前最新 2.5.14</span>
   </div>
 <article class="log-item latest">
   <div class="log-top">
-    <h2>v2.5.13</h2>
+    <h2>v2.5.14</h2>
     <span class="tag c">最新</span>
+    <time>2026-11-11</time>
+  </div>
+  <p style="margin:2px 0 6px;color:var(--dim)"></p>
+<h3>规则集同步修复 + 全站防跳变 + 真实 L7/地区准入（PKG_RELEASE 25）</h3>
+<ul><li><b>正常升版</b>：升至 <code>v2.5.14</code>（<code>PKG_RELEASE:=25</code> / <code>r25</code>），增量基准指向线上 2.5.13（Release #441095950 / <code>c7cd5c41</code> / 部署 <code>ab483e95</code>）；现网设备可正常收 OTA 提示。初版候选包 <code>r24</code> 因真机规则集同步恒失败未发布。</li><li><b>FB-2514-1 规则集同步根治</b>：<code>generate_singbox_config</code> 的 DNS 规则严格剔除全部 <code>geoip-*</code>（仅保留 <code>geosite-*</code>），根治 sing-box 1.14.0 <code>Legacy Address Filter Fields</code> FATAL；<code>sync_srs</code> 改为临时目录 staging + 独立 <code>rule_set</code> 预检 + 失败原子回滚（<code>check_rc</code> 初值 -1、区分 <code>check_skipped</code>）；GeoIP 回退编码修正 <code>item_type=6 (ruleIPCIDR)</code>；<code>_is_valid_srs_binary</code> 增加 <code>eof</code> 校验；只读 GET 不再触发目录清理，损坏文件先备份 <code>.corrupt.bak</code>。<b>真机复验 <code>sync_srs ok=True / check_rc=0</code>、<code>run_all 15/15</code>、混沌 88/88</b>。</li><li><b>P0-1 全站防跳变</b>：<code>overviewTelemetryFull</code> 深合并 <code>overview_telemetry</code> / <code>dns_telemetry</code>，移除在线态 <code>Math.sin</code> 伪正弦；<code>top_blocked_domains</code> 统一 <code>[:8]</code>；概览驻留 30s 自动刷新、空数据显式提示。</li><li><b>P0-2 自动池真实校验</b>：删除 <code>QUOTA_SKIPPED_PRESERVE</code> 假通过（统一 <code>ok:False, svc_verified:False</code>）、4 处调用点补 <code>force_manual=True</code>、<code>gemini/chatgpt/openai/claude</code> 强制拦截不支持地区、<code>svc_passed := svc_verified and ok</code>、成员验证态 <code>[:10]</code> 保留；非用户显式锁定单区且同区主选 &lt; 2 时自动补齐跨区多线候选并暴露 <code>same_region_auto_relaxed</code>。</li><li><b>P0-3 URL Ping 实时进度弹窗</b>：<code>runUrlPingWithModal</code> 统一所有测速入口，含进度条、4 维 KPI 与逐节点结果表。</li><li><b>P0-4 护盾规则库</b>：单库启停开关/更新/移除、10 套 GitHub 主流预设、自定义 URL 防 SSRF 白名单（强制 <code>https://</code>、拦截 <code>file://</code>/<code>gopher://</code>/<code>127.0.0.0/8</code>/<code>169.254.169.254</code>/RFC1918）、<code>max-height:260px</code> 滚动容器、移除设置页更新按钮。</li><li><b>S-4 / N-10</b>：雷达新增 <code>matched_by === &#x27;group_rule&#x27;</code> 第 4 分支与「已命中常规组 / 兜底待归类」徽章，扩充国内运营商 CIDR（<code>58.0.0.0/8</code>、<code>59.0.0.0/8</code>、<code>120.0.0.0/6</code>、<code>140.207.0.0/16</code> 等）。</li><li><b>FB-2514-2/3</b>：报告双环境披露（容器/真机、decoded/gzip wire），<code>Stage 7.25</code> 标题对齐 <code>&lt;50ms</code>。</li><li>验收：<code>INSTALL_RC=0</code>、服务全 1、<code>nft ok:true</code>、重启稳定、自检 10/10 + 负向、零补发 <code>run_all 15/15 / RC=0</code>、混沌 <b>88/88</b>、门禁双布局 17/17、11 行指纹 11/11 与 1 字节篡改转红、design-lint 18/18、静态 8/8、UI 零异常三视口零溢出、出网 200/200/204。</li><li>说明：<code>auto_youtube</code> 池成员为 1 是用户显式锁定单区（<code>session_affinity_user_set=True</code>）的预期结果，非修复失效。</li></ul>
+</article>
+<article class="log-item">
+  <div class="log-top">
+    <h2>v2.5.13</h2>
+    <span class="tag">历史</span>
     <time>2026-11-11</time>
   </div>
   <p style="margin:2px 0 6px;color:var(--dim)"></p>

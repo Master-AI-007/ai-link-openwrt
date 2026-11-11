@@ -1575,7 +1575,7 @@ def main() -> int:
         gates_254_txt = (Path(__file__).resolve().parent / "gates_v101.py").read_text(encoding="utf-8")
         check("Stage 6.27a (v2.5.4 FB-253-1/2 Makefile PKG_VERSION/PKG_RELEASE 锚点与报告版本结构门禁): Makefile 含 PKG_VERSION:=2.5.4 与 PKG_RELEASE:=14，且 gates_v101 强制校验报告 PKG_RELEASE 与首节版本号",
               f"PKG_VERSION:={dmod.APP_VERSION}" in mk_254_txt
-              and "PKG_RELEASE:=23" in mk_254_txt
+              and "PKG_RELEASE:=25" in mk_254_txt
               and "FB-253-1: Verify PKG_RELEASE" in gates_254_txt
               and "FB-253-2: Verify report Section 1" in gates_254_txt,
               f"app_ver={dmod.APP_VERSION}")
@@ -3170,6 +3170,90 @@ def main() -> int:
         check("Stage 7.24 (v2.5.13 云端GeoIP/Geosite双轨规则集与实时流量雷达 + S-1/S-2草稿试匹配三态校验 + O-1..O-7/A-1..A-6候选数零截断/300s驻留同步/state_seq差量合并/共享切换聚合门禁)",
               cloud_geoip_shunt_ok and s1_s2_tester_ok and pool_and_contract_724_ok,
               f"cloud_geoip={cloud_geoip_shunt_ok}, tester={s1_s2_tester_ok}, pool_contract={pool_and_contract_724_ok}")
+
+        # ------------------------------------------------------------------
+        # Stage 7.25: v2.5.14 全量闭环门禁 (G-1..G-7 / S-1..S-6 / A-1..A-8 + 全站防跳变 + 自动池真实L7/地区校验 + URL Ping进度弹窗 + 护盾规则库开关/更新/GitHub预设 + 设置页移除更新按钮)
+        # ------------------------------------------------------------------
+        _rules_dir_725 = tmp_v252 / "rules"
+        _rules_dir_725.mkdir(parents=True, exist_ok=True)
+        _bad_srs_725 = _rules_dir_725 / "geosite-openai.srs"
+        _bad_srs_725.write_bytes(b"SRS\x01openai.com\n" + b"\x00" * 64)
+        _was_bad_rejected = (dmod._is_valid_srs_binary(_bad_srs_725) is False)
+        _sync_srs_725 = dmod.apply_cloud_shunt_action({"action": "sync_srs", "tags": ["geosite-openai", "geoip-telegram"]}, conf_dir=tmp_v252)
+        _is_now_valid_srs = dmod._is_valid_srs_binary(_bad_srs_725) and (_bad_srs_725.read_bytes()[:5] in (b"SRS\x01\x78", b"SRS\x02\x78", b"SRS\x03\x78"))
+        import time as _t725
+        _t0_ld = _t725.perf_counter()
+        _ld_725 = dmod.discover_live_unmatched_traffic(conf_dir=tmp_v252)
+        _ld_ms = (_t725.perf_counter() - _t0_ld) * 1000.0
+        _qa_725 = dmod.quick_assign_live_traffic({"target": "149.154.167.91", "group_id": "Social", "cloud_tag": "geoip-telegram"}, conf_dir=tmp_v252)
+        _tm_grp_725 = dmod.test_shunt_rule_match({
+            "target": "chatgpt.com",
+            "draft_group_id": "AI",
+            "draft_rule_blocks": [{"id": "rb_725", "name": "OnlyPort8443", "logic": "AND", "enabled": True, "conditions": [{"type": "port", "value": "8443"}]}]
+        }, conf_dir=tmp_v252)
+        srs_and_radar_725_ok = (
+            _was_bad_rejected
+            and _sync_srs_725.get("ok") is True
+            and _is_now_valid_srs
+            and _ld_725.get("ok") is True and _ld_ms < 50.0
+            and all("source" in x and "is_fallback" in x for x in (_ld_725.get("items") or []))
+            and bool(_qa_725.get("snapshot_id"))
+            and _tm_grp_725.get("matched_by") == "group_rule"
+        )
+        _ten_members = [{"tag": f"VIP-Node-{i:03d}-JP", "node_id": f"nid_{i}", "state": "ok", "delay_ms": 50 + i, "svc_verified": True, "svc_passed": True} for i in range(10)]
+        _slim_10 = dmod._slim_auto_nodes_for_status([{
+            "id": "auto_ai", "tag": "Auto_AI", "name": "AI自动", "pool_mode": "service_check",
+            "service_check_enabled": True, "service_checks": ["gemini", "chatgpt"],
+            "current_node": "VIP-Node-000-JP", "dispatch_mode": "single_best",
+            "groups": [{"index": 1, "name": "主力", "node_tags": [m["tag"] for m in _ten_members], "members": _ten_members}]
+        }])
+        _slim_m_cnt = len(((_slim_10[0].get("groups") or [{}])[0].get("members") or []))
+        _preset_cnt = len(getattr(dmod, "PRESET_GITHUB_DNS_FILTER_CATALOG", []))
+        _html_725 = (SITE / "root/usr/share/ai-link/webui/index.html").read_text("utf-8")
+        _js_725 = (SITE / "root/usr/share/ai-link/webui/nexus.js").read_text("utf-8")
+        _daemon_725 = (SITE / "root/usr/share/ai-link/ai-link-daemon.py").read_text("utf-8")
+        # N-4: GeoIP v1 binary encodes item_type=6 (IPSet)
+        _geoip_blob_725 = dmod._build_valid_srs_v1_bytes(["149.154.160.0/20"], is_geoip=True)
+        import zlib as _z725
+        _geoip_raw_725 = _z725.decompress(_geoip_blob_725[4:])
+        _geoip_type6_ok = (len(_geoip_raw_725) > 12 and _geoip_raw_725[:4] == bytes([1, 0, 6, 1]))
+        # N-12: Truncated zlib stream rejected by d_obj.eof check
+        _trunc_rejected_ok = (dmod._is_valid_srs_binary(_geoip_blob_725[:-4]) is False)
+        # N-8: Anti-SSRF validator rejects file://, gopher://, 127.0.0.1, 169.254.169.254, RFC1918 and accepts https://raw.githubusercontent.com/...
+        _ssrf_ok = (
+            dmod._is_safe_public_filter_url("file:///etc/passwd")[0] is False
+            and dmod._is_safe_public_filter_url("gopher://127.0.0.1:70/")[0] is False
+            and dmod._is_safe_public_filter_url("https://127.0.0.1/list.txt")[0] is False
+            and dmod._is_safe_public_filter_url("https://169.254.169.254/latest/meta-data/")[0] is False
+            and dmod._is_safe_public_filter_url("https://10.10.10.77/list.txt")[0] is False
+            and dmod._is_safe_public_filter_url("https://raw.githubusercontent.com/privacy-protection-tools/anti-AD/master/anti-ad-domains.txt")[0] is True
+        )
+        # FB-2514-1: DNS rules in generate_singbox_config exclude all geoip-* rule_sets
+        _sb_cfg_725 = dmod.ConfigGenerator.generate_singbox_config(enable_dns_section=True, enable_tls_outbounds=True, conf_dir=tmp_v252)
+        _dns_rs_tags_725 = [t for r in (_sb_cfg_725.get("dns", {}).get("rules") or []) for t in (r.get("rule_set") or [])]
+        _no_geoip_in_dns_ok = all(not str(t).lower().startswith("geoip") for t in _dns_rs_tags_725)
+        ui_and_dns_725_ok = (
+            _slim_m_cnt == 10
+            and _preset_cnt >= 10
+            and _geoip_type6_ok
+            and _trunc_rejected_ok
+            and _ssrf_ok
+            and _no_geoip_in_dns_ok
+            and '"reason": "QUOTA_SKIPPED_PRESERVE"' not in _daemon_725
+            and "r.matched_by === 'group_rule'" in _js_725
+            and "兜底待归类" in _js_725
+            and "runUrlPingWithModal" in _js_725
+            and "dns-list-toggle-one" in _js_725
+            and "dns-list-sync-one" in _js_725
+            and "dns-preset-pick" in _js_725
+            and "overviewTelemetryFull" in _js_725
+            and 'data-action="check-core-update"' not in _html_725
+            and 'data-action="sync-rulesets"' not in _html_725
+            and "max-height:260px;overflow-y:auto" in _html_725
+        )
+        check("Stage 7.25 (v2.5.14 .srs真实zlib编译校验 + 雷达<50ms与快照撤销 + 自动池10/10验证状态保留与L7/地区硬性准入 + 全站防跳变深合并 + URL Ping实时进度弹窗 + 护盾规则库开关/单库更新/10套GitHub预设/设置页移除更新按钮门禁)",
+              srs_and_radar_725_ok and ui_and_dns_725_ok,
+              f"srs_radar={srs_and_radar_725_ok}(ms={_ld_ms:.1f}), ui_dns={ui_and_dns_725_ok}(slim_m={_slim_m_cnt}, presets={_preset_cnt})")
     finally:
         shutil.rmtree(tmp_v252, ignore_errors=True)
 

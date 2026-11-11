@@ -12,7 +12,7 @@
 set -e
 export PYTHONDONTWRITEBYTECODE="1"
 
-VERSION="2.5.13"
+VERSION="2.5.14"
 UPGRADE_MODE=0
 for arg in "$@"; do
 	case "$arg" in

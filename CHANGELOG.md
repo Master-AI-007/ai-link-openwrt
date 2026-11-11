@@ -1,3 +1,16 @@
+## [v2.5.14] - 2026-11-11
+### 规则集同步修复 + 全站防跳变 + 真实 L7/地区准入（PKG_RELEASE 25）
+- **正常升版**：升至 `v2.5.14`（`PKG_RELEASE:=25` / `r25`），增量基准指向线上 2.5.13（Release #441095950 / `c7cd5c41` / 部署 `ab483e95`）；现网设备可正常收 OTA 提示。初版候选包 `r24` 因真机规则集同步恒失败未发布。
+- **FB-2514-1 规则集同步根治**：`generate_singbox_config` 的 DNS 规则严格剔除全部 `geoip-*`（仅保留 `geosite-*`），根治 sing-box 1.14.0 `Legacy Address Filter Fields` FATAL；`sync_srs` 改为临时目录 staging + 独立 `rule_set` 预检 + 失败原子回滚（`check_rc` 初值 -1、区分 `check_skipped`）；GeoIP 回退编码修正 `item_type=6 (ruleIPCIDR)`；`_is_valid_srs_binary` 增加 `eof` 校验；只读 GET 不再触发目录清理，损坏文件先备份 `.corrupt.bak`。**真机复验 `sync_srs ok=True / check_rc=0`、`run_all 15/15`、混沌 88/88**。
+- **P0-1 全站防跳变**：`overviewTelemetryFull` 深合并 `overview_telemetry` / `dns_telemetry`，移除在线态 `Math.sin` 伪正弦；`top_blocked_domains` 统一 `[:8]`；概览驻留 30s 自动刷新、空数据显式提示。
+- **P0-2 自动池真实校验**：删除 `QUOTA_SKIPPED_PRESERVE` 假通过（统一 `ok:False, svc_verified:False`）、4 处调用点补 `force_manual=True`、`gemini/chatgpt/openai/claude` 强制拦截不支持地区、`svc_passed := svc_verified and ok`、成员验证态 `[:10]` 保留；非用户显式锁定单区且同区主选 < 2 时自动补齐跨区多线候选并暴露 `same_region_auto_relaxed`。
+- **P0-3 URL Ping 实时进度弹窗**：`runUrlPingWithModal` 统一所有测速入口，含进度条、4 维 KPI 与逐节点结果表。
+- **P0-4 护盾规则库**：单库启停开关/更新/移除、10 套 GitHub 主流预设、自定义 URL 防 SSRF 白名单（强制 `https://`、拦截 `file://`/`gopher://`/`127.0.0.0/8`/`169.254.169.254`/RFC1918）、`max-height:260px` 滚动容器、移除设置页更新按钮。
+- **S-4 / N-10**：雷达新增 `matched_by === 'group_rule'` 第 4 分支与「已命中常规组 / 兜底待归类」徽章，扩充国内运营商 CIDR（`58.0.0.0/8`、`59.0.0.0/8`、`120.0.0.0/6`、`140.207.0.0/16` 等）。
+- **FB-2514-2/3**：报告双环境披露（容器/真机、decoded/gzip wire），`Stage 7.25` 标题对齐 `<50ms`。
+- 验收：`INSTALL_RC=0`、服务全 1、`nft ok:true`、重启稳定、自检 10/10 + 负向、零补发 `run_all 15/15 / RC=0`、混沌 **88/88**、门禁双布局 17/17、11 行指纹 11/11 与 1 字节篡改转红、design-lint 18/18、静态 8/8、UI 零异常三视口零溢出、出网 200/200/204。
+- 说明：`auto_youtube` 池成员为 1 是用户显式锁定单区（`session_affinity_user_set=True`）的预期结果，非修复失效。
+
 ## [v2.5.13] - 2026-11-11
 ### 云端 GeoIP/Geosite 双轨分流引擎与实时归组雷达
 - **正常升版**：升至 `v2.5.13`（`PKG_RELEASE:=23` / `r23`），增量基准明确指向线上 2.5.12（Release #440974555 / `40957a6d` / 部署 `118b5221`）；现网设备可正常收 OTA 提示。

@@ -4,7 +4,7 @@
 
 **NEXUS 全域 3D 智能网关 · 运行在 OpenWrt 上的智能分流系统**
 
-[![version](https://img.shields.io/badge/version-2.5.13-6ee7f5?style=flat-square)](https://github.com/Master-AI-007/ai-link-openwrt/releases/tag/v2.5.13)
+[![version](https://img.shields.io/badge/version-2.5.14-6ee7f5?style=flat-square)](https://github.com/Master-AI-007/ai-link-openwrt/releases/tag/v2.5.14)
 [![platform](https://img.shields.io/badge/OpenWrt-23.05%20%7C%2024.10%20%7C%20ImmortalWrt-a994ff?style=flat-square)](#环境要求)
 [![core](https://img.shields.io/badge/sing--box-1.14.1-54e6b5?style=flat-square)](#技术架构)
 [![license](https://img.shields.io/badge/license-MIT-f9a8d4?style=flat-square)](#许可与免责)
@@ -30,9 +30,9 @@ AI-LINK 是一套面向 OpenWrt 的**智能分流网关**：用 sing-box 单内�
 
 ---
 
-## 核心能力总览（v2.5.13）
+## 核心能力总览（v2.5.14）
 
-> **v2.5.13 增量**：云端 GeoIP/Geosite 双轨分流引擎（26 个规则集 + 三维挂载 + 纯 IP 命中）、6 大一键场景分流包与 8 秒撤销、实时流量归组雷达（`live_discover` / `quick_assign`）、组合规则多块编辑与试匹配三态、高阶字段零丢失、`lite_fields` 契约与 `state_seq`、候选节点零截断、同区单成员一键关闭；延续相对指标门禁、双环境三口径与零补发 15/15。
+> **v2.5.14 增量**：规则集同步根治（DNS 规则剔除 geoip-*、staging + 原子回滚、IPSet `item_type=6`、`eof` 校验）、全站防跳变（波形/7×24/护盾榜 8 行）、自动池真实 L7 与 Gemini 地区硬性准入（删除配额假通过）、URL Ping 实时进度弹窗、护盾规则库单库开关/10 套 GitHub 预设/防 SSRF、雷达 `group_rule` 分支与国内 CIDR 扩充；真机 `run_all 15/15`、混沌 88/88、`sync_srs ok=True`。
 
 
 | | 能力 | 说明 |
@@ -185,7 +185,8 @@ sing-box 1.14.1（单内核）
 
 | 版本 | 日期 | 主题 |
 |---|---|---|
-| **2.5.13** | 2026-11-11 | 云端双轨分流引擎与实时归组雷达 |
+| **2.5.14** | 2026-11-11 | 规则集同步修复 + 全站防跳变 + 真实 L7/地区准入（r25） |
+| 2.5.13 | 2026-11-11 | 云端双轨分流引擎与实时归组雷达 |
 | 2.5.12 | 2026-11-11 | 域名契约、状态性能与交付口径全量闭环 |
 | 2.5.11 | 2026-11-11 | 产品体验与次生风险全量闭环 |
 | 2.5.10 | 2026-11-11 | 演练四维隔离 + 正常升版 + 交付增量闭环 |
@@ -230,10 +231,10 @@ sing-box 1.14.1（单内核）
 ## 包指纹
 
 ```
-AI-LINK-v2.5.13.tar.gz
-size   1,084,841 B
-md5    203426316856269f0412053010415db2
-sha256 e28a7164994112ff71904c483b3ad5d87f86c8f26d730a39ac9984859e3f54de
+AI-LINK-v2.5.14.tar.gz
+size   1,106,096 B
+md5    a4d9fb1fa263ae86b225b062187119dc
+sha256 6e9e683e47653357d9b3d73d1ee070599fffb338e4cb1bf97c1d4caeefc62fc0
 ```
 
 在线清单：<https://ai-link-official.pages.dev/version.json>

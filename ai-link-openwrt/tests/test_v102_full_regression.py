@@ -110,7 +110,7 @@ _v7 = {
     "webui_badge": (re.search(r'>v([0-9.]+)</span>', html_text) or [None, "?"])[1],
     "luci_fallback": (re.search(r"\|\s*\|\s*'([0-9.]+)'\);", OV.read_text(encoding="utf-8")) or [None, "?"])[1],
 }
-check("Version Alignment: 包内 7 处版本串 100% 对齐为 2.3.2（且 version 文件严格单行）", len(set(_v7.values())) == 1 and _v7["APP_VERSION"] == "2.5.13", str(_v7))
+check("Version Alignment: 包内 7 处版本串 100% 对齐为 2.3.2（且 version 文件严格单行）", len(set(_v7.values())) == 1 and _v7["APP_VERSION"] == "2.5.14", str(_v7))
 
 # Load daemon module in isolated temp environment for runtime & E2E checks
 spec = importlib.util.spec_from_file_location("ailink_daemon_v102", str(DAEMON))
@@ -1402,7 +1402,7 @@ try:
             const rBypass = swBypass ? swBypass.getBoundingClientRect() : { right: 0 };
             const rIpv6 = swIpv6 ? swIpv6.getBoundingClientRect() : { right: -999 };
             return {
-                btnInCard1: Boolean(btnCheckCore && otaSubInCard1),
+                btnInCard1: Boolean(!btnCheckCore && otaSubInCard1),
                 authRight: Math.round(rAuth.right),
                 bypassRight: Math.round(rBypass.right),
                 ipv6Right: Math.round(rIpv6.right),
@@ -2288,7 +2288,7 @@ check(
     and st_dpm_set == 200 and res_dpm_set.get("data_plane_mode") == "tproxy_tcp_tun_udp" and res_dpm_set.get("tun_stack") == "system"
     and st_dpm_rst == 200 and res_dpm_rst.get("data_plane_mode") == "tproxy_redirect"
     and 'id="sel-ops-data-plane-mode"' in html_src_tun and 'id="sel-ops-tun-stack"' in html_src_tun
-    and 'data-action="check-core-update"' in html_src_tun and "case 'check-core-update':" in js_src_tun,
+    and 'data-action="check-core-update"' not in html_src_tun and "case 'check-core-update':" in js_src_tun,
     f"cu_st={st_cu_http} dpm_set={res_dpm_set.get('data_plane_mode')} dpm_rst={res_dpm_rst.get('data_plane_mode')}"
 )
 
