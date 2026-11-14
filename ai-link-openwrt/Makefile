@@ -4,8 +4,8 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-ai-link
-PKG_VERSION:=2.6.0
-PKG_RELEASE:=28
+PKG_VERSION:=2.6.1
+PKG_RELEASE:=29
 PKG_LICENSE:=GPL-3.0-only
 PKG_MAINTAINER:=AI-LINK Team <dev@ai-link.org>
 PKG_ARCH:=all
@@ -51,19 +51,19 @@ define Package/luci-app-ai-link/install
 	$(INSTALL_BIN) ./root/usr/share/ai-link/nftables/apply_nft.sh $(1)/usr/share/ai-link/nftables/apply_nft.sh
 	$(INSTALL_BIN) ./root/usr/share/ai-link/nftables/normalize_nft_sets.py $(1)/usr/share/ai-link/nftables/normalize_nft_sets.py
 	$(INSTALL_BIN) ./root/usr/share/ai-link/ai-link-daemon.py $(1)/usr/share/ai-link/ai-link-daemon.py
+	$(INSTALL_BIN) ./root/usr/share/ai-link/uninstall.sh $(1)/usr/share/ai-link/uninstall.sh
+	$(INSTALL_DATA) ./root/usr/share/ai-link/version $(1)/usr/share/ai-link/version
 	$(INSTALL_DIR) $(1)/usr/share/ai-link/webui/static
 	$(INSTALL_DIR) $(1)/usr/share/ai-link/webui/assets
-	$(INSTALL_DIR) $(1)/usr/share/ai-link/webui/vendor
 	$(INSTALL_DATA) ./root/usr/share/ai-link/webui/index.html $(1)/usr/share/ai-link/webui/index.html
 	$(INSTALL_DATA) ./root/usr/share/ai-link/webui/nexus.css $(1)/usr/share/ai-link/webui/nexus.css
 	$(INSTALL_DATA) ./root/usr/share/ai-link/webui/nexus3d.js $(1)/usr/share/ai-link/webui/nexus3d.js
 	$(INSTALL_DATA) ./root/usr/share/ai-link/webui/nexus.js $(1)/usr/share/ai-link/webui/nexus.js
-	$(INSTALL_DATA) ./root/usr/share/ai-link/webui/static/tailwind.css $(1)/usr/share/ai-link/webui/static/tailwind.css
+	$(INSTALL_DATA) ./root/usr/share/ai-link/webui/favicon.ico $(1)/usr/share/ai-link/webui/favicon.ico
+	$(INSTALL_DATA) ./root/usr/share/ai-link/webui/favicon.svg $(1)/usr/share/ai-link/webui/favicon.svg
+	$(INSTALL_DATA) ./root/usr/share/ai-link/webui/apple-touch-icon.png $(1)/usr/share/ai-link/webui/apple-touch-icon.png
 	$(INSTALL_DATA) ./root/usr/share/ai-link/webui/static/qrcode.min.js $(1)/usr/share/ai-link/webui/static/qrcode.min.js
-	$(INSTALL_DATA) ./root/usr/share/ai-link/webui/static/three.min.js $(1)/usr/share/ai-link/webui/static/three.min.js
-	$(INSTALL_DATA) ./root/usr/share/ai-link/webui/assets/tailwind.css $(1)/usr/share/ai-link/webui/assets/tailwind.css
-	$(INSTALL_DATA) ./root/usr/share/ai-link/webui/vendor/qrcode.min.js $(1)/usr/share/ai-link/webui/vendor/qrcode.min.js
-	$(INSTALL_DATA) ./root/usr/share/ai-link/webui/vendor/three.min.js $(1)/usr/share/ai-link/webui/vendor/three.min.js
+	$(INSTALL_DATA) ./root/usr/share/ai-link/webui/assets/three.min.js $(1)/usr/share/ai-link/webui/assets/three.min.js
 	$(INSTALL_DIR) $(1)/usr/share/luci/menu.d
 	$(INSTALL_DATA) ./root/usr/share/luci/menu.d/luci-app-ai-link.json $(1)/usr/share/luci/menu.d/luci-app-ai-link.json
 	$(INSTALL_DIR) $(1)/usr/share/rpcd/acl.d

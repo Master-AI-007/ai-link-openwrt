@@ -1575,7 +1575,7 @@ def main() -> int:
         gates_254_txt = (Path(__file__).resolve().parent / "gates_v101.py").read_text(encoding="utf-8")
         check("Stage 6.27a (v2.5.4 FB-253-1/2 Makefile PKG_VERSION/PKG_RELEASE 锚点与报告版本结构门禁): Makefile 含 PKG_VERSION:=2.5.4 与 PKG_RELEASE:=14，且 gates_v101 强制校验报告 PKG_RELEASE 与首节版本号",
               f"PKG_VERSION:={dmod.APP_VERSION}" in mk_254_txt
-              and "PKG_RELEASE:=28" in mk_254_txt
+              and "PKG_RELEASE:=29" in mk_254_txt
               and "FB-253-1: Verify PKG_RELEASE" in gates_254_txt
               and "FB-253-2: Verify report Section 1" in gates_254_txt,
               f"app_ver={dmod.APP_VERSION}")
@@ -3285,7 +3285,7 @@ def main() -> int:
         _p3_port_ok = (_inv_p_726.get("ok") is False and _inv_p_726.get("error") == "invalid_parameter" and "端口号不合法" in str(_inv_p_726.get("reason") or ""))
         # R-2 / R-3 / P2-2: Check lazy script attributes, fast-fail 401 token clear, and APP_BUILD r27
         _r2_r3_ok = (
-            any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r27", "r28"))
+            any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r27", "r28", "r29"))
             and 'id="lazy-three-js" data-lazy-src=' in _html_725
             and 'id="lazy-qrcode-js" data-lazy-src=' in _html_725
             and "配置网络与加速镜像" in _html_725
@@ -3450,10 +3450,64 @@ def main() -> int:
         )
         # (4) SYS-03: Watchdog exponential backoff & circuit breaker + manual reset guardrail
         dmod.reset_watchdog_circuit_breaker()
-        _sys03_ok = (dmod._WATCHDOG_FAIL_STREAK == 0 and dmod._WATCHDOG_CIRCUIT_OPEN is False and getattr(dmod, "APP_VERSION", "") == "2.6.0")
+        _sys03_ok = (dmod._WATCHDOG_FAIL_STREAK == 0 and dmod._WATCHDOG_CIRCUIT_OPEN is False and getattr(dmod, "APP_VERSION", "") in ("2.6.0", "2.6.1"))
         check("Stage 7.29 (v2.6.0 r28 30轮终极审查36项与防回归护栏闭环: POOL-01词边界与末尾落地地区识别 + POOL-02隔离期双次恢复防抖 + SEC-02/03/05/06备份脱敏可选/登录限流豁免回环/ACL最小权限/Webhook防SSRF + NET-03/05/09 MAC保留.lan与IPv6/卸载重启dnsmasq/.srs解压解析 + SYS-03/07看门狗退避熔断与手动重置门禁)",
               _pool01_ok and _pool02_ok and _sec_729_ok and _sys03_ok,
               f"pool01={_pool01_ok}, pool02={_pool02_ok}(q1={_rec_ok1.get('quarantine_until')},q2={_rec_ok2.get('quarantine_until')}), sec={_sec_729_ok}, sys03={_sys03_ok}")
+
+        # ------------------------------------------------------------------
+        # Stage 7.30: v2.6.1 (r29) 全栈收尾与 FB-2600-1/2/3 + 27 项深度审查遗留问题全量闭环门禁
+        # ------------------------------------------------------------------
+        # (1) CORE-01/02/03/05/07: T10 detour & AAAA suppression, direct_all Fake-IP block fast-fail, forward_mss tcp_mss_clamp toggle & forward_v6_guard separation, dns_direct_backup
+        dmod.update_ops_settings({"tcp_mss_clamp": False, "ipv6_leak_guard": True, "ipv6_leak_mode": "strict", "ipv6_proxy": False}, tmp_v252)
+        _nft_no_mss = dmod.generate_nft_rules_file(tmp_v252, tmp_v252)
+        dmod.update_ops_settings({"tcp_mss_clamp": True}, tmp_v252)
+        _nft_with_mss = dmod.generate_nft_rules_file(tmp_v252, tmp_v252)
+        _sh_730 = dmod.load_shunt_config(tmp_v252)
+        _sh_730["routing_mode"] = "direct_all"
+        dmod.save_shunt_config(_sh_730, tmp_v252)
+        _sb_direct_730 = dmod.ConfigGenerator.generate_singbox_config(enable_dns_section=True, enable_tls_outbounds=True, conf_dir=tmp_v252)
+        _fakeip_blk_ok = any(
+            r.get("ip_cidr") == ["198.18.0.0/15", "fc00::/18"] and r.get("outbound") == "block"
+            for r in (_sb_direct_730.get("route", {}).get("rules") or [])
+        )
+        _dns_tags_730 = {s.get("tag") for s in (_sb_direct_730.get("dns", {}).get("servers") or [])}
+        _core_730_ok = (
+            "maxseg size set rt mtu" not in _nft_no_mss
+            and "maxseg size set rt mtu" in _nft_with_mss
+            and "chain forward_v6_guard" in _nft_no_mss
+            and "set node_server_v6" in _nft_with_mss
+            and _fakeip_blk_ok
+            and "dns_direct_backup" in _dns_tags_730
+        )
+        # (2) POOL-01 & RULE-01: L7 403/favicon.ico removed, parse_google_redirect_region no blind US fallback, cloud catalog mirror_url
+        _l7_730_ok = (
+            403 not in dmod.L7_SERVICE_FINGERPRINTS["chatgpt"]["expected_status"]
+            and 403 not in dmod.L7_SERVICE_FINGERPRINTS["claude"]["expected_status"]
+            and 403 not in dmod.L7_SERVICE_FINGERPRINTS["tiktok"]["expected_status"]
+            and not any("favicon.ico" in u for u in dmod.L7_SERVICE_FINGERPRINTS["tiktok"]["probe_urls"])
+            and dmod.parse_google_redirect_region("", "<html>generic page</html>", 200, "OTHER")["google_region"] == "UNKNOWN"
+            and dmod.parse_google_redirect_region("", "Google US", 200, "US")["google_region"] == "US"
+        )
+        # (3) SYS-01~07 & UX-01~06 & FB-2600-2: nexus.js 'galaxy' 3D init fix, Makefile clean install, install.sh python3-yaml & zero r8_myfix, gates_v101 isolated temp dir
+        _js_730 = (_repo_728 / "root/usr/share/ai-link/webui/nexus.js").read_text(encoding="utf-8")
+        _mk_730 = (_repo_728 / "Makefile").read_text(encoding="utf-8")
+        _inst_730 = (_repo_728 / "install.sh").read_text(encoding="utf-8")
+        _init_730 = (_repo_728 / "root/etc/init.d/ai-link").read_text(encoding="utf-8")
+        _gates_730 = (_repo_728 / "tests/gates_v101.py").read_text(encoding="utf-8")
+        _sys_ux_730_ok = (
+            "if (!scene && state.page === 'galaxy' && !state.disable3dTopology) initScene();" in _js_730
+            and "tailwind.css" not in _mk_730
+            and "r8_myfix.py" not in _inst_730
+            and "python3-yaml" in _inst_730
+            and "jsonfilter" in _init_730
+            and "FB-2600-2 Fix:" in _gates_730
+            and getattr(dmod, "APP_VERSION", "") == "2.6.1"
+            and "r29" in str(getattr(dmod, "APP_BUILD", ""))
+        )
+        check("Stage 7.30 (v2.6.1 r29 全量收尾与 FB-2600-1/2/3 + 27项遗留问题闭环: CORE-01~07 direct_all快速拒绝Fake-IP/forward_mss开关与v6_guard解耦/node_server_v6/备用DNS + POOL-01剔除403与favicon假阳性 + SYS-01~07 cache.db迁入内存盘/Makefile与install.sh净化/jsonfilter解析 + UX-01~06星图galaxy修复与直连恢复联动 + FB-2600-2门禁隔离目录)",
+              _core_730_ok and _l7_730_ok and _sys_ux_730_ok,
+              f"core={_core_730_ok}, l7={_l7_730_ok}, sys_ux={_sys_ux_730_ok}")
     finally:
         shutil.rmtree(tmp_v252, ignore_errors=True)
 

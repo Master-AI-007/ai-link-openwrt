@@ -203,7 +203,7 @@ L7_SERVICE_FINGERPRINTS = {
             "https://api.openai.com/v1/models",
             "https://ios.chat.openai.com/public-api/mobile/server_status/v1"
         ],
-        "expected_status": [200, 204, 301, 302, 401, 403],
+        "expected_status": [200, 204, 301, 302, 401],
         "forbidden_keywords": ["unsupported_country", "country_not_supported", "cf_chl_opt", "Just a moment", "Attention Required", "vpn_detected", "loc=CN", "loc=HK", "loc=RU", "loc=BY", "loc=IR"],
         "required_keywords": []
     },
@@ -247,7 +247,7 @@ L7_SERVICE_FINGERPRINTS = {
             "https://api.openai.com/v1/models",
             "https://ios.chat.openai.com/public-api/mobile/server_status/v1"
         ],
-        "expected_status": [200, 204, 301, 302, 401, 403],
+        "expected_status": [200, 204, 301, 302, 401],
         "forbidden_keywords": [
             "unsupported_country",
             "country_not_supported",
@@ -267,7 +267,7 @@ L7_SERVICE_FINGERPRINTS = {
         "name": "Claude / Anthropic",
         "group": "AI_Best_Auto",
         "probe_urls": ["https://claude.ai/login"],
-        "expected_status": [200, 204, 301, 302, 307, 403],
+        "expected_status": [200, 204, 301, 302, 307],
         "forbidden_keywords": [
             "App unavailable",
             "unavailable in your region",
@@ -336,12 +336,11 @@ L7_SERVICE_FINGERPRINTS = {
         "name": "TikTok 视频流与 CDN",
         "group": "Stream_Auto",
         "probe_urls": [
-            "https://www.tiktok.com/favicon.ico",
-            "https://p16-sign-va.tiktokcdn.com/favicon.ico",
+            "https://www.tiktok.com/explore",
             "https://api16-normal-c-useast1a.tiktokv.com/",
             "https://www.tiktok.com/"
         ],
-        "expected_status": [200, 204, 301, 302, 403, 404],
+        "expected_status": [200, 204, 301, 302],
         "forbidden_keywords": [
             "Access Denied",
             "Service Unavailable"
@@ -1632,7 +1631,12 @@ def parse_google_redirect_region(location_url: str = "", body_text: str = "", st
             evidence = "BODY_MARKER:google.com.tw"
     if not detected_reg:
         if int(status_code or 0) in (200, 204):
-            detected_reg = (fallback_region if fallback_region and fallback_region not in ("OTHER", "UNKNOWN") else "US")
+            if "google us" in body_l or "gl=us" in body_l:
+                detected_reg = "US"
+            elif fallback_region and fallback_region not in ("OTHER", "UNKNOWN"):
+                detected_reg = fallback_region
+            else:
+                detected_reg = "UNKNOWN"
             evidence = f"HTTP_{status_code}_NO_REDIRECT"
         else:
             detected_reg = fallback_region or "UNKNOWN"
@@ -14885,7 +14889,7 @@ class ConfigGenerator:
                     globals().get("_record_internal_diag", str)(_e_diag)
             # §3.3.4 Fix: Keep 120 seeds inline when blocklist_custom rule_set is mounted; if rule_set degraded/unmounted, include all custom blocked domains without [:120] truncation!
             _has_blk_rs = any(r.get("tag") == "blocklist_custom" for r in local_rule_sets)
-            _inline_blk_doms = active_blocked_doms[:120] if _has_blk_rs else active_blocked_doms[:5000]
+            _inline_blk_doms = active_blocked_doms[:120] if _has_blk_rs else list(active_blocked_doms)
             route_rules.append({"domain_suffix": _inline_blk_doms, "outbound": "block"})
         if homelink_inbounds and homelink_inbound_tags:
             global_hl_rmode = get_uci_homelink_route_mode()
@@ -14942,8 +14946,9 @@ class ConfigGenerator:
             })
         # Build routing rules according to user-selected routing_mode
         if routing_mode == "direct_all":
-            # §3.2 P0 Fix: Intercept stale client Fake-IP (198.18.0.0/15) packets cleanly when switching to direct_all
-            route_rules.append({"ip_cidr": ["198.18.0.0/15", "fc00::/18"], "outbound": "direct"})
+            # CORE-02 Fix: Reject stale client Fake-IP (198.18.0.0/15 & fc00::/18) immediately with "block" (TCP RST / ICMP reject)
+            # so clients re-query dnsmasq for real IPs in 1ms instead of hanging 30-60s on WAN SYN timeout.
+            route_rules.append({"ip_cidr": ["198.18.0.0/15", "fc00::/18"], "outbound": "block"})
             final_outbound = "direct"
         elif routing_mode == "global_proxy":
             route_rules.append({"ip_cidr": ["198.18.0.0/15", "fc00::/18"], "outbound": "AI_Best_Auto"})
@@ -15015,7 +15020,7 @@ class ConfigGenerator:
                     if _rp_it.get("enabled", True) and _rp_it.get("group_id") == gid:
                         _grp_rp_doms.extend([str(x).strip().lstrip(".") for x in (_rp_it.get("cached_domains") or []) if str(x).strip()])
                 if _grp_rp_doms:
-                    route_rules.append({"domain_suffix": sorted(list(set(_grp_rp_doms)))[:5000], "outbound": stag})
+                    route_rules.append({"domain_suffix": sorted(list(set(_grp_rp_doms)))[:20000], "outbound": stag})
                 # Attach group-bound Cloud Geosite & GeoIP sets (both binary .srs and deterministic seed domains/CIDRs)
                 _installed_rs_tags = {r.get("tag") for r in local_rule_sets if isinstance(r, dict) and r.get("tag")}
                 _def_csets = DEFAULT_GROUP_CLOUD_SETS.get(gid, {})
@@ -15071,7 +15076,7 @@ class ConfigGenerator:
                 },
                 "cache_file": {
                     "enabled": True,
-                    "path": str(conf_dir / "cache.db"),
+                    "path": str((_effective_run_dir(conf_dir, RUN_DIR) if Path(conf_dir).resolve() == CONF_DIR.resolve() else Path(conf_dir)) / "cache.db"),
                     "store_fakeip": True
                 }
             },
@@ -15256,6 +15261,7 @@ class ConfigGenerator:
                     dns_rules.append({"query_type": ["A", "AAAA"], "server": "dns_fakeip"})
             dns_servers_list = [
                 {"type": "udp", "tag": "dns_direct", "server": "223.5.5.5", "server_port": 53},
+                {"type": "udp", "tag": "dns_direct_backup", "server": "119.29.29.29", "server_port": 53},
                 {"type": "fakeip", "tag": "dns_fakeip", "inet4_range": "198.18.0.0/15", "inet6_range": "fc00::/18"}
             ]
             # T10: Register per-group custom DNS servers (when dns_strategy != 'inherit' and custom_dns is set)
@@ -15308,9 +15314,16 @@ class ConfigGenerator:
                     if re.match(r"^\d{1,3}(\.\d{1,3}){3}$", _h_part.strip()):
                         _srv_obj = {"type": "udp", "tag": _srv_tag, "server": _h_part.strip(), "server_port": int(_p_part) if _p_part.isdigit() else 53}
                 if _srv_obj and not any(s.get("tag") == _srv_tag for s in dns_servers_list):
+                    # CORE-01 Fix: Attach proxy detour for overseas custom DNS (when not direct_dns) and enforce AAAA suppression when IPv6 proxy is off
+                    if _d_strat not in ("inherit", "direct_dns") and _sg_dns.get("country") not in ("direct", "block"):
+                        _grp_stag = _sg_dns.get("selector_tag") or f"Shunt_{_sg_dns.get('id')}"
+                        if any(ob_i.get("tag") == _grp_stag for ob_i in outbounds):
+                            _srv_obj["detour"] = _grp_stag
                     dns_servers_list.append(_srv_obj)
                     if _grp_doms and _d_strat != "inherit":
                         dns_rules.insert(1, {"domain_suffix": _grp_doms, "server": _srv_tag})
+                        if not v6_proxy_on:
+                            dns_rules.insert(1, {"domain_suffix": _grp_doms, "query_type": ["AAAA"], "action": "predefined", "rcode": "NOERROR"})
             cfg["dns"] = {
                 "servers": dns_servers_list,
                 "rules": dns_rules,
@@ -16334,10 +16347,18 @@ def generate_nft_rules_file(conf_dir: Path = CONF_DIR, run_dir: Path = RUN_DIR,
                 ls = line.strip()
                 if ls:
                     node_ips.add(ls)
+    node_ips_v6 = set()
     for ob in load_saved_nodes(conf_dir):
-        srv = str(ob.get("server") or "").strip()
+        srv = str(ob.get("server") or "").strip().strip("[]")
         if re.match(r"^\d{1,3}(\.\d{1,3}){3}$", srv) and not srv.startswith("127."):
             node_ips.add(srv)
+        elif ":" in srv and not srv.startswith("::1"):
+            try:
+                ip6_obj = ipaddress.IPv6Address(srv)
+                if not ip6_obj.is_loopback:
+                    node_ips_v6.add(str(ip6_obj))
+            except Exception:
+                pass
     collapsed_nips = []
     try:
         nets = [ipaddress.ip_network(x, strict=False) for x in sorted(node_ips)]
@@ -16345,6 +16366,7 @@ def generate_nft_rules_file(conf_dir: Path = CONF_DIR, run_dir: Path = RUN_DIR,
     except Exception:
         collapsed_nips = sorted(node_ips)
     node_ips_elem = f"elements = {{ {', '.join(collapsed_nips)} }}" if collapsed_nips else ""
+    node_ips6_elem = f"elements = {{ {', '.join(sorted(node_ips_v6))} }}" if node_ips_v6 else ""
 
     # Collect LAN direct MACs
     mac_list = list(ops.get("lan_direct_macs") or [])
@@ -16479,6 +16501,15 @@ def generate_nft_rules_file(conf_dir: Path = CONF_DIR, run_dir: Path = RUN_DIR,
     lines += [
         "\t}",
         "",
+        "\tset node_server_v6 {",
+        "\t\ttype ipv6_addr",
+        "\t\tflags interval",
+    ]
+    if node_ips6_elem:
+        lines.append(f"\t\t{node_ips6_elem}")
+    lines += [
+        "\t}",
+        "",
         "\tset lan_direct_macs {",
         "\t\ttype ether_addr",
     ]
@@ -16534,6 +16565,7 @@ def generate_nft_rules_file(conf_dir: Path = CONF_DIR, run_dir: Path = RUN_DIR,
             "\t\tip daddr @reserved_ip4 accept",
             "\t\tip6 daddr @reserved_ip6 accept",
             "\t\tip daddr @node_server_v4 accept",
+        "\t\tip6 daddr @node_server_v6 accept",
             f"\t\tip daddr @google_play_v4 meta l4proto tcp redirect to :{redir_port}",
         ]
         if eb:
@@ -16552,18 +16584,25 @@ def generate_nft_rules_file(conf_dir: Path = CONF_DIR, run_dir: Path = RUN_DIR,
         "\tchain forward_mss {",
         "\t\ttype filter hook forward priority mangle; policy accept;",
         "\t\tmeta mark 0x02000000 ct mark set 0x02000000",
-        "\t\ttcp flags syn tcp option maxseg size set rt mtu",
     ]
+    mss_clamp_on = bool(ops.get("tcp_mss_clamp", True))
+    if mss_clamp_on:
+        lines.append("\t\ttcp flags syn tcp option maxseg size set rt mtu")
     if dpm in ("tproxy_tcp_tun_udp", "tun_full"):
-        lines += [
-            "\t\tiifname \"ailink0\" accept",
-            "\t\toifname \"ailink0\" tcp flags syn tcp option maxseg size set rt mtu accept",
-            "\t\toifname \"ailink0\" accept",
-        ]
+        lines.append("\t\tiifname \"ailink0\" accept")
+        if mss_clamp_on:
+            lines.append("\t\toifname \"ailink0\" tcp flags syn tcp option maxseg size set rt mtu accept")
+        lines.append("\t\toifname \"ailink0\" accept")
+    lines += [
+        "\t}",
+        "",
+    ]
     v6_leak_guard = bool(ops.get("ipv6_leak_guard", False))
     v6_leak_mode = str(ops.get("ipv6_leak_mode") or ("strict" if v6_leak_guard else "off")).strip().lower()
     if v6_leak_guard and v6_leak_mode in ("strict", "loose") and not v6:
         lines += [
+            "\tchain forward_v6_guard {",
+            "\t\ttype filter hook forward priority mangle + 5; policy accept;",
             "\t\t# T3 Side-Router IPv6 Leak Guard (" + v6_leak_mode + " mode)",
             "\t\tip6 daddr @reserved_ip6 accept",
             "\t\ticmpv6 type { destination-unreachable, packet-too-big, time-exceeded, parameter-problem, echo-request, echo-reply, mld-listener-query, mld-listener-report, mld-listener-done, nd-router-solicit, nd-router-advert, nd-neighbor-solicit, nd-neighbor-advert, nd-redirect, ind-neighbor-solicit, ind-neighbor-advert, mld2-listener-report } accept",
@@ -16572,10 +16611,12 @@ def generate_nft_rules_file(conf_dir: Path = CONF_DIR, run_dir: Path = RUN_DIR,
         ]
         if v6_leak_mode == "loose":
             lines.append("\t\tip6 daddr @cn_ip6 accept")
-        lines.append("\t\tmeta nfproto ipv6 reject with icmpv6 type no-route")
+        lines += [
+            "\t\tmeta nfproto ipv6 reject with icmpv6 type no-route",
+            "\t}",
+            "",
+        ]
     lines += [
-        "\t}",
-        "",
         "\tchain prerouting_tproxy {",
         "\t\ttype filter hook prerouting priority mangle; policy accept;",
         "\t\tmeta mark 0x000000ff accept",
@@ -16625,6 +16666,7 @@ def generate_nft_rules_file(conf_dir: Path = CONF_DIR, run_dir: Path = RUN_DIR,
         "\t\tip daddr @reserved_ip4 accept",
         "\t\tip6 daddr @reserved_ip6 accept",
         "\t\tip daddr @node_server_v4 accept",
+        "\t\tip6 daddr @node_server_v6 accept",
     ]
     # Force Google Play / GGC IPs (including 180.163.150.0/23, 114.250.64.0/20, 203.208.32.0/19) into TProxy/TUN BEFORE @cn_ip4!
     if dpm == "tun_full":
@@ -16696,6 +16738,7 @@ def generate_nft_rules_file(conf_dir: Path = CONF_DIR, run_dir: Path = RUN_DIR,
         "\t\tip daddr @reserved_ip4 accept",
         "\t\tip6 daddr @reserved_ip6 accept",
         "\t\tip daddr @node_server_v4 accept",
+        "\t\tip6 daddr @node_server_v6 accept",
         f"\t\tmeta l4proto {{ tcp, udp }} socket transparent 1 meta mark set {fw_mark} accept",
     ]
     if not v6:
@@ -16777,6 +16820,15 @@ def _sync_ipv6_policy_routing(enable_v6: bool = False) -> bool:
             except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                 globals().get("_record_internal_diag", str)(_e_diag)
         subprocess.run(["sysctl", "-w", "net.netfilter.nf_conntrack_tcp_be_liberal=1"], capture_output=True, timeout=2)
+        _lan_dev = "br-lan"
+        try:
+            _r_ld = subprocess.run(["uci", "-q", "get", "network.lan.device"], capture_output=True, text=True, timeout=1.5)
+            if _r_ld.returncode == 0 and (_r_ld.stdout or "").strip():
+                _lan_dev = (_r_ld.stdout or "").strip().split()[0]
+        except Exception:
+            pass
+        subprocess.run(["sysctl", "-w", "net.ipv4.conf.lo.route_localnet=1"], capture_output=True, timeout=2)
+        subprocess.run(["sysctl", "-w", f"net.ipv4.conf.{_lan_dev}.route_localnet=1"], capture_output=True, timeout=2)
         subprocess.run(["sysctl", "-w", "net.ipv4.conf.all.route_localnet=1"], capture_output=True, timeout=2)
         subprocess.run(["sysctl", "-w", "net.ipv6.conf.all.forwarding=1"], capture_output=True, timeout=2)
         for _ in range(3):
@@ -16801,7 +16853,7 @@ def _sync_ipv6_policy_routing(enable_v6: bool = False) -> bool:
                 break
         subprocess.run(["ip", "-6", "rule", "add", "fwmark", "0x162", "table", "162", "priority", "162"], capture_output=True, timeout=2)
         subprocess.run(["ip", "-6", "route", "replace", "local", "default", "dev", "lo", "table", "162"], capture_output=True, timeout=2)
-        subprocess.run(["ip", "-6", "route", "replace", "fc00::/18", "dev", "br-lan", "metric", "2048"], capture_output=True, timeout=2)
+        subprocess.run(["ip", "-6", "route", "replace", "fc00::/18", "dev", _lan_dev, "metric", "2048"], capture_output=True, timeout=2)
         return True
     except Exception:
         return False
@@ -19043,7 +19095,11 @@ def build_homelink_api_response(conf_dir: Path = CONF_DIR, mask_private_key: boo
         proto = (item.get("protocol") or "vless-reality").lower()
         port = int(item.get("listen_port", 18443) or 18443)
         uri_port = int(item.get("external_port") or 0) or port
-        host = (item.get("ddns_host") or "").strip() or lan_ip
+        raw_ddns = (item.get("ddns_host") or "").strip()
+        host = raw_ddns or lan_ip
+        _is_lan_h = (not raw_ddns) or bool(re.match(r"^(?:10\.|127\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.)", host)) or host.endswith(".lan")
+        item["is_lan_host"] = _is_lan_h
+        item["lan_host_warning"] = "当前未配置公网 DDNS 域名，分享链接使用内网 IP 仅限局域网测试；外网回家请填写公网 DDNS 并配置端口映射。" if _is_lan_h else ""
         name = item.get("name") or f"HomeLink-{port}"
         enc_name = urllib.parse.quote(name, safe="-_.")
         _hl_sec_e = _get_or_create_homelink_default_secrets(conf_dir)
@@ -22699,6 +22755,24 @@ def run_network_health_doctor(payload: dict = None, conf_dir: Path = CONF_DIR, a
                     "label": "一键开启 TCP MSS 钳制"
                 }
             }
+        flow_offload = str(mock_env.get("flow_offloading") or "").strip()
+        if not flow_offload and is_real_router:
+            try:
+                r_fo = subprocess.run(["uci", "-q", "get", "firewall.@defaults[0].flow_offloading"], capture_output=True, text=True, timeout=1.5)
+                flow_offload = (r_fo.stdout or "").strip()
+            except Exception:
+                flow_offload = ""
+        if flow_offload in ("1", "true"):
+            return {
+                "id": "mtu_pmtu",
+                "index": 7,
+                "title": "MTU / 流加速兼容",
+                "status": "warn",
+                "summary": "检测到系统防火墙开启了 Flow Offloading 流加速，可能导致长连接跳过 TProxy 分流",
+                "detail": "OpenWrt 软件/硬件流加速会将已建立连接送入内核快路径绕过 prerouting TProxy 链，建议在防火墙中关闭软件/硬件流加速。",
+                "evidence": f"pmtu={pmtu_val}, br_lan_mtu={lan_mtu}, flow_offloading={flow_offload}",
+                "fix": None
+            }
         return {
             "id": "mtu_pmtu",
             "index": 7,
@@ -23845,10 +23919,13 @@ def get_cloud_shunt_catalog(conf_dir: Path = CONF_DIR) -> dict:
         if is_inst:
             installed_cnt += 1
         head_hex = srs_f.read_bytes()[:8].hex() if is_inst else ""
+        _gh_m = str(get_ops_settings(conf_dir).get("gh_mirror") or "https://gh-proxy.com/").strip()
+        _mir_url = (_gh_m.rstrip("/") + "/" + src_url) if (_gh_m and src_url.startswith("https://raw.githubusercontent.com/")) else src_url
         catalog_out.append({
             **cat,
             "url": src_url,
             "source_url": src_url,
+            "mirror_url": _mir_url,
             "installed": is_inst,
             "valid_binary": is_inst,
             "head_hex": head_hex,
@@ -25537,9 +25614,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.6.0"
+APP_VERSION = "2.6.1"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.6.0-release-20261115-r28"
+APP_BUILD = "2.6.1-release-20261115-r29"
 
 UPDATE_MANIFEST_PRIMARY = "https://ai-link-official.pages.dev/version.json"
 UPDATE_MANIFEST_GITHUB = "https://raw.githubusercontent.com/Master-AI-007/ai-link-openwrt/main/version.json"
@@ -27683,8 +27760,8 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             self._send_json({
                 "ok": True,
                 "version": APP_VERSION,
-                "pkg_release": "r28",
-                "release": f"{APP_VERSION}-r28",
+                "pkg_release": "r29",
+                "release": f"{APP_VERSION}-r29",
                 "channel": APP_CHANNEL,
                 "build": APP_BUILD,
                 "version_file": _read_version_file(),
@@ -27890,7 +27967,7 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             if not self._strict_auth_ok():
                 self._send_json({"ok": False, "error": "unauthorized", "message": "导出配置备份需要登录面板获取访问令牌"}, status=401)
                 return
-            inc_sec = str(qs.get("include_secrets", "1")).lower() not in ("0", "false", "no") and str(qs.get("mask_secrets", "0")).lower() not in ("1", "true", "yes")
+            inc_sec = str(qs.get("include_secrets", "0")).lower() in ("1", "true", "yes") and str(qs.get("mask_secrets", "0")).lower() not in ("1", "true", "yes")
             self._send_json(export_ops_backup(CONF_DIR, include_secrets=inc_sec))
             return
         if req_path == "/api/ops/backup_archive":
@@ -28121,7 +28198,14 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
         if clean_path != "/api/login" and clean_path.startswith("/api/") and not self._auth_ok():
             self._send_json({"ok": False, "error": "unauthorized", "message": "未授权访问，请先登录面板获取令牌"}, status=401)
             return
-        length = int(self.headers.get("Content-Length", "0") or 0)
+        try:
+            length = int(self.headers.get("Content-Length", "0") or 0)
+        except (ValueError, TypeError):
+            self._send_json({"ok": False, "error": "invalid_content_length", "message": "请求头 Content-Length 必须为非负整数"}, status=400)
+            return
+        if length < 0:
+            self._send_json({"ok": False, "error": "negative_content_length", "message": "请求头 Content-Length 不能为负数"}, status=400)
+            return
         if length > 35 * 1024 * 1024:
             self._send_json({"ok": False, "error": "payload_too_large", "message": "请求体超过 35MB 上限"}, status=413)
             return
@@ -28134,32 +28218,54 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
         if not isinstance(payload, dict):
             self._send_json({"ok": False, "error": "invalid_payload_type", "message": "请求体必须为 JSON 对象 (object)"}, status=400)
             return
+        # SEC-02 Fix: Strip unisolated test `mock_*` keys on production router HTTP requests unless test hooks are explicitly enabled
+        _is_real_prod_http = (
+            Path(CONF_DIR).resolve() == Path("/etc/ai-link").resolve()
+            and Path("/etc/init.d/ai-link").exists()
+            and not bool(globals().get("_SELF_TEST_ACTIVE", False))
+            and os.environ.get("AI_LINK_ALLOW_TEST_HOOKS") != "1"
+        )
+        if _is_real_prod_http and clean_path != "/api/diag/run":
+            for _mk_k in ("mock_content", "mock_status", "mock_mbps", "mock_ping_result", "mock_http", "mock_ping_map", "mock_ipv6_map"):
+                payload.pop(_mk_k, None)
         if clean_path == "/api/login":
             client_ip = str((self.client_address[0] if self.client_address else "") or "unknown").strip()
             is_loop = client_ip in ("127.0.0.1", "::1", "localhost") and not bool(payload.get("enforce_rate_limit"))
             now_login = time.time()
-            rl_map = globals().setdefault("_LOGIN_RATE_LIMIT_MAP", {})
-            if len(rl_map) > 256:
-                rl_map.clear()
-            rl_rec = rl_map.get(client_ip) or {"fails": 0, "first_ts": now_login, "lock_until": 0.0}
-            if not is_loop and rl_rec.get("lock_until", 0.0) > now_login:
-                rem_s = max(1, int(rl_rec["lock_until"] - now_login))
-                self._send_json({"ok": False, "error": "too_many_attempts", "retry_after_s": rem_s, "message": f"登录失败次数过多，请 {rem_s} 秒后再试"}, status=429)
-                return
+            rl_lock = globals().setdefault("_LOGIN_RATE_LIMIT_LOCK", threading.Lock())
+            with rl_lock:
+                rl_map = globals().setdefault("_LOGIN_RATE_LIMIT_MAP", {})
+                if len(rl_map) > 256:
+                    # SEC-04 Fix: Evict expired or oldest 64 entries instead of clearing the entire lock table
+                    _expired_ips = [k for k, v in rl_map.items() if float(v.get("lock_until") or 0.0) < now_login and (now_login - float(v.get("first_ts") or 0.0)) > 60.0]
+                    for _ek in _expired_ips[:128]:
+                        rl_map.pop(_ek, None)
+                    if len(rl_map) > 256:
+                        for _ok_ip in sorted(rl_map.keys(), key=lambda k: float(rl_map[k].get("first_ts") or 0.0))[:64]:
+                            rl_map.pop(_ok_ip, None)
+                rl_rec = dict(rl_map.get(client_ip) or {"fails": 0, "first_ts": now_login, "lock_until": 0.0})
+                if not is_loop and rl_rec.get("lock_until", 0.0) > now_login:
+                    rem_s = max(1, int(rl_rec["lock_until"] - now_login))
+                    self._send_json({"ok": False, "error": "too_many_attempts", "retry_after_s": rem_s, "message": f"登录失败次数过多，请 {rem_s} 秒后再试"}, status=429)
+                    return
             pw = str(payload.get("password") or "").strip()
             ok_pw, tok = _verify_panel_password(pw, CONF_DIR)
             if not ok_pw:
-                if (now_login - float(rl_rec.get("first_ts") or 0.0)) > 60.0:
-                    rl_rec = {"fails": 1, "first_ts": now_login, "lock_until": 0.0}
-                else:
-                    rl_rec["fails"] = int(rl_rec.get("fails") or 0) + 1
-                if rl_rec["fails"] >= 5 and not is_loop:
-                    rl_rec["lock_until"] = now_login + 60.0
-                rl_map[client_ip] = rl_rec
+                with rl_lock:
+                    rl_map = globals().setdefault("_LOGIN_RATE_LIMIT_MAP", {})
+                    rl_rec = dict(rl_map.get(client_ip) or {"fails": 0, "first_ts": now_login, "lock_until": 0.0})
+                    if (now_login - float(rl_rec.get("first_ts") or 0.0)) > 60.0:
+                        rl_rec = {"fails": 1, "first_ts": now_login, "lock_until": 0.0}
+                    else:
+                        rl_rec["fails"] = int(rl_rec.get("fails") or 0) + 1
+                    if rl_rec["fails"] >= 5 and not is_loop:
+                        rl_rec["lock_until"] = now_login + 60.0
+                    rl_map[client_ip] = rl_rec
                 time.sleep(0.4)
                 self._send_json({"ok": False, "error": "invalid_password", "message": "面板访问密码错误"}, status=401)
                 return
-            rl_map.pop(client_ip, None)
+            with rl_lock:
+                globals().setdefault("_LOGIN_RATE_LIMIT_MAP", {}).pop(client_ip, None)
             self._send_json({"ok": True, "token": tok})
             return
         if clean_path.startswith("/api/") and not self._auth_ok():

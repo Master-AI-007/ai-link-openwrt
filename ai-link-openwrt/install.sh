@@ -1,6 +1,6 @@
 #!/bin/sh
 # ==============================================================================
-# AI-LINK v2.6.0 (luci-app-ai-link v2.6.0) Universal Cross-Platform Installer
+# AI-LINK v2.6.1 (luci-app-ai-link v2.6.1) Universal Cross-Platform Installer
 # Supports:
 #   - Architectures : x86_64 (amd64), aarch64 (arm64), armv7l (armhf), mipsel, riscv64
 #   - Package Mgrs  : OPKG (OpenWrt <=23.05) & APK (OpenWrt 24.10+ / ImmortalWrt 25.x+)
@@ -12,7 +12,7 @@
 set -e
 export PYTHONDONTWRITEBYTECODE="1"
 
-VERSION="2.6.0"
+VERSION="2.6.1"
 UPGRADE_MODE=0
 for arg in "$@"; do
 	case "$arg" in
@@ -130,13 +130,13 @@ check_and_install_deps() {
 
 	echo "  -> 发现待补齐组件:${MISSING_PKGS}，正在通过 ${PKG_MGR} 自动安装..."
 	if [ "$PKG_MGR" = "opkg" ]; then
-		opkg update >/dev/null 2>&1 || true
-		for pkg in kmod-nft-tproxy kmod-nft-socket kmod-tun nftables ip-full ca-bundle python3-light python3-urllib python3-openssl python3-cryptography openssl-util curl sing-box; do
-			opkg install "$pkg" >/dev/null 2>&1 || true
+		opkg update >/dev/null 2>&1 || logger -t ai-link "WARN: opkg update returned non-zero"
+		for pkg in kmod-nft-tproxy kmod-nft-socket kmod-tun nftables ip-full ca-bundle python3-light python3-yaml python3-urllib python3-openssl python3-cryptography openssl-util curl sing-box; do
+			opkg install "$pkg" >/dev/null 2>&1 || logger -t ai-link "WARN: opkg install $pkg skipped or unavailable"
 		done
 	elif [ "$PKG_MGR" = "apk" ]; then
-		apk update >/dev/null 2>&1 || true
-		apk add --allow-untrusted kmod-nft-tproxy kmod-nft-socket kmod-tun nftables ip-full ca-bundle python3 python3-cryptography openssl-util curl sing-box >/dev/null 2>&1 || true
+		apk update >/dev/null 2>&1 || logger -t ai-link "WARN: apk update returned non-zero"
+		apk add --allow-untrusted kmod-nft-tproxy kmod-nft-socket kmod-tun nftables ip-full ca-bundle python3 python3-yaml python3-cryptography openssl-util curl sing-box >/dev/null 2>&1 || logger -t ai-link "WARN: apk add returned non-zero"
 	fi
 	echo "  -> ✓ 依赖项检查与补齐流程已完成"
 }
@@ -237,13 +237,8 @@ chmod +x /etc/init.d/ai-link /usr/bin/ai-link /usr/share/ai-link/ai-link-daemon.
 mkdir -p /etc/ai-link
 cp -f "$SCRIPT_DIR/root/etc/ai-link/version" /etc/ai-link/version 2>/dev/null || echo "${VERSION} (20261026)" > /etc/ai-link/version
 
-MEM_KB=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null || echo 4194304)
-MEM_MIB=$(( ${MEM_KB:-4194304} / 1024 ))
-if [ "$MEM_MIB" -le 2200 ]; then
-	REC_MAX_OB="120"
-else
-	REC_MAX_OB="200"
-fi
+# SYS-07 Fix: Unify max_outbounds=0 across install.sh, UCI, and ai-link-daemon.py
+REC_MAX_OB="0"
 
 # Non-destructive UCI item-by-item merge: only set defaults if the option does not already exist
 uci_set_default() {
@@ -290,15 +285,7 @@ uci -q set "ai-link.global.app_version=${VERSION}" 2>/dev/null || true
 uci -q delete ai-link.global.luci_bridge_token 2>/dev/null || true
 chmod 600 /etc/config/ai-link 2>/dev/null || true
 
-if [ ! -f /etc/ai-link/max_outbounds.txt ] || [ "$(cat /etc/ai-link/max_outbounds.txt 2>/dev/null)" = "60" ] || [ "$(cat /etc/ai-link/max_outbounds.txt 2>/dev/null)" = "0" ]; then
-	echo "$REC_MAX_OB" > /etc/ai-link/max_outbounds.txt
-fi
-# Auto-sync r8_myfix.py state enum whitelist on test device if present (adds proxy_degraded / proxy_checking)
-for mf in /root/r8_myfix.py /tmp/r8_myfix.py; do
-	if [ -f "$mf" ] && ! grep -q "proxy_degraded" "$mf" 2>/dev/null; then
-		sed -i 's/"emergency_direct")/"emergency_direct", "proxy_degraded", "proxy_checking")/g' "$mf" 2>/dev/null || true
-	fi
-done
+echo "0" > /etc/ai-link/max_outbounds.txt
 # Clean up any legacy AI-LINK internal music unlock files/UCI & dead UCI keys
 uci -q delete ai-link.unblockmusic 2>/dev/null || true
 uci -q delete ai-link.global.core_type 2>/dev/null || true
@@ -386,6 +373,8 @@ if command -v sing-box >/dev/null 2>&1; then
 			done
 		fi
 		if [ -x /sbin/procd ] && [ "${AILINK_ALLOW_NO_CORE:-0}" != "1" ]; then
+			/etc/init.d/rpcd reload 2>/dev/null || true
+			/etc/init.d/uhttpd reload 2>/dev/null || true
 			echo "  -> ❌ 告警: sing-box 内核或端口 (:7890/:7893) 未就绪，已跳过 nftables 挂载以保护局域网不断网！" >&2
 			exit 1
 		fi

@@ -1,3 +1,14 @@
+## [v2.6.1] - 2026-11-15
+### 闭环 FB-2600-1~3 与全栈深度审查 27 项遗留缺陷（PKG_RELEASE 29）
+- **正常升版**：升至 `v2.6.1`（`PKG_RELEASE:=29` / `r29`），增量基准为已上线的 `v2.6.0`（Release #445479390 / `bc2262d` / 部署 `53890bcb`）；现网设备可正常收 OTA 提示。
+- **门禁隔离加固（FB-2600-1~3）**：对齐线上最新基线 `v2.6.0`；`gates_v101.py` 强制使用隔离临时目录进行 `--self-test` 零写盘快照比对，彻底根治真机并发写盘偶发误报；全仓 7 处版本锚点、8/8 静态资源 `?v=2.6.1-<md5>`、`PKG_RELEASE:=29` 与 `CHANGELOG.md` 零笔误同步。
+- **网络与分流加固（CORE-01~07）**：T10 海外自定义 DNS 自动绑定对应分流组 `detour` 并在关闭 IPv6 时前置插入 `AAAA` 抑制；`direct_all` 将 `198.18.0.0/15` 与 `fc00::/18` 改为 `outbound: 'block'`（立即返回 RST 毫秒级重查真实 DNS）；`forward_mss` 严格受控于 `tcp_mss_clamp` 开关，并将 IPv6 防漏独立为 `chain forward_v6_guard`；新增 `dns_direct_backup` (`119.29.29.29`) 与 `set node_server_v6`。
+- **系统架构与闪存保护（SYS-01~07）**：生产态 `cache.db` 迁至内存盘 `/var/run/ai-link/cache.db`；健康医生新增 `flow_offloading=1` 检测与告警；动态探测网卡名并备份还原 sysctl；`init.d` 优先 `jsonfilter` 并保留 `mwan3` 100/101 路由表；`Makefile` 与 `install.sh` 净化。
+- **服务探测与规则（POOL-01 & RULE-01）**：从 ChatGPT/OpenAI/Claude `expected_status` 中剔除 `403`，TikTok 剔除 `403/404` 假阳性；Google 地区防盲目回退 `US`；黑名单移除降级截断。
+- **安全加固（SEC-01~05）**：`/api/ops/backup` 默认脱敏返回 `***`；生产环境自动剥离 `mock_*` 字段；登录限流加锁与 LRU 淘汰；拦截负数 `Content-Length` (HTTP 400)。
+- **前端体验（UX-01~06）**：修复星图 `state.page === 'galaxy'` 渲染；切换分流模式自动解除 `bypassActive`；补充内网二维码提示；新增 `Stage 7.30` 混沌门禁。
+- 验收：`INSTALL_RC=0`、服务全 1、`nft ok:true`、重启稳定、自检 10/10 + 负向、零补发 `run_all 15/15 / RC=0`、混沌 **93/93**、门禁双布局 17/17、11 行指纹 11/11 与 1 字节篡改转红、UI 六页三视口零溢出、出网 200/200/204。
+
 ## [v2.6.0] - 2026-11-15
 ### 30 轮终极审查 36 项全集闭环与防回归护栏加固（PKG_RELEASE 28）
 - **正常升版**：升至 `v2.6.0`（`PKG_RELEASE:=28` / `r28`），增量基准为已上线的 `v2.5.16`（Release #441680618 / `937d9a30` / 部署 `a402f3b8`）；现网设备可正常收 OTA 提示。

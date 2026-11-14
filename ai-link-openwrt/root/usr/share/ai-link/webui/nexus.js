@@ -306,7 +306,7 @@
     ],
     homelinkNodes: [
       { id: 'hy2', protocol: 'HY2', raw_proto: 'hysteria2', name: 'Hysteria2 极速回家', port: 'UDP 54443', listen_port: 54443, external_port: 54443, route: '回家 + 分流', route_mode: 'shunt', clients: 0, enabled: true, ddns_host: 'home.example.com' },
-      { id: 'reality', protocol: 'VLS', raw_proto: 'vless-reality', name: 'VLESS-Reality 隐身回家', port: 'TCP 18443', listen_port: 18443, external_port: 18443, route: '回家 + 分流', route_mode: 'shunt', clients: 0, enabled: true, ddns_host: 'home.example.com' }
+      { id: 'vless_tls', protocol: 'TLS', raw_proto: 'vless-tls', name: 'VLESS-TLS 稳定回家', port: 'TCP 18443', listen_port: 18443, external_port: 18443, route: '回家 + 分流', route_mode: 'shunt', clients: 0, enabled: true, ddns_host: 'home.example.com' }
     ],
     homelinkModes: [
       ['shunt', '回家 + 科学上网分流', '远程连回家访内网的同时，沿用家中精细分流与海外出口。'],
@@ -842,7 +842,7 @@
           try { document.body.removeAttribute('data-auth-locked'); } catch (_) {}
           setAuthToken(res.token);
           closeModal();
-          if (!scene && state.page === 'overview' && !state.disable3dTopology) initScene();
+          if (!scene && state.page === 'galaxy' && !state.disable3dTopology) initScene();
           toast('登录成功，已获取安全会话令牌');
           await syncBackendStatus(true, true);
         } else {
@@ -1929,7 +1929,7 @@
       body.classList.toggle('hidden', !showBody);
     }
     if (stateLbl) {
-      stateLbl.textContent = state.musicUnlockEnabled ? '已启用 · 正在劫持解锁变灰音源' : '当前未启用 · 默认折叠以节省空间';
+      stateLbl.textContent = state.musicUnlockEnabled ? '已关联外部解锁组件' : '外部可选扩展 · 默认折叠以节省空间';
     }
     if (btnExpand) {
       btnExpand.textContent = (state.musicUnlockOpen || state.musicUnlockEnabled) ? '收起详情 ▴' : '展开配置 ▾';
@@ -6107,7 +6107,7 @@
             badgeEl.style.borderColor = isStalePreview ? 'var(--amber)' : 'var(--rose)';
           }
           if (detailEl) {
-            detailEl.textContent = isStalePreview ? ('安全拦截：' + errMsg) : ('失败原因：' + errMsg);
+            detailEl.textContent = isStalePreview ? ('安全拦截：' + errMsg) : ('失败原因：' + errMsg + '（若无代理节点，可点击「粘贴订阅文本」离线导入或切换 GitHub 镜像重试）');
             detailEl.style.color = 'var(--rose)';
           }
         }
@@ -7830,7 +7830,10 @@
         const nid = el && el.dataset.node;
         const hlNode = (state.rawHomelink && Array.isArray(state.rawHomelink.nodes) && state.rawHomelink.nodes.find(x => x.id === nid)) || mock.homelinkNodes.find(x => x.id === nid) || mock.homelinkNodes[0];
         const uri = (hlNode && (hlNode.uri || hlNode.share_uri)) || ('vless://ailink-homelink@' + (window.location.hostname || 'home.example.com') + ':' + (hlNode ? hlNode.listen_port || 18443 : 18443) + '#AI-LINK-Home');
-        let qrHtml = '<div class="qr-wrap" id="modal-qr-slot"></div>';
+        const lanWarnHtml = (hlNode && (hlNode.is_lan_host || !hlNode.ddns_host || hlNode.ddns_host === 'home.example.com'))
+          ? '<div class="a-alert a-alert--warn" style="margin-bottom:10px;padding:8px 12px;border-radius:8px;border:1px solid var(--amber);color:var(--amber);font-size:12px">提示：当前未配置公网 DDNS 域名，分享二维码使用内网 IP 仅限局域网测试；外网回家请配置 DDNS 与端口映射。</div>'
+          : '';
+        let qrHtml = lanWarnHtml + '<div class="qr-wrap" id="modal-qr-slot"></div>';
         if (typeof window.qrcode === 'function') {
           try {
             const qr = window.qrcode(0, 'M');
@@ -9222,6 +9225,11 @@
       if (routing) {
         const prevMode = state.routingMode;
         const nextMode = routing.dataset.routingMode;
+        if (state.bypassActive && nextMode !== 'direct_all') {
+          state.bypassActive = false;
+          callRouterApi('/api/restore_proxy', 'POST', {}).catch(() => {});
+          toast('已自动解除临时直连恢复并切换至' + nextMode);
+        }
         state.routingMode = nextMode;
         renderShuntMatrix();
         renderOverviewDashboard();

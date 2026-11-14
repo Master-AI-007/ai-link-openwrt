@@ -18,7 +18,7 @@
         <circle cx="20" cy="20" r="5.4" fill="none" stroke="#a994ff" stroke-width="1.6"/>
         <circle cx="20" cy="20" r="1.8" fill="#6ee7f5"/>
       </svg>
-      <span style="display:block"><b>AI-LINK</b><span>NEXUS · 2.6.0</span></span>
+      <span style="display:block"><b>AI-LINK</b><span>NEXUS · 2.6.1</span></span>
     </a>
     <div class="nav-links">
       <a href="/#features">核心能力</a>
@@ -36,12 +36,22 @@
 <main class="wrap log-wrap">
   <div class="log-head">
     <h1>更新日志</h1>
-    <span class="pill"><i></i> 当前最新 2.6.0</span>
+    <span class="pill"><i></i> 当前最新 2.6.1</span>
   </div>
 <article class="log-item latest">
   <div class="log-top">
-    <h2>v2.6.0</h2>
+    <h2>v2.6.1</h2>
     <span class="tag c">最新</span>
+    <time>2026-11-15</time>
+  </div>
+  <p style="margin:2px 0 6px;color:var(--dim)"></p>
+<h3>闭环 FB-2600-1~3 与全栈深度审查 27 项遗留缺陷（PKG_RELEASE 29）</h3>
+<ul><li><b>正常升版</b>：升至 <code>v2.6.1</code>（<code>PKG_RELEASE:=29</code> / <code>r29</code>），增量基准为已上线的 <code>v2.6.0</code>（Release #445479390 / <code>bc2262d</code> / 部署 <code>53890bcb</code>）；现网设备可正常收 OTA 提示。</li><li><b>门禁隔离加固（FB-2600-1~3）</b>：对齐线上最新基线 <code>v2.6.0</code>；<code>gates_v101.py</code> 强制使用隔离临时目录进行 <code>--self-test</code> 零写盘快照比对，彻底根治真机并发写盘偶发误报；全仓 7 处版本锚点、8/8 静态资源 <code>?v=2.6.1-&lt;md5&gt;</code>、<code>PKG_RELEASE:=29</code> 与 <code>CHANGELOG.md</code> 零笔误同步。</li><li><b>网络与分流加固（CORE-01~07）</b>：T10 海外自定义 DNS 自动绑定对应分流组 <code>detour</code> 并在关闭 IPv6 时前置插入 <code>AAAA</code> 抑制；<code>direct_all</code> 将 <code>198.18.0.0/15</code> 与 <code>fc00::/18</code> 改为 <code>outbound: &#x27;block&#x27;</code>（立即返回 RST 毫秒级重查真实 DNS）；<code>forward_mss</code> 严格受控于 <code>tcp_mss_clamp</code> 开关，并将 IPv6 防漏独立为 <code>chain forward_v6_guard</code>；新增 <code>dns_direct_backup</code> (<code>119.29.29.29</code>) 与 <code>set node_server_v6</code>。</li><li><b>系统架构与闪存保护（SYS-01~07）</b>：生产态 <code>cache.db</code> 迁至内存盘 <code>/var/run/ai-link/cache.db</code>；健康医生新增 <code>flow_offloading=1</code> 检测与告警；动态探测网卡名并备份还原 sysctl；<code>init.d</code> 优先 <code>jsonfilter</code> 并保留 <code>mwan3</code> 100/101 路由表；<code>Makefile</code> 与 <code>install.sh</code> 净化。</li><li><b>服务探测与规则（POOL-01 &amp; RULE-01）</b>：从 ChatGPT/OpenAI/Claude <code>expected_status</code> 中剔除 <code>403</code>，TikTok 剔除 <code>403/404</code> 假阳性；Google 地区防盲目回退 <code>US</code>；黑名单移除降级截断。</li><li><b>安全加固（SEC-01~05）</b>：<code>/api/ops/backup</code> 默认脱敏返回 <code>***</code>；生产环境自动剥离 <code>mock_*</code> 字段；登录限流加锁与 LRU 淘汰；拦截负数 <code>Content-Length</code> (HTTP 400)。</li><li><b>前端体验（UX-01~06）</b>：修复星图 <code>state.page === &#x27;galaxy&#x27;</code> 渲染；切换分流模式自动解除 <code>bypassActive</code>；补充内网二维码提示；新增 <code>Stage 7.30</code> 混沌门禁。</li><li>验收：<code>INSTALL_RC=0</code>、服务全 1、<code>nft ok:true</code>、重启稳定、自检 10/10 + 负向、零补发 <code>run_all 15/15 / RC=0</code>、混沌 <b>93/93</b>、门禁双布局 17/17、11 行指纹 11/11 与 1 字节篡改转红、UI 六页三视口零溢出、出网 200/200/204。</li></ul>
+</article>
+<article class="log-item">
+  <div class="log-top">
+    <h2>v2.6.0</h2>
+    <span class="tag">历史</span>
     <time>2026-11-15</time>
   </div>
   <p style="margin:2px 0 6px;color:var(--dim)"></p>

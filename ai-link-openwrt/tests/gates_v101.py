@@ -251,6 +251,7 @@ def tar_dedup_and_size_gate():
     repo_root = Path(__file__).resolve().parent.parent
     candidates = [
         repo_root / f"AI-LINK-v{APP_VER}.tar.gz",
+        repo_root.parent / f"AI-LINK-v{APP_VER}.tar.gz",
         repo_root / "site" / f"AI-LINK-v{APP_VER}.tar.gz",
     ]
     tar_path = next((c for c in candidates if c.is_file()), None)
@@ -263,7 +264,7 @@ def tar_dedup_and_size_gate():
         files = [m for m in members if m.isfile()]
         uncomp_size = sum(m.size for m in files)
     dup_cnt = len(names) - len(set(names))
-    ipk_path = next(iter(repo_root.glob(f"luci-app-ai-link_{APP_VER}-r*_all.ipk")), repo_root / f"luci-app-ai-link_{APP_VER}-r12_all.ipk")
+    ipk_path = next(iter(list(repo_root.glob(f"luci-app-ai-link_{APP_VER}-r*_all.ipk")) + list(repo_root.parent.glob(f"luci-app-ai-link_{APP_VER}-r*_all.ipk"))), repo_root / f"luci-app-ai-link_{APP_VER}-r29_all.ipk")
     ipk_ok = True
     ipk_detail = ""
     if ipk_path.is_file():
@@ -372,7 +373,7 @@ def fb250_packaging_and_luci_gate():
         root_dir,
         site_dir,
         root_dir.parent,
-        Path("/working_dir/c_6b82a05156135b2c/artifacts/file_generation/ttl=63d/output"),
+        root_dir.parent.parent,
     ]
     def _resolve_f_cand(fname: str):
         for sdir in search_dirs:
@@ -394,7 +395,7 @@ def fb250_packaging_and_luci_gate():
                 errs.append(f"{doc_name}:{fname}:mismatch(real_sz={len(b)},exp_sz={exp_sz})")
         return errs
 
-    for doc_name in [f"AI-LINK-v{v_d}-全量检查与重构验收报告.md", "HANDOFF.md"]:
+    for doc_name in [f"ai_link_v{v_d.replace('.', '_')}.md", f"AI-LINK-v{v_d}-全量检查与重构验收报告.md", "HANDOFF.md"]:
         doc_p = _resolve_f_cand(doc_name)
         if doc_p and doc_p.is_file():
             doc_txt = doc_p.read_text(encoding="utf-8")
@@ -403,7 +404,7 @@ def fb250_packaging_and_luci_gate():
             if doc_rels and doc_rels != {exp_pkg_rel}:
                 fp_mismatches.append(f"{doc_name}:PKG_RELEASE={doc_rels}!=Makefile({exp_pkg_rel})")
             # FB-253-2: Verify report Section 1 is dedicated to current version
-            if doc_name.startswith("AI-LINK-v"):
+            if doc_name.startswith(("AI-LINK-v", "ai_link_v")):
                 sec1_m = re.search(r"^##\s+一、([^\n]+)", doc_txt, re.M)
                 if not sec1_m or f"v{v_d}" not in sec1_m.group(1):
                     fp_mismatches.append(f"{doc_name}:sec1_not_v{v_d}")
@@ -416,11 +417,11 @@ def fb250_packaging_and_luci_gate():
                 if actual_cn != cn_nums[:len(actual_cn)] or len(actual_cn) < 5:
                     fp_mismatches.append(f"{doc_name}:non_consecutive_h2={actual_cn}")
                 # FB-257-2: Verify report contains post-injected run_all summary and environment note
-                for _req_tok in ("验证环境", "本轮增量说明", "（构建容器）", "合计 15 套，通过 15，失败 0", "115/115", "152/152", "92/92", "Stage 7.27", "Stage 7.28", "Stage 7.29", "#441436442", "e7617a50", "live_write_leaked"):
+                for _req_tok in ("验证环境", "本轮增量说明", "（构建容器）", "合计 15 套，通过 15，失败 0", "115/115", "152/152", "93/93", "Stage 7.28", "Stage 7.29", "Stage 7.30", "#445479390", "bc2262d", "live_write_leaked"):
                     if _req_tok not in doc_txt:
                         fp_mismatches.append(f"{doc_name}:missing_fb257_2_token({_req_tok})")
             rows = re.findall(r"^\|\s*`([^`]+)`\s*\|\s*[^|]*?`(\d+)`[^|]*\|\s*`([0-9a-f]{32})`\s*\|\s*`([0-9a-f]{64})`\s*\|", doc_txt, re.M)
-            min_rows = 7 if doc_name.startswith("AI-LINK-v") else 3
+            min_rows = 7 if doc_name.startswith(("AI-LINK-v", "ai_link_v")) else 3
             if len(rows) < min_rows:
                 fp_mismatches.append(f"{doc_name}:rows={len(rows)}<{min_rows}")
             else:
@@ -443,13 +444,10 @@ def fb250_packaging_and_luci_gate():
     env_production_like = False
     _tmp_prod_ctx = None
     try:
-        live_run = Path(os.environ.get("AI_LINK_RUN_DIR", "/var/run/ai-link"))
-        live_conf = Path(os.environ.get("AI_LINK_CONF_DIR", "/etc/ai-link"))
-        if live_run.is_dir() and os.access(str(live_run), os.W_OK) and (live_run / "ai-link.nft").is_file():
-            eff_run = live_run
-            eff_conf = live_conf
-            if not (eff_run / "node_test_quota.json").is_file():
-                (eff_run / "node_test_quota.json").write_text('{"date":"2026-11-10","used":1,"pool_health_used":1,"forced_used":0,"v236_r10_migrated":true,"v240_budget_migrated":true,"v255_quota_migrated":true}', encoding="utf-8")
+        # FB-2600-2 Fix: Always use an isolated temporary AI_LINK_CONF_DIR & AI_LINK_RUN_DIR for zero-write snapshot
+        # verification, never comparing live /etc/ai-link/sing-box.json which the running daemon may legitimately update!
+        if False:
+            pass
         else:
             _tmp_prod_ctx = tempfile.TemporaryDirectory(prefix="ailink_gate_prod_")
             eff_conf = Path(_tmp_prod_ctx.name) / "etc_ai_link"

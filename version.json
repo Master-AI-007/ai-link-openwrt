@@ -1,19 +1,35 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.6.0",
+  "latest": "2.6.1",
   "release_date": "2026-11-15",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.6.0",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.6.1",
   "highlights": [
-    "正常升版至 v2.6.0（PKG_RELEASE 28）：现网 2.5.16 设备可直接收到 OTA 更新提示",
-    "安全加固：HomeLink 动态随机凭据、备份可选脱敏、登录 60 秒滑动窗口防爆破、RPCD ACL 最小权限、Webhook 防 SSRF",
-    "网络接管加固：游戏 UDP 直连强制国内 IP 判定、切直连 300ms 异步清表、MAC 直连保留 .lan 与 IPv6、.srs zlib 解压解析",
-    "自动池加固：节点落地地区词边界识别（HK->US 判 US）、隔离期连续 2 次成功才恢复、多线缓存实时失效",
-    "系统架构加固：nft 单进程挂载免除二次解析、运行态写入迁 tmpfs、看门狗 18s→300s 指数退避与 5 次熔断",
-    "前端加固：首次登录指引、一键场景模板、WebGL 上下文丢失恢复、未保存表单保护、跨标签页令牌同步",
-    "真机零补发 run_all 15/15、混沌 92/92（新增 Stage 7.29 36 项护栏门禁）"
+    "正常升版至 v2.6.1（PKG_RELEASE 29）：全面闭环 FB-2600-1/2/3 及 27 项深度审查遗留缺陷",
+    "门禁隔离加固：gates_v101 强制独立临时目录隔离自检，彻底根治真机并发写盘偶发误报",
+    "分流与网络加固：T10 海外 DNS 自动绑 detour 与 AAAA 抑制、direct_all Fake-IP block 毫秒级重查、forward_mss 严格受控于 tcp_mss_clamp 开关、增加备用国内 DNS 119.29.29.29",
+    "闪存保护与系统加固：sing-box cache.db 迁入内存盘 /var/run/ai-link/cache.db、动态探测 LAN 口、init.d 优先 jsonfilter 并保留 mwan3 100/101 路由表",
+    "服务探测与安全脱敏：剔除 OpenAI/Claude 403 与 TikTok favicon.ico 探测假阳性、/api/ops/backup 默认脱敏、负数 Content-Length 拦截、登录限流加锁与 LRU 淘汰",
+    "前端交互：星图 galaxy 3D 渲染修复、切换分流模式自动解除 bypassActive",
+    "真机零补发 run_all 15/15、混沌 93/93（新增 Stage 7.30）、门禁双布局 17/17、11 行指纹 11/11"
   ],
   "changelog": [
+    {
+      "version": "2.6.1",
+      "date": "2026-11-15",
+      "type": "feature",
+      "title": "闭环 FB-2600-1~3 与全栈深度审查 27 项遗留缺陷",
+      "items": [
+        "正常升版至 `v2.6.1`（`PKG_RELEASE:=29` / `r29`），增量基准为线上 `v2.6.0`（Release #445479390 / `bc2262d`）；现网设备可正常收 OTA 提示",
+        "FB-2600-1~3：对齐线上最新基线 `v2.6.0`（`#445479390` / `bc2262d` / `53890bcb`）；`gates_v101.py` 强制使用隔离临时目录进行 `--self-test` 零写盘快照比对，彻底根治真机并发写盘偶发误报；全仓 7 处版本锚点、8/8 静态资源 `?v=2.6.1-<md5>`、`PKG_RELEASE:=29` 与 `CHANGELOG.md` 零笔误同步",
+        "CORE-01~07：T10 海外自定义 DNS 自动绑定对应分流组 `detour` 并在关闭 IPv6 时前置插入 `AAAA` 抑制；`direct_all` 将 `198.18.0.0/15` 与 `fc00::/18` 改为 `outbound: 'block'`（立即返回 RST 毫秒级重查真实 DNS）；`forward_mss` 严格受控于 `tcp_mss_clamp` 开关，并将 IPv6 防漏独立为 `chain forward_v6_guard`；新增 `dns_direct_backup` (`119.29.29.29`) 与 `set node_server_v6`",
+        "SYS-01~07：生产态 `cache.db` 迁至内存盘 `/var/run/ai-link/cache.db`；健康医生新增 `flow_offloading=1` 检测与告警；动态探测网卡名并备份还原 sysctl；`init.d` 优先 `jsonfilter` 并保留 `mwan3` 100/101 路由表；`Makefile` 与 `install.sh` 净化",
+        "POOL-01 & RULE-01：从 ChatGPT/OpenAI/Claude `expected_status` 中剔除 `403`，TikTok 剔除 `403/404` 假阳性；Google 地区防盲目回退 `US`；黑名单移除降级截断",
+        "SEC-01~05：`/api/ops/backup` 默认脱敏返回 `***`；生产环境自动剥离 `mock_*` 字段；登录限流加锁与 LRU 淘汰；拦截负数 `Content-Length` (HTTP 400)",
+        "UX-01~06：修复星图 `state.page === 'galaxy'` 渲染；切换分流模式自动解除 `bypassActive`；补充内网二维码提示；新增 `Stage 7.30` 混沌门禁",
+        "验收：真机 `INSTALL_RC=0`、自检 10/10 零写盘泄漏、零补发 `run_all 15/15 RC=0`、混沌 **93/93**、门禁双布局 17/17、11 行指纹 11/11 且改 1 字节转红、UI 六页三视口零溢出、出网 200/200/204"
+      ]
+    },
     {
       "version": "2.6.0",
       "date": "2026-11-15",
@@ -533,13 +549,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.6.0/AI-LINK-v2.6.0.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.6.1/AI-LINK-v2.6.1.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.6.0.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.6.1.tar.gz"
       ],
-      "size": 1130359,
-      "md5": "a4dd67bc5281409e16954d025d5d8647",
-      "sha256": "b3e251023a6fe4b7c2d8d4fb1d2cce49630aeec2cfd0d8b8f51634ddba4f4a9e"
+      "size": 1136031,
+      "md5": "a48d1a8dded6f47c039a4e4bc7d3611b",
+      "sha256": "573350cbdcd7c2bfb6510068638830a712635b2bfada1d3b7754e74c9875e161"
     }
   }
 }

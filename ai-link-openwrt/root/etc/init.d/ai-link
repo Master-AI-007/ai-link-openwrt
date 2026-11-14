@@ -153,7 +153,12 @@ get_ops_or_uci_bool() {
 	local _def="$3"
 	local _val=""
 	if [ -f "$CONF_DIR/ops_settings.json" ]; then
-		_val=$(grep -oE "\"${_key}\":[[:space:]]*(true|false|1|0)" "$CONF_DIR/ops_settings.json" 2>/dev/null | head -n 1 | awk -F: '{print $2}' | tr -d ' ,"')
+		if command -v jsonfilter >/dev/null 2>&1; then
+			_val=$(jsonfilter -i "$CONF_DIR/ops_settings.json" -e "@.${_key}" 2>/dev/null | head -n 1 | tr -d ' ,"')
+		fi
+		if [ -z "$_val" ]; then
+			_val=$(grep -oE "\"${_key}\":[[:space:]]*(true|false|1|0)" "$CONF_DIR/ops_settings.json" 2>/dev/null | head -n 1 | awk -F: '{print $2}' | tr -d ' ,"')
+		fi
 	fi
 	if [ "$_val" = "true" ] || [ "$_val" = "1" ]; then
 		eval "$_var=1"
@@ -171,7 +176,12 @@ get_ops_or_uci_str() {
 	local _def="$3"
 	local _val=""
 	if [ -f "$CONF_DIR/ops_settings.json" ]; then
-		_val=$(grep -oE "\"${_key}\":[[:space:]]*\"[^\"]+\"" "$CONF_DIR/ops_settings.json" 2>/dev/null | head -n 1 | awk -F: '{print $2}' | tr -d ' "')
+		if command -v jsonfilter >/dev/null 2>&1; then
+			_val=$(jsonfilter -i "$CONF_DIR/ops_settings.json" -e "@.${_key}" 2>/dev/null | head -n 1 | tr -d '"')
+		fi
+		if [ -z "$_val" ]; then
+			_val=$(grep -oE "\"${_key}\":[[:space:]]*\"[^\"]+\"" "$CONF_DIR/ops_settings.json" 2>/dev/null | head -n 1 | awk -F: '{print $2}' | tr -d ' "')
+		fi
 	fi
 	if [ -n "$_val" ]; then
 		eval "$_var=\"$_val\""
@@ -185,20 +195,29 @@ setup_tun_and_routing() {
 	modprobe nft_socket 2>/dev/null || true
 	modprobe tun 2>/dev/null || true
 
+	mkdir -p "$RUN_DIR/sysctl_orig"
+	local _lan_if
+	_lan_if=$(uci -q get network.lan.device 2>/dev/null || uci -q get network.lan.ifname 2>/dev/null || echo "br-lan")
+	_lan_if=$(echo "$_lan_if" | awk '{print $1}')
+	[ -n "$_lan_if" ] || _lan_if="br-lan"
+	if [ ! -f "$RUN_DIR/sysctl_orig/be_liberal" ]; then
+		sysctl -n net.netfilter.nf_conntrack_tcp_be_liberal > "$RUN_DIR/sysctl_orig/be_liberal" 2>/dev/null || echo 0 > "$RUN_DIR/sysctl_orig/be_liberal"
+		sysctl -n net.ipv4.conf.all.rp_filter > "$RUN_DIR/sysctl_orig/all_rp_filter" 2>/dev/null || true
+		sysctl -n net.ipv4.conf.default.rp_filter > "$RUN_DIR/sysctl_orig/def_rp_filter" 2>/dev/null || true
+		sysctl -n net.ipv4.conf.all.send_redirects > "$RUN_DIR/sysctl_orig/all_send_redirects" 2>/dev/null || true
+	fi
 	sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1 || true
 	sysctl -w net.ipv6.conf.all.forwarding=1 >/dev/null 2>&1 || true
 	sysctl -w net.ipv6.conf.default.forwarding=1 >/dev/null 2>&1 || true
-	# Loose rp_filter & liberal TCP conntrack for single-armed side-router (br-lan) asymmetric path compatibility
+	# Loose rp_filter & liberal TCP conntrack for single-armed side-router (br-lan + detected LAN interface) asymmetric path compatibility
 	sysctl -w net.ipv4.conf.all.rp_filter=2 >/dev/null 2>&1 || true
 	sysctl -w net.ipv4.conf.default.rp_filter=2 >/dev/null 2>&1 || true
 	sysctl -w net.ipv4.conf.br-lan.rp_filter=2 >/dev/null 2>&1 || true
+	sysctl -w "net.ipv4.conf.${_lan_if}.rp_filter=2" >/dev/null 2>&1 || true
 	sysctl -w net.ipv4.conf.all.send_redirects=0 >/dev/null 2>&1 || true
 	sysctl -w net.ipv4.conf.default.send_redirects=0 >/dev/null 2>&1 || true
 	sysctl -w net.ipv4.conf.br-lan.send_redirects=0 >/dev/null 2>&1 || true
-	mkdir -p "$RUN_DIR/sysctl_orig"
-	if [ ! -f "$RUN_DIR/sysctl_orig/be_liberal" ]; then
-		sysctl -n net.netfilter.nf_conntrack_tcp_be_liberal > "$RUN_DIR/sysctl_orig/be_liberal" 2>/dev/null || echo 0 > "$RUN_DIR/sysctl_orig/be_liberal"
-	fi
+	sysctl -w "net.ipv4.conf.${_lan_if}.send_redirects=0" >/dev/null 2>&1 || true
 	sysctl -w net.netfilter.nf_conntrack_tcp_be_liberal=1 >/dev/null 2>&1 || true
 	optimize_multicore_rps
 
@@ -301,7 +320,7 @@ stop_core_processes() {
 mute_conflicting_services() {
 	local auto_mute
 	config_load 'ai-link'
-	config_get_bool auto_mute 'global' 'auto_mute_conflicts' '1'
+	get_ops_or_uci_bool auto_mute 'auto_mute_conflicts' '1'
 	[ "$auto_mute" -eq 0 ] && return 0
 
 	mkdir -p "$RUN_DIR"
@@ -318,10 +337,15 @@ mute_conflicting_services() {
 	for tbl in homeproxy fw4_homeproxy passwall passwall2 openclash nikki; do
 		nft delete table inet "$tbl" 2>/dev/null || true
 	done
-	for rule_prio in $(ip rule show | awk '/lookup (100|101|8194|utun)/{gsub(":","",$1); print $1}'); do
+	# SYS-04 Fix: Only purge conflicting proxy tables (8194/utun); preserve mwan3 tables (100/101) when mwan3 is installed
+	local _conflict_pat="lookup (8194|utun)"
+	if [ ! -x /etc/init.d/mwan3 ]; then
+		_conflict_pat="lookup (100|101|8194|utun)"
+	fi
+	for rule_prio in $(ip rule show | awk -v pat="$_conflict_pat" '$0 ~ pat {gsub(":","",$1); print $1}'); do
 		ip rule del priority "$rule_prio" 2>/dev/null || true
 	done
-	for rule6_prio in $(ip -6 rule show | awk '/lookup (100|101|8194|utun)/{gsub(":","",$1); print $1}'); do
+	for rule6_prio in $(ip -6 rule show | awk -v pat="$_conflict_pat" '$0 ~ pat {gsub(":","",$1); print $1}'); do
 		ip -6 rule del priority "$rule6_prio" 2>/dev/null || true
 	done
 }
@@ -547,7 +571,7 @@ reload_service() {
 	if port_is_listening "${tproxy_port:-7893}"; then
 		setup_tun_and_routing
 		if [ -f "$FW_SCRIPT" ]; then
-			sh "$FW_SCRIPT" \
+			AI_LINK_NFT_PREGENERATED=1 sh "$FW_SCRIPT" \
 				--entry-bypass "$entry_bypass" \
 				--block-quic "$block_quic" \
 				--game-udp-direct "$game_udp_direct" \

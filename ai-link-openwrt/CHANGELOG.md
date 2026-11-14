@@ -1,3 +1,22 @@
+## v2.6.1 (2026-11-15 · PKG_RELEASE:=29 / r29 · FB-2600-1/2/3 闭环与 v2.6.0 深度审查 27 项遗留问题全量收口版)
+
+- **基线说明**：基于线上已验收并全量发布上线的 `v2.6.0` (`PKG_RELEASE:=28` / `r28`，GitHub `Release #445479390`、主干/Tag `bc2262d48572d5d3d75d55337809c11d09bb4636`、Cloudflare 部署 `53890bcb`)，按自动化迭代规范推进版本号至 **`v2.6.1` (`PKG_RELEASE:=29` / `r29`，`APP_BUILD = "2.6.1-release-20261115-r29"`)**，一次性闭环 `FB-2600-1 / FB-2600-2 / FB-2600-3` 及 `v2.6.0` 全栈穿透审查识别出的 27 项遗留问题。
+- **A. 云端门禁与构建规范加固 (`FB-2600-1 / FB-2600-2 / FB-2600-3`)**：
+  1. **动态基线对齐 (`FB-2600-1`) 与版本号/构建号四方零笔误同步 (`FB-2600-3`)**：全仓 7 处版本锚点、静态资源 `?v=2.6.1-<md5>`（8/8 一致）、`Makefile` (`PKG_VERSION:=2.6.1` / `PKG_RELEASE:=29`)、`APP_BUILD` (`2.6.1-release-20261115-r29`)、交接文档与 `CHANGELOG.md` 全部脚本化自动同步，对齐 `v2.6.0 (r28)` 线上基线（`Release #445479390` / `bc2262d` / `53890bcb`）。
+  2. **门禁自检配置目录严格隔离 (`FB-2600-2`)**：`tests/gates_v101.py` 验证 `--self-test` 零写盘快照比对时强制使用独立的 `tempfile.TemporaryDirectory(prefix="ailink_gate_prod_")`，彻底杜绝在真机 `.77` 上因常驻守护进程正常写盘 `/etc/ai-link/sing-box.json` 引发快照误报。
+- **B. 核心引擎、数据面与 5×3 模式矩阵修复 (`CORE-01 ~ CORE-07`)**：
+  1. **T10 分流组独立 DNS 绑定 `detour` 与 `AAAA` 抑制 (`CORE-01`)**：海外自定义 DNS 自动绑定对应分流组选择器作为 `detour`（避免墙内明文直连海外 DNS 被污染），并在关闭 IPv6 代理时前置注入 `AAAA` 抑制规则。
+  2. **`direct_all` 残留 Fake-IP 毫秒级拒绝重查 (`CORE-02`) 与国内双上游 DNS 保底 (`CORE-05`)**：切至 `direct_all` 时将 `198.18.0.0/15` 与 `fc00::/18` 路由至 `block`（立即返回 RST/拒绝促使终端毫秒级重查真实 IP，避免 30–60s SYN 超时挂起）；新增 `dns_direct_backup` (`119.29.29.29:53`) 消除 `223.5.5.5` 单点故障。
+  3. **`forward_mss` 联动 `tcp_mss_clamp` 开关与 `forward_v6_guard` 独立链解耦 (`CORE-03`)、补齐 `@node_server_v6` 与 2 万条远程规则容量 (`CORE-07`)**：`forward_mss` 严格遵循 `tcp_mss_clamp` 开关状态并将 IPv6 防泄漏拆入独立 `chain forward_v6_guard`；新增 `set node_server_v6` 防纯 IPv6 节点环回，远程规则库单组挂载容量提升至 `20,000` 条。
+- **C. 系统底座、闪存寿命与打包安装脚本修复 (`SYS-01 ~ SYS-07`)**：
+  1. **`sing-box` `cache.db` 迁入内存盘 (`SYS-01`) 与 `Flow Offloading` 流加速冲突检测 (`SYS-02`)**：生产环境下将 `experimental.cache_file.path` 迁至 `/var/run/ai-link/cache.db`，彻底消除每次 Fake-IP 分配直写路由器闪存；网络健康医生新增 `flow_offloading` 开启状态检测与告警。
+  2. **动态探测 LAN 接口与 `sysctl` 备份还原 (`SYS-03`)、`init.d` `jsonfilter` 解析 (`SYS-05`) 与 `mwan3` 策略路由保护 (`SYS-04`)**：动态读取 `network.lan.device` 取代硬编码 `br-lan`；优先使用 OpenWrt 原生 `jsonfilter` 读取 `ops_settings.json`；存在 `mwan3` 时保留 `100/101` 路由表；`reload_service` 透传 `AI_LINK_NFT_PREGENERATED=1` 减少重复冷启动。
+  3. **`Makefile` 清理失效引用 (`SYS-06`) 与 `install.sh` 全面净化 (`SYS-07`)**：移除 `Makefile` 中已废弃的 `tailwind.css` 与 `vendor/` 引用；`install.sh` 补齐 `python3-yaml` 安装、清理 `/root/r8_myfix.py` 测试残留、统一 `max_outbounds=0` 并在冷启动异常退出前先完成 `rpcd/uhttpd reload`。
+- **D. L7 探测精度、安全加固与前端交互体验收口 (`POOL-01`, `RULE-01`, `SEC-01 ~ SEC-05`, `UX-01 ~ UX-06`)**：
+  1. **L7 指纹去假阳性 (`POOL-01`) 与云端 `.srs` 镜像加速 (`RULE-01`)**：从 ChatGPT/OpenAI/Claude 的 `expected_status` 中移除 `403`，从 TikTok 探测中移除 `favicon.ico` 与 `403/404`；`parse_google_redirect_region` 无 301 且无 US 标记时返回 `UNKNOWN` 而非盲目默认 `US`；`get_cloud_shunt_catalog` 补充 `mirror_url`。
+  2. **备份接口默认脱敏 (`SEC-01`)、生产环境 `mock_*` 隔离 (`SEC-02`)、登录限流加锁与 LRU 淘汰 (`SEC-04`) 及 `Content-Length` 边界校验 (`SEC-05`)**：HTTP `GET /api/ops/backup` 默认 `include_secrets="0"`；生产路由环境下自动剥离 `mock_*` 测试字段；`_LOGIN_RATE_LIMIT_MAP` 增加线程锁与过期/最旧条目淘汰（防止 IPv6 刷满 256 条清空锁表）；拦截负数或非数字 `Content-Length`。
+  3. **修复 `nexus.js` 登录后 3D 拓扑页判断 (`UX-01`)、紧急直连联动解除 (`UX-03`)、HomeLink 内网二维码提示 (`UX-04`) 与订阅失败就地引导 (`UX-05`)**：修复 `state.page === 'galaxy'`、切换非直连分流模式时自动退出 `bypassActive`、补充内网二维码警示与离线粘贴导入引导；新增 `Stage 7.30`（混沌测试 `93/93 PASS`）。
+
 ## v2.6.0 (2026-11-15 · PKG_RELEASE:=28 / r28 · 30轮终极审查 36 项全集闭环与防回归护栏加固里程碑版)
 
 - **基线说明**：基于 `v2.5.16` 及《`ai_link_v2_5_16_master_audit_and_safe_remediation.md`》（30 轮独立模块深挖、五大风险域 36 项定位问题与防回归护栏指南），正式升版至 `v2.6.0` (`PKG_RELEASE:=28` / `r28`)，`APP_BUILD` 升级为 `"2.6.0-release-20261115-r28"`。
