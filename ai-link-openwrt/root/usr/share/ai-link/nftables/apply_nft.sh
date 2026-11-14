@@ -72,18 +72,29 @@ acquire_nft_lock || {
 	exit 1
 }
 
-if command -v python3 >/dev/null 2>&1 && [ -f "$DAEMON_PY" ]; then
-	python3 -B "$DAEMON_PY" --generate-nft "$@" >/dev/null 2>&1 || true
+# §2.1 Anti-OOM Single-Process Optimization:
+# When invoked by the resident daemon (`AI_LINK_NFT_PREGENERATED=1`) and `$NFT_FILE` is already freshly written
+# and normalized in-memory, skip spawning a second Python process to re-parse the 1.7MB daemon script.
+if [ "${AI_LINK_NFT_PREGENERATED:-0}" = "1" ] && [ -s "$NFT_FILE" ] && [ $# -eq 0 ]; then
+	: # Pre-generated and normalized in-memory by resident ai-link-daemon
+else
+	if command -v python3 >/dev/null 2>&1 && [ -f "$DAEMON_PY" ]; then
+		python3 -B "$DAEMON_PY" --generate-nft "$@" >/dev/null 2>&1 || true
+	fi
+	if [ ! -s "$NFT_FILE" ]; then
+		logger -t "ai-link" "ERROR: $NFT_FILE not found or empty and daemon generator unavailable"
+		write_nft_status "false" "1" "防火墙规则文件未生成或为空 ($NFT_FILE)"
+		exit 1
+	fi
+	if command -v python3 >/dev/null 2>&1 && [ -f "$NORM_PY" ]; then
+		python3 -B "$NORM_PY" "$NFT_FILE" >/dev/null 2>&1 || true
+	fi
 fi
 
 if [ ! -s "$NFT_FILE" ]; then
 	logger -t "ai-link" "ERROR: $NFT_FILE not found or empty and daemon generator unavailable"
 	write_nft_status "false" "1" "防火墙规则文件未生成或为空 ($NFT_FILE)"
 	exit 1
-fi
-
-if command -v python3 >/dev/null 2>&1 && [ -f "$NORM_PY" ]; then
-	python3 -B "$NORM_PY" "$NFT_FILE" >/dev/null 2>&1 || true
 fi
 
 if command -v nft >/dev/null 2>&1; then

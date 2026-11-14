@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="color-scheme" content="dark">
   <title>AI-LINK NEXUS · 全域 3D 智能网关指挥舱</title>
-  <link rel="icon" type="image/svg+xml" href="./favicon.svg?v=2.5.16-8b1d6b14">
-  <link rel="alternate icon" href="./favicon.ico?v=2.5.16-218c306e">
-  <link rel="apple-touch-icon" href="./apple-touch-icon.png?v=2.5.16-89c068d7">
-  <link rel="stylesheet" href="./nexus.css?v=2.5.16-9b10589b">
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg?v=2.6.0-8b1d6b14">
+  <link rel="alternate icon" href="./favicon.ico?v=2.6.0-218c306e">
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png?v=2.6.0-89c068d7">
+  <link rel="stylesheet" href="./nexus.css?v=2.6.0-9b10589b">
 </head>
 <body>
   <a class="skip-link" href="#main-stage">跳至主内容</a>
@@ -74,7 +74,7 @@
     <div class="workspace">
       <header class="topbar">
         <div class="page-heading">
-          <span class="eyebrow">AI-LINK / NEXUS 3D · <span class="version-chip">v2.5.16</span></span>
+          <span class="eyebrow">AI-LINK / NEXUS 3D · <span class="version-chip">v2.6.0</span></span>
           <h1 id="page-title">全域星图</h1>
         </div>
         <div class="global-route" style="cursor:pointer" data-page-link="shunt" title="点击进入分流与出口编排">
@@ -264,7 +264,7 @@
                 <canvas id="traffic-chart" height="250"></canvas>
                 <div class="traffic-chart-tooltip" id="traffic-chart-tooltip" hidden></div>
               </div>
-              <div class="chart-legend"><span><i class="cyan"></i>下行流量</span><span><i class="violet"></i>上行流量</span><span id="tw-legend-hint">悬停波形可查看分时收发明细与占比</span><b id="overview-month-total">本月累计 6.58 GB</b></div>
+              <div class="chart-legend"><span><i class="cyan"></i>下行流量</span><span><i class="violet"></i>上行流量</span><span id="tw-legend-hint">仅统计经内核分流流量（国内直连已硬件旁路）· 悬停波形查看分时收发明细</span><b id="overview-month-total">本月累计 6.58 GB</b></div>
             </article>
             <article class="glass-card sonar-card">
               <div class="card-head">
@@ -444,7 +444,7 @@
                 </div>
               </article>
 
-              <!-- v2.5.16: Real-Time Traffic Shunt Radar & Cloud GeoIP/Geosite 1-Click Assign -->
+              <!-- v2.6.0: Real-Time Traffic Shunt Radar & Cloud GeoIP/Geosite 1-Click Assign -->
               <article id="shunt-live-radar-card" data-shunt-obs-pane="radar" class="glass-card shunt-obs-hidden">
                 <div class="card-head" style="margin-bottom:8px">
                   <div>
@@ -565,7 +565,7 @@
             <div class="hero-side-panel">
               <div class="shield-toggle">
                 <span>云端域名过滤护盾</span>
-                <button id="toggle-dns-filter" class="switch on" role="switch" aria-checked="true" data-action="dns-toggle" aria-label="切换云端域名过滤"><i></i></button>
+                <button id="toggle-dns-filter" class="switch a-switch on" role="switch" aria-checked="true" data-action="dns-toggle" aria-label="切换云端域名过滤"><i></i></button>
                 <small>内置隐私探针 + 广告联盟库已就绪</small>
               </div>
               <div class="hero-action-grid">
@@ -606,7 +606,7 @@
                   <div><i class="violet"></i><span>双栈防漏：海外域名 AAAA 抑制保护</span><b>已启用</b></div>
                   <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
                     <div style="display:flex;align-items:center;gap:8px"><i class="mint"></i><span title="自动豁免 Google Play (clientservices/play.googleapis.com、gvt1~3)、Apple 推送与微软核心更新域名，防止广告黑洞误杀正常应用下载与登录">核心应用防误杀保护 (Google Play / Apple / MS)</span></div>
-                    <button id="toggle-dns-essential-protect" class="switch on" role="switch" aria-checked="true" data-action="dns-essential-protect-toggle" aria-label="切换核心应用防误杀白名单保护"><i></i></button>
+                    <button id="toggle-dns-essential-protect" class="switch a-switch on" role="switch" aria-checked="true" data-action="dns-essential-protect-toggle" aria-label="切换核心应用防误杀白名单保护"><i></i></button>
                   </div>
                 </div>
               </article>
@@ -615,7 +615,7 @@
               <article class="glass-card">
                 <div class="card-head">
                   <div><span>DOMAIN REWRITE</span><h3>DNS 域名防跳重写</h3></div>
-                  <button id="toggle-dns-rewrite" class="switch on" role="switch" aria-checked="true" data-action="dns-rewrite-toggle" aria-label="切换DNS重写"><i></i></button>
+                  <button id="toggle-dns-rewrite" class="switch a-switch on" role="switch" aria-checked="true" data-action="dns-rewrite-toggle" aria-label="切换DNS重写"><i></i></button>
                 </div>
                 <div id="dns-rewrite-list" class="trace-stages" style="margin-bottom:12px"></div>
                 <div class="input-row">
@@ -640,7 +640,7 @@
             <div id="music-unlock-body" class="collapsible-body hidden">
               <div class="setting-line">
                 <div><b>启用音乐音源解锁服务</b><span>仅在已安装音乐解锁附加组件时生效；默认关闭以避免占用额外端口与内存</span></div>
-                <button id="toggle-music-unlock" aria-label="网易云音乐解锁开关" class="switch off" role="switch" aria-checked="false" data-action="toggle-music-unlock"><i></i></button>
+                <button id="toggle-music-unlock" aria-label="网易云音乐解锁开关" class="switch a-switch off" role="switch" aria-checked="false" data-action="toggle-music-unlock"><i></i></button>
               </div>
             </div>
           </article>
@@ -769,7 +769,7 @@
             <article class="glass-card system-card">
               <span class="card-index">01 / CORE LIFECYCLE</span>
               <div class="system-title">
-                <div><h3 id="sys-core-title">sing-box --</h3><p id="sys-core-sub">AI-LINK v2.5.16 · 单一真相源架构</p></div>
+                <div><h3 id="sys-core-title">sing-box --</h3><p id="sys-core-sub">AI-LINK v2.6.0 · 单一真相源架构</p></div>
                 <div class="core-head-right">
                   <span class="status-pill" id="settings-proxy-status-pill">运行正常</span>
                 </div>
@@ -791,14 +791,14 @@
               </div>
             </article>
 
-            <!-- Card 2: Component & Rule Runtime Summary (Update buttons removed per v2.5.16 spec; rule updates managed directly in Shield/Shunt pages) -->
+            <!-- Card 2: Component & Rule Runtime Summary (Update buttons removed per v2.6.0 spec; rule updates managed directly in Shield/Shunt pages) -->
             <article class="glass-card">
               <span class="card-index">02 / COMPONENT & RULE STATUS</span>
               <h3>组件版本与规则运行概览</h3>
               <div class="update-row">
                 <div><b>AI-LINK 插件版本</b><span id="ota-sub">当前已运行最新稳定版全栈架构</span></div>
                 <div class="button-row">
-                  <span class="version-chip">v2.5.16</span>
+                  <span class="version-chip">v2.6.0</span>
                 </div>
               </div>
               <div class="update-row">
@@ -843,15 +843,15 @@
                 <div>
                   <div class="setting-line">
                     <div><b>局域网访问鉴权 (require_lan_auth)</b><span>开启后局域网设备访问 API 同样强制校验令牌</span></div>
-                    <button id="toggle-require-lan-auth" aria-label="局域网API强制密码鉴权开关" class="switch" role="switch" aria-checked="false" data-action="auth-toggle"><i></i></button>
+                    <button id="toggle-require-lan-auth" aria-label="局域网API强制密码鉴权开关" class="switch a-switch" role="switch" aria-checked="false" data-action="auth-toggle"><i></i></button>
                   </div>
                   <div class="setting-line">
                     <div><b>国内流量不进内核 (硬件级旁路)</b><span>大陆 IP 在 nftables 入口直接直通，零内核开销</span></div>
-                    <button id="toggle-ops-entry-bypass" aria-label="国内流量不进内核开关" class="switch on" role="switch" aria-checked="true" data-action="entry-bypass-toggle"><i></i></button>
+                    <button id="toggle-ops-entry-bypass" aria-label="国内流量不进内核开关" class="switch a-switch on" role="switch" aria-checked="true" data-action="entry-bypass-toggle"><i></i></button>
                   </div>
                   <div class="setting-line">
                     <div><b>IPv6 透明代理接管 (ipv6_proxy) <button type="button" class="button ghost compact ipv6-detail-inline-btn" data-action="ipv6-status-modal">状态明细</button></b><span>开启后海外 IPv6 流量同步进入 TProxy 策略路由</span></div>
-                    <button id="toggle-ipv6-proxy" aria-label="IPv6双栈透明代理开关" class="switch" role="switch" aria-checked="false" data-action="ipv6-proxy-toggle"><i></i></button>
+                    <button id="toggle-ipv6-proxy" aria-label="IPv6双栈透明代理开关" class="switch a-switch" role="switch" aria-checked="false" data-action="ipv6-proxy-toggle"><i></i></button>
                   </div>
                   <div class="setting-line">
                     <div><b>透明代理数据面模式 (Data Plane)</b><span>按需切换零拷贝 TProxy、游戏混合 TUN 或全量 TUN 虚拟网卡</span></div>
@@ -874,7 +874,7 @@
                   </div>
                   <div class="setting-line">
                     <div><b>并发代理冲突自动静默保护</b><span>自动检测并停用冲突的 OpenClash / PassWall 进程</span></div>
-                    <button id="toggle-conflict-guard" aria-label="冲突插件自动静默保护开关" class="switch on" role="switch" aria-checked="true" data-action="conflict-guard-toggle"><i></i></button>
+                    <button id="toggle-conflict-guard" aria-label="冲突插件自动静默保护开关" class="switch a-switch on" role="switch" aria-checked="true" data-action="conflict-guard-toggle"><i></i></button>
                   </div>
                   <div class="setting-line">
                     <div><b>独立管理密码</b><span>下线弱默认口令，UCI 仅存布尔状态位</span></div>
@@ -900,11 +900,11 @@
               </div>
               <div class="setting-line" style="margin-top:12px">
                 <div><b>拦截海外 QUIC (UDP 443)</b><span>消除 UDP 限速导致的视频卡顿</span></div>
-                <button id="toggle-block-quic" aria-label="屏蔽代理线路QUIC开关" class="switch on" role="switch" aria-checked="true" data-action="block-quic-toggle"><i></i></button>
+                <button id="toggle-block-quic" aria-label="屏蔽代理线路QUIC开关" class="switch a-switch on" role="switch" aria-checked="true" data-action="block-quic-toggle"><i></i></button>
               </div>
               <div class="setting-line">
                 <div><b>国服游戏 UDP 直连豁免</b><span>保障国内联机游戏超低延迟</span></div>
-                <button id="toggle-game-udp-direct" aria-label="国服游戏UDP直连开关" class="switch on" role="switch" aria-checked="true" data-action="game-udp-toggle"><i></i></button>
+                <button id="toggle-game-udp-direct" aria-label="国服游戏UDP直连开关" class="switch a-switch on" role="switch" aria-checked="true" data-action="game-udp-toggle"><i></i></button>
               </div>
             </article>
 
@@ -969,10 +969,10 @@
     </div>
   </div>
 
-  <script id="lazy-qrcode-js" data-lazy-src="./static/qrcode.min.js?v=2.5.16-f8cf3403"></script>
-  <script id="lazy-three-js" data-lazy-src="./assets/three.min.js?v=2.5.16-eb854986"></script>
-  <script src="./nexus3d.js?v=2.5.16-0780ebe3"></script>
-  <script src="./nexus.js?v=2.5.16-8be9202a"></script>
+  <script id="lazy-qrcode-js" data-lazy-src="./static/qrcode.min.js?v=2.6.0-f8cf3403"></script>
+  <script id="lazy-three-js" data-lazy-src="./assets/three.min.js?v=2.6.0-eb854986"></script>
+  <script src="./nexus3d.js?v=2.6.0-4971c8ed"></script>
+  <script src="./nexus.js?v=2.6.0-ff359b95"></script>
 <!-- NEXUS-UI-CONTRACT: sub-health-box | 仅入池检测达标项 | 免测直接加入池 | delete-custom-group | sub-card-custom | 手动添加节点 | btn-an-auto-screen | btn-an-mode-ping | btn-an-mode-svc | 同步时间: -->
 </body>
 </html>

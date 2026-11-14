@@ -18,7 +18,7 @@
         <circle cx="20" cy="20" r="5.4" fill="none" stroke="#a994ff" stroke-width="1.6"/>
         <circle cx="20" cy="20" r="1.8" fill="#6ee7f5"/>
       </svg>
-      <span style="display:block"><b>AI-LINK</b><span>NEXUS · 2.5.16</span></span>
+      <span style="display:block"><b>AI-LINK</b><span>NEXUS · 2.6.0</span></span>
     </a>
     <div class="nav-links">
       <a href="/#features">核心能力</a>
@@ -36,12 +36,22 @@
 <main class="wrap log-wrap">
   <div class="log-head">
     <h1>更新日志</h1>
-    <span class="pill"><i></i> 当前最新 2.5.16</span>
+    <span class="pill"><i></i> 当前最新 2.6.0</span>
   </div>
 <article class="log-item latest">
   <div class="log-top">
-    <h2>v2.5.16</h2>
+    <h2>v2.6.0</h2>
     <span class="tag c">最新</span>
+    <time>2026-11-15</time>
+  </div>
+  <p style="margin:2px 0 6px;color:var(--dim)"></p>
+<h3>30 轮终极审查 36 项全集闭环与防回归护栏加固（PKG_RELEASE 28）</h3>
+<ul><li><b>正常升版</b>：升至 <code>v2.6.0</code>（<code>PKG_RELEASE:=28</code> / <code>r28</code>），增量基准为已上线的 <code>v2.5.16</code>（Release #441680618 / <code>937d9a30</code> / 部署 <code>a402f3b8</code>）；现网设备可正常收 OTA 提示。</li><li><b>安全与凭据（SEC-01~07）</b>：UCI 默认关闭 <code>homelink</code> 并移除静态默认密钥，自动生成设备唯一随机凭据且保留老用户自定义凭据；<code>export_ops_backup(include_secrets=False)</code> 遮罩 Telegram/SMTP 密钥；<code>/api/login</code> 按客户端 IP 做 60s 滑动窗口限流（5 次失败锁 60s 返回 429，回环豁免）；RPCD ACL 收敛为精确路径授权、移除 <code>/usr/bin/curl</code> 执行权；Webhook 拦截环回核心端口与内网元数据 SSRF；<code>_check_csrf_same_origin</code> 拦截空 <code>Origin/Referer</code> 跨站表单 POST。</li><li><b>网络接管与分流（NET-01~10）</b>：<code>game_udp_direct</code> 在 sing-box（内联国内段）、nftables（<code>@cn_ip4</code>）与 4 阶透视中强制叠加国内 IP 复合条件，根治外服 Steam/Apex/PUBG 与 WebRTC 被误杀；切 <code>direct_all</code> 保留 <code>198.18.0.0/15</code> 兜底并延迟 300ms 异步清 Fake-IP conntrack / dnsmasq；<code>chain dstnat</code> 放行 <code>fib daddr type local</code> 保留 <code>.lan</code> 解析并补齐 IPv6 DNS DNAT；卸载重启 dnsmasq；<code>sync_rule_provider</code> 10MiB 上限 + <code>.srs</code> zlib 流解压提取域名。</li><li><b>自动节点池（POOL-01~06）</b>：<code>detect_node_country</code> 用严格词边界剔除 <code>RUSSIA</code>/<code>AUSTRALIA</code>/<code>PLUS</code>/<code>CASINO</code> 等含 <code>US</code>/<code>SIN</code> 子串的干扰词，优先取末尾落地地区（<code>HK-&gt;US</code> 判 <code>US</code>）；隔离期删除「单次 ping 通即提前清零」逻辑，改为连续 2 次成功恢复防抖；节点状态变更立即失效 <code>_MULTI_LINE_RR_STATE</code>。</li><li><b>系统架构（SYS-01~07）</b>：<code>AI_LINK_NFT_PREGENERATED=1</code> 免除二次拉起 1.7MB 守护进程；<code>alert_events.json</code> 迁入 RUN_DIR、<code>node_probe.json</code> 闪存快照周期延至 3600s；看门狗 <code>18s→60s→180s→300s</code> 指数退避与 5 次熔断、手动重启/保存配置立即重置；CLI 端口校验 1024~65535 且排除核心端口；<code>keep.d/ai-link</code> 移除自动生成的 <code>sing-box.json</code>。</li><li><b>前端交互（UX-01~06）</b>：首次登录指引、节点池一键场景模板、<code>webglcontextlost</code> 自动降级恢复、<code>beforeunload</code> 未保存保护、开关对齐 <code>.a-switch</code>、跨标签页 <code>storage</code> 令牌同步；新增 <code>Stage 7.29</code> 36 项防回归护栏门禁。</li><li>验收：<code>INSTALL_RC=0</code>、服务全 1、<code>nft ok:true</code>、重启稳定、自检 10/10 + 负向、零补发 <code>run_all 15/15 / RC=0</code>、混沌 <b>92/92</b>、门禁双布局 17/17、11 行指纹 11/11 与 1 字节篡改转红、design-lint 18/18、静态 8/8、UI 六页三视口零异常、出网 200/200/204。</li></ul>
+</article>
+<article class="log-item">
+  <div class="log-top">
+    <h2>v2.5.16</h2>
+    <span class="tag">历史</span>
     <time>2026-11-11</time>
   </div>
   <p style="margin:2px 0 6px;color:var(--dim)"></p>

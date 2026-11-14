@@ -1,3 +1,13 @@
+## [v2.6.0] - 2026-11-15
+### 30 轮终极审查 36 项全集闭环与防回归护栏加固（PKG_RELEASE 28）
+- **正常升版**：升至 `v2.6.0`（`PKG_RELEASE:=28` / `r28`），增量基准为已上线的 `v2.5.16`（Release #441680618 / `937d9a30` / 部署 `a402f3b8`）；现网设备可正常收 OTA 提示。
+- **安全与凭据（SEC-01~07）**：UCI 默认关闭 `homelink` 并移除静态默认密钥，自动生成设备唯一随机凭据且保留老用户自定义凭据；`export_ops_backup(include_secrets=False)` 遮罩 Telegram/SMTP 密钥；`/api/login` 按客户端 IP 做 60s 滑动窗口限流（5 次失败锁 60s 返回 429，回环豁免）；RPCD ACL 收敛为精确路径授权、移除 `/usr/bin/curl` 执行权；Webhook 拦截环回核心端口与内网元数据 SSRF；`_check_csrf_same_origin` 拦截空 `Origin/Referer` 跨站表单 POST。
+- **网络接管与分流（NET-01~10）**：`game_udp_direct` 在 sing-box（内联国内段）、nftables（`@cn_ip4`）与 4 阶透视中强制叠加国内 IP 复合条件，根治外服 Steam/Apex/PUBG 与 WebRTC 被误杀；切 `direct_all` 保留 `198.18.0.0/15` 兜底并延迟 300ms 异步清 Fake-IP conntrack / dnsmasq；`chain dstnat` 放行 `fib daddr type local` 保留 `.lan` 解析并补齐 IPv6 DNS DNAT；卸载重启 dnsmasq；`sync_rule_provider` 10MiB 上限 + `.srs` zlib 流解压提取域名。
+- **自动节点池（POOL-01~06）**：`detect_node_country` 用严格词边界剔除 `RUSSIA`/`AUSTRALIA`/`PLUS`/`CASINO` 等含 `US`/`SIN` 子串的干扰词，优先取末尾落地地区（`HK->US` 判 `US`）；隔离期删除「单次 ping 通即提前清零」逻辑，改为连续 2 次成功恢复防抖；节点状态变更立即失效 `_MULTI_LINE_RR_STATE`。
+- **系统架构（SYS-01~07）**：`AI_LINK_NFT_PREGENERATED=1` 免除二次拉起 1.7MB 守护进程；`alert_events.json` 迁入 RUN_DIR、`node_probe.json` 闪存快照周期延至 3600s；看门狗 `18s→60s→180s→300s` 指数退避与 5 次熔断、手动重启/保存配置立即重置；CLI 端口校验 1024~65535 且排除核心端口；`keep.d/ai-link` 移除自动生成的 `sing-box.json`。
+- **前端交互（UX-01~06）**：首次登录指引、节点池一键场景模板、`webglcontextlost` 自动降级恢复、`beforeunload` 未保存保护、开关对齐 `.a-switch`、跨标签页 `storage` 令牌同步；新增 `Stage 7.29` 36 项防回归护栏门禁。
+- 验收：`INSTALL_RC=0`、服务全 1、`nft ok:true`、重启稳定、自检 10/10 + 负向、零补发 `run_all 15/15 / RC=0`、混沌 **92/92**、门禁双布局 17/17、11 行指纹 11/11 与 1 字节篡改转红、design-lint 18/18、静态 8/8、UI 六页三视口零异常、出网 200/200/204。
+
 ## [v2.5.16] - 2026-11-11
 ### 雷达毫秒级冷启动 + 自动池秒切 + LuCI 鉴权与星图提速（PKG_RELEASE 27）
 - **正常升版**：升至 `v2.5.16`（`PKG_RELEASE:=27` / `r27`），增量基准指向线上 2.5.15（Release #441436442 / `e7617a50` / 部署 `063d6465`）；现网设备可正常收 OTA 提示。

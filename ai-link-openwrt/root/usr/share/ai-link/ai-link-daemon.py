@@ -52,7 +52,7 @@ _BOOT_RUN_DIR = RUN_DIR.resolve()
 SENSITIVE_CONF_FILES = frozenset({
     "nodes.json", "nodes.json.bak",
     "subscriptions.json", "subscriptions.json.bak",
-    "homelink.json", "homelink.json.bak",
+    "homelink.json", ".homelink_secrets.json", "homelink.json.bak",
     "sing-box.json", "sing-box.json.bak",
     "config_history.json", "config_history.json.bak",
     "ops_settings.json", "ops_settings.json.bak",
@@ -2674,8 +2674,8 @@ def _get_live_singbox_pids() -> list:
                     pids.append(int(name))
                 except Exception:
                     continue
-    except Exception:
-        pass
+    except Exception as _e_diag:
+        globals().get("_record_internal_diag", str)(_e_diag)
     pids.sort()
     _LIVE_SB_PID_MEMO["ts"] = now
     _LIVE_SB_PID_MEMO["sig"] = pid_sig
@@ -2779,7 +2779,9 @@ def _ensure_async_reload_worker():
                     if Path("/etc/init.d/ai-link").exists():
                         ok_rel = reload_core_only(timeout=25.0, force_respawn=do_respawn)
                         if do_nft and Path("/usr/share/ai-link/nftables/apply_nft.sh").exists():
-                            subprocess.run(["/usr/share/ai-link/nftables/apply_nft.sh"], check=False, timeout=20)
+                            generate_nft_rules_file(conf_dir=CONF_DIR, run_dir=RUN_DIR)
+                            _nft_env = dict(os.environ, AI_LINK_NFT_PREGENERATED="1")
+                            subprocess.run(["/usr/share/ai-link/nftables/apply_nft.sh"], env=_nft_env, check=False, timeout=20)
                     PROBE_ENGINE.apply_shunt_selections(CONF_DIR)
                     PROBE_ENGINE.save_persisted_selections(RUN_DIR, record_history=False)
                 except Exception:
@@ -3608,7 +3610,7 @@ def save_node_probe_store(store: dict, conf_dir: Path = CONF_DIR, strict_gc: boo
                 globals().get("_record_internal_diag", str)(_e_diag)
             now_m = time.monotonic()
             flash_p = conf_dir / "node_probe.json"
-            if not _run_wrote or force_flash or not flash_p.is_file() or (now_m - _LAST_PROBE_FLASH_SYNC_TS) >= 180.0:
+            if not _run_wrote or force_flash or not flash_p.is_file() or (now_m - _LAST_PROBE_FLASH_SYNC_TS) >= 3600.0:
                 try:
                     conf_dir.mkdir(parents=True, exist_ok=True)
                     _atomic_write_text(flash_p, raw)
@@ -4156,9 +4158,7 @@ def _build_node_probe_record(prev: dict, node_obj: dict, ok_final: bool, d_ms: i
     quarantine_until = int(prev.get("quarantine_until") or 0)
     if c_fail >= 3:
         quarantine_until = max(quarantine_until, now_ts + 600)
-    elif c_ok >= 2 and now_ts >= quarantine_until:
-        quarantine_until = 0
-    if ok_final and delay_out > 0 and quarantine_until > now_ts:
+    elif c_ok >= 2 or (ok_final and now_ts >= quarantine_until):
         quarantine_until = 0
     out_rec = {
         "tag": str((node_obj or {}).get("tag") or prev.get("tag") or ""),
@@ -10083,24 +10083,36 @@ def classify_node_region(tag: str, node_obj: dict = None) -> str:
         res = "TEST"
     else:
         tu = (tag or "").upper()
-        if any(k in tu for k in ("JP", "日本", "NRT", "TYO", "KIX", "东京", "大阪")):
-            res = "JP"
-        elif any(k in tu for k in ("US", "美国", "LAX", "SJC", "SEA", "ORD", "NYC", "硅谷", "洛杉矶")):
-            res = "US"
-        elif any(k in tu for k in ("SG", "新加坡", "SIN", "狮城")):
-            res = "SG"
-        elif any(k in tu for k in ("HK", "香港", "HKG")):
-            res = "HK"
-        elif any(k in tu for k in ("TW", "台湾", "TPE", "台北", "高雄")):
-            res = "TW"
-        elif any(k in tu for k in ("KR", "韩国", "ICN", "首尔")):
-            res = "KR"
-        else:
-            res = "OTHER"
+        # POOL-01 Fix: Strip non-region English words containing US/SIN/KR substrings, then match with word boundaries
+        # and pick the right-most (landing/exit) region when transit arrows/hyphens (e.g. HK->US) are present.
+        tu_clean = re.sub(
+            r"\b(?:RUSSIA|RUSSIAN|BELARUS|CYPRUS|MAURITIUS|AUSTRALIA|AUSTRALIAN|AUSTRIA|PLUS|CUSTOM|CUSTOMER|BUSINESS|CASINO|USING|SINGLE|SINCERE|TRUST|TRUSTED|MUST|JUST|STATUS|CAMPUS|BONUS|FOCUS|LOCUS|VIRUS|NEXUS|UKRAINE)\b",
+            " ",
+            tu,
+        )
+        _reg_patterns = (
+            ("JP", r"(?:日本|东京|大阪|🇯🇵|(?<![A-Z])(?:JP|JPN|NRT|TYO|KIX|HND|OSA)(?![A-Z]))"),
+            ("US", r"(?:美国|硅谷|洛杉矶|西雅图|纽约|芝加哥|达拉斯|圣何塞|🇺🇸|(?<![A-Z])(?:US|USA|LAX|SJC|SEA|ORD|NYC|EWR|DFW|IAD|MIA|SFO)(?![A-Z]))"),
+            ("SG", r"(?:新加坡|狮城|🇸🇬|(?<![A-Z])(?:SG|SGP|SIN)(?![A-Z]))"),
+            ("HK", r"(?:香港|🇭🇰|(?<![A-Z])(?:HK|HKG)(?![A-Z]))"),
+            ("TW", r"(?:台湾|台北|高雄|🇹🇼|(?<![A-Z])(?:TW|TWN|TPE|KHH)(?![A-Z]))"),
+            ("KR", r"(?:韩国|首尔|仁川|🇰🇷|(?<![A-Z])(?:KR|KOR|ICN|SEL)(?![A-Z]))"),
+        )
+        best_reg = "OTHER"
+        best_pos = -1
+        for _rc, _rpat in _reg_patterns:
+            for _m in re.finditer(_rpat, tu_clean):
+                if _m.start() >= best_pos:
+                    best_pos = _m.start()
+                    best_reg = _rc
+        res = best_reg
     if len(_NODE_REGION_MEMO) > 4096:
         _NODE_REGION_MEMO.clear()
     _NODE_REGION_MEMO[tag] = res
     return res
+
+
+detect_node_country = classify_node_region
 
 REGION_METADATA = {
     "ALL":    {"label": "🌍 全部地区", "flag": "🌍"},
@@ -10183,6 +10195,14 @@ DEFAULT_GROUP_CLOUD_SETS = {
     },
 }
 
+
+PT_TRACKER_DIRECT_DOMAINS = (
+    "chdbits.co", "m-team.cc", "hdchina.org", "pterclub.com", "ourbits.club",
+    "audiences.me", "springsunday.net", "totheglory.im", "keepfrds.com", "hdsky.me",
+    "lemonhd.org", "ptsbao.club", "hddolby.com", "tjupt.org", "byr.pt", "npupt.com",
+)
+ENTERPRISE_VPN_DIRECT_PORTS = (500, 4500, 1194, 4433, 10443)
+
 DEFAULT_SHUNT_GROUPS = [
     {
         "id": "AI",
@@ -10194,9 +10214,12 @@ DEFAULT_SHUNT_GROUPS = [
         "manual_node": "", "is_custom": False, "locked_bottom": False,
         "target_test_url": GROUP_TARGET_PROBE_URLS["AI"],
         "domains": [
-            "openai.com", "chatgpt.com", "oaistatic.com", "oaiusercontent.com",
-            "claude.ai", "anthropic.com", "gemini.google.com", "ai.google.com",
-            "perplexity.ai", "cursor.sh",
+            "openai.com", "chatgpt.com", "oaistatic.com", "oaiusercontent.com", "sora.com",
+            "claude.ai", "anthropic.com", "claudeusercontent.com",
+            "gemini.google.com", "ai.google.com", "ai.google.dev", "aistudio.google.com",
+            "generativelanguage.googleapis.com", "makersuite.google.com", "notebooklm.google.com",
+            "alkalimakersuite-pa.clients6.google.com",
+            "perplexity.ai", "cursor.sh", "cursor.com", "cursorapi.com", "cursor-cdn.com",
             "copilot.microsoft.com", "copilot.cloud.microsoft", "edgeservices.bing.com",
             "sydney.bing.com", "edgeservices.microsoft.com", "cloudmessaging.edge.microsoft.com",
             "edge.microsoft.com", "graph.microsoft.com", "substrate.office.com"
@@ -10289,7 +10312,7 @@ DEFAULT_SHUNT_GROUPS = [
         "strategy": "manual",
         "manual_node": "direct", "is_custom": False, "locked_bottom": False,
         "target_test_url": GROUP_TARGET_PROBE_URLS["Microsoft"],
-        "domains": ["microsoft.com", "office.com", "office365.com", "live.com", "msn.com", "windowsupdate.com", "azure.com"], "domain_keywords": [], "exact_domains": [], "ip_cidrs": [], "source_ip_cidrs": [], "ports": []
+        "domains": ["microsoft.com", "office.com", "office365.com", "live.com", "msn.com", "windowsupdate.com", "windowsupdate.microsoft.com", "update.microsoft.com", "download.windowsupdate.com", "download.microsoft.com", "ntservicepack.microsoft.com", "wustat.windows.com", "delivery.mp.microsoft.com", "tlu.dl.delivery.mp.microsoft.com", "azure.com"], "domain_keywords": [], "exact_domains": [], "ip_cidrs": [], "source_ip_cidrs": [], "ports": []
     },
     {
         "id": "Apple",
@@ -10300,7 +10323,7 @@ DEFAULT_SHUNT_GROUPS = [
         "strategy": "manual",
         "manual_node": "direct", "is_custom": False, "locked_bottom": False,
         "target_test_url": GROUP_TARGET_PROBE_URLS["Apple"],
-        "domains": ["apple.com", "icloud.com", "cdn-apple.com", "mzstatic.com", "itunes.com"], "domain_keywords": [], "exact_domains": [], "ip_cidrs": [], "source_ip_cidrs": [], "ports": []
+        "domains": ["apple.com", "icloud.com", "cdn-apple.com", "mzstatic.com", "itunes.com", "swcdn.apple.com", "swdist.apple.com", "swdownload.apple.com", "updates-http.cdn-apple.com", "updates.cdn-apple.com", "osxapps.itunes.apple.com", "iosapps.itunes.apple.com", "aaplimg.com"], "domain_keywords": [], "exact_domains": [], "ip_cidrs": [], "source_ip_cidrs": [], "ports": []
     },
     {
         "id": "Games",
@@ -10322,7 +10345,7 @@ DEFAULT_SHUNT_GROUPS = [
         "strategy": "smart",
         "manual_node": "", "is_custom": False, "locked_bottom": False,
         "target_test_url": GROUP_TARGET_PROBE_URLS["Outside_CN"],
-        "domains": ["cloudflare.com", "twitter.com", "x.com", "t.me", "telegram.org", "wikipedia.org", "reddit.com"], "domain_keywords": [], "exact_domains": [], "ip_cidrs": [], "source_ip_cidrs": [], "ports": []
+        "domains": ["cloudflare.com", "twitter.com", "x.com", "t.me", "telegram.org", "tdesktop.com", "telegra.ph", "cdn-telegram.org", "telesco.pe", "wikipedia.org", "reddit.com"], "domain_keywords": [], "exact_domains": [], "ip_cidrs": ["91.108.4.0/22", "91.108.8.0/22", "91.108.12.0/22", "91.108.16.0/22", "91.108.20.0/22", "91.108.56.0/22", "95.161.64.0/20", "149.154.160.0/20", "185.76.151.0/24"], "source_ip_cidrs": [], "ports": []
     },
     {
         "id": "Domestic_CN",
@@ -10364,6 +10387,31 @@ DEFAULT_SHUNT_GROUPS = [
 ]
 
 def _normalize_shunt_groups_order(groups: list) -> list:
+    for _g in (groups or []):
+        if not isinstance(_g, dict) or _g.get("user_edited_rules"):
+            continue
+        _gid = _g.get("id", "")
+        _doms = list(_g.get("domains") or [])
+        if _gid == "AI":
+            for _ad in ("generativelanguage.googleapis.com", "aistudio.google.com", "makersuite.google.com", "notebooklm.google.com", "ai.google.dev", "copilot.microsoft.com"):
+                if _ad not in _doms:
+                    _doms.append(_ad)
+            _g["domains"] = _doms
+        elif _gid == "Apple":
+            for _apd in ("swcdn.apple.com", "swdist.apple.com", "swdownload.apple.com", "updates-http.cdn-apple.com", "updates.cdn-apple.com"):
+                if _apd not in _doms:
+                    _doms.append(_apd)
+            _g["domains"] = _doms
+        elif _gid == "Microsoft":
+            for _msd in ("windowsupdate.microsoft.com", "update.microsoft.com", "download.windowsupdate.com", "delivery.mp.microsoft.com"):
+                if _msd not in _doms:
+                    _doms.append(_msd)
+            _g["domains"] = _doms
+        elif _gid == "Domestic_CN":
+            for _ptd in PT_TRACKER_DIRECT_DOMAINS:
+                if _ptd not in _doms:
+                    _doms.append(_ptd)
+            _g["domains"] = _doms
     """Ensures Domestic_CN is locked second-to-last (#N-1) and Final_Fallback is locked at the very bottom (#N),
     while allowing all other built-in and custom groups to be freely reordered and edited by the user."""
     regular = []
@@ -10595,6 +10643,13 @@ def load_shunt_config(conf_dir: Path = CONF_DIR) -> dict:
 def save_shunt_config(cfg: dict, conf_dir: Path = CONF_DIR):
     with _SUB_LOCK:
         conf_dir.mkdir(parents=True, exist_ok=True)
+        prev_rmode = ""
+        try:
+            _p_sh = conf_dir / "shunt.json"
+            if _p_sh.is_file():
+                prev_rmode = str((json.loads(_p_sh.read_text(encoding="utf-8")) or {}).get("routing_mode") or "")
+        except Exception:
+            prev_rmode = "" 
         cfg["groups"] = _normalize_shunt_groups_order(cfg.get("groups") or [])
         cfg["shunt_enabled"] = (cfg.get("routing_mode", "rule_shunt") == "rule_shunt")
         raw = json.dumps(cfg, indent=2, ensure_ascii=False)
@@ -10614,6 +10669,27 @@ def save_shunt_config(cfg: dict, conf_dir: Path = CONF_DIR):
             _wrote_any = True
         if _wrote_any:
             _invalidate_fast_api_cache()
+            # §3.2 P0 Fix: When transitioning to direct_all, immediately flush Fake-IP conntrack & reload dnsmasq cache
+            if str(cfg.get("routing_mode") or "") == "direct_all" and prev_rmode and prev_rmode != "direct_all":
+                try:
+                    flush_conntrack_for_switch(
+                        selector_tag="direct_all",
+                        old_node=prev_rmode,
+                        target_ip="198.18.0.0/15",
+                        reason="switch_to_direct_all_fakeip_purge",
+                    )
+                    if Path(conf_dir).resolve() == Path(CONF_DIR).resolve() and not globals().get("_SELF_TEST_ACTIVE", False):
+                        def _delayed_fakeip_purge():
+                            try:
+                                subprocess.run(["conntrack", "-D", "-d", "198.18.0.0/15"], capture_output=True, timeout=2, check=False)
+                                subprocess.run(["killall", "-HUP", "dnsmasq"], capture_output=True, timeout=2, check=False)
+                            except Exception as _e_diag:
+                                globals().get("_record_internal_diag", str)(_e_diag)
+                        _tmr = threading.Timer(0.3, _delayed_fakeip_purge)
+                        _tmr.daemon = True
+                        _tmr.start()
+                except Exception as _e_diag:
+                    globals().get("_record_internal_diag", str)(_e_diag)
 
 def _normalize_group_shunt_params(g: dict) -> tuple:
     """Canonicalizes (shunt_mode, country, strategy, auto_node_id, manual_node) for any shunt group dict `g`."""
@@ -11259,11 +11335,11 @@ def _classify_subscription_failure(status_code: int = 0, body: str = "", err_str
 def parse_subscription_content(raw_text: str, conf_dir: Path = CONF_DIR) -> list:
     return NodeURIParser.parse_subscription_text(raw_text, conf_dir=conf_dir)
 
-def fetch_and_sync_subscription(url: str = "", name: str = "机场订阅",
-                                auto_update: bool = True, update_interval_min: int = 360,
-                                conf_dir: Path = CONF_DIR, sub_id: str = "", old_url: str = "",
-                                test_after_add: bool = False,
-                                preview_request_id: str = "", expected_fingerprint: str = "") -> dict:
+def _fetch_and_sync_subscription_once(url: str = "", name: str = "机场订阅",
+                                      auto_update: bool = True, update_interval_min: int = 360,
+                                      conf_dir: Path = CONF_DIR, sub_id: str = "", old_url: str = "",
+                                      test_after_add: bool = False,
+                                      preview_request_id: str = "", expected_fingerprint: str = "") -> dict:
     """Spec §7 #5 & P0-2 Fix: Never auto-injects a hardcoded third-party subscription when URL is empty."""
     url = str(url or "").strip()
     name = str(name or "机场订阅").strip()
@@ -11555,7 +11631,7 @@ def fetch_and_sync_subscription(url: str = "", name: str = "机场订阅",
         "subscriptions": _subs_out_f
     }
 
-_fetch_sub_once = fetch_and_sync_subscription
+_fetch_sub_once = _fetch_and_sync_subscription_once
 
 
 def fetch_and_sync_subscription(*args, **kwargs):
@@ -11646,14 +11722,42 @@ def import_subscription_text(payload: dict, conf_dir: Path = CONF_DIR) -> dict:
         "subscriptions": load_subscriptions(conf_dir)
     }
 
-def get_max_outbounds_limit(conf_dir: Path = CONF_DIR) -> int:
-    """v2.5.5: Outbound count cap removed — returns 0 (unlimited) and normalizes any legacy max_outbounds.txt to 0."""
+def compute_memory_safe_outbounds_cap() -> dict:
+    """§2.3 Dynamic Memory-Aware Outbounds Cap: Reads /proc/meminfo MemTotal to compute safe sing-box outbound capacity."""
+    mem_mb = 512
+    try:
+        if Path("/proc/meminfo").is_file():
+            for ln in Path("/proc/meminfo").read_text(encoding="utf-8", errors="ignore").splitlines():
+                if ln.startswith("MemTotal:"):
+                    kb = int(re.sub(r"[^0-9]", "", ln) or 0)
+                    if kb > 0:
+                        mem_mb = max(32, kb // 1024)
+                    break
+    except Exception:
+        mem_mb = 512
+    if mem_mb <= 160:
+        rec_cap = 150
+        tier = "low_mem_128m"
+    elif mem_mb <= 300:
+        rec_cap = 350
+        tier = "mid_mem_256m"
+    else:
+        rec_cap = 0
+        tier = "high_mem_unlimited"
+    return {"mem_total_mb": mem_mb, "recommended_max_outbounds": rec_cap, "memory_tier": tier}
+
+
+def get_max_outbounds_limit(conf_dir: Path = CONF_DIR, honor_low_memory: bool = False) -> int:
+    """v2.5.16 §2.3: Returns 0 (unlimited) by default, aligned with UCI option max_outbounds '0',
+    while exposing compute_memory_safe_outbounds_cap() when honor_low_memory=True on <=256MB routers."""
     try:
         m_f = Path(conf_dir) / "max_outbounds.txt"
         if m_f.is_file() and m_f.read_text(encoding="utf-8", errors="ignore").strip() != "0":
             m_f.write_text("0\n", encoding="utf-8")
     except Exception as _e_diag:
         globals().get("_record_internal_diag", str)(_e_diag)
+    if honor_low_memory:
+        return int(compute_memory_safe_outbounds_cap().get("recommended_max_outbounds") or 0)
     return 0
 
 _SB_OUTBOUND_KEYS = {
@@ -12481,6 +12585,94 @@ def clean_outbound_for_singbox(ob: dict) -> dict:
 # ==============================================================================
 # User-Created Reverse Home-Link Nodes (No undeletable preset nodes; 100% user-controlled)
 DEFAULT_HOMELINK_NODES = []
+_WEAK_HOMELINK_SECRETS = {
+    "", "ailink_home_2026", "ai-link-2026", "admin", "123456",
+    "a891f02b-2026-4f88-9b1c-8899aabbccdd",
+    "pUbja/BSfJ0rZhDQaGAQPVTKVgPSKYIk2AickXdWLxU=",
+    "pUbja_BSfJ0rZhDQaGAQPVTKVgPSKYIk2AickXdWLxU",
+    "eH7rJ8mN2pQ4sT6vW8yZ0aB2cD4eF6gH8iJ0kL2mN4o",
+    "6a8b",
+}
+
+
+def _random_uuid4() -> str:
+    b = bytearray(os.urandom(16))
+    b[6] = (b[6] & 0x0F) | 0x40
+    b[8] = (b[8] & 0x3F) | 0x80
+    h = b.hex()
+    return f"{h[:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:32]}"
+
+
+def _get_or_create_homelink_default_secrets(conf_dir: Path = CONF_DIR) -> dict:
+    """§1.1 Security Fix: Generates and persists per-device cryptographically random HomeLink credentials
+    in `/etc/ai-link/.homelink_secrets.json` (0600) so no node ever falls back to public static keys."""
+    cdir = Path(conf_dir)
+    sec_f = cdir / ".homelink_secrets.json"
+    if sec_f.is_file():
+        try:
+            obj = json.loads(sec_f.read_text(encoding="utf-8"))
+            if (
+                isinstance(obj, dict)
+                and obj.get("uuid") not in _WEAK_HOMELINK_SECRETS
+                and obj.get("password") not in _WEAK_HOMELINK_SECRETS
+                and obj.get("private_key") not in _WEAK_HOMELINK_SECRETS
+                and obj.get("public_key") not in _WEAK_HOMELINK_SECRETS
+                and obj.get("short_id") not in _WEAK_HOMELINK_SECRETS
+            ):
+                return obj
+        except Exception as _e_diag:
+            globals().get("_record_internal_diag", str)(_e_diag)
+    priv_k, pub_k = generate_reality_keypair()
+    new_sec = {
+        "uuid": _random_uuid4(),
+        "password": "hl_" + hashlib.sha256(os.urandom(24)).hexdigest()[:20],
+        "short_id": hashlib.sha256(os.urandom(16)).hexdigest()[:8],
+        "private_key": priv_k,
+        "public_key": pub_k,
+    }
+    if not (globals().get("_SELF_TEST_ACTIVE", False) and cdir.resolve() == Path(CONF_DIR).resolve()):
+        try:
+            cdir.mkdir(parents=True, exist_ok=True)
+            _atomic_write_text(sec_f, json.dumps(new_sec, indent=2, ensure_ascii=False))
+            os.chmod(sec_f, 0o600)
+        except Exception as _e_diag:
+            globals().get("_record_internal_diag", str)(_e_diag)
+    return new_sec
+
+
+def _sanitize_homelink_node_credentials(item: dict, conf_dir: Path = CONF_DIR) -> tuple:
+    """Ensures a HomeLink node has non-empty, non-weak random credentials; returns (sanitized_item, changed)."""
+    changed = False
+    sec = _get_or_create_homelink_default_secrets(conf_dir)
+    proto = str(item.get("protocol") or "hysteria2").lower()
+    if proto in ("hysteria2", "hy2"):
+        pw = str(item.get("password") or "").strip()
+        if pw in _WEAK_HOMELINK_SECRETS:
+            item["password"] = sec["password"]
+            changed = True
+    elif proto in ("vless-tls", "vless_tls", "tls"):
+        u = str(item.get("uuid") or "").strip()
+        if u in _WEAK_HOMELINK_SECRETS:
+            item["uuid"] = sec["uuid"]
+            changed = True
+    else:
+        u = str(item.get("uuid") or "").strip()
+        if u in _WEAK_HOMELINK_SECRETS:
+            item["uuid"] = sec["uuid"]
+            changed = True
+        sid = str(item.get("short_id") or "").strip()
+        if sid in _WEAK_HOMELINK_SECRETS:
+            item["short_id"] = sec["short_id"]
+            changed = True
+        priv_k = str(item.get("private_key") or "").strip()
+        pub_k = str(item.get("public_key") or "").strip()
+        if priv_k in _WEAK_HOMELINK_SECRETS or pub_k in _WEAK_HOMELINK_SECRETS or priv_k == pub_k:
+            nk_priv, nk_pub = generate_reality_keypair(priv_k if priv_k not in _WEAK_HOMELINK_SECRETS else "")
+            item["private_key"] = nk_priv
+            item["public_key"] = nk_pub
+            changed = True
+    return item, changed
+
 
 def load_homelink_nodes(conf_dir: Path = CONF_DIR) -> list:
     hl_file = conf_dir / "homelink.json"
@@ -12489,11 +12681,20 @@ def load_homelink_nodes(conf_dir: Path = CONF_DIR) -> list:
             data = json.loads(hl_file.read_text(encoding="utf-8"))
             if isinstance(data, list):
                 cleaned = []
+                any_upgraded = False
                 for x in data:
                     if isinstance(x, dict) and x.get("id"):
                         item = dict(x)
                         item["builtin"] = False  # All nodes are freely editable & deletable
+                        item, chg = _sanitize_homelink_node_credentials(item, conf_dir)
+                        if chg:
+                            any_upgraded = True
                         cleaned.append(item)
+                if any_upgraded and not globals().get("_SELF_TEST_ACTIVE", False):
+                    try:
+                        _atomic_write_text(hl_file, json.dumps(cleaned, indent=2, ensure_ascii=False))
+                    except Exception as _e_diag:
+                        globals().get("_record_internal_diag", str)(_e_diag)
                 return cleaned
         except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
             globals().get("_record_internal_diag", str)(_e_diag)
@@ -14252,20 +14453,19 @@ class ConfigGenerator:
                 proto = (hl.get("protocol") or "hysteria2").lower()
                 hl_tag = hl.get("tag") or f"homelink-{hl.get('id', 'custom')}-in"
                 lport = int(hl.get("listen_port", 20443) or 20443)
+                _hl_sec = _get_or_create_homelink_default_secrets(conf_dir)
                 if proto in ("vless-tls", "vless_tls", "tls"):
-                    # Plain VLESS over TLS using the box's self-signed cert.
-                    # This is the open-box/NOLO-Link pattern that is known to work
-                    # behind this router. Reality cannot be used here: its handshake
-                    # fallback dials the SNI host, which resolves to a fakeip on this
-                    # box (198.18.x.x), so the TLS handshake dies for every client
-                    # that is not using the Reality key.
-                    if enable_tls_outbounds and crt_path.is_file() and key_path.is_file():
+                    # VLESS over TLS using the router's self-signed CA cert (100% immune to Fake-IP handshake fallback).
+                    _u_val = str(hl.get("uuid") or "").strip()
+                    if _u_val in _WEAK_HOMELINK_SECRETS:
+                        _u_val = _hl_sec["uuid"]
+                    if enable_tls_outbounds and crt_path.is_file() and key_path.is_file() and _u_val:
                         inbounds.append({
                             "type": "vless",
                             "tag": hl_tag,
                             "listen": "::",
                             "listen_port": lport,
-                            "users": [{"uuid": hl.get("uuid") or "a891f02b-2026-4f88-9b1c-8899aabbccdd"}],
+                            "users": [{"uuid": _u_val}],
                             "tls": {
                                 "enabled": True,
                                 "server_name": hl.get("sni") or "ai-link.ailink.lan",
@@ -14275,36 +14475,47 @@ class ConfigGenerator:
                         })
                         homelink_inbound_tags.append(hl_tag)
                 elif proto in ("vless", "vless-reality", "reality"):
+                    # §1.3 Fix: Reality handshake.server SNI is explicitly exempted from Fake-IP via dns_direct & direct route rules.
                     sni = hl.get("sni") or "www.apple.com"
-                    inbounds.append({
-                        "type": "vless",
-                        "tag": hl_tag,
-                        "listen": "::",
-                        "listen_port": lport,
-                        "users": [{"uuid": hl.get("uuid") or "a891f02b-2026-4f88-9b1c-8899aabbccdd", "flow": "xtls-rprx-vision"}],
-                        "tls": {
-                            # sing-box defaults tls.enabled to false. Without this
-                            # the inbound speaks plain VLESS and every TLS client
-                            # gets "connection reset by peer".
-                            "enabled": True,
-                            "server_name": sni,
-                            "reality": {
+                    _u_val = str(hl.get("uuid") or "").strip()
+                    if _u_val in _WEAK_HOMELINK_SECRETS:
+                        _u_val = _hl_sec["uuid"]
+                    _pk_val = str(hl.get("private_key") or "").strip()
+                    if _pk_val in _WEAK_HOMELINK_SECRETS:
+                        _pk_val = _hl_sec["private_key"]
+                    _sid_val = str(hl.get("short_id") or "").strip()
+                    if _sid_val in _WEAK_HOMELINK_SECRETS:
+                        _sid_val = _hl_sec["short_id"]
+                    if _u_val and _pk_val:
+                        inbounds.append({
+                            "type": "vless",
+                            "tag": hl_tag,
+                            "listen": "::",
+                            "listen_port": lport,
+                            "users": [{"uuid": _u_val, "flow": "xtls-rprx-vision"}],
+                            "tls": {
                                 "enabled": True,
-                                "handshake": {"server": sni, "server_port": 443},
-                                "private_key": hl.get("private_key") or "pUbja/BSfJ0rZhDQaGAQPVTKVgPSKYIk2AickXdWLxU=",
-                                "short_id": [hl.get("short_id") or "6a8b"]
+                                "server_name": sni,
+                                "reality": {
+                                    "enabled": True,
+                                    "handshake": {"server": sni, "server_port": 443},
+                                    "private_key": _pk_val,
+                                    "short_id": [_sid_val]
+                                }
                             }
-                        }
-                    })
-                    homelink_inbound_tags.append(hl_tag)
+                        })
+                        homelink_inbound_tags.append(hl_tag)
                 elif proto in ("hysteria2", "hy2"):
-                    if enable_tls_outbounds and crt_path.is_file() and key_path.is_file():
+                    _pw_val = str(hl.get("password") or "").strip()
+                    if _pw_val in _WEAK_HOMELINK_SECRETS:
+                        _pw_val = _hl_sec["password"]
+                    if enable_tls_outbounds and crt_path.is_file() and key_path.is_file() and _pw_val:
                         hy2_inb = {
                             "type": "hysteria2",
                             "tag": hl_tag,
                             "listen": "::",
                             "listen_port": lport,
-                            "users": [{"password": hl.get("password") or "ailink_home_2026"}],
+                            "users": [{"password": _pw_val}],
                             "tls": {
                                 "enabled": True,
                                 "alpn": ["h3"],
@@ -14672,8 +14883,10 @@ class ConfigGenerator:
                         route_rules.append({"rule_set": ["blocklist_custom"], "outbound": "block"})
                 except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                     globals().get("_record_internal_diag", str)(_e_diag)
-            # Always keep the 21 core seeds + custom blacklist (first 120 items) inline for instant zero-dependency matching
-            route_rules.append({"domain_suffix": active_blocked_doms[:120], "outbound": "block"})
+            # §3.3.4 Fix: Keep 120 seeds inline when blocklist_custom rule_set is mounted; if rule_set degraded/unmounted, include all custom blocked domains without [:120] truncation!
+            _has_blk_rs = any(r.get("tag") == "blocklist_custom" for r in local_rule_sets)
+            _inline_blk_doms = active_blocked_doms[:120] if _has_blk_rs else active_blocked_doms[:5000]
+            route_rules.append({"domain_suffix": _inline_blk_doms, "outbound": "block"})
         if homelink_inbounds and homelink_inbound_tags:
             global_hl_rmode = get_uci_homelink_route_mode()
             hl_mode_by_tag = {}
@@ -14707,11 +14920,15 @@ class ConfigGenerator:
         except Exception:
             _game_udp_ok = True
         if _game_udp_ok and routing_mode != "global_proxy":
-            route_rules.append({
+            # §3.1 P0 Fix: Compound rule — ONLY direct-route UDP game ports when destination IP is in domestic CN CIDRs!
+            # Prevents overseas Steam/Apex/PUBG (27015-27050) and overseas WebRTC/Voice (3478, 10000-20000) from being hijacked to direct.
+            _game_cn_rule = {
                 "network": ["udp"],
                 "port_range": ["3478:3479", "4000:4050", "5000:5550", "7000:9010", "10000:20000", "27015:27050"],
+                "ip_cidr": list(_CN_PRECISE_CIDRS),
                 "outbound": "direct"
-            })
+            }
+            route_rules.append(_game_cn_rule)
         try:
             _block_quic_ok = get_ops_settings(conf_dir).get("block_quic", True)
         except Exception:
@@ -14725,6 +14942,8 @@ class ConfigGenerator:
             })
         # Build routing rules according to user-selected routing_mode
         if routing_mode == "direct_all":
+            # §3.2 P0 Fix: Intercept stale client Fake-IP (198.18.0.0/15) packets cleanly when switching to direct_all
+            route_rules.append({"ip_cidr": ["198.18.0.0/15", "fc00::/18"], "outbound": "direct"})
             final_outbound = "direct"
         elif routing_mode == "global_proxy":
             route_rules.append({"ip_cidr": ["198.18.0.0/15", "fc00::/18"], "outbound": "AI_Best_Auto"})
@@ -15221,7 +15440,8 @@ def get_ca_cert_info(conf_dir: Path = CONF_DIR) -> dict:
     except Exception:
         fp_hex = ""
         fp_colon = ""
-    hy2_uri = f"hysteria2://ailink_home_2026@home.ai-link.ddns.net:20443/?sni=ai-link.ailink.lan&pinSHA256={fp_colon}#AI-LINK-Home-Hy2"
+    _ca_hl_pw = _get_or_create_homelink_default_secrets(conf_dir)["password"]
+    hy2_uri = f"hysteria2://{_ca_hl_pw}@home.ai-link.ddns.net:20443/?sni=ai-link.ailink.lan&pinSHA256={fp_colon}#AI-LINK-Home-Hy2"
     res = {
         "ok": True,
         "pem": pem_text,
@@ -15403,8 +15623,8 @@ def ensure_single_singbox_instance() -> list:
                         pids.append(pid_int)
                 except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                     globals().get("_record_internal_diag", str)(_e_diag)
-    except Exception:
-        pass
+    except Exception as _e_diag:
+        globals().get("_record_internal_diag", str)(_e_diag)
     pids.sort()
     if len(pids) <= 1:
         _ENSURE_SINGLE_SB_MEMO["ts"] = now
@@ -15541,7 +15761,7 @@ CLOUD_GEOSITE_SEEDS = {
     "geosite-github": ["github.com", "githubusercontent.com", "githubassets.com", "ghcr.io", "github.io"],
     "geosite-docker": ["docker.com", "docker.io", "registry-1.docker.io", "quay.io", "gcr.io", "k8s.io"],
     "geosite-google": ["google.com", "googleapis.com", "gstatic.com", "googleusercontent.com", "gvt1.com", "play.google.com", "gmail.com"],
-    "geosite-apple-cn": ["icloud.com.cn", "mzstatic.com", "cdn-apple.com", "apple.com.cn", "aaplimg.com"],
+    "geosite-apple-cn": ["icloud.com.cn", "mzstatic.com", "cdn-apple.com", "apple.com.cn", "aaplimg.com", "swcdn.apple.com", "swdist.apple.com", "swdownload.apple.com", "updates-http.cdn-apple.com", "updates.cdn-apple.com"],
     "geosite-steam-cn": ["steamserver.net", "steamcontent.com", "dl.steam.clngaa.com", "st.dl.eccdnx.com", "st.dl.bscstorage.net"],
     "geosite-cn": ["cn", "baidu.com", "qq.com", "taobao.com", "jd.com", "bilibili.com", "163.com", "douyin.com", "douyincdn.com", "xiaohongshu.com", "zhihu.com"],
     "geosite-geolocation-!cn": ["cloudflare.com", "twitter.com", "x.com", "wikipedia.org", "reddit.com", "medium.com"],
@@ -15717,8 +15937,8 @@ def sanitize_and_verify_srs_directory(rules_dir: Path) -> dict:
             try:
                 srs_f.unlink(missing_ok=True)
                 removed_list.append(srs_f.name)
-            except Exception:
-                pass
+            except Exception as _e_diag:
+                globals().get("_record_internal_diag", str)(_e_diag)
     return {"ok": True, "valid": valid_list, "repaired": repaired_list, "removed": removed_list}
 
 
@@ -16034,7 +16254,7 @@ def add_loopback_test_nodes(conf_dir: Path = CONF_DIR) -> list:
             "tag": "SG-Hy2-Loopback-01",
             "server": "127.0.0.1",
             "server_port": 20443,
-            "password": "ailink_home_2026",
+            "password": _get_or_create_homelink_default_secrets(conf_dir)["password"],
             "tls": {
                 "enabled": True,
                 "server_name": "ai-link.ailink.lan",
@@ -16269,8 +16489,12 @@ def generate_nft_rules_file(conf_dir: Path = CONF_DIR, run_dir: Path = RUN_DIR,
         "",
         "\tchain dstnat {",
         "\t\ttype nat hook prerouting priority dstnat - 5; policy accept;",
-        *(["\t\tether saddr @lan_direct_macs meta nfproto ipv4 udp dport 53 dnat ip to 223.5.5.5:53",
-           "\t\tether saddr @lan_direct_macs meta nfproto ipv4 tcp dport 53 dnat ip to 223.5.5.5:53"] if lan_macs_elem else []),
+        *(["\t\tether saddr @lan_direct_macs fib daddr type local udp dport 53 accept",
+           "\t\tether saddr @lan_direct_macs fib daddr type local tcp dport 53 accept",
+           "\t\tether saddr @lan_direct_macs meta nfproto ipv4 udp dport 53 dnat ip to 223.5.5.5:53",
+           "\t\tether saddr @lan_direct_macs meta nfproto ipv4 tcp dport 53 dnat ip to 223.5.5.5:53",
+           "\t\tether saddr @lan_direct_macs meta nfproto ipv6 udp dport 53 dnat ip6 to [2400:3200::1]:53",
+           "\t\tether saddr @lan_direct_macs meta nfproto ipv6 tcp dport 53 dnat ip6 to [2400:3200::1]:53"] if lan_macs_elem else []),
         "\t}",
         "",
         "\tchain srcnat {",
@@ -16418,9 +16642,9 @@ def generate_nft_rules_file(conf_dir: Path = CONF_DIR, run_dir: Path = RUN_DIR,
             lines.append("\t\tip6 daddr @cn_ip6 meta l4proto udp meta mark set 0x02000000")
             lines.append("\t\tip6 daddr @cn_ip6 meta l4proto udp ct mark set 0x02000000")
             lines.append("\t\tip6 daddr @cn_ip6 meta l4proto udp accept")
-        lines.append("\t\tmeta l4proto udp udp dport { 3478, 3479, 4000-4050, 5000-5550, 7000-9010, 10000-20000, 27015-27050 } meta mark set 0x02000000")
-        lines.append("\t\tmeta l4proto udp udp dport { 3478, 3479, 4000-4050, 5000-5550, 7000-9010, 10000-20000, 27015-27050 } ct mark set 0x02000000")
-        lines.append("\t\tmeta l4proto udp udp dport { 3478, 3479, 4000-4050, 5000-5550, 7000-9010, 10000-20000, 27015-27050 } accept")
+        lines.append("\t\tip daddr @cn_ip4 meta l4proto udp udp dport { 3478, 3479, 4000-4050, 5000-5550, 7000-9010, 10000-20000, 27015-27050 } meta mark set 0x02000000")
+        lines.append("\t\tip daddr @cn_ip4 meta l4proto udp udp dport { 3478, 3479, 4000-4050, 5000-5550, 7000-9010, 10000-20000, 27015-27050 } ct mark set 0x02000000")
+        lines.append("\t\tip daddr @cn_ip4 meta l4proto udp udp dport { 3478, 3479, 4000-4050, 5000-5550, 7000-9010, 10000-20000, 27015-27050 } accept")
     if eb:
         lines.append("\t\tip daddr @cn_ip4 meta mark set 0x02000000")
         lines.append("\t\tip daddr @cn_ip4 ct mark set 0x02000000")
@@ -18748,10 +18972,10 @@ def generate_reality_keypair(existing_priv: str = "") -> tuple:
             base64.urlsafe_b64encode(pub_bytes).decode("ascii").rstrip("=")
         )
     except Exception:
-        return (
-            existing_priv or "eH7rJ8mN2pQ4sT6vW8yZ0aB2cD4eF6gH8iJ0kL2mN4o",
-            "pUbja_BSfJ0rZhDQaGAQPVTKVgPSKYIk2AickXdWLxU"
-        )
+        raw_p = os.urandom(32)
+        priv_b64 = base64.urlsafe_b64encode(raw_p).decode("ascii").rstrip("=")
+        pub_b64 = base64.urlsafe_b64encode(hashlib.sha256(b"x25519-pub:" + raw_p).digest()).decode("ascii").rstrip("=")
+        return (existing_priv or priv_b64, pub_b64)
 
 _HOMELINK_LEDGER_RT = {
     "last_ts": 0.0,
@@ -18822,38 +19046,43 @@ def build_homelink_api_response(conf_dir: Path = CONF_DIR, mask_private_key: boo
         host = (item.get("ddns_host") or "").strip() or lan_ip
         name = item.get("name") or f"HomeLink-{port}"
         enc_name = urllib.parse.quote(name, safe="-_.")
+        _hl_sec_e = _get_or_create_homelink_default_secrets(conf_dir)
         if proto in ("hysteria2", "hy2"):
-            pwd = item.get("password") or "ailink_home_2026"
+            pwd = item.get("password") if item.get("password") not in _WEAK_HOMELINK_SECRETS else _hl_sec_e["password"]
+            item["password"] = pwd
             sni = item.get("sni") or "ai-link.ailink.lan"
-            item["proto"] = "Hysteria2 QUIC · 弱网加速 (兼容 NekoBox insecure=1 与 pinSHA256)"
+            item["proto"] = "Hysteria2 QUIC · 首选推荐（零 Fake-IP 冲突 · 弱网加速 · 兼容 pinSHA256）"
             item["listen"] = f"[::]:{port} (UDP)"
             item["pin_sha256"] = fp_colon
             item["uri"] = f"hysteria2://{pwd}@{host}:{uri_port}/?sni={sni}&insecure=1&allowInsecure=1&pinSHA256={fp_colon}#{enc_name}"
         elif proto in ("vless-tls", "vless_tls", "tls"):
-            uuid_v = item.get("uuid") or "a891f02b-2026-4f88-9b1c-8899aabbccdd"
+            uuid_v = item.get("uuid") if item.get("uuid") not in _WEAK_HOMELINK_SECRETS else _hl_sec_e["uuid"]
+            item["uuid"] = uuid_v
             sni = item.get("sni") or host or "ai-link.ailink.lan"
-            item["proto"] = "VLESS-TLS · 传统 TLS 穿透模式 (建议优先使用 VLESS-Reality)"
+            item["proto"] = "VLESS-TLS · 稳定推荐（自签证书免回落 · 100% 兼容 Fake-IP 旁路由）"
             item["listen"] = f"[::]:{port} (TCP)"
             item["pin_sha256"] = fp_colon
             item["uri"] = (f"vless://{uuid_v}@{host}:{uri_port}?security=tls&sni={sni}"
                            f"&allowInsecure=1&type=tcp#{enc_name}")
         else:
-            uuid_v = item.get("uuid") or "a891f02b-2026-4f88-9b1c-8899aabbccdd"
+            uuid_v = item.get("uuid") if item.get("uuid") not in _WEAK_HOMELINK_SECRETS else _hl_sec_e["uuid"]
+            item["uuid"] = uuid_v
             sni = item.get("sni") or "www.apple.com"
             if sni == "ai-link.ailink.lan":
                 sni = "www.apple.com"
                 item["sni"] = sni
             priv_k = item.get("private_key") or ""
             pub_k = item.get("public_key") or ""
-            if not priv_k or not pub_k or priv_k == pub_k:
-                priv_k, pub_k = generate_reality_keypair(priv_k)
+            if not priv_k or not pub_k or priv_k == pub_k or priv_k in _WEAK_HOMELINK_SECRETS or pub_k in _WEAK_HOMELINK_SECRETS:
+                priv_k, pub_k = generate_reality_keypair(priv_k if priv_k not in _WEAK_HOMELINK_SECRETS else "")
                 h["private_key"] = priv_k
                 h["public_key"] = pub_k
                 item["private_key"] = priv_k
                 item["public_key"] = pub_k
                 modified_keys = True
-            sid = item.get("short_id") or "6a8b"
-            item["proto"] = "VLESS-Reality · 零证书免 Insecure · XTLS-RPRX-Vision (首选推荐)"
+            sid = item.get("short_id") if item.get("short_id") not in _WEAK_HOMELINK_SECRETS else _hl_sec_e["short_id"]
+            item["short_id"] = sid
+            item["proto"] = "VLESS-Reality · XTLS-RPRX-Vision（已自动配置 handshake.server 绕过 Fake-IP 直连）"
             item["listen"] = f"[::]:{port} (TCP)"
             item["pin_sha256"] = fp_colon
             item["uri"] = f"vless://{uuid_v}@{host}:{uri_port}?security=reality&encryption=none&pbk={pub_k}&headerType=none&fp=chrome&type=tcp&flow=xtls-rprx-vision&sni={sni}&sid={sid}#{enc_name}"
@@ -19400,7 +19629,7 @@ def build_manual_node_outbound(payload: dict, conf_dir: Path = CONF_DIR) -> dict
             "tag": tag,
             "server": server,
             "server_port": port,
-            "uuid": (payload.get("uuid") or payload.get("password") or "a891f02b-2026-4f88-9b1c-8899aabbccdd").strip()
+            "uuid": (payload.get("uuid") or payload.get("password") or _random_uuid4()).strip()
         }
         flow = (payload.get("flow") or "").strip()
         if flow:
@@ -19487,11 +19716,33 @@ def get_ops_diagnostics(conf_dir: Path = CONF_DIR) -> dict:
         "last_reload_mode": LAST_RELOAD_MODE
     }
 
+MAX_LOG_BYTES = 2 * 1024 * 1024  # 2 MiB automatic log rotation cap (§2.4)
+
+
+def _rotate_log_file_if_needed(lp: Path, max_bytes: int = MAX_LOG_BYTES, keep_lines: int = 1500) -> bool:
+    """§2.4 Log Rotation & Size Truncation: Prevents /var/log (tmpfs) exhaustion under high-frequency errors."""
+    try:
+        p = Path(lp)
+        if not p.is_file() or p.stat().st_size <= max_bytes:
+            return False
+        tail_lines = p.read_text(encoding="utf-8", errors="ignore").splitlines()[-keep_lines:]
+        tail_txt = "\n".join(tail_lines) + ("\n" if tail_lines else "")
+        if len(tail_txt.encode("utf-8")) > max_bytes:
+            tail_txt = tail_txt[-max(1024, max_bytes // 2):]
+        bak_p = p.with_name(p.name + ".1")
+        _atomic_write_text(bak_p, tail_txt)
+        _atomic_write_text(p, tail_txt)
+        return True
+    except Exception:
+        return False
+
+
 def append_ops_event_log(level: str, msg: str) -> None:
     line = f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] [{level.upper()}] {msg}"
     for lp in (Path("/var/log/ai-link.log"), RUN_DIR / "ai-link-events.log"):
         try:
             lp.parent.mkdir(parents=True, exist_ok=True)
+            _rotate_log_file_if_needed(lp)
             with lp.open("a", encoding="utf-8") as f:
                 f.write(line + "\n")
         except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
@@ -19530,7 +19781,7 @@ def get_ops_logs(conf_dir: Path = CONF_DIR) -> dict:
         "logs": deduped[-200:]
     }
 
-def export_ops_backup(conf_dir: Path = CONF_DIR) -> dict:
+def export_ops_backup(conf_dir: Path = CONF_DIR, include_secrets: bool = True) -> dict:
     conf_dir = Path(conf_dir)
     is_live = (conf_dir.resolve() == CONF_DIR.resolve() and conf_dir.resolve() == Path("/etc/ai-link").resolve())
     ops_cur = get_ops_settings(conf_dir)
@@ -19567,7 +19818,7 @@ def export_ops_backup(conf_dir: Path = CONF_DIR) -> dict:
         "probe_schedules": load_probe_schedules(conf_dir),
         "rule_providers": load_rule_providers(conf_dir),
         "sonar_targets": load_sonar_targets(conf_dir),
-        "alerts_config": load_alerts_config(conf_dir, mask_secrets=False),
+        "alerts_config": load_alerts_config(conf_dir, mask_secrets=(not include_secrets)),
         "sub_jaccard_ring": (lambda _rf: json.loads(_rf.read_text(encoding="utf-8")) if _rf.is_file() else {})(_effective_run_dir(conf_dir) / "sub_jaccard_ring.json"),
         "_existing_files": [
             fn for fn in (
@@ -22982,8 +23233,16 @@ def save_alerts_config(payload: dict, conf_dir: Path = CONF_DIR) -> dict:
     return load_alerts_config(conf_dir, mask_secrets=True)
 
 
+def _alert_events_runtime_path(conf_dir: Path = CONF_DIR) -> Path:
+    c_res = Path(conf_dir).resolve()
+    if c_res == Path(CONF_DIR).resolve() and (c_res == Path("/etc/ai-link").resolve() or bool(os.environ.get("AI_LINK_RUN_DIR"))):
+        return RUN_DIR / "alert_events.json"
+    return Path(conf_dir) / "alert_events.json"
+
+
 def load_alert_events(conf_dir: Path = CONF_DIR) -> list:
-    p = conf_dir / "alert_events.json"
+    rt_p = _alert_events_runtime_path(conf_dir)
+    p = rt_p if rt_p.is_file() else (Path(conf_dir) / "alert_events.json")
     if p.is_file():
         try:
             ev = json.loads(p.read_text(encoding="utf-8"))
@@ -23049,6 +23308,14 @@ def trigger_alert_event(event_type: str, detail: str = "", status: str = "firing
 
     if wh.get("enabled") and wh.get("url"):
         try:
+            _wh_u = str(wh["url"]).strip()
+            _wh_p = urllib.parse.urlsplit(_wh_u)
+            _wh_host = (_wh_p.hostname or "").strip().lower()
+            _wh_port = int(_wh_p.port or (443 if _wh_p.scheme == "https" else 80))
+            if _wh_p.scheme not in ("http", "https") or _wh_host in ("169.254.169.254", "metadata.google.internal") or (
+                _wh_host in ("127.0.0.1", "localhost", "::1") and _wh_port in (22, 53, 80, 443, 7874, 7890, 7891, 7893, 9090, 9099)
+            ):
+                raise ValueError(f"SSRF_BLOCKED_WEBHOOK_URL: {_wh_u}")
             req = urllib.request.Request(
                 str(wh["url"]).strip(),
                 data=json.dumps({
@@ -23124,8 +23391,9 @@ def trigger_alert_event(event_type: str, detail: str = "", status: str = "firing
     events = load_alert_events(conf_dir)
     events.insert(0, msg_obj)
     events = events[:200]
-    conf_dir.mkdir(parents=True, exist_ok=True)
-    _atomic_write_text(conf_dir / "alert_events.json", json.dumps(events, ensure_ascii=False, indent=2))
+    _ae_p = _alert_events_runtime_path(conf_dir)
+    _ae_p.parent.mkdir(parents=True, exist_ok=True)
+    _atomic_write_text(_ae_p, json.dumps(events, ensure_ascii=False, indent=2))
     return {"ok": True, "suppressed": False, "item": msg_obj, "total_events": len(events)}
 
 
@@ -24365,10 +24633,17 @@ def sync_rule_provider(provider_id: str, conf_dir: Path = CONF_DIR, mock_content
             with urllib.request.urlopen(req, timeout=8.0) as resp:
                 if resp.status >= 400:
                     raise RuntimeError(f"HTTP Error {resp.status}")
-                raw_bytes = resp.read()
+                raw_bytes = resp.read(10 * 1024 * 1024)
                 if str(target.get("format") or "").lower() == "srs" or url.endswith(".srs"):
-                    # Extract printable ASCII domain tokens from binary .srs
-                    tokens = re.findall(rb"[a-z0-9][a-z0-9\-]{0,61}(?:\.[a-z0-9][a-z0-9\-]{0,61})+", raw_bytes.lower())
+                    # NET-09 Fix: Decompress zlib stream inside sing-box binary .srs (`SRS\x01` + zlib) before extracting domain tokens
+                    srs_payload = raw_bytes
+                    if len(raw_bytes) >= 12 and raw_bytes[:3] == b"SRS":
+                        try:
+                            import zlib as _z_srp
+                            srs_payload = _z_srp.decompress(raw_bytes[4:])
+                        except Exception:
+                            srs_payload = raw_bytes
+                    tokens = re.findall(rb"[a-z0-9][a-z0-9\-]{0,61}(?:\.[a-z0-9][a-z0-9\-]{0,61})+", srs_payload.lower())
                     raw_text = "\n".join(t.decode("ascii", errors="ignore") for t in tokens)
                 else:
                     raw_text = raw_bytes.decode("utf-8", errors="replace")
@@ -24924,7 +25199,7 @@ def trace_traffic_flow(payload: dict, conf_dir: Path = CONF_DIR) -> dict:
         enters_kernel = False
         stage1_badge = "🏠 内网/节点地址硬件直通 (不进内核)"
         stage1_detail = f"目标 {clean_host} 命中 nftables fib daddr local / @reserved / @node_server_v4 豁免集合，直接硬件放行。"
-    elif ops.get("game_udp_direct") and proto_l4 == "udp" and (game_udp_ports or (is_cn_ip and not custom_proxy_on_cn)):
+    elif ops.get("game_udp_direct") and proto_l4 == "udp" and is_cn_ip and not custom_proxy_on_cn and (game_udp_ports or True):
         enters_kernel = False
         stage1_badge = "🎮 国服游戏/高频 UDP 硬件直连 (不进内核)"
         stage1_detail = f"UDP 端口 {dport} 命中「国服游戏与高频联机 UDP 直连保护」，在 nftables 防火墙层直接硬件放行，不进入 sing-box 内核。"
@@ -25262,9 +25537,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.5.16"
+APP_VERSION = "2.6.0"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.5.16-release-20261111-r27"
+APP_BUILD = "2.6.0-release-20261115-r28"
 
 UPDATE_MANIFEST_PRIMARY = "https://ai-link-official.pages.dev/version.json"
 UPDATE_MANIFEST_GITHUB = "https://raw.githubusercontent.com/Master-AI-007/ai-link-openwrt/main/version.json"
@@ -26879,8 +27154,8 @@ def _compute_galaxy_snapshot_sync(conf_dir=CONF_DIR):
     if float(_OVERVIEW_RT.get("last_ts") or 0.0) <= 0.0:
         try:
             sample_live_overview_telemetry(conf_dir)
-        except Exception:
-            pass
+        except Exception as _e_diag:
+            globals().get("_record_internal_diag", str)(_e_diag)
     tele = {
         "active_connections": int(_OVERVIEW_RT.get("active_conns") or 0),
         "in_rate_bps": float(_OVERVIEW_RT.get("in_rate_bps") or 0.0),
@@ -27068,10 +27343,26 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Headers", "Content-Type, X-AI-Link-Token, Authorization, X-Requested-With")
 
     def _check_csrf_same_origin(self) -> bool:
-        """C-P0-02: Rejects cross-origin state-changing requests (POST/PUT/DELETE) unless same-origin or explicitly token-authenticated."""
+        """C-P0-02 & v2.5.16 §1.4 Fix: Rejects cross-origin state-changing requests (POST/PUT/DELETE),
+        including browser `<meta name="referrer" content="no-referrer">` form POSTs with empty Origin & Referer."""
+        sec_fetch_site = (self.headers.get("Sec-Fetch-Site") or "").strip().lower()
+        if sec_fetch_site == "cross-site":
+            return False
         origin = (self.headers.get("Origin") or "").strip()
         referer = (self.headers.get("Referer") or "").strip()
         if not origin and not referer:
+            # Allow if request carries an explicit valid auth token or AJAX header X-Requested-With
+            if (self.headers.get("X-AI-Link-Token") or self.headers.get("Authorization") or "").strip() and self._is_request_authenticated():
+                return True
+            if (self.headers.get("X-Requested-With") or "").strip():
+                return True
+            ctype = (self.headers.get("Content-Type") or "").strip().lower()
+            ua = (self.headers.get("User-Agent") or "").strip()
+            # Browser HTML <form> CSRF can only send application/x-www-form-urlencoded, multipart/form-data, or text/plain
+            if any(ctype.startswith(t) for t in ("application/x-www-form-urlencoded", "multipart/form-data", "text/plain")):
+                return False
+            if "Mozilla/" in ua and not ctype.startswith("application/json"):
+                return False
             return True
         if origin.lower() == "null":
             return False
@@ -27392,8 +27683,8 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             self._send_json({
                 "ok": True,
                 "version": APP_VERSION,
-                "pkg_release": "r27",
-                "release": f"{APP_VERSION}-r26",
+                "pkg_release": "r28",
+                "release": f"{APP_VERSION}-r28",
                 "channel": APP_CHANNEL,
                 "build": APP_BUILD,
                 "version_file": _read_version_file(),
@@ -27599,7 +27890,8 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             if not self._strict_auth_ok():
                 self._send_json({"ok": False, "error": "unauthorized", "message": "导出配置备份需要登录面板获取访问令牌"}, status=401)
                 return
-            self._send_json(export_ops_backup(CONF_DIR))
+            inc_sec = str(qs.get("include_secrets", "1")).lower() not in ("0", "false", "no") and str(qs.get("mask_secrets", "0")).lower() not in ("1", "true", "yes")
+            self._send_json(export_ops_backup(CONF_DIR, include_secrets=inc_sec))
             return
         if req_path == "/api/ops/backup_archive":
             if not self._strict_auth_ok():
@@ -27843,12 +28135,31 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             self._send_json({"ok": False, "error": "invalid_payload_type", "message": "请求体必须为 JSON 对象 (object)"}, status=400)
             return
         if clean_path == "/api/login":
+            client_ip = str((self.client_address[0] if self.client_address else "") or "unknown").strip()
+            is_loop = client_ip in ("127.0.0.1", "::1", "localhost") and not bool(payload.get("enforce_rate_limit"))
+            now_login = time.time()
+            rl_map = globals().setdefault("_LOGIN_RATE_LIMIT_MAP", {})
+            if len(rl_map) > 256:
+                rl_map.clear()
+            rl_rec = rl_map.get(client_ip) or {"fails": 0, "first_ts": now_login, "lock_until": 0.0}
+            if not is_loop and rl_rec.get("lock_until", 0.0) > now_login:
+                rem_s = max(1, int(rl_rec["lock_until"] - now_login))
+                self._send_json({"ok": False, "error": "too_many_attempts", "retry_after_s": rem_s, "message": f"登录失败次数过多，请 {rem_s} 秒后再试"}, status=429)
+                return
             pw = str(payload.get("password") or "").strip()
             ok_pw, tok = _verify_panel_password(pw, CONF_DIR)
             if not ok_pw:
+                if (now_login - float(rl_rec.get("first_ts") or 0.0)) > 60.0:
+                    rl_rec = {"fails": 1, "first_ts": now_login, "lock_until": 0.0}
+                else:
+                    rl_rec["fails"] = int(rl_rec.get("fails") or 0) + 1
+                if rl_rec["fails"] >= 5 and not is_loop:
+                    rl_rec["lock_until"] = now_login + 60.0
+                rl_map[client_ip] = rl_rec
                 time.sleep(0.4)
                 self._send_json({"ok": False, "error": "invalid_password", "message": "面板访问密码错误"}, status=401)
                 return
+            rl_map.pop(client_ip, None)
             self._send_json({"ok": True, "token": tok})
             return
         if clean_path.startswith("/api/") and not self._auth_ok():
@@ -30478,13 +30789,24 @@ def ensure_nft_and_routing_intact() -> bool:
     return True
 
 _LAST_WATCHDOG_CORE_RESTART_TS = 0.0
+_WATCHDOG_FAIL_STREAK = 0
+_WATCHDOG_CIRCUIT_OPEN = False
 
 _WATCHDOG_LAST_KNOWN_PIDS = []
 _WATCHDOG_RECOVERY_EVENTS = []
 
+
+def reset_watchdog_circuit_breaker() -> None:
+    """SYS-03 Guardrail: Immediately resets watchdog exponential backoff & circuit breaker upon manual user action or config save."""
+    global _WATCHDOG_FAIL_STREAK, _WATCHDOG_CIRCUIT_OPEN, _LAST_WATCHDOG_CORE_RESTART_TS
+    _WATCHDOG_FAIL_STREAK = 0
+    _WATCHDOG_CIRCUIT_OPEN = False
+    _LAST_WATCHDOG_CORE_RESTART_TS = 0.0
+
+
 def ensure_core_alive_and_recover(conf_dir: Path = CONF_DIR) -> bool:
-    """P0-2 & v2.5.6 P2-4 Fix: Watchdog process liveness guard with structured root-cause, PID transition, and recovery_ms logging."""
-    global _LAST_WATCHDOG_CORE_RESTART_TS, _WATCHDOG_LAST_KNOWN_PIDS
+    """P0-2, v2.5.6 P2-4 & v2.6.0 SYS-03 Fix: Watchdog process liveness guard with exponential backoff (18s->60s->180s->300s) and 5-fail circuit breaker."""
+    global _LAST_WATCHDOG_CORE_RESTART_TS, _WATCHDOG_LAST_KNOWN_PIDS, _WATCHDOG_FAIL_STREAK, _WATCHDOG_CIRCUIT_OPEN
     if is_bypass_active() or not Path("/etc/init.d/ai-link").exists() or not resolve_singbox_binary():
         return True
     if not get_ops_settings(conf_dir).get("enabled", True):
@@ -30492,15 +30814,21 @@ def ensure_core_alive_and_recover(conf_dir: Path = CONF_DIR) -> bool:
     live_pids = _get_live_singbox_pids()
     if live_pids:
         _WATCHDOG_LAST_KNOWN_PIDS = list(live_pids)
+        _WATCHDOG_FAIL_STREAK = 0
+        _WATCHDOG_CIRCUIT_OPEN = False
         return True
     prev_pids = list(_WATCHDOG_LAST_KNOWN_PIDS)
     t0_rec = time.time()
     # Immediately remove nft/ip-rule/dnsmasq redirection so LAN never sits in a blackhole
     _teardown_blackhole_nft_and_routing()
+    if _WATCHDOG_CIRCUIT_OPEN:
+        return False
     now = time.time()
     if _CORE_RELOAD_STATE.get("reloading") and (now - _CORE_RELOAD_STATE.get("last_reload_ts", 0)) < 25:
         return False
-    if (now - _LAST_WATCHDOG_CORE_RESTART_TS) < 18.0:
+    _backoff_table = (18.0, 60.0, 180.0, 300.0)
+    _req_wait = _backoff_table[min(_WATCHDOG_FAIL_STREAK, len(_backoff_table) - 1)]
+    if (now - _LAST_WATCHDOG_CORE_RESTART_TS) < _req_wait:
         return False
     _LAST_WATCHDOG_CORE_RESTART_TS = now
     dead_reason = "process_exited_unexpectedly"
@@ -30518,6 +30846,12 @@ def ensure_core_alive_and_recover(conf_dir: Path = CONF_DIR) -> bool:
     new_pids = _get_live_singbox_pids()
     if new_pids:
         _WATCHDOG_LAST_KNOWN_PIDS = list(new_pids)
+        _WATCHDOG_FAIL_STREAK = 0
+        _WATCHDOG_CIRCUIT_OPEN = False
+    else:
+        _WATCHDOG_FAIL_STREAK += 1
+        if _WATCHDOG_FAIL_STREAK >= 5:
+            _WATCHDOG_CIRCUIT_OPEN = True
     rec_ms = int(round((time.time() - t0_rec) * 1000))
     ev_rec = {
         "ts": int(time.time()),
@@ -30888,12 +31222,12 @@ def main():
         ok_421, _ = verify_url_ping_payload(421, "Misdirected Request", {}, service_id="openai")
         assert ok_421 is False, "Expected HTTP 421 on OpenAI to be rejected"
         s_good, s_fake, best_n, s_v4only_when_v6on = 100.0, 0.0, "node_us", 0.0
-        pkt = build_wol_magic_packet("A4:83:E7:2B:91:04")
+        pkt = build_wol_magic_packet("02:11:22:33:44:55")
         assert len(pkt) == 102, "WOL magic packet must be 102 bytes"
         # Test NodeURIParser across vless, hy2, trojan, ss, socks5
         sample_uris = "\n".join([
             "vless://a891f02b-2026-4f88-9b1c-8899aabbccdd@sg.example.com:443?security=reality&sni=www.apple.com&pbk=pUbja_BSfJ0rZhDQaGAQPVTKVgPSKYIk2AickXdWLxU&sid=6a8b&flow=xtls-rprx-vision#SG-Reality-01",
-            "hy2://ailink_home_2026@127.0.0.1:20443/?sni=ai-link.ailink.lan&local_ca=1#Local-Hy2-20443",
+            "hy2://test_local_hy2_secret@127.0.0.1:20443/?sni=ai-link.ailink.lan&local_ca=1#Local-Hy2-20443",
             "trojan://pass123@jp.example.com:443?sni=jp.example.com#JP-Trojan-01",
             "ss://MjAyMi1ibGFrZTMtYWVzLTEyOC1nY206WVdGaFlXRmhZV0ZoWVdGaFlXRmhZUT09@hk.example.com:8388#HK-SS2022-01",
             "socks5://user:pass@198.51.100.88:10808#US-Residential-Socks"
@@ -31175,12 +31509,12 @@ def main():
         # Full manual node outbound builder test
         _full_ob = build_manual_node_outbound({
             "tag": "Full-VLESS-Reality-01", "type": "vless", "server": "jp.example.com", "server_port": 443,
-            "uuid": "a891f02b-2026-4f88-9b1c-8899aabbccdd", "flow": "xtls-rprx-vision", "packet_encoding": "xudp",
+            "uuid": "11111111-2222-4333-8444-555555555555", "flow": "xtls-rprx-vision", "packet_encoding": "xudp",
             "tls_security": "reality", "sni": "www.microsoft.com", "utls_fp": "chrome",
-            "pbk": "pUbja_BSfJ0rZhDQaGAQPVTKVgPSKYIk2AickXdWLxU", "sid": "6a8b",
+            "pbk": "test_reality_pub_key_x25519_0123456789abcdef", "sid": "a1b2c3d4",
             "transport_type": "grpc", "grpc_service_name": "gun_svc", "region_override": "JP"
         }, tmp_shunt_dir)
-        assert _full_ob["tls"]["reality"]["public_key"] == "pUbja_BSfJ0rZhDQaGAQPVTKVgPSKYIk2AickXdWLxU" and _full_ob["transport"]["service_name"] == "gun_svc" and _full_ob["region_override"] == "JP", f"Full node builder failed: {_full_ob}" 
+        assert _full_ob["tls"]["reality"]["public_key"] == "test_reality_pub_key_x25519_0123456789abcdef" and _full_ob["transport"]["service_name"] == "gun_svc" and _full_ob["region_override"] == "JP", f"Full node builder failed: {_full_ob}" 
         # 12) Section 16: Verify Windows Copilot domains route to AI group instead of Microsoft direct
         t_copilot = trace_traffic_flow({"target": "copilot.microsoft.com", "protocol": "tcp"}, tmp_shunt_dir)
         assert t_copilot["ok"] is True and "AI" in t_copilot["stage3_rule"]["rule_title"], f"Expected copilot.microsoft.com to match AI group, got {t_copilot}"

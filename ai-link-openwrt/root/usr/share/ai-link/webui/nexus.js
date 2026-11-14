@@ -815,11 +815,19 @@
   window.closeModal = closeModal;
 
   function promptPanelLoginModal() {
+    const initPwdGuideHtml = (!state.pwdCustomized)
+      ? ('<div class="syntax-guide" id="login-initial-pwd-guide" style="margin-bottom:4px">' +
+           '<b>首次登录初始密码指引：</b>当前尚未自定义管理密码。' +
+           '<br>1. <b>SSH 查看随机初始密码</b>：在路由器终端执行 <code class="mono">cat /etc/ai-link/initial_password</code>' +
+           '<br>2. <b>LuCI 免密管理入口</b>：已登录路由器后台时，可从「LuCI / 服务 / AI-LINK」直接读取令牌桥接进入；首次登录后建议在「设置」页修改为自定义强密码。' +
+         '</div>')
+      : '';
     openModal(
       '面板安全鉴权登录',
       '<div class="modal-form">' +
         '<p>当前路由器已启用访问鉴权或操作涉及敏感凭据，请输入面板管理密码。</p>' +
-        '<div class="modal-field"><label>管理密码</label><input id="mdl-login-password" type="password" placeholder="请输入面板管理密码" autocomplete="current-password"></div>' +
+        initPwdGuideHtml +
+        '<div class="modal-field"><label>管理密码</label><input id="mdl-login-password" type="password" placeholder="请输入面板管理密码（未改密请查看 /etc/ai-link/initial_password）" autocomplete="current-password"></div>' +
       '</div>',
       'SECURITY AUTH',
       async () => {
@@ -830,10 +838,11 @@
         if (res && res.ok && res.token) {
           state.authRequiredLock = false;
           state._loginPromptedOnce = false;
+          state.isDirty = false;
           try { document.body.removeAttribute('data-auth-locked'); } catch (_) {}
           setAuthToken(res.token);
           closeModal();
-          if (!scene) initScene();
+          if (!scene && state.page === 'overview' && !state.disable3dTopology) initScene();
           toast('登录成功，已获取安全会话令牌');
           await syncBackendStatus(true, true);
         } else {
@@ -2438,6 +2447,12 @@
         '<div class="modal-field"><label>第 2 步：配置客户端 DNS 与网关指向（可一键复制）</label>' +
           '<div style="padding:8px 10px;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;color:var(--text)">' + esc(step2.guide_text || '') + '</div>' +
           '<div class="input-row" style="margin-top:6px"><input id="mdl-topo-copy-txt" class="mono" readonly value="' + esc(step2.copy_text || '') + '"><button class="button secondary compact" type="button" id="btn-topo-copy-guide">复制配置参数</button></div>' +
+        '</div>' +
+        '<div class="syntax-guide" style="margin-top:4px">' +
+          '<b>全场景拓扑防坑指南（旁路由脑裂 / PT 刷流 / 双网关 IPv6 RA / 企业 VPN）：</b>' +
+          '<br>• <b>防旁路由断电脑裂</b>：建议主路由 DHCP 保持默认，仅将需要科学上网的手机/电脑手动指向旁路由，或配置主路由存活探测回切。' +
+          '<br>• <b>NAS PT/BT 防封号与企业 VPN 防死锁</b>：系统已内置主流 PT Tracker 与 IPSec/AnyConnect 直连规则；建议将群晖/NAS 与办公 VPN 设备 MAC 加入「设置 / 局域网设备 MAC 免代理直通白名单」。' +
+          '<br>• <b>防双网关 IPv6 RA 幽灵漂移</b>：旁路由模式下请关闭主路由 DHCPv6/RA 通告，或开启下方 IPv6 严格防漏挡位。' +
         '</div>' +
         '<div class="modal-field"><label>第 3 步：旁路由 IPv6 防漏联动</label>' +
           '<select id="mdl-topo-v6-leak">' +
@@ -4892,8 +4907,14 @@
     openModal(
       p ? ('配置自动节点池 · ' + p.name) : '创建智能自动节点池',
       '<div id="an-builder-root" class="ov-insight-modal-wrap modal-form" style="gap:10px">' +
-        '<div class="syntax-guide" style="margin-bottom:0">' +
-          '<b>极简自动节点池工作流：</b>勾选订阅源与国家区域 → 选择是否需要真实服务可用性检测 → 设定节点池容量 (1~10) 与低健康度自动复选阈值 → 点击「<b>开始自动选取</b>」。建池完成后，日常仅通过定时 <b>URL Ping</b> 自动切换池内最快节点；仅在<b>创建节点池</b>与<b>健康节点数低于阈值自动复选</b>时执行真实服务访问测试。' +
+        '<div class="syntax-guide" style="margin-bottom:0;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">' +
+          '<div><b>一键场景模板（出装即用 · 免调参数）：</b>点击右侧场景模板即可自动配置地区、服务检测与防风控参数并立即选点，也可展开下方高级选项微调。</div>' +
+          '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
+            '<button type="button" class="button secondary compact" data-an-scene-tpl="ai_stable">AI 专属稳定池</button>' +
+            '<button type="button" class="button secondary compact" data-an-scene-tpl="stream_fast">流媒体高速池</button>' +
+            '<button type="button" class="button secondary compact" data-an-scene-tpl="global_low_rtt">全球低延迟池</button>' +
+            '<button type="button" class="button ghost compact" id="btn-an-toggle-advanced" data-action="toggle-an-advanced">收起/展开高级参数</button>' +
+          '</div>' +
         '</div>' +
 
         /* Step 1: Pool Name */
@@ -5529,6 +5550,42 @@
       });
 
       builderRoot.addEventListener('click', ev => {
+        const tplBtn = ev.target.closest('[data-an-scene-tpl]');
+        if (tplBtn) {
+          const tpl = tplBtn.dataset.anSceneTpl;
+          const nameInp = $('#mdl-an-name');
+          if (tpl === 'ai_stable') {
+            if (nameInp) nameInp.value = 'AI 专属稳定池';
+            selectedCountries.clear(); ['US', 'SG', 'JP'].forEach(c => selectedCountries.add(c));
+            poolMode = 'service_check';
+            dispatchMode = 'single_best';
+            $$('.chk-an-svc').forEach(chk => { chk.checked = ['gemini', 'chatgpt', 'claude'].includes(chk.value); });
+          } else if (tpl === 'stream_fast') {
+            if (nameInp) nameInp.value = '流媒体高速池';
+            selectedCountries.clear(); ['SG', 'HK', 'TW', 'JP'].forEach(c => selectedCountries.add(c));
+            poolMode = 'service_check';
+            dispatchMode = 'multi_line';
+            $$('.chk-an-svc').forEach(chk => { chk.checked = ['youtube', 'netflix'].includes(chk.value); });
+          } else if (tpl === 'global_low_rtt') {
+            if (nameInp) nameInp.value = '全球低延迟通用池';
+            selectedCountries.clear(); selectedCountries.add('ALL');
+            poolMode = 'ping_only';
+            dispatchMode = 'multi_line';
+          }
+          renderCountryChips();
+          syncDispatchAndServiceGuardrails();
+          renderSelectedTable();
+          toast('已应用「' + tplBtn.textContent + '」场景预设，可点击「开始自动选取」一键入池');
+          return;
+        }
+        const advToggle = ev.target.closest('#btn-an-toggle-advanced');
+        if (advToggle) {
+          const steps = $$('#an-builder-root .an-wizard-step');
+          steps.forEach((st, idx) => {
+            if (idx >= 1 && idx <= 4) st.classList.toggle('hidden');
+          });
+          return;
+        }
         const countryBtn = ev.target.closest('[data-an-country]');
         if (countryBtn) {
           ev.preventDefault();
@@ -9737,6 +9794,34 @@
       }
     });
     window.addEventListener('keydown', event => { if (event.key === 'Escape') closeModal(); });
+    document.addEventListener('input', event => {
+      if (event.target && event.target.closest && event.target.closest('#modal-body, .modal-form')) {
+        state.isDirty = true;
+        state.unsaved = true;
+      }
+    });
+    window.addEventListener('storage', event => {
+      if (event.key === 'ailink_panel_token') {
+        const newTok = (event.newValue || '').trim();
+        if (!newTok) {
+          state.authRequiredLock = true;
+          try { document.body.setAttribute('data-auth-locked', 'true'); } catch (_) {}
+          promptPanelLoginModal();
+        } else {
+          state.authRequiredLock = false;
+          try { document.body.removeAttribute('data-auth-locked'); } catch (_) {}
+          closeModal();
+          syncBackendStatus(true, true);
+        }
+      }
+    });
+    window.addEventListener('beforeunload', event => {
+      const m = $('#modal');
+      if (state.isDirty && m && !m.hidden) {
+        event.preventDefault();
+        event.returnValue = '当前有未保存的配置修改，确定要离开页面吗？';
+      }
+    });
   }
 
   function setupCanvas(canvas) {

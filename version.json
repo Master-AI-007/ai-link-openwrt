@@ -1,19 +1,34 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.5.16",
-  "release_date": "2026-11-11",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.5.16",
+  "latest": "2.6.0",
+  "release_date": "2026-11-15",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.6.0",
   "highlights": [
-    "正常升版至 v2.5.16（PKG_RELEASE 27）：现网 2.5.15 设备可直接收到 OTA 更新提示",
-    "实时流量归组雷达改为 O(1) 整数桶匹配：冷启动从 58–64ms 降到毫秒级，热缓存 <0.1ms",
-    "国内 IP 召回补齐（含山西电信 221.204.0.0/14），海外误判 0/31、国内 20/20",
-    "自动节点池按真实 dial 错误秒切：链路级失联 2 次即切换，黑洞从 68 秒降到 15 秒内",
-    "池未满目标数时自动补齐（不再卡在阈值），仅传池 id 也能继承范围并一键落盘",
-    "LuCI 面板跨源令牌自动注入：4 项 KPI 不再停在「检测中」，OTA 未授权提示与网络故障分开显示",
-    "3D 星图首视觉从约 7 秒降到 1 秒内（轻量材质替代 PBR），弹窗拖拽选取不再被误关"
+    "正常升版至 v2.6.0（PKG_RELEASE 28）：现网 2.5.16 设备可直接收到 OTA 更新提示",
+    "安全加固：HomeLink 动态随机凭据、备份可选脱敏、登录 60 秒滑动窗口防爆破、RPCD ACL 最小权限、Webhook 防 SSRF",
+    "网络接管加固：游戏 UDP 直连强制国内 IP 判定、切直连 300ms 异步清表、MAC 直连保留 .lan 与 IPv6、.srs zlib 解压解析",
+    "自动池加固：节点落地地区词边界识别（HK->US 判 US）、隔离期连续 2 次成功才恢复、多线缓存实时失效",
+    "系统架构加固：nft 单进程挂载免除二次解析、运行态写入迁 tmpfs、看门狗 18s→300s 指数退避与 5 次熔断",
+    "前端加固：首次登录指引、一键场景模板、WebGL 上下文丢失恢复、未保存表单保护、跨标签页令牌同步",
+    "真机零补发 run_all 15/15、混沌 92/92（新增 Stage 7.29 36 项护栏门禁）"
   ],
   "changelog": [
+    {
+      "version": "2.6.0",
+      "date": "2026-11-15",
+      "type": "feature",
+      "title": "30 轮终极审查 36 项全集闭环与防回归护栏加固",
+      "items": [
+        "正常升版至 `v2.6.0`（`PKG_RELEASE:=28` / `r28`），增量基准为线上 `v2.5.16`（Release #441680618 / `937d9a30`）；现网设备可正常收 OTA 提示",
+        "SEC-01~07：UCI 默认关闭 `homelink` 并移除静态默认密钥，自动生成设备唯一随机凭据且保留老用户自定义凭据；`export_ops_backup` 支持遮罩 Telegram/SMTP 密钥；`/api/login` 新增按 IP 的 60s/5 次滑动窗口限流（回环豁免）；RPCD ACL 收敛为精确路径授权；Webhook 拦截环回与内网元数据 SSRF；空 `Origin/Referer` 跨站表单拦截",
+        "NET-01~10：`game_udp_direct` 在 sing-box / nftables / 透视中强制叠加国内 IP 复合条件，避免误杀外服与 WebRTC；切 `direct_all` 保留 198.18.0.0/15 兜底并延迟 300ms 异步清 Fake-IP conntrack；`chain dstnat` 放行 `fib daddr type local` 保留 `.lan` 解析并补齐 IPv6 DNS DNAT；卸载重启 dnsmasq；`sync_rule_provider` 10MiB 上限 + `.srs` zlib 流解压提取域名",
+        "POOL-01~06：`detect_node_country` 用严格词边界剔除 RUSSIA/AUSTRALIA 等含 US/SIN 子串的干扰词并优先取末尾落地地区；隔离期需连续 2 次探测成功才恢复，避免单次 ping 通提前清零；节点状态变更立即失效 `_MULTI_LINE_RR_STATE`",
+        "SYS-01~07：`AI_LINK_NFT_PREGENERATED=1` 免除二次拉起 1.7MB 守护进程；`alert_events.json` 迁入 RUN_DIR、`node_probe.json` 闪存快照延至 3600s；看门狗 18s→60s→180s→300s 指数退避与 5 次熔断、手动重启/保存配置即重置；CLI 端口校验 1024~65535 且排除核心端口；`keep.d` 精确列表",
+        "UX-01~06：首次登录指引、节点池一键场景模板、`webglcontextlost` 自动降级恢复、`beforeunload` 未保存保护、开关对齐 `.a-switch`、跨标签页 `storage` 令牌同步；新增 `Stage 7.29` 36 项防回归护栏门禁",
+        "验收：真机 `INSTALL_RC=0`、自检 10/10 + 负向、零补发 `run_all 15/15 RC=0`、混沌 **92/92**、门禁双布局 17/17、11 行指纹 11/11 且改 1 字节转红、design-lint 18/18、静态 8/8、UI 六页三视口零异常、出网 200/200/204"
+      ]
+    },
     {
       "version": "2.5.16",
       "date": "2026-11-11",
@@ -518,13 +533,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.5.16/AI-LINK-v2.5.16.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.6.0/AI-LINK-v2.6.0.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.5.16.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.6.0.tar.gz"
       ],
-      "size": 1116217,
-      "md5": "ee7916845913d7eaa13db64582c9d43e",
-      "sha256": "0f897e2cf63bd480ff7e3c788d6ed96dff36fe497a3742e8b703362ca37fb7dd"
+      "size": 1130359,
+      "md5": "a4dd67bc5281409e16954d025d5d8647",
+      "sha256": "b3e251023a6fe4b7c2d8d4fb1d2cce49630aeec2cfd0d8b8f51634ddba4f4a9e"
     }
   }
 }

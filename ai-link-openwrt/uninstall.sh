@@ -107,8 +107,12 @@ if [ -f /var/run/ai-link/sysctl_orig/rps_queues.orig ]; then
 		[ -n "$qpath" ] && [ -f "$qpath" ] && echo "${qval:-0}" > "$qpath" 2>/dev/null || true
 	done < /var/run/ai-link/sysctl_orig/rps_queues.orig
 fi
-rm -f /tmp/dnsmasq.d/ai-link-*.conf /tmp/dnsmasq.cfg*/ai-link-*.conf 2>/dev/null || true
-killall -HUP dnsmasq 2>/dev/null || true
+rm -f /tmp/dnsmasq.d/ai-link-*.conf /tmp/dnsmasq.cfg*/ai-link-*.conf /var/etc/dnsmasq.conf.d/ai-link-*.conf 2>/dev/null || true
+if [ -x /etc/init.d/dnsmasq ]; then
+	/etc/init.d/dnsmasq restart >/dev/null 2>&1 || killall -HUP dnsmasq 2>/dev/null || true
+else
+	killall -HUP dnsmasq 2>/dev/null || true
+fi
 
 # 5. Remove package record from opkg or apk if present
 if [ "${AILINK_UNINSTALL_INTERNAL:-0}" != "1" ]; then

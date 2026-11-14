@@ -61,14 +61,29 @@ fallback_resolv_conf_direct() {
 
 # DIAG-2 FIX: 当 sing-box (:7874 / :7893) 确认监听后，再把 /etc/resolv.conf 指回 127.0.0.1，
 # 同时保留主路由/公共 DNS 作为次级兜底 nameserver。
+MAX_LOG_BYTES=2097152
+
+rotate_logs_if_oversized() {
+	local lf sz
+	for lf in /var/log/ai-link.log /var/log/ai-link-music.log "$RUN_DIR/ai-link-events.log" "$RUN_DIR/singbox.log"; do
+		[ -f "$lf" ] || continue
+		sz=$(wc -c < "$lf" 2>/dev/null || echo 0)
+		if [ "${sz:-0}" -gt "$MAX_LOG_BYTES" ]; then
+			tail -n 1500 "$lf" > "$lf.1" 2>/dev/null || true
+			cp -f "$lf.1" "$lf" 2>/dev/null || : > "$lf"
+		fi
+	done
+}
+
 restore_resolv_conf_local() {
-	local gw
-	gw=$(detect_lan_gateway_dns)
+	rotate_logs_if_oversized
+	# §1.5 Fix: While sing-box (:7874) & dnsmasq (:53) are active, /etc/resolv.conf points exclusively
+	# to local 127.0.0.1 without appending public fallback DNS (223.5.5.5), eliminating sequential DNS leak.
+	# If sing-box stops or crashes, watchdog/stop_service immediately invokes fallback_resolv_conf_direct().
 	{
 		echo "search lan"
 		echo "nameserver 127.0.0.1"
-		[ -n "$gw" ] && echo "nameserver $gw"
-		echo "nameserver 223.5.5.5"
+		echo "options timeout:1 attempts:2"
 	} > /tmp/resolv.conf.ai-link-active 2>/dev/null || true
 	if [ -L /etc/resolv.conf ] || [ ! -e /etc/resolv.conf ]; then
 		ln -sf /tmp/resolv.conf.ai-link-active /etc/resolv.conf 2>/dev/null || cp -f /tmp/resolv.conf.ai-link-active /etc/resolv.conf 2>/dev/null || true

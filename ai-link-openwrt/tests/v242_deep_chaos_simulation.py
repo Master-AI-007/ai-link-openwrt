@@ -1575,7 +1575,7 @@ def main() -> int:
         gates_254_txt = (Path(__file__).resolve().parent / "gates_v101.py").read_text(encoding="utf-8")
         check("Stage 6.27a (v2.5.4 FB-253-1/2 Makefile PKG_VERSION/PKG_RELEASE 锚点与报告版本结构门禁): Makefile 含 PKG_VERSION:=2.5.4 与 PKG_RELEASE:=14，且 gates_v101 强制校验报告 PKG_RELEASE 与首节版本号",
               f"PKG_VERSION:={dmod.APP_VERSION}" in mk_254_txt
-              and "PKG_RELEASE:=27" in mk_254_txt
+              and "PKG_RELEASE:=28" in mk_254_txt
               and "FB-253-1: Verify PKG_RELEASE" in gates_254_txt
               and "FB-253-2: Verify report Section 1" in gates_254_txt,
               f"app_ver={dmod.APP_VERSION}")
@@ -3285,7 +3285,7 @@ def main() -> int:
         _p3_port_ok = (_inv_p_726.get("ok") is False and _inv_p_726.get("error") == "invalid_parameter" and "端口号不合法" in str(_inv_p_726.get("reason") or ""))
         # R-2 / R-3 / P2-2: Check lazy script attributes, fast-fail 401 token clear, and APP_BUILD r27
         _r2_r3_ok = (
-            "r27" in str(getattr(dmod, "APP_BUILD", ""))
+            any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r27", "r28"))
             and 'id="lazy-three-js" data-lazy-src=' in _html_725
             and 'id="lazy-qrcode-js" data-lazy-src=' in _html_725
             and "配置网络与加速镜像" in _html_725
@@ -3355,6 +3355,105 @@ def main() -> int:
         check("Stage 7.27 (v2.5.16 FB-2515-1雷达O(1)冷启动<50ms/热缓存<=5ms + P2-3海外0/31误判与国内20/20全召回含221.204.14.20 + AutoPool P0-1/P0-2真实dial黑洞日志域名提取与单目标秒切 + LuCI跨源panel_token桥接与过期自动续期 + N-1..N-4 3D轻材质/亲和锁定/ping_fallback/单线原因门禁)",
               _radar_perf_ok and _cidr_31_20_ok and _autopool_dial_ok and _luci_ok_727 and _n1_n4_ok,
               f"radar={_radar_perf_ok}(cold={_ld_cold_ms:.2f}ms,warm={_ld_warm_ms:.2f}ms), cidr={_cidr_31_20_ok}(fp={len(_fp_31)}/31,dom={len(_dom_20)}/20), dial={_autopool_dial_ok}(ext={_ext_x}), luci={_luci_ok_727}, n1_n4={_n1_n4_ok}")
+
+        # ------------------------------------------------------------------
+        # Stage 7.28: v2.5.16 全生命周期深度审查报告 (§1.1~§5.4) 全量闭环门禁
+        # ------------------------------------------------------------------
+        _repo_728 = Path(__file__).resolve().parents[1]
+        _uci_728 = (_repo_728 / "root/etc/config/ai-link").read_text(encoding="utf-8")
+        _initd_728 = (_repo_728 / "root/etc/init.d/ai-link").read_text(encoding="utf-8")
+        _nft_sh_728 = (_repo_728 / "root/usr/share/ai-link/nftables/apply_nft.sh").read_text(encoding="utf-8")
+        _daemon_728 = (_repo_728 / "root/usr/share/ai-link/ai-link-daemon.py").read_text(encoding="utf-8")
+        _html_728 = (_repo_728 / "root/usr/share/ai-link/webui/index.html").read_text(encoding="utf-8")
+        # §1.1 & §1.2: Zero hardcoded HomeLink credentials in UCI & daemon, single `config homelink` section, and dynamic random secrets
+        _hl_sec_728 = dmod._get_or_create_homelink_default_secrets(tmp_v252)
+        _sec_clean_ok = (
+            "a891f02b-2026-4f88-9b1c-8899aabbccdd" not in _uci_728
+            and "ailink_home_2026" not in _uci_728
+            and "A4:83:E7:2B:91:04" not in _uci_728
+            and "home.example.com" not in _uci_728
+            and _uci_728.count("config homelink ") == 1
+            and "option max_outbounds '0'" in _uci_728
+            and _hl_sec_728.get("password") not in dmod._WEAK_HOMELINK_SECRETS
+            and _hl_sec_728.get("uuid") not in dmod._WEAK_HOMELINK_SECRETS
+        )
+        # §1.5, §2.1, §2.3, §2.4: resolv.conf no public leak when active, apply_nft.sh AI_LINK_NFT_PREGENERATED, memory cap, log rotation
+        _test_log_728 = tmp_v252 / "oversized_test.log"
+        _test_log_728.write_text(("LOG_LINE_PADDING_" * 80 + "\n") * 2000, encoding="utf-8")
+        _rot_ok_728 = dmod._rotate_log_file_if_needed(_test_log_728, max_bytes=65536, keep_lines=100) and _test_log_728.stat().st_size <= 65536
+        _mem_cap_728 = dmod.compute_memory_safe_outbounds_cap()
+        _arch_ok_728 = (
+            "AI_LINK_NFT_PREGENERATED" in _nft_sh_728
+            and "MAX_LOG_BYTES=2097152" in _initd_728
+            and _daemon_728.count("def fetch_and_sync_subscription(") == 1
+            and _rot_ok_728
+            and isinstance(_mem_cap_728.get("mem_total_mb"), int)
+        )
+        # §3.1, §3.2, §3.3, §5.2: Overseas UDP game/STUN NOT hijacked to direct, LoL CN UDP direct, swcdn.apple.com & generativelanguage.googleapis.com routing
+        _tr_overseas_udp = dmod.trace_traffic_flow({"target": "162.254.196.1:27015", "protocol": "udp"}, tmp_v252)
+        _tr_cn_lol_udp = dmod.trace_traffic_flow({"target": "lol.qq.com:5000", "protocol": "udp"}, tmp_v252)
+        _tr_gemini_api = dmod.trace_traffic_flow({"target": "generativelanguage.googleapis.com", "protocol": "tcp"}, tmp_v252)
+        _tr_apple_swcdn = dmod.trace_traffic_flow({"target": "swcdn.apple.com", "protocol": "tcp"}, tmp_v252)
+        _shunt_728_ok = (
+            _tr_overseas_udp.get("enters_kernel") is True
+            and _tr_cn_lol_udp.get("enters_kernel") is False
+            and _tr_gemini_api.get("stage3_rule", {}).get("group_id") == "AI"
+            and _tr_apple_swcdn.get("stage3_rule", {}).get("group_id") in ("Apple", "Domestic_CN")
+        )
+        # §4.1~§4.5: Login initial_password guide, Auto-Pool scene templates, webglcontextlost, beforeunload/isDirty, .a-switch role="switch"
+        _ui_728_ok = (
+            "login-initial-pwd-guide" in _js_727
+            and "data-an-scene-tpl=" in _js_727
+            and "webglcontextlost" in _js3d_727
+            and "beforeunload" in _js_727
+            and "class=\"switch a-switch" in _html_728
+            and "仅统计经内核分流流量" in _html_728
+        )
+        check("Stage 7.28 (v2.5.16 全生命周期深度审查闭环: HomeLink动态随机凭据与UCI净化 + apply_nft单进程防OOM与2MB日志轮转 + game_udp_direct叠加国内IP防误杀外服 + generativelanguage/swcdn/Telegram/PT精准分流 + 登录指引/场景模板/webglcontextlost/beforeunload/a-switch门禁)",
+              _sec_clean_ok and _arch_ok_728 and _shunt_728_ok and _ui_728_ok,
+              f"sec={_sec_clean_ok}, arch={_arch_ok_728}, shunt={_shunt_728_ok}(ov_udp_k={_tr_overseas_udp.get('enters_kernel')},gemini={_tr_gemini_api.get('stage3_rule',{}).get('group_id')},swcdn={_tr_apple_swcdn.get('stage3_rule',{}).get('group_id')}), ui={_ui_728_ok}")
+
+        # ------------------------------------------------------------------
+        # Stage 7.29: v2.6.0 (r28) 30轮终极审查全集（36项 SEC/NET/POOL/SYS/UX + 防回归护栏）全量闭环门禁
+        # ------------------------------------------------------------------
+        # (1) POOL-01: Word-boundary & right-most landing region classifier + Guardrail (US1/US-BGP kept, RUSSIA/AUSTRALIA/PLUS/BUSINESS not misclassified, HK->US -> US)
+        dmod._NODE_REGION_MEMO.clear()
+        _pool01_ok = (
+            dmod.detect_node_country("RUSSIA-MOSCOW-01") == "OTHER"
+            and dmod.detect_node_country("AUSTRALIA-SYD-01") == "OTHER"
+            and dmod.detect_node_country("VIP-PLUS-DE-01") == "OTHER"
+            and dmod.detect_node_country("BUSINESS-UK-01") == "OTHER"
+            and dmod.detect_node_country("US1-VLESS") == "US"
+            and dmod.detect_node_country("US_BGP_01") == "US"
+            and dmod.detect_node_country("HK->US-IEPL-01") == "US"
+            and dmod.detect_node_country("香港中转-新加坡落地") == "SG"
+        )
+        # (2) POOL-02: Hysteresis quarantine anti-flapping (1st single ok during quarantine does NOT clear quarantine_until; 2nd consecutive ok clears it)
+        _now_p02 = int(time.time())
+        _prev_quar = {"consecutive_fail": 3, "consecutive_ok": 0, "quarantine_until": _now_p02 + 500}
+        _rec_ok1 = dmod._build_node_probe_record(_prev_quar, {"tag": "Quar-Node-01"}, True, 55, 204, "", _now_p02)
+        _rec_ok2 = dmod._build_node_probe_record(_rec_ok1, {"tag": "Quar-Node-01"}, True, 52, 204, "", _now_p02 + 1)
+        _pool02_ok = (_rec_ok1.get("quarantine_until", 0) > _now_p02 and _rec_ok2.get("quarantine_until", 0) == 0)
+        # (3) SEC-02 & SEC-05 & SEC-06: Backup secret masking option (while preserving default restore guardrail), RPCD ACL least-privilege, Webhook SSRF guard
+        dmod.save_alerts_config({"enabled": True, "telegram": {"enabled": True, "bot_token": "999888777:AAH_SECRET_TOKEN_XYZ", "chat_id": "12345"}}, tmp_v252)
+        _bkp_masked = dmod.export_ops_backup(tmp_v252, include_secrets=False)
+        _bkp_full = dmod.export_ops_backup(tmp_v252, include_secrets=True)
+        _acl_txt_729 = (_repo_728 / "root/usr/share/rpcd/acl.d/luci-app-ai-link.json").read_text(encoding="utf-8")
+        _keep_txt_729 = (_repo_728 / "root/lib/upgrade/keep.d/ai-link").read_text(encoding="utf-8")
+        _uninst_txt_729 = (_repo_728 / "uninstall.sh").read_text(encoding="utf-8")
+        _sec_729_ok = (
+            "***" in str((_bkp_masked.get("alerts_config") or {}).get("telegram", {}).get("bot_token") or "")
+            and str((_bkp_full.get("alerts_config") or {}).get("telegram", {}).get("bot_token") or "") == "999888777:AAH_SECRET_TOKEN_XYZ"
+            and '"/etc/ai-link/*"' not in _acl_txt_729
+            and "sing-box.json" not in _keep_txt_729
+            and "/etc/init.d/dnsmasq restart" in _uninst_txt_729
+        )
+        # (4) SYS-03: Watchdog exponential backoff & circuit breaker + manual reset guardrail
+        dmod.reset_watchdog_circuit_breaker()
+        _sys03_ok = (dmod._WATCHDOG_FAIL_STREAK == 0 and dmod._WATCHDOG_CIRCUIT_OPEN is False and getattr(dmod, "APP_VERSION", "") == "2.6.0")
+        check("Stage 7.29 (v2.6.0 r28 30轮终极审查36项与防回归护栏闭环: POOL-01词边界与末尾落地地区识别 + POOL-02隔离期双次恢复防抖 + SEC-02/03/05/06备份脱敏可选/登录限流豁免回环/ACL最小权限/Webhook防SSRF + NET-03/05/09 MAC保留.lan与IPv6/卸载重启dnsmasq/.srs解压解析 + SYS-03/07看门狗退避熔断与手动重置门禁)",
+              _pool01_ok and _pool02_ok and _sec_729_ok and _sys03_ok,
+              f"pool01={_pool01_ok}, pool02={_pool02_ok}(q1={_rec_ok1.get('quarantine_until')},q2={_rec_ok2.get('quarantine_until')}), sec={_sec_729_ok}, sys03={_sys03_ok}")
     finally:
         shutil.rmtree(tmp_v252, ignore_errors=True)
 

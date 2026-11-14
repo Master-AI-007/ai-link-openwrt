@@ -1,2 +1,16 @@
 /etc/config/ai-link
-/etc/ai-link/
+/etc/ai-link/nodes.json
+/etc/ai-link/subscriptions.json
+/etc/ai-link/shunt.json
+/etc/ai-link/auto_nodes.json
+/etc/ai-link/homelink.json
+/etc/ai-link/.homelink_secrets.json
+/etc/ai-link/ops_settings.json
+/etc/ai-link/dns_filters.json
+/etc/ai-link/dns_rewrite.json
+/etc/ai-link/rule_providers.json
+/etc/ai-link/sonar_targets.json
+/etc/ai-link/alerts_config.json
+/etc/ai-link/panel_auth.json
+/etc/ai-link/initial_password
+/etc/ai-link/certs/

@@ -157,6 +157,22 @@
       this.buildBeams();
       this.buildSelectionHalo();
       this.bindControls();
+      if (this.canvas && !this._webglCtxListenersBound) {
+        this._webglCtxListenersBound = true;
+        this.canvas.addEventListener('webglcontextlost', (ev) => {
+          ev.preventDefault();
+          this.active = false;
+          if (this._rafId) { cancelAnimationFrame(this._rafId); this._rafId = 0; }
+          const fb = document.getElementById('webgl-fallback');
+          if (fb) fb.hidden = false;
+        }, false);
+        this.canvas.addEventListener('webglcontextrestored', () => {
+          const fb = document.getElementById('webgl-fallback');
+          if (fb) fb.hidden = true;
+          this.active = true;
+          this.init();
+        }, false);
+      }
       this.resizeObserver = new ResizeObserver(() => this.resize());
       this.resizeObserver.observe(this.shell);
       this.setMode('panorama');
