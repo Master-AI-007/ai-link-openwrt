@@ -439,6 +439,9 @@ wait_for_ports_And_apply_nft() {
 }
 
 start_service() {
+	mkdir -p /var/lock 2>/dev/null || true
+	exec 9>/var/lock/ai-link-init.lock 2>/dev/null || true
+	command -v flock >/dev/null 2>&1 && flock -w 10 9 2>/dev/null || true
 	config_load 'ai-link'
 	local enabled panel_port tproxy_port mixed_port
 	local entry_bypass block_quic game_udp_direct ipv6_proxy
@@ -523,6 +526,9 @@ start_service() {
 }
 
 stop_service() {
+	mkdir -p /var/lock 2>/dev/null || true
+	exec 9>/var/lock/ai-link-init.lock 2>/dev/null || true
+	command -v flock >/dev/null 2>&1 && flock -w 10 9 2>/dev/null || true
 	cleanup_routing_and_nft
 	stop_core_processes
 	cleanup_dnsmasq_upstream
@@ -530,6 +536,9 @@ stop_service() {
 }
 
 reload_service() {
+	mkdir -p /var/lock 2>/dev/null || true
+	exec 9>/var/lock/ai-link-init.lock 2>/dev/null || true
+	command -v flock >/dev/null 2>&1 && flock -w 10 9 2>/dev/null || true
 	config_load 'ai-link'
 	local enabled panel_port tproxy_port mixed_port
 	local entry_bypass block_quic game_udp_direct ipv6_proxy

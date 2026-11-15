@@ -1,3 +1,12 @@
+## [v2.6.2] - 2026-11-15
+### 用户前端 UX 审计 P0/P1/P2 全量整改与升级入口恢复（PKG_RELEASE 31）
+- **正常升版**：升至 `v2.6.2`（`PKG_RELEASE:=31` / `r31`），增量基准为已上线的 `v2.6.1`（Release #445649604 / `999fc22` / 部署 `1d2cdaef`）；现网设备可正常收 OTA 提示。
+- **USER_REPORTED-20261115-01 (P0)**：`nexus.js` 引入 `_modalStack` 模态栈与 `openDrawer()` 抽屉分离，`openModal(` 调用点由 48 处收敛至 8 处；应急旁路显式提示、HomeLink 公网 DDNS 告警、订阅失败原地粘贴/切镜像、LuCI HTTPS CLI RPC 桥接、清除 `#music-unlock-card` 僵尸代码。
+- **USER_REPORTED-20261115-01 (P1/P2)**：`nexus3d.js` 自定义 GLSL Fresnel Shader + PBR 材质且完整保留遥测 HUD 与检视面板数据；设置页 4 分组 + Danger Zone；`backdrop-filter` 22→3 处、`@media` 收敛为 768/1280 两档；术语产品化与 `window.NexusModules` 模块化。
+- **USER_REPORTED-20261115-02 / 03 / 04**：恢复设置页 `#btn-check-core-update`（内核智能检测升级）与 `#btn-ota-check` / `#btn-ota-apply`（插件检测与升级），按钮瘦身不误删这两个功能性入口。
+- **系统加固**：保留 r30 的 NET-262-01~03 + UX-262-01；闭环 Hydrogen 2 项 Minor（动态 LAN 网桥探测与 `init.d` `flock -w 10` 并发锁）。
+- 验收：`INSTALL_RC=0`、服务全 1、`nft ok:true`、重启自愈、自检 10/10 + 负向、零补发 `run_all 15/15 / RC=0`、混沌 **95/95**、门禁双布局 17/17 与 1 字节篡改转红、11 行指纹 11/11、UI 六页三视口零溢出、设备侧出网 200/200/204。
+
 ## [v2.6.1] - 2026-11-15
 ### 闭环 FB-2600-1~3 与全栈深度审查 27 项遗留缺陷（PKG_RELEASE 29）
 - **正常升版**：升至 `v2.6.1`（`PKG_RELEASE:=29` / `r29`），增量基准为已上线的 `v2.6.0`（Release #445479390 / `bc2262d` / 部署 `53890bcb`）；现网设备可正常收 OTA 提示。

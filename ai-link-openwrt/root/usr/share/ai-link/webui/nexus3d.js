@@ -56,6 +56,65 @@
     };
   }
 
+
+  /* P1-1: Custom GLSL Fresnel Rim-Light Shader & PBR Material Factory (v2.6.2 r31) */
+  const _FRESNEL_VERTEX_SHADER = [
+    'varying vec3 vNormalW;',
+    'varying vec3 vViewDirW;',
+    'void main() {',
+    '  vec4 worldPos = modelMatrix * vec4(position, 1.0);',
+    '  vNormalW = normalize(normalMatrix * normal);',
+    '  vViewDirW = normalize(cameraPosition - worldPos.xyz);',
+    '  gl_Position = projectionMatrix * viewMatrix * worldPos;',
+    '}'
+  ].join('\n');
+
+  const _FRESNEL_FRAGMENT_SHADER = [
+    'uniform vec3 glowColor;',
+    'uniform float glowOpacity;',
+    'varying vec3 vNormalW;',
+    'varying vec3 vViewDirW;',
+    'void main() {',
+    '  float fresnel = pow(1.0 - clamp( abs(dot(vNormalW, vViewDirW)), 0.0, 1.0 ), 2.35);',
+    '  gl_FragColor = vec4(glowColor, fresnel * glowOpacity);',
+    '}'
+  ].join('\n');
+
+  function createFresnelHaloMaterial(colorHex, opacityVal) {
+    if (window.THREE && typeof THREE.ShaderMaterial === 'function') {
+      try {
+        return new THREE.ShaderMaterial({
+          uniforms: {
+            glowColor: { value: new THREE.Color(colorHex) },
+            glowOpacity: { value: Number(opacityVal || 0.42) }
+          },
+          vertexShader: _FRESNEL_VERTEX_SHADER,
+          fragmentShader: _FRESNEL_FRAGMENT_SHADER,
+          transparent: true,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+          side: THREE.FrontSide
+        });
+      } catch (_) {}
+    }
+    return new THREE.MeshBasicMaterial({
+      color: colorHex,
+      transparent: true,
+      opacity: opacityVal,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending
+    });
+  }
+
+  function createCorePbrMaterial(opts) {
+    if (window.THREE && typeof THREE.MeshStandardMaterial === 'function') {
+      try {
+        return new THREE.MeshStandardMaterial(Object.assign({ metalness: 0.38, roughness: 0.24 }, opts));
+      } catch (_) {}
+    }
+    return new THREE.MeshLambertMaterial(opts);
+  }
+
   class NexusUniverse {
     constructor(canvas, options) {
       this.canvas = canvas;

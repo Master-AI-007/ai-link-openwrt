@@ -80,7 +80,7 @@ html_text = IDX.read_text(encoding="utf-8")
 PROJECT_GLOBALS = [
     "setSwitchState", "renderOpsSettings",
     "renderOverviewDashboard", "renderShuntMatrix", "renderOpsAndUpdatesSection",
-    "renderHomeLinkSection", "renderDnsAndFilterSection", "renderMusicUnlockSection",
+    "renderHomeLinkSection", "renderDnsAndFilterSection",
     "renderSubscriptionsAndNodes", "renderConnectionsSection", "renderAll",
     "syncBackendStatus", "promptPanelLoginModal",
 ]

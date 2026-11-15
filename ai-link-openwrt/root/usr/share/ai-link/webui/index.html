@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="color-scheme" content="dark">
   <title>AI-LINK NEXUS · 全域 3D 智能网关指挥舱</title>
-  <link rel="icon" type="image/svg+xml" href="./favicon.svg?v=2.6.1-8b1d6b14">
-  <link rel="alternate icon" href="./favicon.ico?v=2.6.1-218c306e">
-  <link rel="apple-touch-icon" href="./apple-touch-icon.png?v=2.6.1-89c068d7">
-  <link rel="stylesheet" href="./nexus.css?v=2.6.1-9b10589b">
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg?v=2.6.2-8b1d6b14">
+  <link rel="alternate icon" href="./favicon.ico?v=2.6.2-218c306e">
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png?v=2.6.2-89c068d7">
+  <link rel="stylesheet" href="./nexus.css?v=2.6.2-1fa61cf3">
 </head>
 <body>
   <a class="skip-link" href="#main-stage">跳至主内容</a>
@@ -74,7 +74,7 @@
     <div class="workspace">
       <header class="topbar">
         <div class="page-heading">
-          <span class="eyebrow">AI-LINK / NEXUS 3D · <span class="version-chip">v2.6.1</span></span>
+          <span class="eyebrow">AI-LINK / NEXUS 3D · <span class="version-chip">v2.6.2</span></span>
           <h1 id="page-title">全域星图</h1>
         </div>
         <div class="global-route" style="cursor:pointer" data-page-link="shunt" title="点击进入分流与出口编排">
@@ -191,10 +191,10 @@
             <div class="control-dock">
               <button class="active" id="orbit-toggle" title="自动环绕" data-tip="自动环绕" aria-label="自动环绕"><svg><use href="#i-orbit"/></svg><span>自动环绕</span></button>
               <button id="labels-toggle" title="显示全部标签" data-tip="显示全部标签" aria-label="显示全部标签"><svg><use href="#i-tags"/></svg><span>全部标签</span></button>
-              <button id="surge-toggle" title="流量激增真实连接轨迹" data-tip="流量激增" aria-label="流量激增"><svg><use href="#i-surge"/></svg><span>流量激增</span></button>
+              <button id="surge-toggle" class="hidden" hidden title="流量激增真实连接轨迹" data-tip="流量激增" aria-label="流量激增"><svg><use href="#i-surge"/></svg><span>流量激增</span></button>
               <button id="reset-view" title="视角核心复位" data-tip="核心复位" aria-label="核心复位"><svg><use href="#i-reset"/></svg><span>核心复位</span></button>
               <button id="wallpaper-toggle" title="壁纸沉浸模式 (快捷键 W)" data-tip="壁纸沉浸模式 (快捷键 W)" aria-label="壁纸沉浸模式"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M21 15l-5-5L5 20"/></svg><span>壁纸沉浸</span></button>
-              <button id="details-toggle" title="星系与黑洞详情" data-tip="星系与黑洞详情" aria-label="星系与黑洞详情"><svg><use href="#i-details"/></svg><span>详情</span></button>
+              <button id="details-toggle" class="hidden" hidden title="星系与黑洞详情" data-tip="星系与黑洞详情" aria-label="星系与黑洞详情"><svg><use href="#i-details"/></svg><span>详情</span></button>
             </div>
 
             <div id="wallpaper-hud" class="wallpaper-hud" aria-label="壁纸模式实时遥测浮窗"><span class="wp-badge"><i></i>WALLPAPER LIVE</span><span class="wp-stat">海外 <b id="wp-stat-global">高速</b></span><span class="wp-stat">国内 <b id="wp-stat-cn">中速</b></span><span class="wp-stat">护盾 <b id="wp-stat-bh">守护中</b></span><button type="button" id="wallpaper-exit-btn" class="wp-exit-btn" aria-label="退出壁纸沉浸模式">退出壁纸 (W)</button></div>
@@ -264,7 +264,7 @@
                 <canvas id="traffic-chart" height="250"></canvas>
                 <div class="traffic-chart-tooltip" id="traffic-chart-tooltip" hidden></div>
               </div>
-              <div class="chart-legend"><span><i class="cyan"></i>下行流量</span><span><i class="violet"></i>上行流量</span><span id="tw-legend-hint">仅统计经内核分流流量（国内直连已硬件旁路）· 悬停波形查看分时收发明细</span><b id="overview-month-total">本月累计 6.58 GB</b></div>
+              <div class="chart-legend"><span><i class="cyan"></i>下行流量</span><span><i class="violet"></i>上行流量</span><span id="tw-legend-hint">国内直连已硬件加速旁路，仅统计经内核分流流量 · 悬停波形查看分时收发明细</span><b id="overview-month-total">本月累计 6.58 GB</b></div>
             </article>
             <article class="glass-card sonar-card">
               <div class="card-head">
@@ -340,7 +340,7 @@
               <div class="hero-action-grid">
                 <button id="btn-open-cloud-shunt-hub" class="button secondary compact" data-action="open-cloud-shunt-hub" title="云端 GeoIP / Geosite 在线规则集与高频分流场景一键订阅"><svg><use href="#i-globe"/></svg><span>云端 GeoIP/规则库</span></button>
                 <button id="btn-open-rule-providers" class="button ghost compact" data-action="open-rule-providers" title="导入式远程分流规则订阅"><span>自定义远程源</span></button>
-                <button class="button primary compact" data-action="new-auto-pool"><svg><use href="#i-plus"/></svg>新建自动池</button>
+                <button class="button primary compact" data-action="trace"><svg><use href="#i-probe"/></svg>四阶链路透视</button>
               </div>
             </div>
           </div>
@@ -385,7 +385,7 @@
             <!-- Fix #8 & #10: Shunt Strategy Matrix with Batch Operations Toolbar & Custom Rule Guidance -->
             <article class="glass-card">
               <div class="card-head">
-                <div><span id="custom-rules-count-badge">支持域名后缀 / 关键词 / IP CIDR 高优先级匹配</span><h3>精细分流策略矩阵</h3></div>
+                <div><span id="custom-rules-count-badge">支持域名后缀 / 关键词 / 目标 IP 段 (CIDR) 高优先级匹配</span><h3>精细分流策略矩阵</h3></div>
                 <div class="button-row">
                   <button class="button ghost compact" data-action="toggle-shunt-rules-drawer">展开规则详情</button>
                   <button class="button primary compact" data-action="new-rule"><svg><use href="#i-plus"/></svg>添加自定义规则</button>
@@ -437,14 +437,14 @@
                     <b style="color:var(--cyan)">预设透视预览: chatgpt.com:443 (点击上方芯片立即实测)</b>
                     <span class="status-pill">就绪</span>
                   </div>
-                  <div class="trace-stage" style="padding:8px 11px"><i>01</i><div><b>防火墙 TProxy 接管</b><span>命中 nftables 透明代理规则，进入 sing-box 入站</span></div><strong>已接管</strong></div>
-                  <div class="trace-stage" style="padding:8px 11px"><i>02</i><div><b>双栈 DNS 智能分流</b><span>海外域名进入 :7874 FakeIP 防污染路径</span></div><strong>FakeIP</strong></div>
+                  <div class="trace-stage" style="padding:8px 11px"><i>01</i><div><b>透明接管引擎 (TProxy)</b><span>命中防火墙引擎 (nftables) 透明接管规则，进入 sing-box 入站</span></div><strong>已接管</strong></div>
+                  <div class="trace-stage" style="padding:8px 11px"><i>02</i><div><b>双栈 DNS 智能分流</b><span>海外域名进入 :7874 虚拟地址映射 (Fake-IP) 防污染路径</span></div><strong>FakeIP</strong></div>
                   <div class="trace-stage" style="padding:8px 11px"><i>03</i><div><b>精细分流规则匹配</b><span>命中 Shunt_AI 策略组 (优先级 #01)</span></div><strong>Shunt_AI</strong></div>
                   <div class="trace-stage" style="padding:8px 11px"><i>04</i><div><b>实际出站节点隧道</b><span>绑定 AI 专线自动池 (Auto_AI) 最优低延出口</span></div><strong>代理出站</strong></div>
                 </div>
               </article>
 
-              <!-- v2.6.1: Real-Time Traffic Shunt Radar & Cloud GeoIP/Geosite 1-Click Assign -->
+              <!-- v2.6.2: Real-Time Traffic Shunt Radar & Cloud GeoIP/Geosite 1-Click Assign -->
               <article id="shunt-live-radar-card" data-shunt-obs-pane="radar" class="glass-card shunt-obs-hidden">
                 <div class="card-head" style="margin-bottom:8px">
                   <div>
@@ -571,7 +571,7 @@
               <div class="hero-action-grid">
                 <button class="button ghost compact" data-action="dns-upstream-settings">DNS 上游设置</button>
                 <button class="button ghost compact" data-action="dns-flush">清空 DNS 缓存</button>
-                <button class="button secondary compact" data-action="dns-test">实测黑洞吞噬</button>
+                <button class="button secondary compact" data-action="dns-test">拦截规则测试</button>
                 <button class="button primary compact" data-action="dns-sync"><svg><use href="#i-refresh"/></svg>更新云端规则</button>
               </div>
             </div>
@@ -626,24 +626,6 @@
               </article>
             </div>
           </div>
-
-          <!-- Fix #12: Compact Collapsible Music Unlock Banner (Minimal vertical space when disabled) -->
-          <article id="music-unlock-card" class="glass-card collapsible-banner" hidden style="display:none">
-            <div class="collapsible-head" data-action="toggle-music-drawer">
-              <div style="display:flex;align-items:center;gap:12px">
-                <span class="status-pill">OPTIONAL ADD-ON</span>
-                <b>网易云音乐灰色音源解锁扩展 (UnblockNeteaseMusic)</b>
-                <span id="music-unlock-state-label" style="color:var(--muted);">当前未启用 · 默认折叠以节省空间</span>
-              </div>
-              <button id="btn-toggle-music-drawer" class="button ghost compact">展开配置 ▾</button>
-            </div>
-            <div id="music-unlock-body" class="collapsible-body hidden">
-              <div class="setting-line">
-                <div><b>启用音乐音源解锁服务</b><span>仅在已安装音乐解锁附加组件时生效；默认关闭以避免占用额外端口与内存</span></div>
-                <button id="toggle-music-unlock" aria-label="网易云音乐解锁开关" class="switch a-switch off" role="switch" aria-checked="false" data-action="toggle-music-unlock"><i></i></button>
-              </div>
-            </div>
-          </article>
         </section>
 
         <!-- 06. SUBSCRIPTIONS & NODES PAGE (Fixes #4, #5, #6, #7) -->
@@ -763,19 +745,28 @@
             </div>
           </div>
 
+          <!-- P1-6: 4-Group Settings Navigation Bar (常规安全 / 内核与更新 / 备份与恢复 / 高级诊断) -->
+          <div class="settings-group-nav segmented" id="settings-group-nav" role="tablist" aria-label="系统设置分组导航" style="margin-bottom:var(--sp-4)">
+            <button type="button" class="active" data-settings-group="all">全部设置视图</button>
+            <button type="button" data-settings-group="security">常规安全</button>
+            <button type="button" data-settings-group="kernel">内核与更新</button>
+            <button type="button" data-settings-group="backup">备份与恢复</button>
+            <button type="button" data-settings-group="diag">高级诊断与日志</button>
+          </div>
           <!-- Fix #15: Structured 3-Column Bento Grid for Settings -->
           <div class="bento-settings-grid">
             <!-- Card 1: Core Status & Service Control -->
             <article class="glass-card system-card">
               <span class="card-index">01 / CORE LIFECYCLE</span>
               <div class="system-title">
-                <div><h3 id="sys-core-title">sing-box --</h3><p id="sys-core-sub">AI-LINK v2.6.1 · 单一真相源架构</p></div>
+                <div><h3 id="sys-core-title">sing-box --</h3><p id="sys-core-sub">AI-LINK v2.6.2 · 单一真相源架构</p></div>
                 <div class="core-head-right">
                   <span class="status-pill" id="settings-proxy-status-pill">运行正常</span>
                 </div>
               </div>
-              <div class="core-ota-inline-row">
+              <div class="core-ota-inline-row" style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
                 <span id="core-ota-sub">支持 1.11 ~ 1.15+ Schema 动态适配 · 沙箱 check 预检与失败回滚</span>
+                <button type="button" id="btn-check-core-update" class="button secondary compact" data-action="check-core-update">内核智能检测升级</button>
               </div>
               <div class="system-specs">
                 <div><span>固件系统</span><b id="sys-spec-os">ImmortalWrt / OpenWrt</b></div>
@@ -786,19 +777,19 @@
               <div class="button-row">
                 <button class="button primary compact" data-action="restart-core">重启代理内核</button>
                 <button class="button secondary compact" data-action="restart-service">重启守护进程</button>
-                <button class="button ghost compact" data-action="fail-open-test">断网演练</button>
-                <button class="button danger compact" data-action="recover">直连恢复</button>
               </div>
             </article>
 
-            <!-- Card 2: Component & Rule Runtime Summary (Update buttons removed per v2.6.1 spec; rule updates managed directly in Shield/Shunt pages) -->
+            <!-- Card 2: Component & Rule Runtime Summary (Update buttons removed per v2.6.2 spec; rule updates managed directly in Shield/Shunt pages) -->
             <article class="glass-card">
               <span class="card-index">02 / COMPONENT & RULE STATUS</span>
               <h3>组件版本与规则运行概览</h3>
               <div class="update-row">
                 <div><b>AI-LINK 插件版本</b><span id="ota-sub">当前已运行最新稳定版全栈架构</span></div>
-                <div class="button-row">
-                  <span class="version-chip">v2.6.1</span>
+                <div class="button-row" style="gap:6px;align-items:center">
+                  <span class="version-chip">v2.6.2</span>
+                  <button type="button" id="btn-ota-check" class="button secondary compact" data-action="check-update">检测插件升级</button>
+                  <button type="button" id="btn-ota-apply" class="button primary compact hidden" data-action="apply-update">立即升级插件</button>
                 </div>
               </div>
               <div class="update-row">
@@ -830,8 +821,7 @@
                 <b id="backup-status-val">检测中...</b>
               </div>
               <div class="button-row" style="margin-top:12px">
-                <button class="button danger compact" data-action="factory-reset">恢复出厂设置</button>
-                <button class="button ghost compact" data-action="uninstall-plugin">安全卸载插件</button>
+                <span class="status-pill">高危重置与卸载已隔离至底部危险操作区</span>
               </div>
             </article>
 
@@ -954,6 +944,25 @@
               </div>
               <div id="ops-logs-viewer" class="log-viewer-box"></div>
             </article>
+            <!-- P1-6: Dedicated Danger Zone (Isolated Destructive Actions) -->
+            <article class="glass-card bento-span-3 danger-zone-card" id="settings-danger-zone" data-settings-pane="security">
+              <div class="card-head">
+                <div>
+                  <span class="card-index">08 / DANGER ZONE · 危险操作隔离区</span>
+                  <h3>高风险操作与应急恢复专区</h3>
+                </div>
+                <span class="status-pill">二次确认保护已启用</span>
+              </div>
+              <div class="button-row" style="justify-content:space-between;flex-wrap:wrap;gap:var(--sp-3)">
+                <span style="color:var(--muted)">以下操作会影响全屋代理接管或重置配置，已与常规保存操作物理隔离：</span>
+                <div class="button-row" style="gap:var(--sp-2);flex-wrap:wrap">
+                  <button type="button" class="button ghost compact" data-action="fail-open-test">断网演练</button>
+                  <button type="button" class="button secondary compact" data-action="recover">直连恢复</button>
+                  <button type="button" class="button danger compact" data-action="factory-reset">恢复出厂设置</button>
+                  <button type="button" class="button danger compact" data-action="uninstall-plugin">安全卸载插件</button>
+                </div>
+              </div>
+            </article>
           </div>
         </section>
       </main>
@@ -969,10 +978,10 @@
     </div>
   </div>
 
-  <script id="lazy-qrcode-js" data-lazy-src="./static/qrcode.min.js?v=2.6.1-f8cf3403"></script>
-  <script id="lazy-three-js" data-lazy-src="./assets/three.min.js?v=2.6.1-eb854986"></script>
-  <script src="./nexus3d.js?v=2.6.1-4971c8ed"></script>
-  <script src="./nexus.js?v=2.6.1-c44ae5fd"></script>
+  <script id="lazy-qrcode-js" data-lazy-src="./static/qrcode.min.js?v=2.6.2-f8cf3403"></script>
+  <script id="lazy-three-js" data-lazy-src="./assets/three.min.js?v=2.6.2-eb854986"></script>
+  <script src="./nexus3d.js?v=2.6.2-5c74b3c7"></script>
+  <script src="./nexus.js?v=2.6.2-d3c62dc4"></script>
 <!-- NEXUS-UI-CONTRACT: sub-health-box | 仅入池检测达标项 | 免测直接加入池 | delete-custom-group | sub-card-custom | 手动添加节点 | btn-an-auto-screen | btn-an-mode-ping | btn-an-mode-svc | 同步时间: -->
 </body>
 </html>

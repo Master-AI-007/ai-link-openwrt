@@ -1575,7 +1575,7 @@ def main() -> int:
         gates_254_txt = (Path(__file__).resolve().parent / "gates_v101.py").read_text(encoding="utf-8")
         check("Stage 6.27a (v2.5.4 FB-253-1/2 Makefile PKG_VERSION/PKG_RELEASE 锚点与报告版本结构门禁): Makefile 含 PKG_VERSION:=2.5.4 与 PKG_RELEASE:=14，且 gates_v101 强制校验报告 PKG_RELEASE 与首节版本号",
               f"PKG_VERSION:={dmod.APP_VERSION}" in mk_254_txt
-              and "PKG_RELEASE:=29" in mk_254_txt
+              and ("PKG_RELEASE:=30" in mk_254_txt or "PKG_RELEASE:=31" in mk_254_txt)
               and "FB-253-1: Verify PKG_RELEASE" in gates_254_txt
               and "FB-253-2: Verify report Section 1" in gates_254_txt,
               f"app_ver={dmod.APP_VERSION}")
@@ -3247,7 +3247,7 @@ def main() -> int:
             and "dns-list-sync-one" in _js_725
             and "dns-preset-pick" in _js_725
             and "overviewTelemetryFull" in _js_725
-            and 'data-action="check-core-update"' not in _html_725
+            and 'data-action="check-core-update"' in _html_725 and 'data-action="check-update"' in _html_725
             and 'data-action="sync-rulesets"' not in _html_725
             and "max-height:260px;overflow-y:auto" in _html_725
         )
@@ -3285,7 +3285,7 @@ def main() -> int:
         _p3_port_ok = (_inv_p_726.get("ok") is False and _inv_p_726.get("error") == "invalid_parameter" and "端口号不合法" in str(_inv_p_726.get("reason") or ""))
         # R-2 / R-3 / P2-2: Check lazy script attributes, fast-fail 401 token clear, and APP_BUILD r27
         _r2_r3_ok = (
-            any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r27", "r28", "r29"))
+            any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r27", "r28", "r29", "r30", "r31"))
             and 'id="lazy-three-js" data-lazy-src=' in _html_725
             and 'id="lazy-qrcode-js" data-lazy-src=' in _html_725
             and "配置网络与加速镜像" in _html_725
@@ -3450,7 +3450,7 @@ def main() -> int:
         )
         # (4) SYS-03: Watchdog exponential backoff & circuit breaker + manual reset guardrail
         dmod.reset_watchdog_circuit_breaker()
-        _sys03_ok = (dmod._WATCHDOG_FAIL_STREAK == 0 and dmod._WATCHDOG_CIRCUIT_OPEN is False and getattr(dmod, "APP_VERSION", "") in ("2.6.0", "2.6.1"))
+        _sys03_ok = (dmod._WATCHDOG_FAIL_STREAK == 0 and dmod._WATCHDOG_CIRCUIT_OPEN is False and getattr(dmod, "APP_VERSION", "") in ("2.6.0", "2.6.1", "2.6.2"))
         check("Stage 7.29 (v2.6.0 r28 30轮终极审查36项与防回归护栏闭环: POOL-01词边界与末尾落地地区识别 + POOL-02隔离期双次恢复防抖 + SEC-02/03/05/06备份脱敏可选/登录限流豁免回环/ACL最小权限/Webhook防SSRF + NET-03/05/09 MAC保留.lan与IPv6/卸载重启dnsmasq/.srs解压解析 + SYS-03/07看门狗退避熔断与手动重置门禁)",
               _pool01_ok and _pool02_ok and _sec_729_ok and _sys03_ok,
               f"pool01={_pool01_ok}, pool02={_pool02_ok}(q1={_rec_ok1.get('quarantine_until')},q2={_rec_ok2.get('quarantine_until')}), sec={_sec_729_ok}, sys03={_sys03_ok}")
@@ -3502,12 +3502,106 @@ def main() -> int:
             and "python3-yaml" in _inst_730
             and "jsonfilter" in _init_730
             and "FB-2600-2 Fix:" in _gates_730
-            and getattr(dmod, "APP_VERSION", "") == "2.6.1"
-            and "r29" in str(getattr(dmod, "APP_BUILD", ""))
+            and getattr(dmod, "APP_VERSION", "") in ("2.6.1", "2.6.2")
+            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r29", "r30", "r31"))
         )
         check("Stage 7.30 (v2.6.1 r29 全量收尾与 FB-2600-1/2/3 + 27项遗留问题闭环: CORE-01~07 direct_all快速拒绝Fake-IP/forward_mss开关与v6_guard解耦/node_server_v6/备用DNS + POOL-01剔除403与favicon假阳性 + SYS-01~07 cache.db迁入内存盘/Makefile与install.sh净化/jsonfilter解析 + UX-01~06星图galaxy修复与直连恢复联动 + FB-2600-2门禁隔离目录)",
               _core_730_ok and _l7_730_ok and _sys_ux_730_ok,
               f"core={_core_730_ok}, l7={_l7_730_ok}, sys_ux={_sys_ux_730_ok}")
+
+        # ------------------------------------------------------------------
+        # Stage 7.31: v2.6.2 (r30) 网络平面精准规则与 IPv6 Fake-IP Conntrack 清理 + Aster 动效令牌闭环门禁
+        # ------------------------------------------------------------------
+        # (1) NET-262-01 & NET-262-02: prerouting_tproxy & output_tproxy game_udp_direct port-scoped @cn_ip4/@cn_ip6 rules (no dead code or entry_bypass=0 overreach)
+        _sh_730["routing_mode"] = "rule_shunt"
+        dmod.save_shunt_config(_sh_730, tmp_v252)
+        dmod.update_ops_settings({"entry_bypass": False, "game_udp_direct": True, "ipv6_proxy": True}, tmp_v252)
+        _nft_731 = dmod.generate_nft_rules_file(tmp_v252, tmp_v252, entry_bypass=False, game_udp_direct=True, ipv6_proxy=True)
+        _pre_731 = _nft_731.split("chain prerouting_tproxy")[1].split("chain output_tproxy")[0]
+        _out_731 = _nft_731.split("chain output_tproxy")[1]
+        _tr_cn_non_game_udp = dmod.trace_traffic_flow({"target": "www.baidu.com:6000", "protocol": "udp"}, tmp_v252)
+        _tr_cn_game_udp = dmod.trace_traffic_flow({"target": "lol.qq.com:5000", "protocol": "udp"}, tmp_v252)
+        dmod.update_ops_settings({"entry_bypass": True, "game_udp_direct": True, "ipv6_proxy": False}, tmp_v252)
+        _net_731_ok = (
+            "\t\tip daddr @cn_ip4 meta l4proto udp accept" not in _pre_731
+            and "\t\tip6 daddr @cn_ip6 meta l4proto udp accept" not in _pre_731
+            and "\t\tip daddr @cn_ip4 meta l4proto udp udp dport { 3478, 3479, 4000-4050, 5000-5550, 7000-9010, 10000-20000, 27015-27050 } accept" in _pre_731
+            and "\t\tip6 daddr @cn_ip6 meta l4proto udp udp dport { 3478, 3479, 4000-4050, 5000-5550, 7000-9010, 10000-20000, 27015-27050 } accept" in _pre_731
+            and "\t\tip daddr @cn_ip4 meta l4proto udp accept" not in _out_731
+            and "\t\tmeta l4proto udp udp dport { 3478" not in _out_731
+            and "\t\tip daddr @cn_ip4 meta l4proto udp udp dport { 3478, 3479, 4000-4050, 5000-5550, 7000-9010, 10000-20000, 27015-27050 } accept" in _out_731
+            and "\t\tip6 daddr @cn_ip6 meta l4proto udp udp dport { 3478, 3479, 4000-4050, 5000-5550, 7000-9010, 10000-20000, 27015-27050 } accept" in _out_731
+            and _tr_cn_non_game_udp.get("enters_kernel") is True
+            and _tr_cn_game_udp.get("enters_kernel") is False
+        )
+        # (2) NET-262-03 & UX-262-01: _delayed_fakeip_purge includes fc00::/18 & nexus.css .an-source-chip uses var(--dur-2)
+        _daemon_731 = (_repo_728 / "root/usr/share/ai-link/ai-link-daemon.py").read_text(encoding="utf-8")
+        _css_731 = (_repo_728 / "root/usr/share/ai-link/webui/nexus.css").read_text(encoding="utf-8")
+        _purge_ux_731_ok = (
+            'subprocess.run(["conntrack", "-D", "-d", "198.18.0.0/15"], capture_output=True, timeout=2, check=False)' in _daemon_731
+            and 'subprocess.run(["conntrack", "-D", "-d", "fc00::/18"], capture_output=True, timeout=2, check=False)' in _daemon_731
+            and "transition: border-color var(--dur-2) ease, background var(--dur-2) ease;" in _css_731
+            and "0.2s" not in _css_731
+            and getattr(dmod, "APP_VERSION", "") == "2.6.2"
+            and ("r30" in str(getattr(dmod, "APP_BUILD", "")) or "r31" in str(getattr(dmod, "APP_BUILD", "")))
+        )
+        check("Stage 7.31 (v2.6.2 r30 网络平面精准规则与双栈 Fake-IP 清理闭环: NET-262-01清理prerouting_tproxy无端口UDP死规则与越界旁路 + NET-262-02补齐output_tproxy游戏端口@cn_ip4/@cn_ip6校验 + NET-262-03直连切换追加fc00::/18 conntrack清理 + UX-262-01 nexus.css动效时长令牌规范化)",
+              _net_731_ok and _purge_ux_731_ok,
+              f"net={_net_731_ok}, purge_ux={_purge_ux_731_ok}")
+
+        # ------------------------------------------------------------------
+        # Stage 7.32: v2.6.2 (r31) USER_REPORTED-20261115-01..04 & Hydrogen Minor-01..02 全量门禁
+        # ------------------------------------------------------------------
+        _html_732 = (_repo_728 / "root/usr/share/ai-link/webui/index.html").read_text(encoding="utf-8")
+        _js_732 = (_repo_728 / "root/usr/share/ai-link/webui/nexus.js").read_text(encoding="utf-8")
+        _js3d_732 = (_repo_728 / "root/usr/share/ai-link/webui/nexus3d.js").read_text(encoding="utf-8")
+        _css_732 = (_repo_728 / "root/usr/share/ai-link/webui/nexus.css").read_text(encoding="utf-8")
+        _ov_732 = (_repo_728 / "htdocs/luci-static/resources/view/ai-link/overview.js").read_text(encoding="utf-8")
+        _cli_732 = (_repo_728 / "root/usr/bin/ai-link").read_text(encoding="utf-8")
+        _initd_732 = (_repo_728 / "root/etc/init.d/ai-link").read_text(encoding="utf-8")
+        _daemon_732 = (_repo_728 / "root/usr/share/ai-link/ai-link-daemon.py").read_text(encoding="utf-8")
+
+        _open_modal_cnt_732 = len(re.findall(r"\bopenModal\(", _js_732))
+        _ur01_p0_ok = (
+            "window.__MODAL_STACK__ = _modalStack" in _js_732
+            and "function openDrawer(" in _js_732
+            and _open_modal_cnt_732 <= 18
+            and "已覆盖 " in _js_732
+            and "qr.createSvgTag(4, 0)" in _js_732
+            and "lanWarnHtml + " in _js_732
+            and "改为粘贴节点文本" in _js_732
+            and "callApiViaCliBridge" in _ov_732
+            and "bridge_token=" in _ov_732
+            and "api)" in _cli_732
+            and "music-unlock-card" not in _html_732
+            and "renderMusicUnlockSection" not in _js_732
+        )
+        _ur01_p1_p2_ok = (
+            "createFresnelHaloMaterial" in _js3d_732
+            and "THREE.ShaderMaterial" in _js3d_732
+            and "settings-group-nav" in _html_732
+            and "settings-danger-zone" in _html_732
+            and len(re.findall(r"backdrop-filter", _css_732)) <= 5
+            and "window.NexusModules =" in _js_732
+        )
+        _ur02_03_04_ok = (
+            "btn-check-core-update" in _html_732
+            and "check-core-update" in _html_732
+            and "btn-ota-check" in _html_732
+            and "check-update" in _html_732
+            and "btn-ota-apply" in _html_732
+            and "apply-update" in _html_732
+        )
+        _hydrogen_minor_ok = (
+            "_lan_br_dev = _detect_lan_bridge_dev()" in _daemon_732
+            and "ai-link-init.lock" in _initd_732
+            and "r31" in str(getattr(dmod, "APP_BUILD", ""))
+        )
+        check(
+            "Stage 7.32 (v2.6.2 r31 USER_REPORTED-20261115-01..04: Modal栈防覆盖+openDrawer<=18+旁路提示+DDNS告警保留+订阅失败原地降级+LuCI HTTPS RPC桥接+清理僵尸音乐卡+3D Fresnel Shader+设置4分组与DangerZone+恢复内核/插件升级按钮+Hydrogen Minor动态网桥与flock锁)",
+            _ur01_p0_ok and _ur01_p1_p2_ok and _ur02_03_04_ok and _hydrogen_minor_ok,
+            f"p0={_ur01_p0_ok} p1_p2={_ur01_p1_p2_ok} ur02_04={_ur02_03_04_ok} h_minor={_hydrogen_minor_ok} openModal_cnt={_open_modal_cnt_732}",
+        )
     finally:
         shutil.rmtree(tmp_v252, ignore_errors=True)
 

@@ -699,22 +699,52 @@
   let _lastModalTriggerEl = null;
   let _lastModalTitle = '';
   let _lastModalOpenTs = 0;
+  const _modalStack = [];
+  window.__MODAL_STACK__ = _modalStack;
 
-  function openModal(title, html, kicker, onConfirm, confirmText) {
+  function _renderModalSurface(title, html, kicker, onConfirm, confirmText, asDrawer) {
     const m = $('#modal');
     const nowMs = Date.now();
-    // C-P2-13: Singleton modal guard — ignore rapid duplicate clicks opening the exact same modal within 350ms
     if (m && !m.hidden && _lastModalTitle === String(title || '') && (nowMs - _lastModalOpenTs) < 350) {
       return;
     }
-    if (m && m.hidden && document.activeElement && document.activeElement !== document.body) {
-      _lastModalTriggerEl = document.activeElement;
-    }
-    _lastModalTitle = String(title || '');
-    _lastModalOpenTs = nowMs;
     const tEl = $('#modal-title');
     const kEl = $('#modal-kicker');
     const bEl = $('#modal-body');
+    const confirmBtn = $('#modal-confirm');
+    const footNote = $('#modal-foot-note');
+    const panel = $('.modal-panel');
+
+    // P0-1 Fix: Preserve active form/modal DOM & state on stack when a secondary confirmation or 401 login modal opens
+    const isInterruptOverlay = Boolean(
+      m && !m.hidden && bEl && bEl.childNodes.length &&
+      _lastModalTitle && _lastModalTitle !== String(title || '') &&
+      (String(title || '').includes('确认') || String(title || '').includes('鉴权') || String(title || '').includes('登录') || bEl.querySelector('input, select, textarea'))
+    );
+    if (isInterruptOverlay && _modalStack.length < 4) {
+      const savedFrag = document.createDocumentFragment();
+      while (bEl.firstChild) {
+        savedFrag.appendChild(bEl.firstChild);
+      }
+      _modalStack.push({
+        title: tEl ? tEl.textContent : _lastModalTitle,
+        kicker: kEl ? kEl.textContent : 'AI-LINK NEXUS',
+        confirmText: confirmBtn ? confirmBtn.textContent : '完成',
+        footNote: footNote ? footNote.textContent : '',
+        handler: modalConfirmHandler,
+        isWide: Boolean(panel && panel.classList.contains('wide')),
+        isDrawer: Boolean(panel && panel.classList.contains('drawer-panel')),
+        frag: savedFrag
+      });
+    } else if (m && m.hidden) {
+      _modalStack.length = 0;
+      if (document.activeElement && document.activeElement !== document.body) {
+        _lastModalTriggerEl = document.activeElement;
+      }
+    }
+
+    _lastModalTitle = String(title || '');
+    _lastModalOpenTs = nowMs;
     if (tEl) tEl.textContent = title;
     if (kEl) kEl.textContent = kicker || 'AI-LINK NEXUS';
     if (bEl) {
@@ -728,8 +758,6 @@
       });
     }
     modalConfirmHandler = typeof onConfirm === 'function' ? onConfirm : null;
-    const confirmBtn = $('#modal-confirm');
-    const footNote = $('#modal-foot-note');
     if (confirmBtn) {
       confirmBtn.disabled = false;
       confirmBtn.textContent = confirmText || (modalConfirmHandler ? '保存并生效' : '完成');
@@ -737,10 +765,10 @@
     if (footNote) {
       footNote.textContent = modalConfirmHandler ? '修改将实时同步至 AI-LINK 守护进程与内核' : 'AI-LINK NEXUS 实时控制中心';
     }
-    const panel = $('.modal-panel');
     if (panel) {
       const isWide = Boolean(html && (html.includes('ov-insight-modal-wrap') || html.includes('table-wrap')));
       panel.classList.toggle('wide', isWide);
+      panel.classList.toggle('drawer-panel', Boolean(asDrawer));
     }
     const appShell = $('.app-shell');
     if (appShell) appShell.setAttribute('aria-hidden', 'true');
@@ -763,9 +791,47 @@
     }
   }
 
-  function closeModal() {
+  function openModal(title, html, kicker, onConfirm, confirmText) {
+    return _renderModalSurface(title, html, kicker, onConfirm, confirmText, false);
+  }
+
+  function openDrawer(title, html, kicker, onConfirm, confirmText) {
+    return _renderModalSurface(title, html, kicker, onConfirm, confirmText, true);
+  }
+  window.openDrawer = openDrawer;
+
+  function closeModal(forceCloseAll) {
     const m = $('#modal');
+    if (!forceCloseAll && _modalStack.length > 0 && m && !m.hidden) {
+      const prev = _modalStack.pop();
+      const tEl = $('#modal-title');
+      const kEl = $('#modal-kicker');
+      const bEl = $('#modal-body');
+      const confirmBtn = $('#modal-confirm');
+      const footNote = $('#modal-foot-note');
+      const panel = $('.modal-panel');
+      _lastModalTitle = String(prev.title || '');
+      if (tEl) tEl.textContent = prev.title;
+      if (kEl) kEl.textContent = prev.kicker;
+      if (bEl && prev.frag) {
+        bEl.replaceChildren(prev.frag);
+      }
+      modalConfirmHandler = prev.handler || null;
+      if (confirmBtn) {
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = prev.confirmText || (modalConfirmHandler ? '保存并生效' : '完成');
+      }
+      if (footNote) footNote.textContent = prev.footNote || 'AI-LINK NEXUS 实时控制中心';
+      if (panel) {
+        panel.classList.toggle('wide', Boolean(prev.isWide));
+        panel.classList.toggle('drawer-panel', Boolean(prev.isDrawer));
+      }
+      return;
+    }
+    _modalStack.length = 0;
     if (m) m.hidden = true;
+    const panel = $('.modal-panel');
+    if (panel) panel.classList.remove('drawer-panel');
     const appShell = $('.app-shell');
     if (appShell) appShell.removeAttribute('aria-hidden');
     modalConfirmHandler = null;
@@ -858,12 +924,12 @@
     const modeObj = mock.routingModes.find(m => m.id === state.routingMode) || mock.routingModes[0];
     const isSingleEgress = (state.routingMode === 'gfw_list' || state.routingMode === 'cn_whitelist' || state.routingMode === 'global_proxy');
     if (state.bypassActive || state.routingMode === 'direct_all') {
-      const mName = state.bypassActive ? '临时直连恢复中' : modeObj.name;
+      const mName = state.bypassActive ? ('临时直连恢复中 (已覆盖 ' + modeObj.name + ')') : modeObj.name;
       return {
         isSingleEgress: false,
-        topLabel: '当前运行模式',
+        topLabel: state.bypassActive ? '应急直连旁路生效中' : '当前运行模式',
         topMainText: mName,
-        topSubText: 'WAN 宽带直通',
+        topSubText: state.bypassActive ? '点击恢复代理或切换分流模式退出旁路' : 'WAN 宽带直通',
         nodeName: '宽带原生直连 (DIRECT)',
         poolOrNodeName: '宽带原生直连 (DIRECT)',
         modeName: mName,
@@ -1316,7 +1382,8 @@
     if (rm) {
       rm.innerHTML = mock.routingModes.map(mode => {
         const isAct = state.routingMode === mode.id;
-        return '<button class="routing-mode ' + (isAct ? 'active' : '') + '" data-routing-mode="' + mode.id + '" aria-pressed="' + (isAct ? 'true' : 'false') + '"><span>' + esc(mode.code) + (isAct ? ' · 当前生效' : '') + '</span><b>' + esc(mode.name) + '</b><small>' + esc(mode.desc) + '</small><i></i></button>';
+        const statusSuffix = isAct ? (state.bypassActive ? ' · 旁路覆盖中(点击恢复)' : ' · 当前生效') : '';
+        return '<button class="routing-mode ' + (isAct ? 'active' : '') + '" data-routing-mode="' + mode.id + '" aria-pressed="' + (isAct ? 'true' : 'false') + '"><span>' + esc(mode.code) + statusSuffix + '</span><b>' + esc(mode.name) + '</b><small>' + esc(mode.desc) + '</small><i></i></button>';
       }).join('');
     }
     renderNonShuntGlobalBar();
@@ -1683,7 +1750,7 @@
           '<h3>' + esc(n.name) + '</h3>' +
           '<div class="node-meta">' +
             '<div><span>监听端口</span><b class="mono">' + esc(n.port) + '</b></div>' +
-            '<div><span>DDNS / 地址</span><b class="mono">' + esc(n.ddns_host || window.location.hostname || '自动检测') + '</b></div>' +
+            '<div><span>DDNS / 地址</span><b class="mono" style="color:' + ((!n.ddns_host || n.is_lan_host || /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|127\.|localhost|自动检测|home\.example\.com)/i.test(String(n.ddns_host || ''))) ? 'var(--amber)' : 'var(--text)') + '">' + esc((!n.ddns_host || n.is_lan_host || /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|127\.|localhost|自动检测|home\.example\.com)/i.test(String(n.ddns_host || ''))) ? ('未配置公网 DDNS (' + (n.ddns_host || window.location.hostname || '仅内网') + ')') : n.ddns_host) + '</b></div>' +
             '<div><span>在线客户端 / 累计流量</span><b class="mono">' + esc(Number(n.clients || 0)) + ' 台 · ' + esc(n.total_bytes_str || '0 B') + '</b></div>' +
           '</div>' +
           '<div class="setting-line" style="padding:8px 0;margin-bottom:10px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)">' +
@@ -1916,25 +1983,6 @@
           }).join('')
         : '<div class="trace-stage" style="padding:9px 12px"><i>库</i><div><b>暂未配置外部过滤订阅列表</b><span>内置基础隐私保护已生效，可点击右上角「+ 添加 / 预设规则库」挂载主流 GitHub 规则源</span></div><strong>内置守护</strong></div>';
     }
-    renderMusicUnlockSection();
-  }
-
-  /* Fix #12: Music Unlock compact collapsible banner when disabled */
-  function renderMusicUnlockSection() {
-    const body = $('#music-unlock-body');
-    const stateLbl = $('#music-unlock-state-label');
-    const btnExpand = $('#btn-toggle-music-drawer');
-    if (body) {
-      const showBody = state.musicUnlockOpen || state.musicUnlockEnabled;
-      body.classList.toggle('hidden', !showBody);
-    }
-    if (stateLbl) {
-      stateLbl.textContent = state.musicUnlockEnabled ? '已关联外部解锁组件' : '外部可选扩展 · 默认折叠以节省空间';
-    }
-    if (btnExpand) {
-      btnExpand.textContent = (state.musicUnlockOpen || state.musicUnlockEnabled) ? '收起详情 ▴' : '展开配置 ▾';
-    }
-    setSwitchState($('#toggle-music-unlock'), state.musicUnlockEnabled);
   }
 
   function isNodeManualCustom(n) {
@@ -2160,6 +2208,9 @@
             '</div>' +
           '</div>' +
           subHealthHtml +
+          ((Number(dispCount) === 0 || s.last_sync_error)
+            ? '<div class="sub-fallback-bar" style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:6px 10px;margin-bottom:8px;border-radius:8px;background:var(--surface-2);border:1px solid var(--line-subtle)"><span style="color:var(--amber)">首次拉取受阻？可离线粘贴导入：</span><div style="display:flex;gap:6px"><button type="button" class="button secondary compact" data-action="import">改为粘贴节点文本</button><button type="button" class="button ghost compact" data-action="binding">切换镜像重试</button></div></div>'
+            : '') +
           '<div class="sub-actions">' +
             '<button class="button secondary compact" data-action="sub-sync-one" data-sub="' + i + '">立即同步</button>' +
             '<button class="button ghost compact" data-action="sub-probe-one" data-sub="' + i + '">测速本订阅</button>' +
@@ -2429,7 +2480,7 @@
     const topo = det.topology || 'bypass';
     const evList = (det.evidence || []).map(e => '<li>' + esc(e) + '</li>').join('');
     const step2 = ((det.wizard_steps || [])[1]) || {};
-    openModal(
+    openDrawer(
       '拓扑自动识别与 3 步快速接入向导',
       '<div class="trace-stages">' +
         '<div class="trace-stage"><i>识别</i><div><b>自动识别结论：' + esc(det.topology_label || topo) + '</b><span>置信度 ' + Math.round((det.confidence || 0.94) * 100) + '% · 本机 LAN IP: ' + esc(det.lan_ip || location.hostname || '127.0.0.1') + '</span></div><strong>' + esc(topo.toUpperCase()) + '</strong></div>' +
@@ -2531,7 +2582,7 @@
       '<button type="button" class="button ghost compact" id="btn-rb-add-new">+ 新增规则块</button>' +
       (rbs.length > 0 ? '<button type="button" class="button ghost danger-text compact" id="btn-rb-del-cur">删除当前块</button>' : '') +
     '</div>';
-    openModal(
+    openDrawer(
       '增强规则块与实时草稿试匹配 · ' + grp.name + ' (共 ' + rbs.length + ' 块)',
       '<div class="modal-form">' +
         blockTabsHtml +
@@ -2658,7 +2709,7 @@
     const rowsHtml = list.length
       ? list.map(p => '<div class="trace-stage"><i></i><div style="min-width:0"><b>' + esc(p.name) + ' ' + esc(p.group_id) + ' (' + Number(p.rule_count || 0) + ' 条)</b><span class="mono" style="display:block;overflow:hidden;text-overflow:ellipsis">' + esc(p.url) + ' · ' + (p.last_error ? ('失败: ' + esc(p.last_error) + ' (已保留旧规则)') : '同步正常') + '</span></div><div class="button-row" style="gap:5px"><button type="button" class="button ghost compact" data-action="sync-rule-provider" data-rp-id="' + esc(p.id) + '">同步</button><button type="button" class="button danger compact" data-action="delete-rule-provider" data-rp-id="' + esc(p.id) + '" data-rp-name="' + esc(p.name) + '">删除</button></div></div>').join('')
       : '<div class="trace-stage"><i>ℹ</i><div><b>尚无远程规则订阅</b><span>添加后每 24h 自动拉取更新，更新失败自动保留旧版本不影响现有分流</span></div><strong>就绪</strong></div>';
-    openModal(
+    openDrawer(
       '远程分流规则订阅管理 · 导入式原子更新',
       '<div class="trace-stages">' + rowsHtml + '</div>' +
       '<div class="modal-form" style="margin-top:12px">' +
@@ -2712,7 +2763,7 @@
         '<strong class="mono">' + (c.installed ? '已就绪' : ('种子 ' + Number(c.seed_count || 0) + ' 项')) + '</strong>' +
       '</div>';
     }).join('');
-    openModal(
+    openDrawer(
       '云端 GeoIP / Geosite 场景规则中心 · 共 ' + Number(sum.total_sets || catalog.length) + ' 套在线列表',
       '<div class="modal-form">' +
         '<div class="syntax-guide" style="margin-bottom:8px">' +
@@ -2790,7 +2841,7 @@
           '</div>';
         }).join('')
       : '<div class="trace-stage"><i></i><div><b>暂无配置变更历史</b><span>每次修改分流、回家、DNS 或运行参数时会自动生成快照（保留最近 20 份 / 7 天）</span></div><strong>就绪</strong></div>';
-    openModal(
+    openDrawer(
       '配置变更历史与结构化 Diff 回滚',
       '<div class="trace-stages" style="max-height:360px;overflow-y:auto">' + rows + '</div>',
       'CONFIG HISTORY & ROLLBACK',
@@ -2809,7 +2860,7 @@
     const evRows = evs.length
       ? evs.slice(0, 15).map(e => '<div class="trace-stage"><i>' + (e.status === 'recovered' ? '' : '') + '</i><div><b>' + esc(e.title) + '</b><span>' + esc(e.detail) + '</span></div><strong>' + esc((e.delivered_channels || []).join(',') || '已记录') + '</strong></div>').join('')
       : '<div class="trace-stage"><i></i><div><b>事件中心暂无异常告警</b><span>支持节点全挂、订阅同步失败、DDNS 失步、内核重启、证书到期、磁盘不足、体检失败 7 类事件（30 分钟智能去重）</span></div><strong>正常</strong></div>';
-    openModal(
+    openDrawer(
       '告警通道与事件中心 · Webhook / Telegram / SMTP',
       '<div class="modal-form">' +
         '<div class="modal-grid-3">' +
@@ -4377,7 +4428,7 @@
         r.passed !== false ? 'PASS' : 'WARN'
       ]);
     }
-    openModal(
+    openDrawer(
       '12 类全矩阵自检报告',
       '<p>全链路矩阵自检已完成：<strong>' + items.filter(x => x[1] === 'PASS').length + ' / ' + items.length + ' 项通过</strong>。</p><div class="matrix-results">' +
       items.map(it => '<div class="matrix-result"><b>' + esc(it[0]) + '</b><span>' + esc(it[1]) + '</span></div>').join('') +
@@ -4388,7 +4439,7 @@
 
   /* T1: One-Click Network Health Doctor (8 Parallel Checks + 1-Click Auto Fix) */
   async function openNetworkDoctorModal(autoRun) {
-    openModal(
+    openDrawer(
       '网络健康医生 · 8 项全链路并发诊断与一键修复',
       '<div id="network-doctor-root" class="modal-form">' +
         '<div class="doctor-summary-banner">' +
@@ -4495,7 +4546,7 @@
         });
       }
     }
-    openModal(
+    openDrawer(
       '节点详情与编辑 · ' + n.name,
       '<div class="detail-grid">' +
         '<div><span>线路属性识别</span><b>' + esc(n.line_badge || '直连线路') + (n.detour_target ? (' (前置: ' + esc(n.detour_target) + ')') : '') + '</b></div>' +
@@ -4553,7 +4604,7 @@
     const nodeOpts = (mock.nodes || []).filter(n => !n.is_chained).slice(0, 30).map(n =>
       '<option value="' + esc(n.tag || n.name) + '">前置单节点：' + esc(cleanNodeDisplayName(n.name)) + '</option>'
     ).join('');
-    openModal(
+    openDrawer(
       '配置链式代理落地节点 (Chained Proxy / Detour)',
       '<div class="modal-form">' +
         '<div class="syntax-guide"><b>链式代理工作流：</b>将自购的海外静态住宅 IP（Socks5 / HTTP / VLESS 等）设为最终落地节点，并选择任意<b>自动节点池</b>或<b>高速专线节点</b>作为前置中转跳板，自动生成无环路的 sing-box <code>detour</code> 级联链路。</div>' +
@@ -4651,7 +4702,7 @@
       );
     };
     const initData = state.lastTrafficInsights || { hourly_series: [], daily_series: [], by_device: [], by_node: [], by_domain: [] };
-    openModal(
+    openDrawer(
       '按天/按小时三维流量归因洞察 (终端 × 节点 × 目标域名)',
       '<div class="ov-insight-modal-wrap modal-form" style="gap:12px">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">' +
@@ -4723,7 +4774,7 @@
   function openNewRuleModal(existingGroup) {
     const g = existingGroup || null;
     const autoOpts = mock.autoPools.map(p => '<option value="' + esc(p.id) + '" ' + (g && g.auto_node_id === p.id ? 'selected' : '') + '>' + esc(p.name) + '</option>').join('');
-    openModal(
+    openDrawer(
       g ? ('编辑分流策略组 · ' + g.name) : '添加自定义高优先级分流规则',
       '<div class="modal-form">' +
         '<div class="syntax-guide">' +
@@ -4904,7 +4955,7 @@
       return out;
     };
 
-    openModal(
+    openDrawer(
       p ? ('配置自动节点池 · ' + p.name) : '创建智能自动节点池',
       '<div id="an-builder-root" class="ov-insight-modal-wrap modal-form" style="gap:10px">' +
         '<div class="syntax-guide" style="margin-bottom:0;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">' +
@@ -5746,7 +5797,7 @@
       '</tr>';
     }).join('');
 
-    openModal(
+    openDrawer(
       title,
       '<div class="modal-form" id="url-ping-progress-modal">' +
         '<div class="sub-health-box" style="padding:var(--sp-3)">' +
@@ -5949,7 +6000,7 @@
       '</div>';
     }).join('');
 
-    openModal(
+    openDrawer(
       '订阅同步与节点预热实时进度',
       '<div class="modal-form" id="sub-sync-progress-modal">' +
         '<div class="sub-health-box" style="padding:var(--sp-3)">' +
@@ -6107,7 +6158,11 @@
             badgeEl.style.borderColor = isStalePreview ? 'var(--amber)' : 'var(--rose)';
           }
           if (detailEl) {
-            detailEl.textContent = isStalePreview ? ('安全拦截：' + errMsg) : ('失败原因：' + errMsg + '（若无代理节点，可点击「粘贴订阅文本」离线导入或切换 GitHub 镜像重试）');
+            detailEl.innerHTML = esc(isStalePreview ? ('安全拦截：' + errMsg) : ('失败原因：' + errMsg)) +
+              ' <span class="inline-fallback-actions" style="display:inline-flex;gap:6px;margin-left:8px;vertical-align:middle">' +
+                '<button type="button" class="button secondary compact" data-action="import">改为粘贴节点文本</button>' +
+                '<button type="button" class="button ghost compact" data-action="binding">切换镜像重试</button>' +
+              '</span>';
             detailEl.style.color = 'var(--rose)';
           }
         }
@@ -6141,7 +6196,7 @@
     const s = (subIdx != null && mock.subscriptions[subIdx]) ? mock.subscriptions[subIdx] : null;
     const initAutoUpdate = s ? (s.auto_update !== false) : true;
     const initInterval = s ? (Number(s.update_interval_min) > 0 ? Number(s.update_interval_min) : 360) : 360;
-    openModal(
+    openDrawer(
       s ? ('编辑订阅源 · ' + s.name) : '新增或更新机场订阅源',
       '<div class="modal-form">' +
         '<div class="modal-grid-2">' +
@@ -6271,7 +6326,7 @@
       '<div class="button-row"><button class="button secondary compact" style="padding:0 8px;" data-action="run-sched-now" data-sid="' + esc(s.id) + '">立即运行</button>' +
       '<button class="button danger compact" style="padding:0 8px;" data-action="del-sched" data-sid="' + esc(s.id) + '">删除</button></div></div>'
     ).join('');
-    openModal(
+    openDrawer(
       '定时 URL Ping 测速巡检计划',
       '<div class="modal-form">' +
         '<div class="trace-stages">' + (schedRows || '<p>当前暂无定时计划</p>') + '</div>' +
@@ -6328,7 +6383,7 @@
       ? state.lanDirectMacs.join(', ')
       : (Array.isArray(state.rawOps && state.rawOps.lan_direct_macs) ? state.rawOps.lan_direct_macs.join(', ') : '');
     const curMtu = Number(state.tunMtu || (state.rawOps && state.rawOps.tun_mtu) || 1500);
-    openModal(
+    openDrawer(
       '面板监听、免密网段与设备直通白名单配置',
       '<div class="modal-form">' +
         '<div class="modal-grid-2">' +
@@ -6461,7 +6516,7 @@
       };
 
       const initQuery = focusKey || '';
-      openModal(
+      openDrawer(
         '局域网与回家终端设备实时明细 (' + allDevs.length + ' 台在线)',
         '<div class="ov-insight-modal-wrap">' +
           '<div class="galaxy-kpi-grid" style="margin-bottom:12px">' +
@@ -6548,7 +6603,7 @@
         }).join('');
       };
 
-      openModal(
+      openDrawer(
         '入核出站节点池与健康遥测明细 (' + fmtOutboundQuota(mock.activeOutbounds, mock.maxOutboundsLimit) + ')',
         '<div class="ov-insight-modal-wrap">' +
           '<div class="galaxy-kpi-grid" style="margin-bottom:12px">' +
@@ -6706,7 +6761,7 @@
       };
 
       const initSearch = focusKey || '';
-      openModal(
+      openDrawer(
         '热门访问目标与分流链路明细 (累计统计 ' + mock.destinationsTotal + ' 个目标)',
         '<div class="ov-insight-modal-wrap">' +
           '<div class="galaxy-kpi-grid" style="margin-bottom:12px">' +
@@ -6942,7 +6997,7 @@
           ['净网护盾规则引擎', state.dnsEnabled ? (Number(mock.dnsRulesCount).toLocaleString('zh-CN') + ' 条生效') : 'PAUSED'],
           ['入核出站节点容量', mock.nodes.length + ' 节点（全部入核 · 无上限）']
         ];
-        openModal(
+        openDrawer(
           '系统与内核健康自检报告',
           '<p>已完成对 sing-box 进程、监听端口、nftables 规则表与 DNS 护盾的深度健康核验：</p>' +
           '<div class="matrix-results">' +
@@ -6955,7 +7010,7 @@
       case 'ops-diag': {
         toast('正在采集网关全链路诊断快照...');
         const res = await callRouterApi('/api/ops/diag', 'GET');
-        openModal(
+        openDrawer(
           '一键深度排障诊断报告',
           '<div class="modal-form">' +
             '<p>已汇总当前内核运行态、端口监听、nftables 规则摘要与最近异常日志，可直接全选复制用于排障：</p>' +
@@ -7005,7 +7060,7 @@
       case 'ipv6-status-modal': {
         const res = await callRouterApi('/api/ipv6/status', 'GET');
         const v6On = Boolean(res && res.ipv6_proxy != null ? res.ipv6_proxy : state.ipv6Proxy);
-        openModal(
+        openDrawer(
           'IPv6 双栈防漏与路由治理状态',
           '<div class="detail-grid">' +
             '<div><span>IPv6 透明代理接管</span><b>' + (v6On ? '已开启 (双栈 TProxy)' : '关闭 (智能双栈防漏模式)') + '</b></div>' +
@@ -7035,7 +7090,7 @@
         const ffList = (res && Array.isArray(res.fakeip_filter) && res.fakeip_filter.length)
           ? res.fakeip_filter
           : ['localbattle.net', 'cn.localbattle.net', 'steamloopback.host', 'spotilocal.com', 'localhost.ptlogin2.qq.com', 'plex.direct', 'direct.quickconnect.to', 'lvh.me', 'nip.io', 'sslip.io'];
-        openModal(
+        openDrawer(
           '双栈 DNS 上游与 Fake-IP 本地回环豁免配置',
           '<div class="modal-form">' +
             '<div class="syntax-guide">' +
@@ -7069,7 +7124,7 @@
       case 'ota-status': {
         const res = await callRouterApi('/api/system/update/status', 'GET');
         const prog = (res && res.progress) || {};
-        openModal(
+        openDrawer(
           'OTA 在线升级状态与确认',
           '<div class="detail-grid">' +
             '<div><span>当前运行版本</span><b class="mono">v' + esc((res && res.current) || (state.rawStatus && state.rawStatus.version) || '2.5.5') + '</b></div>' +
@@ -7088,7 +7143,7 @@
         break;
       }
       case 'add-single-node': {
-        openModal(
+        openDrawer(
           '手动添加单个节点 & 分享链接解析预览',
           '<div class="modal-form">' +
             '<div class="modal-field">' +
@@ -7192,7 +7247,7 @@
         const tls = ob.tls || {};
         const reality = tls.reality || {};
         const tr = ob.transport || {};
-        openModal(
+        openDrawer(
           '节点底层凭据与协议明细 · ' + (ob.tag || nodeTag),
           '<div class="detail-grid">' +
             '<div><span>服务器 (Server:Port)</span><b class="mono">' + esc((ob.server || '') + ':' + (ob.server_port || 443)) + '</b></div>' +
@@ -7271,7 +7326,7 @@
             }).join('') || '<div class="mono" style="color:var(--amber)">控制面 (:9090/proxies) 未返回 Selector 快照</div>';
             if (dRes && dRes.ok && dRes.ui_synced && dRes.restored && planeUntouched && inPoolScope) {
               toast('沙盒演练通过：' + (dRes.pool_name || pidDrill) + ' 验证 ' + cleanNodeDisplayName(dRes.from_node || '') + ' → ' + cleanNodeDisplayName(dRes.to_node || '') + ' 秒切成功 · ' + selCount + ' 个 selector 前后一致 · 平面未受影响');
-              openModal(
+              openDrawer(
                 '沙盒故障转移演练无损自证报告 · ' + (dRes.pool_name || pidDrill),
                 '<div class="detail-grid">' +
                   '<div><span>演练目标切换路径</span><b class="mono">' + esc(cleanNodeDisplayName(dRes.from_node || '') + ' → ' + cleanNodeDisplayName(dRes.to_node || '')) + '</b></div>' +
@@ -7691,7 +7746,7 @@
             if (confirmBtn) confirmBtn.disabled = false;
           }
         };
-        openModal(
+        openDrawer(
           '创建加密回家节点 (支持单节点独立回家路由模式)',
           '<div class="modal-form">' +
             '<div class="modal-grid-3" style="margin-bottom:8px">' +
@@ -7816,7 +7871,7 @@
       }
       case 'view-ca-cert': {
         const res = await callRouterApi('/api/certs/ca', 'GET');
-        openModal(
+        openDrawer(
           '回家隧道自签 TLS 根证书与指纹',
           '<div class="modal-form">' +
             '<p>Hysteria2 与 VLESS-TLS 回家节点使用内置自签根证书，客户端可通过 <code>pinSHA256</code> 自动完成证书指纹校验。</p>' +
@@ -7830,8 +7885,9 @@
         const nid = el && el.dataset.node;
         const hlNode = (state.rawHomelink && Array.isArray(state.rawHomelink.nodes) && state.rawHomelink.nodes.find(x => x.id === nid)) || mock.homelinkNodes.find(x => x.id === nid) || mock.homelinkNodes[0];
         const uri = (hlNode && (hlNode.uri || hlNode.share_uri)) || ('vless://ailink-homelink@' + (window.location.hostname || 'home.example.com') + ':' + (hlNode ? hlNode.listen_port || 18443 : 18443) + '#AI-LINK-Home');
-        const lanWarnHtml = (hlNode && (hlNode.is_lan_host || !hlNode.ddns_host || hlNode.ddns_host === 'home.example.com'))
-          ? '<div class="a-alert a-alert--warn" style="margin-bottom:10px;padding:8px 12px;border-radius:8px;border:1px solid var(--amber);color:var(--amber);font-size:12px">提示：当前未配置公网 DDNS 域名，分享二维码使用内网 IP 仅限局域网测试；外网回家请配置 DDNS 与端口映射。</div>'
+        const isLanOrMissingDdns = Boolean(!hlNode || hlNode.is_lan_host || !hlNode.ddns_host || /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|127\.|localhost|自动检测|home\.example\.com)/i.test(String(hlNode.ddns_host || '')));
+        const lanWarnHtml = isLanOrMissingDdns
+          ? '<div class="a-alert a-alert--warn" style="margin-bottom:10px;padding:10px 12px;border-radius:8px;border:1px solid var(--amber);color:var(--amber);display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><span>提示：当前未配置公网 DDNS 域名，二维码含内网地址仅限局域网测试；外网连回家请先配置公网 DDNS 域名与端口映射。</span><button type="button" class="button secondary compact" data-action="edit-node" data-node="' + esc(hlNode ? hlNode.id : '') + '">配置公网 DDNS</button></div>'
           : '';
         let qrHtml = lanWarnHtml + '<div class="qr-wrap" id="modal-qr-slot"></div>';
         if (typeof window.qrcode === 'function') {
@@ -7839,7 +7895,7 @@
             const qr = window.qrcode(0, 'M');
             qr.addData(uri);
             qr.make();
-            qrHtml = '<div class="qr-wrap" id="modal-qr-slot">' + qr.createSvgTag(4, 0) + '</div>';
+            qrHtml = lanWarnHtml + '<div class="qr-wrap" id="modal-qr-slot">' + qr.createSvgTag(4, 0) + '</div>';
           } catch (_) {}
         } else {
           ensureQrCodeLoaded(() => {
@@ -7854,7 +7910,7 @@
             } catch (_) {}
           });
         }
-        openModal(
+        openDrawer(
           '分享回家配置 · ' + (hlNode ? hlNode.name : ''),
           qrHtml +
           '<div class="modal-field"><label>标准客户端导入 URI（支持 v2rayNG / Shadowrocket / NekoBox / Sing-box 扫码或复制）</label><input class="mono" value="' + esc(uri) + '" readonly onclick="this.select()"></div>' +
@@ -7866,7 +7922,7 @@
       case 'edit-node': {
         const nid = el && el.dataset.node;
         const hlNode = mock.homelinkNodes.find(x => x.id === nid) || mock.homelinkNodes[0];
-        openModal(
+        openDrawer(
           '编辑回家节点 · ' + (hlNode ? hlNode.name : ''),
           '<div class="modal-form">' +
             '<div class="modal-grid-2">' +
@@ -8354,7 +8410,7 @@
         }).join('');
         const curBlockedStr = Array.isArray(state.dnsCustomBlocked) ? state.dnsCustomBlocked.join(', ') : '';
         const curAllowedStr = Array.isArray(state.dnsCustomAllowed) ? state.dnsCustomAllowed.join(', ') : '';
-        openModal(
+        openDrawer(
           '管理云端过滤规则库、GitHub 预设源与黑白名单',
           '<div class="modal-form">' +
             '<div class="modal-field">' +
@@ -8395,19 +8451,7 @@
         );
         break;
       }
-      /* Fix #12: Music Unlock Drawer & Toggle */
-      case 'toggle-music-drawer': {
-        state.musicUnlockOpen = !state.musicUnlockOpen;
-        renderMusicUnlockSection();
-        break;
-      }
-      case 'toggle-music-unlock': {
-        state.musicUnlockEnabled = !state.musicUnlockEnabled;
-        if (state.musicUnlockEnabled) state.musicUnlockOpen = true;
-        renderMusicUnlockSection();
-        toast('网易云音乐解锁扩展已' + (state.musicUnlockEnabled ? '开启' : '关闭'));
-        break;
-      }
+
       case 'import':
         openBatchImportModal();
         break;
@@ -8606,7 +8650,7 @@
           : ((sameTagCnt === 0 && remCnt === 0 && !res.dynamic_random_sub)
               ? '<div class="trace-stage"><i></i><div><b>所有自动节点池成员完整率 100%</b><span>本次订阅更新不会导致任何正在使用的自动节点池失去活跃出口。</span></div><strong>无损更新</strong></div>'
               : '<div class="trace-stage"><i></i><div><b>部分节点发生轮换（活跃池具备充足备份）</b><span>本次更新包含节点增删或同名替换，同步后将自动触发增量健康探测。</span></div><strong>增量重算</strong></div>');
-        openModal(
+        openDrawer(
           '订阅更新影响预览 · ' + (s ? s.name : '全部订阅'),
           '<div class="modal-form">' +
             riskBannerHtml +
@@ -8777,7 +8821,7 @@
             ? ('发现新内核 v' + latV + ' · 架构 ' + (archObj.preferred_suffix || 'linux-musl') + ' · Schema: ' + schemaProf)
             : ('当前内核 v' + curV + ' 已就绪 · 架构 ' + (archObj.preferred_suffix || 'linux-musl') + ' · Schema: ' + schemaProf);
         }
-        openModal(
+        openDrawer(
           'sing-box 代理内核版本检测与安全热升级',
           '<div class="modal-form">' +
             '<div class="kv-list">' +
@@ -9048,7 +9092,7 @@
             '<select class="select-compact sonar-cfg-sel">' + optsHtml + '</select>' +
           '</div>';
         };
-        openModal(
+        openDrawer(
           '自定义全球核心应用延迟声呐探测目标',
           '<div class="modal-form">' +
             '<p class="muted" style="margin:0 0 10px;line-height:1.5">自定义圆形声呐上的 8 个核心探测点（名称、探测 URL 与绑定分流策略组）。保存后支持一键并发实测，断网或节点不可达时自动显示超时告警。</p>' +
@@ -9288,7 +9332,7 @@
           const srcList = filtered.length ? filtered : mock.nodes;
           return srcList.map(n => '<option value="' + esc(n.tag || n.name) + '" ' + ((n.tag || n.name) === curManualSel ? 'selected' : '') + '>' + esc(cleanNodeDisplayName(n.name)) + ' (' + formatLatencyText(n.rtt, false) + ')</option>').join('');
         };
-        openModal(
+        openDrawer(
           '分流策略组编排 · ' + g.name,
           '<div class="trace-stages">' +
             '<div class="trace-stage"><i>01</i><div><b>匹配范围</b><span>' + esc(g.subtitle) + '</span></div><strong>' + (g.domains ? g.domains.length : 0) + ' 条规则</strong></div>' +
@@ -9489,7 +9533,7 @@
         const p = mock.autoPools[Number(poolHelpBtn.dataset.poolIdx)] || mock.autoPools[0];
         if (p) {
           const g1Tags = (p.groups && p.groups[0] && Array.isArray(p.groups[0].node_tags)) ? p.groups[0].node_tags : [];
-          openModal(
+          openDrawer(
             '自动节点池战术规格 · ' + p.name,
             '<div class="trace-stages">' +
               '<div class="trace-stage"><i>01</i><div><b>当前首选出口与延迟</b><span class="mono">' + esc(p.current_node || 'direct') + '</span></div><strong>' + (p.current_delay_ms > 0 ? (p.current_delay_ms + ' ms') : '直连/待测') + '</strong></div>' +
@@ -9541,7 +9585,7 @@
           ]]
         };
         const info = helpMap[topic] || helpMap.overview;
-        openModal(
+        openDrawer(
           info[0],
           '<div class="trace-stages">' + info[1].map((row, i) => '<div class="trace-stage"><i>0' + (i + 1) + '</i><div><b>' + esc(row[0]) + '</b><span>' + esc(row[1]) + '</span></div><strong>HUD</strong></div>').join('') + '</div>',
           'TACTICAL HUD GUIDE'
@@ -10449,7 +10493,55 @@
     setInterval(updateTelemetryTick, 3000);
     setTimeout(() => { const b = $('#boot'); if (b) b.classList.add('leaving'); }, 450);
     setTimeout(() => { const b = $('#boot'); if (b) b.remove(); }, 1100);
-    window.__NEXUS_PREVIEW__ = { state, mock, showPage, setSceneMode, syncBackendStatus, handleToggleEntryBypass, openOverviewDetailModal, openNetworkDoctorModal, renderShuntHitLeaderboard, computeSpeedGearInfo, get scene() { return scene; } };
+  
+  // P0-5: LuCI -> :9099 cross-port token handoff via #bridge_token
+  (function consumeLuciBridgeTokenHash() {
+    try {
+      const h = String(window.location.hash || '');
+      const m = h.match(/(?:^|[#&])bridge_token=([^&]+)/);
+      if (m && m[1]) {
+        const tok = decodeURIComponent(m[1]).trim();
+        if (tok) {
+          localStorage.setItem('ailink_panel_token', tok);
+        }
+        if (window.history && typeof window.history.replaceState === 'function') {
+          window.history.replaceState(null, document.title, window.location.pathname + window.location.search);
+        }
+      }
+    } catch (_) {}
+  })();
+
+  // P1-6: Settings 4-Group Navigation Filter
+  document.addEventListener('click', (ev) => {
+    const grpBtn = ev.target.closest('#settings-group-nav [data-settings-group]');
+    if (!grpBtn) return;
+    const grp = grpBtn.dataset.settingsGroup || 'all';
+    $$('#settings-group-nav [data-settings-group]').forEach(b => b.classList.toggle('active', b === grpBtn));
+    const cards = $$('#page-settings .bento-settings-grid > article.glass-card');
+    cards.forEach((card, idx) => {
+      if (grp === 'all') {
+        card.classList.remove('hidden');
+        return;
+      }
+      const mapGrp = idx === 0 ? 'kernel' : (idx === 1 ? 'kernel' : (idx === 2 ? 'backup' : (idx === 3 ? 'security' : (idx === 4 ? 'security' : (idx === 5 || idx === 6 ? 'diag' : 'security')))));
+      card.classList.toggle('hidden', mapGrp !== grp);
+    });
+  });
+
+  // P2-4: Domain Module Registry (core, modal, galaxy, overview, shunt, homelink, dns, nodes, settings)
+  window.NexusModules = {
+    core: { state, mock, callRouterApi, syncBackendStatus, renderAll },
+    modal: { openModal, openDrawer, closeModal, confirmModal, stack: _modalStack },
+    galaxy: { renderTopBarStatus },
+    overview: { renderOverviewDashboard, getActiveEgressSummary },
+    shunt: { renderShuntMatrix, renderShuntHitLeaderboard },
+    homelink: { renderHomeLinkSection },
+    dns: { renderDnsAndFilterSection },
+    nodes: { renderSubscriptionsAndNodes },
+    settings: { renderOpsAndUpdatesSection, renderConnectionsSection }
+  };
+
+  window.__NEXUS_PREVIEW__ = { state, mock, showPage, setSceneMode, syncBackendStatus, handleToggleEntryBypass, openOverviewDetailModal, openNetworkDoctorModal, renderShuntHitLeaderboard, computeSpeedGearInfo, get scene() { return scene; } };
   }
 
   init();

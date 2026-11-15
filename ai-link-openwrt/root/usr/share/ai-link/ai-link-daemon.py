@@ -6170,9 +6170,9 @@ def flush_conntrack_for_switch(
     if shutil.which("conntrack") and (t_ip or d_host):
         try:
             cmd = ["conntrack", "-D"]
-            if t_ip and re.match(r"^[0-9a-fA-F.:]+$", t_ip):
+            if t_ip and re.match(r"^[0-9a-fA-F.:/]+$", t_ip):
                 cmd.extend(["-s", t_ip])
-            elif d_host and re.match(r"^[0-9.]+$", d_host):
+            elif d_host and re.match(r"^[0-9a-fA-F.:/]+$", d_host):
                 cmd.extend(["-d", d_host])
             if len(cmd) > 2:
                 subprocess.run(cmd, capture_output=True, timeout=1.5, check=False)
@@ -10682,10 +10682,17 @@ def save_shunt_config(cfg: dict, conf_dir: Path = CONF_DIR):
                         target_ip="198.18.0.0/15",
                         reason="switch_to_direct_all_fakeip_purge",
                     )
+                    flush_conntrack_for_switch(
+                        selector_tag="direct_all",
+                        old_node=prev_rmode,
+                        target_ip="fc00::/18",
+                        reason="switch_to_direct_all_fakeip6_purge",
+                    )
                     if Path(conf_dir).resolve() == Path(CONF_DIR).resolve() and not globals().get("_SELF_TEST_ACTIVE", False):
                         def _delayed_fakeip_purge():
                             try:
                                 subprocess.run(["conntrack", "-D", "-d", "198.18.0.0/15"], capture_output=True, timeout=2, check=False)
+                                subprocess.run(["conntrack", "-D", "-d", "fc00::/18"], capture_output=True, timeout=2, check=False)
                                 subprocess.run(["killall", "-HUP", "dnsmasq"], capture_output=True, timeout=2, check=False)
                             except Exception as _e_diag:
                                 globals().get("_record_internal_diag", str)(_e_diag)
@@ -16677,16 +16684,13 @@ def generate_nft_rules_file(conf_dir: Path = CONF_DIR, run_dir: Path = RUN_DIR,
     else:
         lines.append(f"\t\tip daddr @google_play_v4 meta l4proto {{ tcp, udp }} tproxy ip to 127.0.0.1:{tproxy_port} meta mark set {fw_mark} accept")
     if gu:
-        lines.append("\t\tip daddr @cn_ip4 meta l4proto udp meta mark set 0x02000000")
-        lines.append("\t\tip daddr @cn_ip4 meta l4proto udp ct mark set 0x02000000")
-        lines.append("\t\tip daddr @cn_ip4 meta l4proto udp accept")
-        if v6:
-            lines.append("\t\tip6 daddr @cn_ip6 meta l4proto udp meta mark set 0x02000000")
-            lines.append("\t\tip6 daddr @cn_ip6 meta l4proto udp ct mark set 0x02000000")
-            lines.append("\t\tip6 daddr @cn_ip6 meta l4proto udp accept")
         lines.append("\t\tip daddr @cn_ip4 meta l4proto udp udp dport { 3478, 3479, 4000-4050, 5000-5550, 7000-9010, 10000-20000, 27015-27050 } meta mark set 0x02000000")
         lines.append("\t\tip daddr @cn_ip4 meta l4proto udp udp dport { 3478, 3479, 4000-4050, 5000-5550, 7000-9010, 10000-20000, 27015-27050 } ct mark set 0x02000000")
         lines.append("\t\tip daddr @cn_ip4 meta l4proto udp udp dport { 3478, 3479, 4000-4050, 5000-5550, 7000-9010, 10000-20000, 27015-27050 } accept")
+        if v6:
+            lines.append("\t\tip6 daddr @cn_ip6 meta l4proto udp udp dport { 3478, 3479, 4000-4050, 5000-5550, 7000-9010, 10000-20000, 27015-27050 } meta mark set 0x02000000")
+            lines.append("\t\tip6 daddr @cn_ip6 meta l4proto udp udp dport { 3478, 3479, 4000-4050, 5000-5550, 7000-9010, 10000-20000, 27015-27050 } ct mark set 0x02000000")
+            lines.append("\t\tip6 daddr @cn_ip6 meta l4proto udp udp dport { 3478, 3479, 4000-4050, 5000-5550, 7000-9010, 10000-20000, 27015-27050 } accept")
     if eb:
         lines.append("\t\tip daddr @cn_ip4 meta mark set 0x02000000")
         lines.append("\t\tip daddr @cn_ip4 ct mark set 0x02000000")
@@ -16756,10 +16760,9 @@ def generate_nft_rules_file(conf_dir: Path = CONF_DIR, run_dir: Path = RUN_DIR,
         if v6:
             lines.append(f"\t\tip6 daddr fc00::/18 meta l4proto udp meta mark set {fw_mark} accept")
     if gu:
-        lines.append("\t\tip daddr @cn_ip4 meta l4proto udp accept")
+        lines.append("\t\tip daddr @cn_ip4 meta l4proto udp udp dport { 3478, 3479, 4000-4050, 5000-5550, 7000-9010, 10000-20000, 27015-27050 } accept")
         if v6:
-            lines.append("\t\tip6 daddr @cn_ip6 meta l4proto udp accept")
-        lines.append("\t\tmeta l4proto udp udp dport { 3478, 3479, 4000-4050, 5000-5550, 7000-9010, 10000-20000, 27015-27050 } accept")
+            lines.append("\t\tip6 daddr @cn_ip6 meta l4proto udp udp dport { 3478, 3479, 4000-4050, 5000-5550, 7000-9010, 10000-20000, 27015-27050 } accept")
     if eb:
         lines.append("\t\tip daddr @cn_ip4 accept")
         if v6:
@@ -16858,6 +16861,16 @@ def _sync_ipv6_policy_routing(enable_v6: bool = False) -> bool:
     except Exception:
         return False
 
+
+
+def _detect_lan_bridge_dev() -> str:
+    try:
+        r_ld = subprocess.run(["uci", "-q", "get", "network.lan.device"], capture_output=True, text=True, timeout=1.5)
+        if r_ld.returncode == 0 and r_ld.stdout.strip():
+            return r_ld.stdout.strip().split()[0]
+    except (OSError, ValueError, subprocess.SubprocessError):
+        pass
+    return "br-lan"
 
 def _sync_tun_policy_routing(data_plane_mode: str = "tproxy_redirect", enable_v6: bool = False, tun_name: str = "ailink0") -> bool:
     """Synchronizes policy routing table 163 (`fwmark 0x163 -> default dev ailink0`) for TUN data-plane modes
@@ -22528,10 +22541,11 @@ def run_network_health_doctor(payload: dict = None, conf_dir: Path = CONF_DIR, a
     def _chk_3_ipv6_bypass() -> dict:
         client_v6 = str(mock_env.get("client_public_ipv6") or "").strip()
         if not client_v6 and "client_public_ipv6" not in mock_env:
-            # Check live neighbor table on br-lan ONLY if real OpenWrt br-lan exists
-            if Path("/sys/class/net/br-lan").exists() and not ipv6_proxy_on and not leak_guard_on:
+            # Check live neighbor table on dynamically detected LAN bridge (_detect_lan_bridge_dev)
+            _lan_br_dev = _detect_lan_bridge_dev()
+            if Path(f"/sys/class/net/{_lan_br_dev}").exists() and not ipv6_proxy_on and not leak_guard_on:
                 try:
-                    out = subprocess.check_output(["ip", "-6", "neigh", "show", "dev", "br-lan"], text=True, timeout=1.5)
+                    out = subprocess.check_output(["ip", "-6", "neigh", "show", "dev", _lan_br_dev], text=True, timeout=1.5)
                     for ln in out.splitlines():
                         parts = ln.split()
                         if parts and re.match(r"^2[0-9a-fA-F]{3}:", parts[0]) and ("REACHABLE" in ln or "STALE" in ln):
@@ -25276,7 +25290,7 @@ def trace_traffic_flow(payload: dict, conf_dir: Path = CONF_DIR) -> dict:
         enters_kernel = False
         stage1_badge = "🏠 内网/节点地址硬件直通 (不进内核)"
         stage1_detail = f"目标 {clean_host} 命中 nftables fib daddr local / @reserved / @node_server_v4 豁免集合，直接硬件放行。"
-    elif ops.get("game_udp_direct") and proto_l4 == "udp" and is_cn_ip and not custom_proxy_on_cn and (game_udp_ports or True):
+    elif ops.get("game_udp_direct") and proto_l4 == "udp" and is_cn_ip and not custom_proxy_on_cn and game_udp_ports:
         enters_kernel = False
         stage1_badge = "🎮 国服游戏/高频 UDP 硬件直连 (不进内核)"
         stage1_detail = f"UDP 端口 {dport} 命中「国服游戏与高频联机 UDP 直连保护」，在 nftables 防火墙层直接硬件放行，不进入 sing-box 内核。"
@@ -25479,7 +25493,7 @@ def run_full_network_matrix_test(conf_dir: Path = CONF_DIR) -> dict:
             "title": "国内视频 HTTP/3 QUIC 直通 (B站 UDP 443)",
             "target": "www.bilibili.com:443",
             "protocol": "quic",
-            "check": lambda r: r["enters_kernel"] is False and r["stage4_outbound"]["is_direct"] is True
+            "check": lambda r: (r["enters_kernel"] is False and r["stage4_outbound"]["is_direct"] is True) if ops.get("entry_bypass", True) else (r["stage4_outbound"]["is_direct"] is True)
         },
         {
             "id": "M06_GAME_LOL_UDP",
@@ -25614,9 +25628,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.6.1"
+APP_VERSION = "2.6.2"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.6.1-release-20261115-r29"
+APP_BUILD = "2.6.2-release-20261115-r31"
 
 UPDATE_MANIFEST_PRIMARY = "https://ai-link-official.pages.dev/version.json"
 UPDATE_MANIFEST_GITHUB = "https://raw.githubusercontent.com/Master-AI-007/ai-link-openwrt/main/version.json"

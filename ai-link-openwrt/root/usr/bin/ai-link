@@ -5,7 +5,7 @@
 export PYTHONDONTWRITEBYTECODE="1"
 PANEL_PORT=$(uci -q get ai-link.global.panel_port || echo "9099")
 APP_VER=$(cat /etc/ai-link/version 2>/dev/null | head -n1 | awk '{print $1}')
-[ -z "$APP_VER" ] && APP_VER="2.6.1"
+[ -z "$APP_VER" ] && APP_VER="2.6.2"
 PANEL_PWD_CUSTOM=$(uci -q get ai-link.global.panel_pwd_customized || echo "")
 # N-P0-2: Read panel_auth.json customized flag & /etc/ai-link/initial_password as single source of truth
 AUTH_CUST=$(python3 -B - <<'PY' 2>/dev/null
@@ -55,6 +55,38 @@ PY
 }
 
 case "$1" in
+	api)
+		API_METHOD="${2:-GET}"
+		API_PATH="${3:-/status}"
+		API_TOKEN="${4:-}"
+		API_BODY="${5:-}"
+		python3 -B - "$PANEL_PORT" "$API_METHOD" "$API_PATH" "$API_TOKEN" "$API_BODY" <<'PY'
+import json, sys, urllib.request, urllib.error
+
+port, method, path, token, body_raw = sys.argv[1], sys.argv[2].upper(), sys.argv[3], sys.argv[4], sys.argv[5]
+if not path.startswith("/"):
+    path = "/" + path
+url = f"http://127.0.0.1:{port}/api{path}"
+headers = {"Accept": "application/json"}
+if token:
+    headers["X-AI-Link-Token"] = token
+data = None
+if body_raw and method in ("POST", "PUT", "PATCH"):
+    data = body_raw.encode("utf-8")
+    headers["Content-Type"] = "application/json"
+req = urllib.request.Request(url, data=data, method=method, headers=headers)
+try:
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        sys.stdout.write(resp.read().decode("utf-8", "replace"))
+except urllib.error.HTTPError as e:
+    try:
+        sys.stdout.write(e.read().decode("utf-8", "replace"))
+    except Exception:
+        sys.stdout.write(json.dumps({"ok": False, "error": "unauthorized" if e.code == 401 else f"http_{e.code}", "message": f"HTTP {e.code}"}))
+except Exception as e:
+    sys.stdout.write(json.dumps({"ok": False, "error": "rpc_bridge_error", "message": str(e)}))
+PY
+		;;
 	svc_state|status_check)
 		/etc/init.d/ai-link "$1"
 		;;

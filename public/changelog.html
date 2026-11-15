@@ -18,7 +18,7 @@
         <circle cx="20" cy="20" r="5.4" fill="none" stroke="#a994ff" stroke-width="1.6"/>
         <circle cx="20" cy="20" r="1.8" fill="#6ee7f5"/>
       </svg>
-      <span style="display:block"><b>AI-LINK</b><span>NEXUS · 2.6.1</span></span>
+      <span style="display:block"><b>AI-LINK</b><span>NEXUS · 2.6.2</span></span>
     </a>
     <div class="nav-links">
       <a href="/#features">核心能力</a>
@@ -36,12 +36,22 @@
 <main class="wrap log-wrap">
   <div class="log-head">
     <h1>更新日志</h1>
-    <span class="pill"><i></i> 当前最新 2.6.1</span>
+    <span class="pill"><i></i> 当前最新 2.6.2</span>
   </div>
 <article class="log-item latest">
   <div class="log-top">
-    <h2>v2.6.1</h2>
+    <h2>v2.6.2</h2>
     <span class="tag c">最新</span>
+    <time>2026-11-15</time>
+  </div>
+  <p style="margin:2px 0 6px;color:var(--dim)"></p>
+<h3>用户前端 UX 审计 P0/P1/P2 全量整改与升级入口恢复（PKG_RELEASE 31）</h3>
+<ul><li><b>正常升版</b>：升至 <code>v2.6.2</code>（<code>PKG_RELEASE:=31</code> / <code>r31</code>），增量基准为已上线的 <code>v2.6.1</code>（Release #445649604 / <code>999fc22</code> / 部署 <code>1d2cdaef</code>）；现网设备可正常收 OTA 提示。</li><li><b>USER_REPORTED-20261115-01 (P0)</b>：<code>nexus.js</code> 引入 <code>_modalStack</code> 模态栈与 <code>openDrawer()</code> 抽屉分离，<code>openModal(</code> 调用点由 48 处收敛至 8 处；应急旁路显式提示、HomeLink 公网 DDNS 告警、订阅失败原地粘贴/切镜像、LuCI HTTPS CLI RPC 桥接、清除 <code>#music-unlock-card</code> 僵尸代码。</li><li><b>USER_REPORTED-20261115-01 (P1/P2)</b>：<code>nexus3d.js</code> 自定义 GLSL Fresnel Shader + PBR 材质且完整保留遥测 HUD 与检视面板数据；设置页 4 分组 + Danger Zone；<code>backdrop-filter</code> 22→3 处、<code>@media</code> 收敛为 768/1280 两档；术语产品化与 <code>window.NexusModules</code> 模块化。</li><li><b>USER_REPORTED-20261115-02 / 03 / 04</b>：恢复设置页 <code>#btn-check-core-update</code>（内核智能检测升级）与 <code>#btn-ota-check</code> / <code>#btn-ota-apply</code>（插件检测与升级），按钮瘦身不误删这两个功能性入口。</li><li><b>系统加固</b>：保留 r30 的 NET-262-01~03 + UX-262-01；闭环 Hydrogen 2 项 Minor（动态 LAN 网桥探测与 <code>init.d</code> <code>flock -w 10</code> 并发锁）。</li><li>验收：<code>INSTALL_RC=0</code>、服务全 1、<code>nft ok:true</code>、重启自愈、自检 10/10 + 负向、零补发 <code>run_all 15/15 / RC=0</code>、混沌 <b>95/95</b>、门禁双布局 17/17 与 1 字节篡改转红、11 行指纹 11/11、UI 六页三视口零溢出、设备侧出网 200/200/204。</li></ul>
+</article>
+<article class="log-item">
+  <div class="log-top">
+    <h2>v2.6.1</h2>
+    <span class="tag">历史</span>
     <time>2026-11-15</time>
   </div>
   <p style="margin:2px 0 6px;color:var(--dim)"></p>
