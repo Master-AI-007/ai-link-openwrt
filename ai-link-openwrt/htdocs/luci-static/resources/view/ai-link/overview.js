@@ -44,12 +44,12 @@ return view.extend({
 				}).catch(function() { return ''; });
 			}).catch(function() { return ''; });
 		}
-		var currentVer = String(uci.get('ai-link', 'global', 'app_version') || '2.6.2');
+		var currentVer = String(uci.get('ai-link', 'global', 'app_version') || '2.6.3');
 		var unlockBtnHtml = ' <button type="button" id="luci-btn-unlock-panel" style="padding:2px 8px; border-radius:5px; border:1px solid rgba(56,189,248,0.35); background:rgba(14,116,144,0.25); color:#7dd3fc; font-size:11px; cursor:pointer;">🔓 解锁状态</button>';
 		var pwdFieldHtml = pwdIsCustom
 			? '<span style="font-size:12px; color:#94a3b8; display:inline-flex; align-items:center; gap:6px;">面板密码: <code id="luci-panel-pwd-mask" style="background:#0f172a; padding:2px 7px; border-radius:5px; color:#e2e8f0; border:1px solid rgba(148,163,184,0.2);">已自定义 · 不回显</code>' + unlockBtnHtml + ' <span style="font-size:11px; color:#64748b;">（忘记可执行 ai-link password 重置）</span></span>'
 			: '<span style="font-size:12px; color:#94a3b8; display:inline-flex; align-items:center; gap:6px;">面板密码: <code id="luci-panel-pwd-mask" style="background:#0f172a; padding:2px 7px; border-radius:5px; color:#e2e8f0; border:1px solid rgba(148,163,184,0.2);">••••••••</code> <button type="button" id="luci-btn-toggle-pwd" style="padding:2px 8px; border-radius:5px; border:1px solid rgba(148,163,184,0.3); background:rgba(30,41,59,0.8); color:#cbd5e1; font-size:11px; cursor:pointer;">查看</button>' + unlockBtnHtml + '</span>';
-		var pageProto = (typeof window !== 'undefined' && window.location && window.location.protocol === 'https:' && String(window.location.port || '443') === String(port)) ? 'https://' : 'http://';
+		var pageProto = ((typeof window !== 'undefined' && window.location && window.location.protocol) ? window.location.protocol : 'http:') + '//';
 		var panelUrl = pageProto + host + ':' + port + '/';
 		var apiBase = pageProto + host + ':' + port + '/api';
 		var pwdVisible = false;
@@ -66,7 +66,7 @@ return view.extend({
 		}
 
 		m = new form.Map('ai-link', _('AI-LINK 智能分流网关'),
-			_('专为全屋智能分流、抗 DNS 污染、回家内网穿透与多区域故障自愈设计的轻量透明代理网关（v2.6.2 正式版 · 纯血 Sing-box 内核）。'));
+			_('专为全屋智能分流、抗 DNS 污染、回家内网穿透与多区域故障自愈设计的轻量透明代理网关（v2.6.3 正式版 · 纯血 Sing-box 内核）。'));
 
 		s = m.section(form.NamedSection, 'global', globalSecType, _('运行状态概览与基础控制'));
 		s.anonymous = true;
@@ -192,6 +192,18 @@ return view.extend({
 				box.textContent = txt;
 			};
 
+
+			var fetchWithTimeout = function(url, opts, timeoutMs) {
+				var ms = timeoutMs || 5000;
+				if (typeof AbortController === 'function') {
+					var ctrl = new AbortController();
+					var timer = setTimeout(function() { try { ctrl.abort(); } catch(e) {} }, ms);
+					var finalOpts = Object.assign({}, opts || {}, { signal: ctrl.signal });
+					return fetch(url, finalOpts).finally(function() { clearTimeout(timer); });
+				}
+				return fetch(url, opts);
+			};
+
 			var syncOpenPanelLinkToken = function(tok) {
 				var openLink = mapEl.querySelector('#luci-open-panel-link');
 				if (openLink && tok) {
@@ -212,7 +224,7 @@ return view.extend({
 			var callApi = function(path, method, bodyObj, _retried) {
 				return ensureLuciToken(Boolean(_retried)).then(function(tok) {
 					syncOpenPanelLinkToken(tok);
-					var isHttpsMixed = (typeof window !== 'undefined' && window.location && window.location.protocol === 'https:' && apiBase.indexOf('http://') === 0);
+					var isHttpsMixed = (typeof window !== 'undefined' && window.location && window.location.protocol === 'https:' && String(window.location.port || '443') !== String(port));
 					if (isHttpsMixed) {
 						return callApiViaCliBridge(path, method, bodyObj, tok).then(function(res) {
 							if (res && res.error === 'unauthorized' && !_retried) {
@@ -231,7 +243,7 @@ return view.extend({
 						opts.headers['Content-Type'] = 'application/json';
 						opts.body = JSON.stringify(bodyObj);
 					}
-					return fetch(apiBase + path, opts).then(function(r) { return r.json(); }).catch(function() {
+					return fetchWithTimeout(apiBase + path, opts, 5000).then(function(r) { return r.json(); }).catch(function() {
 						return callApiViaCliBridge(path, method, bodyObj, tok);
 					}).then(function(res) {
 						if (res && res.error === 'unauthorized' && !_retried) {
@@ -556,7 +568,7 @@ return view.extend({
 					}
 					var pwd = window.prompt('请输入 AI-LINK 面板密码以解锁状态与在线更新：', '');
 					if (!pwd) return;
-					fetch(apiBase + '/login', {
+					fetchWithTimeout(apiBase + '/login', {
 						method: 'POST',
 						headers: { 'Content-Type': 'application/json' },
 						body: JSON.stringify({ password: pwd })

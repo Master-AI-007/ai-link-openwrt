@@ -2,9 +2,10 @@
 # AI-LINK Command Line Utility for OpenWrt SSH Management (v2.0.0)
 # Usage: ai-link [status|svc_state|password|port|update|probe|probe-now|check|max-nodes|import-cache|sync-sub|import-nodes|add-test-node|mute-conflicts|recover|recover_direct|restore|restart|restart_core|uninstall]
 
+set -e
 export PYTHONDONTWRITEBYTECODE="1"
-PANEL_PORT=$(uci -q get ai-link.global.panel_port || echo "9099")
-APP_VER=$(cat /etc/ai-link/version 2>/dev/null | head -n1 | awk '{print $1}')
+PANEL_PORT=$(uci -q get ai-link.global.panel_port 2>/dev/null || echo "9099")
+APP_VER=$(cat /etc/ai-link/version 2>/dev/null | head -n1 | awk '{print $1}' || true)
 [ -z "$APP_VER" ] && APP_VER="2.6.2"
 PANEL_PWD_CUSTOM=$(uci -q get ai-link.global.panel_pwd_customized || echo "")
 # N-P0-2: Read panel_auth.json customized flag & /etc/ai-link/initial_password as single source of truth
@@ -23,7 +24,7 @@ PY
 if [ "$AUTH_CUST" = "1" ] || { [ -z "$AUTH_CUST" ] && [ "$PANEL_PWD_CUSTOM" = "1" ]; }; then
 	PANEL_SECRET="已自定义（不可回显 · 执行 ai-link password <新密码> 重置）"
 else
-	INIT_PW=$(cat /etc/ai-link/initial_password 2>/dev/null | tr -d '\r\n ')
+	INIT_PW=$(cat /etc/ai-link/initial_password 2>/dev/null | tr -d '\r\n ' || true)
 	if [ -n "$INIT_PW" ]; then
 		PANEL_SECRET="仍是初始密码: ${INIT_PW} （存储于 /etc/ai-link/initial_password · 建议执行 ai-link password <新密码> 修改）"
 	else
@@ -35,9 +36,9 @@ CACHE_DIR=$(uci -q get ai-link.global.host_cache_dir || echo "/tmp/ai-link-cache
 MAX_NODES=$(cat /etc/ai-link/max_outbounds.txt 2>/dev/null || uci -q get ai-link.global.max_outbounds || echo "120")
 CORE_VER="未安装"
 if command -v sing-box >/dev/null 2>&1; then
-	CORE_VER="sing-box $(sing-box version 2>/dev/null | head -n1 | awk '{print $3}')"
+	CORE_VER="sing-box $(sing-box version 2>/dev/null | head -n1 | awk '{print $3}' || echo unknown)"
 fi
-BUILD_MODE=$(cat /etc/ai-link/build_mode.txt 2>/dev/null || echo "auto")
+BUILD_MODE=$(cat /etc/ai-link/build_mode.txt 2>/dev/null || echo "auto" || true)
 
 wait_core_ready() {
 	python3 -B - <<'PY' 2>/dev/null

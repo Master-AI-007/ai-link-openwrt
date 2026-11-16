@@ -1,5 +1,5 @@
 #!/bin/sh
-# AI-LINK v24 Unified Single-Source fw4/nftables Loader (P0-1 BusyBox flock 3-Tier Lock Hardened)
+# AI-LINK v2.6.3 Unified Single-Source fw4/nftables Loader (P0-1 BusyBox flock 3-Tier Lock Hardened)
 # Note: Ruleset generation is unified in /usr/share/ai-link/ai-link-daemon.py (--generate-nft)
 # with 3-tier lock serialization (util-linux flock -w -> BusyBox flock -n loop -> mkdir spinlock),
 # atomic temp-file replacement, and non-silent error reporting.
@@ -80,6 +80,9 @@ if [ "${AI_LINK_NFT_PREGENERATED:-0}" = "1" ] && [ -s "$NFT_FILE" ] && [ $# -eq 
 else
 	if command -v python3 >/dev/null 2>&1 && [ -f "$DAEMON_PY" ]; then
 		python3 -B "$DAEMON_PY" --generate-nft "$@" >/dev/null 2>&1 || true
+	fi
+	if [ ! -s "$NFT_FILE" ] && command -v python3 >/dev/null 2>&1 && [ -f "$DAEMON_PY" ]; then
+		python3 -B "$DAEMON_PY" --generate-configs >/dev/null 2>&1 || true
 	fi
 	if [ ! -s "$NFT_FILE" ]; then
 		logger -t "ai-link" "ERROR: $NFT_FILE not found or empty and daemon generator unavailable"

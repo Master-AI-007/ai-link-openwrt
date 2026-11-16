@@ -4,7 +4,7 @@
 
 **NEXUS 全域 3D 智能网关 · 运行在 OpenWrt 上的智能分流系统**
 
-[![version](https://img.shields.io/badge/version-2.6.2-6ee7f5?style=flat-square)](https://github.com/Master-AI-007/ai-link-openwrt/releases/tag/v2.6.2)
+[![version](https://img.shields.io/badge/version-2.6.3-6ee7f5?style=flat-square)](https://github.com/Master-AI-007/ai-link-openwrt/releases/tag/v2.6.3)
 [![platform](https://img.shields.io/badge/OpenWrt-23.05%20%7C%2024.10%20%7C%20ImmortalWrt-a994ff?style=flat-square)](#环境要求)
 [![core](https://img.shields.io/badge/sing--box-1.14.1-54e6b5?style=flat-square)](#技术架构)
 [![license](https://img.shields.io/badge/license-MIT-f9a8d4?style=flat-square)](#许可与免责)
@@ -30,9 +30,9 @@ AI-LINK 是一套面向 OpenWrt 的**智能分流网关**：用 sing-box 单内�
 
 ---
 
-## 核心能力总览（v2.6.2）
+## 核心能力总览（v2.6.3）
 
-> **v2.6.2 增量**：按用户前端视觉/交互/架构深度审查报告完成 P0/P1/P2 全量整改——`_modalStack` 模态栈防覆写与 `openDrawer` 抽屉分离（`openModal` 48→8 处）、3D 自定义 GLSL Fresnel Shader 与 PBR 材质、设置页 4 分组 + Danger Zone、`backdrop-filter` 22→3 处与断点两档收敛、术语产品化与 `NexusModules` 模块化；恢复「sing-box 内核智能检测升级」与「插件升级」按钮；保留 r30 网络修复并新增动态网桥探测与 `init.d` `flock` 并发锁。真机 `run_all 15/15`、混沌 **95/95**（新增 `Stage 7.32`）。
+> **v2.6.3 增量**：完成 11 项全栈深度优化——3D `dispose()`/`removeEventListener` 零泄漏、首屏 ≤8 按钮、分流页 ≤12 按钮、CSS Elevation 三级令牌、6 独立 JS 模块、47 处原子写与 HTTP 安全响应头；闭环 `USER_REPORTED-20261116-01`：3D 终端列表新增显式「TOP3 / 所有设备」切换控件并 `localStorage` 持久化（24 次多设备采样 0 翻转）；国服游戏直连 5 项——魔兽/战网 TCP+UDP 双协议直通、`@direct_bypass` 脱钩 `entry_bypass`、`block_quic` 不误杀国内、`Domestic_CN` 优先、战网/网易白名单。真机 `run_all 15/15`、混沌 **98/98**（新增 `Stage 7.33/7.34/7.35`）。
 
 
 | | 能力 | 说明 |
@@ -185,7 +185,8 @@ sing-box 1.14.1（单内核）
 
 | 版本 | 日期 | 主题 |
 |---|---|---|
-| **2.6.2** | 2026-11-15 | 用户前端 UX 审计全量整改与升级入口恢复（r31） |
+| **2.6.3** | 2026-11-16 | 全栈优化、3D 切换闭环与国服游戏直连（r34） |
+| 2.6.2 | 2026-11-15 | 用户前端 UX 审计全量整改与升级入口恢复（r31） |
 | 2.6.1 | 2026-11-15 | 闭环 FB-2600-1~3 与全栈深度审查 27 项遗留缺陷（r29） |
 | 2.6.0 | 2026-11-15 | 30 轮审查 36 项闭环与防回归护栏加固（r28） |
 | 2.5.16 | 2026-11-11 | 雷达毫秒级冷启动 + 自动池秒切 + LuCI 鉴权与星图提速（r27） |
@@ -236,10 +237,10 @@ sing-box 1.14.1（单内核）
 ## 包指纹
 
 ```
-AI-LINK-v2.6.2.tar.gz
-size   1,143,675 B
-md5    ba5192e0513f2fe3384e23cea6048189
-sha256 0a01384ea45bd011ea2965176cfde66b034292dc3bc3491778a05a9efe46c8e1
+AI-LINK-v2.6.3.tar.gz
+size   1,156,709 B
+md5    2edb06e886cec1750343a85f1d7c1264
+sha256 b27a38b0956bfb01734e17187e5b660f6851d79c9b19be79cae93d01789bf2c4
 ```
 
 在线清单：<https://ai-link-official.pages.dev/version.json>

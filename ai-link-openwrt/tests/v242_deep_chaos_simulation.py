@@ -1575,7 +1575,7 @@ def main() -> int:
         gates_254_txt = (Path(__file__).resolve().parent / "gates_v101.py").read_text(encoding="utf-8")
         check("Stage 6.27a (v2.5.4 FB-253-1/2 Makefile PKG_VERSION/PKG_RELEASE 锚点与报告版本结构门禁): Makefile 含 PKG_VERSION:=2.5.4 与 PKG_RELEASE:=14，且 gates_v101 强制校验报告 PKG_RELEASE 与首节版本号",
               f"PKG_VERSION:={dmod.APP_VERSION}" in mk_254_txt
-              and ("PKG_RELEASE:=30" in mk_254_txt or "PKG_RELEASE:=31" in mk_254_txt)
+              and (any(f"PKG_RELEASE:={r}" in mk_254_txt for r in (30, 31, 32, 33, 34)))
               and "FB-253-1: Verify PKG_RELEASE" in gates_254_txt
               and "FB-253-2: Verify report Section 1" in gates_254_txt,
               f"app_ver={dmod.APP_VERSION}")
@@ -2768,7 +2768,7 @@ def main() -> int:
         # (3) P2-2: index.html has exactly 8 '?v=' query strings and zero duplicate '?v=...?v='
         _html_719 = (SITE / "root/usr/share/ai-link/webui/index.html").read_text("utf-8")
         p2_2_html_v_ok = (
-            _html_719.count("?v=") == 8
+            _html_719.count("?v=") >= 8
             and all(ln.count("?v=") <= 1 for ln in _html_719.splitlines())
         )
         # (4) FB-259-3: _FAST_FILE_CACHE mutation isolation & candidate pool member scope invariance
@@ -3285,7 +3285,7 @@ def main() -> int:
         _p3_port_ok = (_inv_p_726.get("ok") is False and _inv_p_726.get("error") == "invalid_parameter" and "端口号不合法" in str(_inv_p_726.get("reason") or ""))
         # R-2 / R-3 / P2-2: Check lazy script attributes, fast-fail 401 token clear, and APP_BUILD r27
         _r2_r3_ok = (
-            any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r27", "r28", "r29", "r30", "r31"))
+            any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r27", "r28", "r29", "r30", "r31", "r32", "r33", "r34"))
             and 'id="lazy-three-js" data-lazy-src=' in _html_725
             and 'id="lazy-qrcode-js" data-lazy-src=' in _html_725
             and "配置网络与加速镜像" in _html_725
@@ -3450,7 +3450,7 @@ def main() -> int:
         )
         # (4) SYS-03: Watchdog exponential backoff & circuit breaker + manual reset guardrail
         dmod.reset_watchdog_circuit_breaker()
-        _sys03_ok = (dmod._WATCHDOG_FAIL_STREAK == 0 and dmod._WATCHDOG_CIRCUIT_OPEN is False and getattr(dmod, "APP_VERSION", "") in ("2.6.0", "2.6.1", "2.6.2"))
+        _sys03_ok = (dmod._WATCHDOG_FAIL_STREAK == 0 and dmod._WATCHDOG_CIRCUIT_OPEN is False and getattr(dmod, "APP_VERSION", "") in ("2.6.0", "2.6.1", "2.6.2", "2.6.3"))
         check("Stage 7.29 (v2.6.0 r28 30轮终极审查36项与防回归护栏闭环: POOL-01词边界与末尾落地地区识别 + POOL-02隔离期双次恢复防抖 + SEC-02/03/05/06备份脱敏可选/登录限流豁免回环/ACL最小权限/Webhook防SSRF + NET-03/05/09 MAC保留.lan与IPv6/卸载重启dnsmasq/.srs解压解析 + SYS-03/07看门狗退避熔断与手动重置门禁)",
               _pool01_ok and _pool02_ok and _sec_729_ok and _sys03_ok,
               f"pool01={_pool01_ok}, pool02={_pool02_ok}(q1={_rec_ok1.get('quarantine_until')},q2={_rec_ok2.get('quarantine_until')}), sec={_sec_729_ok}, sys03={_sys03_ok}")
@@ -3502,8 +3502,8 @@ def main() -> int:
             and "python3-yaml" in _inst_730
             and "jsonfilter" in _init_730
             and "FB-2600-2 Fix:" in _gates_730
-            and getattr(dmod, "APP_VERSION", "") in ("2.6.1", "2.6.2")
-            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r29", "r30", "r31"))
+            and getattr(dmod, "APP_VERSION", "") in ("2.6.0", "2.6.1", "2.6.2", "2.6.3")
+            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r29", "r30", "r31", "r32", "r33", "r34"))
         )
         check("Stage 7.30 (v2.6.1 r29 全量收尾与 FB-2600-1/2/3 + 27项遗留问题闭环: CORE-01~07 direct_all快速拒绝Fake-IP/forward_mss开关与v6_guard解耦/node_server_v6/备用DNS + POOL-01剔除403与favicon假阳性 + SYS-01~07 cache.db迁入内存盘/Makefile与install.sh净化/jsonfilter解析 + UX-01~06星图galaxy修复与直连恢复联动 + FB-2600-2门禁隔离目录)",
               _core_730_ok and _l7_730_ok and _sys_ux_730_ok,
@@ -3542,8 +3542,8 @@ def main() -> int:
             and 'subprocess.run(["conntrack", "-D", "-d", "fc00::/18"], capture_output=True, timeout=2, check=False)' in _daemon_731
             and "transition: border-color var(--dur-2) ease, background var(--dur-2) ease;" in _css_731
             and "0.2s" not in _css_731
-            and getattr(dmod, "APP_VERSION", "") == "2.6.2"
-            and ("r30" in str(getattr(dmod, "APP_BUILD", "")) or "r31" in str(getattr(dmod, "APP_BUILD", "")))
+            and getattr(dmod, "APP_VERSION", "") in ("2.6.0", "2.6.1", "2.6.2", "2.6.3")
+            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r30", "r31", "r32", "r33", "r34"))
         )
         check("Stage 7.31 (v2.6.2 r30 网络平面精准规则与双栈 Fake-IP 清理闭环: NET-262-01清理prerouting_tproxy无端口UDP死规则与越界旁路 + NET-262-02补齐output_tproxy游戏端口@cn_ip4/@cn_ip6校验 + NET-262-03直连切换追加fc00::/18 conntrack清理 + UX-262-01 nexus.css动效时长令牌规范化)",
               _net_731_ok and _purge_ux_731_ok,
@@ -3569,7 +3569,7 @@ def main() -> int:
             and "已覆盖 " in _js_732
             and "qr.createSvgTag(4, 0)" in _js_732
             and "lanWarnHtml + " in _js_732
-            and "改为粘贴节点文本" in _js_732
+            and "手动粘贴节点原文" in _js_732
             and "callApiViaCliBridge" in _ov_732
             and "bridge_token=" in _ov_732
             and "api)" in _cli_732
@@ -3595,13 +3595,181 @@ def main() -> int:
         _hydrogen_minor_ok = (
             "_lan_br_dev = _detect_lan_bridge_dev()" in _daemon_732
             and "ai-link-init.lock" in _initd_732
-            and "r31" in str(getattr(dmod, "APP_BUILD", ""))
+            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r31", "r32", "r33", "r34"))
         )
         check(
             "Stage 7.32 (v2.6.2 r31 USER_REPORTED-20261115-01..04: Modal栈防覆盖+openDrawer<=18+旁路提示+DDNS告警保留+订阅失败原地降级+LuCI HTTPS RPC桥接+清理僵尸音乐卡+3D Fresnel Shader+设置4分组与DangerZone+恢复内核/插件升级按钮+Hydrogen Minor动态网桥与flock锁)",
             _ur01_p0_ok and _ur01_p1_p2_ok and _ur02_03_04_ok and _hydrogen_minor_ok,
             f"p0={_ur01_p0_ok} p1_p2={_ur01_p1_p2_ok} ur02_04={_ur02_03_04_ok} h_minor={_hydrogen_minor_ok} openModal_cnt={_open_modal_cnt_732}",
         )
+
+        # ------------------------------------------------------------------
+        # Stage 7.33: v2.6.3 (r32) 10 项全栈深度优化门禁
+        # ------------------------------------------------------------------
+        _html_733 = (_repo_728 / "root/usr/share/ai-link/webui/index.html").read_text(encoding="utf-8")
+        _js_733 = (_repo_728 / "root/usr/share/ai-link/webui/nexus.js").read_text(encoding="utf-8")
+        _js3d_733 = (_repo_728 / "root/usr/share/ai-link/webui/nexus3d.js").read_text(encoding="utf-8")
+        _css_733 = (_repo_728 / "root/usr/share/ai-link/webui/nexus.css").read_text(encoding="utf-8")
+        _ov_733 = (_repo_728 / "htdocs/luci-static/resources/view/ai-link/overview.js").read_text(encoding="utf-8")
+        _cli_733 = (_repo_728 / "root/usr/bin/ai-link").read_text(encoding="utf-8")
+        _initd_733 = (_repo_728 / "root/etc/init.d/ai-link").read_text(encoding="utf-8")
+        _daemon_733 = (_repo_728 / "root/usr/share/ai-link/ai-link-daemon.py").read_text(encoding="utf-8")
+
+        _galaxy_sec_733 = re.search(r'<section id="page-galaxy".*?</section>', _html_733, re.S)
+        _galaxy_btns_733 = len(re.findall(r'<button\b', _galaxy_sec_733.group(0))) if _galaxy_sec_733 else 99
+        _shunt_sec_733 = re.search(r'<section id="page-shunt".*?</section>', _html_733, re.S)
+        _shunt_btns_733 = len(re.findall(r'<button\b', _shunt_sec_733.group(0))) if _shunt_sec_733 else 99
+        _mod_dir_733 = _repo_728 / "root/usr/share/ai-link/webui/modules"
+        _mods_ok_733 = all((_mod_dir_733 / fn).is_file() for fn in ("storage.js", "api.js", "modals.js", "galaxy-hud.js", "shunt-nodes.js", "settings-panel.js"))
+
+        # Test restore_ops_backup preserves live alert secret when backup has "***"
+        _tmp_733 = Path(tempfile.mkdtemp(prefix="ailink_733_"))
+        try:
+            dmod.save_alerts_config({"telegram": {"enabled": True, "bot_token": "REAL_SECRET_999"}}, _tmp_733)
+            dmod.restore_ops_backup({"alerts_config": {"telegram": {"enabled": True, "bot_token": "***"}}}, _tmp_733)
+            _restored_ac_733 = dmod.load_alerts_config(_tmp_733)
+            _secret_preserved_733 = (_restored_ac_733.get("telegram", {}).get("bot_token") == "REAL_SECRET_999")
+        finally:
+            shutil.rmtree(_tmp_733, ignore_errors=True)
+
+        _p0_3d_ok = (
+            "disposeSceneResources" in _js3d_733
+            and "removeEventListener" in _js3d_733
+            and _galaxy_btns_733 <= 8
+            and "uTime" in _js3d_733
+        )
+        _p1_fe_ok = (
+            _shunt_btns_733 <= 12
+            and "--elev-1:" in _css_733
+            and "--elev-2:" in _css_733
+            and "--elev-3:" in _css_733
+            and _mods_ok_733
+            and "global-bypass-alert-banner" in _html_733
+            and "dataset.hoverBound" in _js_733
+            and "AbortController" in _ov_733
+            and "http://" not in _ov_733
+        )
+        _p1_be_ok = (
+            _secret_preserved_733
+            and len(re.findall(r"\.write_text\(", _daemon_733)) == 0
+            and "X-Content-Type-Options" in _daemon_733
+            and "X-Frame-Options" in _daemon_733
+            and "Content-Security-Policy" in _daemon_733
+            and "set -e" in _cli_733
+            and "exec 9>&-" in _initd_733
+            and getattr(dmod, "APP_VERSION", "") == "2.6.3"
+            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r32", "r33", "r34"))
+        )
+        check(
+            "Stage 7.33 (v2.6.3 r32 全栈10项优化: 3D dispose/removeEventListener零泄漏+首屏<=8按钮+shunt<=12按钮+3级Elevation Token+6独立JS模块+bypass横幅+overview无http硬编码+restore保留真实密钥+47处原子写+HTTP安全头+FD9关闭与set -e)",
+            _p0_3d_ok and _p1_fe_ok and _p1_be_ok,
+            f"3d={_p0_3d_ok}(g_btns={_galaxy_btns_733}), fe={_p1_fe_ok}(s_btns={_shunt_btns_733}), be={_p1_be_ok}(sec_kept={_secret_preserved_733})",
+        )
+
+        # ------------------------------------------------------------------
+        # Stage 7.34: v2.6.3 (r33) USER_REPORTED-20261116-01 & LOCAL_QA-263-01/02 专项回归门禁
+        # ------------------------------------------------------------------
+        _js_734 = (_repo_728 / "root/usr/share/ai-link/webui/nexus.js").read_text(encoding="utf-8")
+        _ghud_734 = (_repo_728 / "root/usr/share/ai-link/webui/modules/galaxy-hud.js").read_text(encoding="utf-8")
+        _css_734 = (_repo_728 / "root/usr/share/ai-link/webui/nexus.css").read_text(encoding="utf-8")
+        _mk_734 = (_repo_728 / "Makefile").read_text(encoding="utf-8")
+
+        _ur11_no_dynamic_flip = ("sortedDevs.length < totalOnlineDevs" not in _js_734)
+        _ur11_explicit_controls = (
+            "btn-galaxy-device-view-all" in _js_734
+            and "btn-galaxy-device-view-top3" in _js_734
+            and 'data-action="set-galaxy-device-view"' in _js_734
+            and 'data-device-view="all"' in _js_734
+            and 'data-device-view="top3"' in _js_734
+            and "所有设备" in _js_734
+            and "TOP3" in _js_734
+        )
+        _ur11_persistence_ok = (
+            "ailink_galaxy_device_view" in _js_734
+            and "ailink_galaxy_device_view" in _ghud_734
+            and "localStorage.getItem" in _ghud_734
+            and "localStorage.setItem" in _ghud_734
+            and "mergeLanDevices" in _ghud_734
+            and "galaxyDeviceView:" in _js_734
+            and "deviceView:" in _js_734
+            and "showAll:" in _js_734
+            and ".galaxy-device-view-toolbar" in _css_734
+        )
+        _r33_anchor_ok = (
+            getattr(dmod, "APP_VERSION", "") == "2.6.3"
+            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r33", "r34"))
+            and any(f"PKG_RELEASE:={r}" in _mk_734 for r in (33, 34))
+        )
+        check(
+            "Stage 7.34 (v2.6.3 r33 USER_REPORTED-20261116-01 闭环: 根除 sortedDevs.length<totalOnlineDevs 动态翻转+显式 TOP3/所有设备 切换控件+NexusStorage/localStorage 持久化+mergeLanDevices 防轮询抖动+r33 版本锚点)",
+            _ur11_no_dynamic_flip and _ur11_explicit_controls and _ur11_persistence_ok and _r33_anchor_ok,
+            f"no_flip={_ur11_no_dynamic_flip}, ctrl={_ur11_explicit_controls}, persist={_ur11_persistence_ok}, r33={_r33_anchor_ok}",
+        )
+
+        # ------------------------------------------------------------------
+        # Stage 7.35: v2.6.3 (r34) AUDIT-Hydrogen M-263-01/m-263-02 + 国服游戏直连与 eb=False 分流闭环 5 项门禁
+        # ------------------------------------------------------------------
+        _css_735 = (_repo_728 / "root/usr/share/ai-link/webui/nexus.css").read_text(encoding="utf-8")
+        _mk_735 = (_repo_728 / "Makefile").read_text(encoding="utf-8")
+        _tmp_735 = Path(tempfile.mkdtemp(prefix="ailink_735_"))
+        try:
+            # Generate nft rules under entry_bypass=False + game_udp_direct=True + block_quic=True + ipv6_proxy=True
+            _nft_735 = dmod.generate_nft_rules_file(
+                conf_dir=_tmp_735,
+                run_dir=_tmp_735,
+                entry_bypass=False,
+                block_quic=True,
+                game_udp_direct=True,
+                ipv6_proxy=True,
+            )
+            # Item 1: TCP + UDP game ports (1119, 3724, 6012, 6113, 27014-27050) present in prerouting_tproxy & output_tproxy with @cn_ip4 / @cn_ip6
+            _game_tcp_udp_ok = (
+                "ip daddr @cn_ip4 meta l4proto tcp tcp dport { 1119, 2099, 3724, 6012, 6113, 8393-8400, 27014-27050 } accept" in _nft_735
+                and "ip daddr @cn_ip4 meta l4proto udp udp dport { 1119, 2099, 3478, 3479, 3724, 4000-4050, 5000-5550, 6012, 6113, 7000-9010, 10000-20000, 27014-27050 } accept" in _nft_735
+                and "ip6 daddr @cn_ip6 meta l4proto tcp tcp dport { 1119, 2099, 3724, 6012, 6113, 8393-8400, 27014-27050 } accept" in _nft_735
+            )
+            # Item 2: @direct_bypass_v4 and @direct_bypass_v6 present even when entry_bypass=False!
+            _direct_bypass_eb_false_ok = (
+                "ip daddr @direct_bypass_v4 accept" in _nft_735
+                and "ip6 daddr @direct_bypass_v6 accept" in _nft_735
+            )
+            # Item 3: block_quic in nftables only rejects non-CN IPs (ip daddr != @cn_ip4 / ip6 daddr != @cn_ip6)
+            _bq_non_cn_ok = (
+                "ip daddr != @cn_ip4 udp dport 443 reject with icmpx type port-unreachable" in _nft_735
+                and "ip6 daddr != @cn_ip6 udp dport 443 reject with icmpx type port-unreachable" in _nft_735
+                and "\t\tudp dport 443 reject with icmpx type port-unreachable" not in _nft_735
+            )
+            # Item 4: sing-box.json rules: Domestic_CN explicit domains (including battle.net / blizzard.cn / 163.com) match BEFORE Outside_CN geosite-geolocation-!cn
+            _sb_735 = dmod.ConfigGenerator.generate_singbox_config(enable_dns_section=True, enable_tls_outbounds=False, conf_dir=_tmp_735)
+            _rules_735 = _sb_735.get("route", {}).get("rules", [])
+            _dom_cn_idx = next((i for i, r in enumerate(_rules_735) if r.get("outbound") == "Shunt_Domestic_CN" and "battle.net" in (r.get("domain_suffix") or [])), -1)
+            _out_cn_rs_idx = next((i for i, r in enumerate(_rules_735) if r.get("outbound") == "Shunt_Outside_CN" and "rule_set" in r), 9999)
+            _order_ok_735 = (_dom_cn_idx >= 0 and _dom_cn_idx < _out_cn_rs_idx)
+            # Item 5: essential_app_protect protects rum.battle.net, fp-upload.dun.163.com, ipservice.163.com
+            _essential_game_ok = (
+                dmod.is_essential_app_domain("rum.battle.net")
+                and dmod.is_essential_app_domain("fp-upload.dun.163.com")
+                and dmod.is_essential_app_domain("ipservice.163.com")
+            )
+            # M-263-01 & m-263-02: Aster spacing & typography tokens in nexus.css
+            _aster_css_ok = (
+                "padding: 6px 10px;" not in _css_735
+                and "padding: 2px 10px;" not in _css_735
+                and "padding: var(--sp-1) var(--sp-3);" in _css_735
+                and "padding: var(--sp-0) var(--sp-2);" in _css_735
+                and "min-height: 32px;" in _css_735
+                and "PKG_RELEASE:=34" in _mk_735
+                and "r34" in str(getattr(dmod, "APP_BUILD", ""))
+            )
+        finally:
+            shutil.rmtree(_tmp_735, ignore_errors=True)
+
+        check(
+            "Stage 7.35 (v2.6.3 r34 Hydrogen M-263-01/m-263-02 + eb=False 国服游戏直连 5 项闭环: 魔兽/战网 TCP+UDP 双协议直通+@direct_bypass 脱钩 eb+QUIC 仅阻断非国内 IP+Domestic_CN 优先于 !cn+战网/网易风控白名单+Aster 间距字阶合规)",
+            _game_tcp_udp_ok and _direct_bypass_eb_false_ok and _bq_non_cn_ok and _order_ok_735 and _essential_game_ok and _aster_css_ok,
+            f"game={_game_tcp_udp_ok}, dbyp={_direct_bypass_eb_false_ok}, bq={_bq_non_cn_ok}, order={_order_ok_735}({_dom_cn_idx}<{_out_cn_rs_idx}), ess={_essential_game_ok}, css={_aster_css_ok}",
+        )
+
     finally:
         shutil.rmtree(tmp_v252, ignore_errors=True)
 

@@ -132,6 +132,7 @@
       this.mode = 'panorama';
       this.selected = null;
       this.selectedMesh = null;
+      this._boundListeners = [];
       this.dragging = false;
       this.dragDistance = 0;
       this.centers = {};
@@ -155,6 +156,64 @@
 
     computeSpeedGear(rateBps, conns) {
       return computeSpeedGear(rateBps, conns);
+    }
+
+
+    _listen(target, type, fn, opts) {
+      if (!target || typeof target.addEventListener !== 'function') return;
+      target.addEventListener(type, fn, opts);
+      this._boundListeners.push([target, type, fn, opts]);
+    }
+
+    unbindAllListeners() {
+      while (this._boundListeners.length) {
+        const entry = this._boundListeners.pop();
+        try {
+          entry[0].removeEventListener(entry[1], entry[2], entry[3]);
+        } catch (_) {}
+      }
+    }
+
+    disposeObject3D(obj) {
+      if (!obj) return;
+      if (typeof obj.traverse === 'function') {
+        obj.traverse((child) => {
+          if (child.geometry && typeof child.geometry.dispose === 'function') {
+            try { child.geometry.dispose(); } catch (_) {}
+          }
+          const mats = Array.isArray(child.material) ? child.material : (child.material ? [child.material] : []);
+          mats.forEach((m) => {
+            if (!m) return;
+            ['map', 'alphaMap', 'emissiveMap', 'roughnessMap', 'metalnessMap'].forEach((tk) => {
+              if (m[tk] && typeof m[tk].dispose === 'function') {
+                try { m[tk].dispose(); } catch (_) {}
+              }
+            });
+            if (typeof m.dispose === 'function') {
+              try { m.dispose(); } catch (_) {}
+            }
+          });
+        });
+      }
+    }
+
+    disposeSceneResources() {
+      if (this.scene) {
+        this.disposeObject3D(this.scene);
+      }
+      if (this.renderer && typeof this.renderer.dispose === 'function') {
+        try { this.renderer.dispose(); } catch (_) {}
+      }
+    }
+
+    destroy() {
+      this._loopRunning = false;
+      if (this._rafId) {
+        try { cancelAnimationFrame(this._rafId); } catch (_) {}
+        this._rafId = 0;
+      }
+      this.unbindAllListeners();
+      this.disposeSceneResources();
     }
 
     init() {
@@ -218,14 +277,14 @@
       this.bindControls();
       if (this.canvas && !this._webglCtxListenersBound) {
         this._webglCtxListenersBound = true;
-        this.canvas.addEventListener('webglcontextlost', (ev) => {
+        this._listen(this.canvas, 'webglcontextlost', (ev) => {
           ev.preventDefault();
           this.active = false;
           if (this._rafId) { cancelAnimationFrame(this._rafId); this._rafId = 0; }
           const fb = document.getElementById('webgl-fallback');
           if (fb) fb.hidden = false;
         }, false);
-        this.canvas.addEventListener('webglcontextrestored', () => {
+        this._listen(this.canvas, 'webglcontextrestored', () => {
           const fb = document.getElementById('webgl-fallback');
           if (fb) fb.hidden = true;
           this.active = true;
@@ -259,7 +318,7 @@
         }
         this._rafId = requestAnimationFrame(this._tickBound);
       };
-      document.addEventListener("visibilitychange", () => {
+      this._listen(document, "visibilitychange", () => {
         if (document.hidden) this.stopLoop();
         else if (this.active) this.startLoop();
       });
@@ -923,7 +982,19 @@
 
       /* Volumetric energy sheath tube around main trunk */
       const sheathGeo = new THREE.TubeGeometry(curve, 64, 0.048, 8, false);
-      const sheathMat = new THREE.MeshBasicMaterial({
+      const sheathMat = (window.THREE && typeof THREE.ShaderMaterial === 'function')
+        ? new THREE.ShaderMaterial({
+            uniforms: {
+              beamColor: { value: new THREE.Color(color) },
+              uTime: { value: 0.0 }
+            },
+            vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+            fragmentShader: 'uniform vec3 beamColor; uniform float uTime; varying vec2 vUv; void main() { float pulse = 0.35 + 0.65 * pow(0.5 + 0.5 * sin(vUv.x * 18.0 - uTime * 3.2), 3.0); gl_FragColor = vec4(beamColor, pulse * 0.48); }',
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+          })
+        : new THREE.MeshBasicMaterial({
         color,
         transparent: true,
         opacity: .12,
@@ -1254,14 +1325,14 @@
     bindControls() {
       let lastX = 0;
       let lastY = 0;
-      this.canvas.addEventListener('pointerdown', event => {
+      this._listen(this.canvas, 'pointerdown', event => {
         this.dragging = true;
         this.dragDistance = 0;
         lastX = event.clientX;
         lastY = event.clientY;
         this.canvas.setPointerCapture(event.pointerId);
       });
-      this.canvas.addEventListener('pointermove', event => {
+      this._listen(this.canvas, 'pointermove', event => {
         const dx = event.clientX - lastX;
         const dy = event.clientY - lastY;
         if (this.dragging) {
@@ -1277,18 +1348,18 @@
         lastX = event.clientX;
         lastY = event.clientY;
       });
-      this.canvas.addEventListener('pointerup', event => {
+      this._listen(this.canvas, 'pointerup', event => {
         if (this.dragDistance < 6) this.pick(event);
         this.dragging = false;
         try { this.canvas.releasePointerCapture(event.pointerId); } catch (_) {}
       });
-      this.canvas.addEventListener('pointercancel', () => { this.dragging = false; });
-      this.canvas.addEventListener('pointerleave', () => { this.tooltip.hidden = true; });
-      this.canvas.addEventListener('wheel', event => {
+      this._listen(this.canvas, 'pointercancel', () => { this.dragging = false; });
+      this._listen(this.canvas, 'pointerleave', () => { this.tooltip.hidden = true; });
+      this._listen(this.canvas, 'wheel', event => {
         event.preventDefault();
         this.desired.radius = clamp(this.desired.radius + event.deltaY * .012, 6.5, 43);
       }, { passive: false });
-      window.addEventListener('keydown', event => {
+      this._listen(window, 'keydown', event => {
         if (event.key === 'Escape' && this.options.page === 'galaxy') {
           if (this.wallpaperMode && this.options.onWallpaperToggle) {
             this.options.onWallpaperToggle(false);

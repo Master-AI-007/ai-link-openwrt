@@ -3946,7 +3946,7 @@ def _ephemeral_singbox_delay_probe(nodes_list: list, test_url: str = DEFAULT_URL
             }
             proc = None
             try:
-                cfg_path.write_text(json.dumps(probe_cfg, ensure_ascii=False), encoding="utf-8")
+                _atomic_write_text(cfg_path, json.dumps(probe_cfg, ensure_ascii=False), encoding="utf-8")
                 env = dict(os.environ)
                 env["QUIC_GO_DISABLE_GSO"] = "true"
                 env["GOMEMLIMIT"] = "48MiB"
@@ -6237,7 +6237,7 @@ def optimize_multicore_network_rps(
                     k_se = str(sock_entries)
                     if k_se not in orig_files:
                         orig_files[k_se] = sock_entries.read_text(encoding="utf-8").strip()
-                    sock_entries.write_text("32768\n", encoding="utf-8")
+                    _atomic_write_text(sock_entries, "32768\n", encoding="utf-8")
                 except OSError as _e_diag:
                     globals().get("_record_internal_diag", str)(_e_diag)
             for rq in rx_queues:
@@ -6248,7 +6248,7 @@ def optimize_multicore_network_rps(
                             k_q = str(fp_q)
                             if k_q not in orig_files:
                                 orig_files[k_q] = fp_q.read_text(encoding="utf-8").strip()
-                            fp_q.write_text(f"{val_q}\n", encoding="utf-8")
+                            _atomic_write_text(fp_q, f"{val_q}\n", encoding="utf-8")
                     q_written += 1
                 except OSError as _e_diag:
                     globals().get("_record_internal_diag", str)(_e_diag)
@@ -6260,7 +6260,7 @@ def optimize_multicore_network_rps(
                             k_x = str(fp_x)
                             if k_x not in orig_files:
                                 orig_files[k_x] = fp_x.read_text(encoding="utf-8").strip()
-                            fp_x.write_text(f"{mask}\n", encoding="utf-8")
+                            _atomic_write_text(fp_x, f"{mask}\n", encoding="utf-8")
                     except OSError as _e_diag:
                         globals().get("_record_internal_diag", str)(_e_diag)
             if orig_files:
@@ -6287,7 +6287,7 @@ def restore_multicore_network_rps(backup_dir: Path = None) -> dict:
                     fp = Path(fpath_s)
                     if fp.exists():
                         try:
-                            fp.write_text(f"{str(orig_val).strip()}\n", encoding="utf-8")
+                            _atomic_write_text(fp, f"{str(orig_val).strip()}\n", encoding="utf-8")
                             restored += 1
                         except OSError as _e_diag:
                             globals().get("_record_internal_diag", str)(_e_diag)
@@ -10362,7 +10362,7 @@ DEFAULT_SHUNT_GROUPS = [
         "target_test_url": GROUP_TARGET_PROBE_URLS["Domestic_CN"],
         "domains": [
             "cn", "中国", "baidu.com", "bdstatic.com", "baidupcs.com",
-            "qq.com", "lol.qq.com", "wegame.com.cn", "wegame.com", "tgp.qq.com", "ied-tqos.qq.com", "gcloud.qq.com", "gcloudsdk.com", "ace-anti-cheat.com", "qcloud.com", "weixin.qq.com", "wechat.com", "gtimg.com", "gtimg.cn", "myqcloud.com", "tencent.com", "tencent-cloud.net", "qpic.cn", "riotgames.com", "pvp.net", "leagueoflegends.com", "steamserver.net", "blizzard.cn", "battlenet.com.cn",
+            "qq.com", "lol.qq.com", "wegame.com.cn", "wegame.com", "tgp.qq.com", "ied-tqos.qq.com", "gcloud.qq.com", "gcloudsdk.com", "ace-anti-cheat.com", "qcloud.com", "weixin.qq.com", "wechat.com", "gtimg.com", "gtimg.cn", "myqcloud.com", "tencent.com", "tencent-cloud.net", "qpic.cn", "riotgames.com", "pvp.net", "leagueoflegends.com", "steamserver.net", "blizzard.cn", "battlenet.com.cn", "battle.net", "rum.battle.net", "bnet.163.com", "dun.163.com", "fp-upload.dun.163.com", "ipservice.163.com", "nie.163.com", "uu.163.com",
             "taobao.com", "tmall.com", "alicdn.com", "aliyun.com", "aliyuncs.com", "alipay.com", "1688.com", "tbcache.com",
             "jd.com", "360buyimg.com", "jcloudcs.com", "bilibili.com", "bilivideo.com", "hdslb.com", "biliapi.net",
             "163.com", "126.com", "126.net", "127.net", "netease.com",
@@ -11460,10 +11460,16 @@ def _fetch_and_sync_subscription_once(url: str = "", name: str = "机场订阅",
         if not raw_body:
             return
         import tempfile as _tmpfile_mod
+        safe_excerpt = re.sub(r"://[^/@\s]+@", "://***@", str(raw_body)[:4096])
         for _d_cand in (Path(_tmpfile_mod.gettempdir()), Path("/tmp")):
             try:
                 if _d_cand.is_dir():
-                    (_d_cand / f"ai-link-sub-{sub_id or 'latest'}.raw").write_text(raw_body[:262144], encoding="utf-8", errors="ignore")
+                    _snap_p = _d_cand / f"ai-link-sub-{sub_id or 'latest'}.raw"
+                    _atomic_write_text(_snap_p, safe_excerpt)
+                    try:
+                        _snap_p.chmod(0o600)
+                    except OSError:
+                        pass
             except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                 globals().get("_record_internal_diag", str)(_e_diag)
 
@@ -11764,7 +11770,7 @@ def get_max_outbounds_limit(conf_dir: Path = CONF_DIR, honor_low_memory: bool = 
     try:
         m_f = Path(conf_dir) / "max_outbounds.txt"
         if m_f.is_file() and m_f.read_text(encoding="utf-8", errors="ignore").strip() != "0":
-            m_f.write_text("0\n", encoding="utf-8")
+            _atomic_write_text(m_f, "0\n", encoding="utf-8")
     except Exception as _e_diag:
         globals().get("_record_internal_diag", str)(_e_diag)
     if honor_low_memory:
@@ -13241,12 +13247,12 @@ def apply_dns_rewrite_system(cfg: dict = None, conf_dir: Path = CONF_DIR) -> dic
         if not cfg.get("enabled", True):
             new_txt = "\n".join(lines) + "\n"
             conf_path.parent.mkdir(parents=True, exist_ok=True)
-            conf_path.write_text(new_txt, encoding="utf-8")
+            _atomic_write_text(conf_path, new_txt, encoding="utf-8")
             local_copy = Path(conf_dir) / "ai-link-rewrite.conf"
             if local_copy.resolve() != conf_path.resolve():
                 try:
                     local_copy.parent.mkdir(parents=True, exist_ok=True)
-                    local_copy.write_text(new_txt, encoding="utf-8")
+                    _atomic_write_text(local_copy, new_txt, encoding="utf-8")
                 except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                     globals().get("_record_internal_diag", str)(_e_diag)
             status.update(ok=True, rules=len(LOOPBACK_CALLBACK_DOMAINS), reason="loopback_guard_only")
@@ -13273,12 +13279,12 @@ def apply_dns_rewrite_system(cfg: dict = None, conf_dir: Path = CONF_DIR) -> dic
         conf_path.parent.mkdir(parents=True, exist_ok=True)
         new_txt = "\n".join(lines) + "\n"
         old_txt = conf_path.read_text(encoding="utf-8", errors="ignore") if conf_path.is_file() else ""
-        conf_path.write_text(new_txt, encoding="utf-8")
+        _atomic_write_text(conf_path, new_txt, encoding="utf-8")
         local_copy = Path(conf_dir) / "ai-link-rewrite.conf"
         if local_copy.resolve() != conf_path.resolve():
             try:
                 local_copy.parent.mkdir(parents=True, exist_ok=True)
-                local_copy.write_text(new_txt, encoding="utf-8")
+                _atomic_write_text(local_copy, new_txt, encoding="utf-8")
             except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                 globals().get("_record_internal_diag", str)(_e_diag)
         status.update(ok=True, rules=n)
@@ -13318,22 +13324,22 @@ def fallback_resolv_conf_to_direct():
             if gw:
                 ns_lines.append(f"nameserver {gw}")
             ns_lines.extend(["nameserver 223.5.5.5", "nameserver 119.29.29.29"])
-            auto_f.write_text("\n".join(ns_lines) + "\n", encoding="utf-8")
+            _atomic_write_text(auto_f, "\n".join(ns_lines) + "\n", encoding="utf-8")
         direct_lines = ["search lan"]
         if gw:
             direct_lines.append(f"nameserver {gw}")
         direct_lines.extend(["nameserver 223.5.5.5", "nameserver 119.29.29.29", "nameserver 127.0.0.1"])
         direct_f = Path("/tmp/resolv.conf.ai-link-direct")
-        direct_f.write_text("\n".join(direct_lines) + "\n", encoding="utf-8")
+        _atomic_write_text(direct_f, "\n".join(direct_lines) + "\n", encoding="utf-8")
         resolv_p = Path("/etc/resolv.conf")
         if resolv_p.is_symlink() or not resolv_p.exists():
             try:
                 resolv_p.unlink(missing_ok=True)
                 resolv_p.symlink_to(direct_f)
             except Exception:
-                resolv_p.write_text(direct_f.read_text(encoding="utf-8"), encoding="utf-8")
+                _atomic_write_text(resolv_p, direct_f.read_text(encoding="utf-8"), encoding="utf-8")
         else:
-            resolv_p.write_text(direct_f.read_text(encoding="utf-8"), encoding="utf-8")
+            _atomic_write_text(resolv_p, direct_f.read_text(encoding="utf-8"), encoding="utf-8")
     except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
         globals().get("_record_internal_diag", str)(_e_diag)
 
@@ -13347,16 +13353,16 @@ def restore_resolv_conf_to_local():
             active_lines.append(f"nameserver {gw}")
         active_lines.append("nameserver 223.5.5.5")
         active_f = Path("/tmp/resolv.conf.ai-link-active")
-        active_f.write_text("\n".join(active_lines) + "\n", encoding="utf-8")
+        _atomic_write_text(active_f, "\n".join(active_lines) + "\n", encoding="utf-8")
         resolv_p = Path("/etc/resolv.conf")
         if resolv_p.is_symlink() or not resolv_p.exists():
             try:
                 resolv_p.unlink(missing_ok=True)
                 resolv_p.symlink_to(active_f)
             except Exception:
-                resolv_p.write_text(active_f.read_text(encoding="utf-8"), encoding="utf-8")
+                _atomic_write_text(resolv_p, active_f.read_text(encoding="utf-8"), encoding="utf-8")
         else:
-            resolv_p.write_text(active_f.read_text(encoding="utf-8"), encoding="utf-8")
+            _atomic_write_text(resolv_p, active_f.read_text(encoding="utf-8"), encoding="utf-8")
     except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
         globals().get("_record_internal_diag", str)(_e_diag)
 
@@ -13426,11 +13432,11 @@ def apply_dns_adblock_system(conf_dir: Path = CONF_DIR, force_live_mount: bool =
         new_txt = "\n".join(lines) + "\n"
         conf_path.parent.mkdir(parents=True, exist_ok=True)
         old_txt = conf_path.read_text(encoding="utf-8", errors="ignore") if conf_path.is_file() else ""
-        conf_path.write_text(new_txt, encoding="utf-8")
+        _atomic_write_text(conf_path, new_txt, encoding="utf-8")
         if is_live and dnsmasq_dir != Path("/tmp/dnsmasq.d"):
             try:
                 Path("/tmp/dnsmasq.d").mkdir(parents=True, exist_ok=True)
-                (Path("/tmp/dnsmasq.d") / "ai-link-adblock.conf").write_text(new_txt, encoding="utf-8")
+                _atomic_write_text(Path("/tmp/dnsmasq.d") / "ai-link-adblock.conf", new_txt, encoding="utf-8")
             except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                 globals().get("_record_internal_diag", str)(_e_diag)
         if is_live and old_txt != new_txt and Path("/etc/init.d/dnsmasq").exists():
@@ -13487,6 +13493,16 @@ ESSENTIAL_APP_WHITELIST = (
     "1e100.net",
     "pki.goog",
     "android.com",
+    "battle.net",
+    "rum.battle.net",
+    "blizzard.cn",
+    "battlenet.com.cn",
+    "bnet.163.com",
+    "dun.163.com",
+    "fp-upload.dun.163.com",
+    "ipservice.163.com",
+    "nie.163.com",
+    "uu.163.com",
 )
 
 def is_essential_app_domain(dom: str) -> bool:
@@ -13829,7 +13845,7 @@ def _save_persisted_adblock_stats(conf_dir: Path = CONF_DIR, force: bool = False
     for p_cand in (RUN_DIR / "adblock_stats.json", conf_dir / "adblock_stats.json"):
         try:
             p_cand.parent.mkdir(parents=True, exist_ok=True)
-            p_cand.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            _atomic_write_text(p_cand, json.dumps(payload, ensure_ascii=False), encoding="utf-8")
             break
         except Exception:
             continue
@@ -14931,11 +14947,23 @@ class ConfigGenerator:
         except Exception:
             _game_udp_ok = True
         if _game_udp_ok and routing_mode != "global_proxy":
-            # §3.1 P0 Fix: Compound rule — ONLY direct-route UDP game ports when destination IP is in domestic CN CIDRs!
-            # Prevents overseas Steam/Apex/PUBG (27015-27050) and overseas WebRTC/Voice (3478, 10000-20000) from being hijacked to direct.
+            # §3.1 P0 & v2.6.3-r34 Fix: Compound TCP + UDP rules for National Server Games (WoW/Battle.net 1119/3724/6012/6113,
+            # LoL 2099/5000-5550/8393-8400, Steam CN 27014-27050) strictly scoped to domestic CN CIDRs & domains (never 80/443).
+            route_rules.append({
+                "network": ["tcp"],
+                "port": [1119, 2099, 3724, 6012, 6113],
+                "ip_cidr": list(_CN_PRECISE_CIDRS),
+                "outbound": "direct"
+            })
+            route_rules.append({
+                "network": ["tcp"],
+                "port_range": ["8393:8400", "27014:27050"],
+                "ip_cidr": list(_CN_PRECISE_CIDRS),
+                "outbound": "direct"
+            })
             _game_cn_rule = {
                 "network": ["udp"],
-                "port_range": ["3478:3479", "4000:4050", "5000:5550", "7000:9010", "10000:20000", "27015:27050"],
+                "port_range": ["1119:1119", "2099:2099", "3478:3479", "3724:3724", "4000:4050", "5000:5550", "6012:6012", "6113:6113", "7000:9010", "10000:20000", "27014:27050"],
                 "ip_cidr": list(_CN_PRECISE_CIDRS),
                 "outbound": "direct"
             }
@@ -14944,7 +14972,14 @@ class ConfigGenerator:
             _block_quic_ok = get_ops_settings(conf_dir).get("block_quic", True)
         except Exception:
             _block_quic_ok = True
-        if _block_quic_ok and routing_mode != "direct_all":
+        if _block_quic_ok and routing_mode not in ("direct_all", "rule_shunt"):
+            if routing_mode in ("cn_whitelist", "gfw_list"):
+                route_rules.append({
+                    "network": ["udp"],
+                    "port": [443],
+                    "ip_cidr": list(_CN_PRECISE_CIDRS),
+                    "outbound": "direct"
+                })
             route_rules.append({
                 "inbound": ["tproxy-in", "tun-in", "mixed-in"],
                 "network": ["udp"],
@@ -15065,6 +15100,17 @@ class ConfigGenerator:
                 elif gid == "Google" and google_rs:
                     route_rules.append({"rule_set": google_rs, "outbound": stag})
                 elif gid == "Outside_CN" and outside_cn_rs:
+                    # v2.6.3-r34 Fix 4: Emit Domestic_CN explicit domains & CN game domains BEFORE Outside_CN's broad
+                    # geosite-geolocation-!cn ruleset (while keeping custom groups prio 1..13 & Outside_CN explicit domains above!)
+                    _dom_cn_grp = next((g for g in shunt_cfg.get("groups", []) if g.get("id") == "Domestic_CN"), None)
+                    _dom_cn_stag = (_dom_cn_grp.get("selector_tag") if _dom_cn_grp else None) or "Shunt_Domestic_CN"
+                    _dom_cn_Wait_doms = list(dict.fromkeys(
+                        ([d.strip() for d in (_dom_cn_grp.get("domains") or []) if str(d).strip()] if _dom_cn_grp else [])
+                        + ["cn", "battle.net", "rum.battle.net", "blizzard.cn", "battlenet.com.cn", "bnet.163.com", "dun.163.com", "fp-upload.dun.163.com", "ipservice.163.com", "nie.163.com", "uu.163.com", "163.com", "126.com", "126.net", "127.net", "netease.com", "qq.com", "wegame.com.cn", "wegame.com", "baidu.com", "taobao.com", "jd.com", "bilibili.com"]
+                    ))
+                    route_rules.append({"domain_suffix": _dom_cn_Wait_doms, "outbound": _dom_cn_stag})
+                    if cn_rs:
+                        route_rules.append({"rule_set": cn_rs, "outbound": _dom_cn_stag})
                     route_rules.append({"rule_set": outside_cn_rs, "outbound": stag})
                 elif gid == "Games" and hktw_rs:
                     route_rules.append({"rule_set": hktw_rs, "outbound": stag})
@@ -15072,6 +15118,12 @@ class ConfigGenerator:
                     if cn_rs and not _grp_srs_tags:
                         route_rules.append({"rule_set": cn_rs, "outbound": stag})
                     route_rules.append({"ip_cidr": CN_CORE_CIDRS + CN_CORE_IPV6_CIDRS, "outbound": stag})
+            if _block_quic_ok:
+                # v2.6.3-r34 Fix 3: Block QUIC (UDP 443) for Fake-IP & non-CN proxy traffic while exempting domestic CN UDP 443
+                route_rules.insert(
+                    max(2, next((idx for idx, r in enumerate(route_rules) if r.get("outbound") in ("Shunt_AI", "Shunt_YouTube", "Shunt_Google", "Shunt_Netflix", "Shunt_TikTok", "Shunt_Outside_CN")), len(route_rules))),
+                    {"inbound": ["tproxy-in", "tun-in", "mixed-in"], "network": ["udp"], "port": [443], "ip_cidr": ["198.18.0.0/15", "fc00::/18"], "outbound": "block"}
+                )
             route_rules.append({"ip_cidr": ["198.18.0.0/15", "fc00::/18"], "outbound": "Shunt_Final"})
             final_outbound = "Shunt_Final"
         cfg = {
@@ -15403,16 +15455,7 @@ def ensure_hy2_certs(certs_dir: Path) -> bool:
     except Exception:
         if shutil.which("openssl"):
             try:
-                subprocess.run(["openssl", "req", "-x509", "-newkey", "ec",
-                                "-pkeyopt", "ec_paramgen_curve:P-256",
-                                "-keyout", str(key), "-out", str(crt),
-                                "-days", "3650", "-nodes",
-                                "-subj", "/CN=ai-link.ailink.lan",
-                                "-addext", "basicConstraints=critical,CA:TRUE",
-                                "-addext", "keyUsage=critical,keyCertSign,digitalSignature,crlSign",
-                                "-addext", "extendedKeyUsage=serverAuth",
-                                "-addext", "subjectAltName=DNS:ai-link.ailink.lan,DNS:localhost,IP:127.0.0.1"],
-                               capture_output=True, timeout=10)
+                subprocess.run(["openssl", "req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256", "-keyout", str(key), "-out", str(crt), "-days", "3650", "-nodes", "-subj", "/CN=ai-link.ailink.lan", "-addext", "basicConstraints=critical,CA:TRUE", "-addext", "keyUsage=critical,keyCertSign,digitalSignature,crlSign", "-addext", "extendedKeyUsage=serverAuth", "-addext", "subjectAltName=DNS:ai-link.ailink.lan,DNS:localhost,IP:127.0.0.1"], capture_output=True, timeout=15)
             except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                 globals().get("_record_internal_diag", str)(_e_diag)
         if not (crt.is_file() and key.is_file()) and shutil.which("sing-box"):
@@ -15423,8 +15466,8 @@ def ensure_hy2_certs(certs_dir: Path) -> bool:
                 out_sb = p_sb.stdout or ""
                 if "-----BEGIN CERTIFICATE-----" in out_sb and "PRIVATE KEY" in out_sb:
                     k_part, c_part = out_sb.split("-----BEGIN CERTIFICATE-----", 1)
-                    key.write_text(k_part.strip() + "\n", encoding="utf-8")
-                    crt.write_text("-----BEGIN CERTIFICATE-----" + c_part.strip() + "\n", encoding="utf-8")
+                    _atomic_write_text(key, k_part.strip() + "\n", encoding="utf-8")
+                    _atomic_write_text(crt, "-----BEGIN CERTIFICATE-----" + c_part.strip() + "\n", encoding="utf-8")
                     key.chmod(0o600)
             except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                 globals().get("_record_internal_diag", str)(_e_diag)
@@ -15548,7 +15591,7 @@ def _probe_singbox_binary_capabilities_impl(conf_dir: Path = CONF_DIR) -> dict:
             info["build_mode"] = "upstream-full"
             try:
                 conf_dir.mkdir(parents=True, exist_ok=True)
-                verified_file.write_text("upstream-full", encoding="utf-8")
+                _atomic_write_text(verified_file, "upstream-full", encoding="utf-8")
             except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                 globals().get("_record_internal_diag", str)(_e_diag)
     else:
@@ -15690,7 +15733,7 @@ def run_singbox_check_safe(sb_bin: str, sb_cfg: dict) -> subprocess.CompletedPro
     if isinstance(tmp_cfg.get("log"), dict) and "output" in tmp_cfg["log"]:
         tmp_cfg["log"]["output"] = str(tmp_log)
     try:
-        tmp_json.write_text(json.dumps(tmp_cfg, indent=2, ensure_ascii=False), encoding="utf-8")
+        _atomic_write_text(tmp_json, json.dumps(tmp_cfg, indent=2, ensure_ascii=False), encoding="utf-8")
         try:
             return subprocess.run([sb_bin, "check", "-c", str(tmp_json)], capture_output=True, text=True, timeout=20)
         except subprocess.TimeoutExpired:
@@ -15898,7 +15941,7 @@ def compile_srs_from_seeds(tag: str, seeds: list, is_geoip: bool, out_path: Path
     tmp_srs_path = out_p.parent / f".{tag}.srs.tmp.{os.getpid()}"
     compiled_via = "zlib_v1_binary"
     try:
-        src_json_path.write_text(json.dumps(src_json_obj, ensure_ascii=False, indent=2), encoding="utf-8")
+        _atomic_write_text(src_json_path, json.dumps(src_json_obj, ensure_ascii=False, indent=2), encoding="utf-8")
         sb_bin = resolve_singbox_binary()
         if sb_bin and os.access(str(sb_bin), os.X_OK):
             try:
@@ -16575,12 +16618,16 @@ def generate_nft_rules_file(conf_dir: Path = CONF_DIR, run_dir: Path = RUN_DIR,
         "\t\tip6 daddr @node_server_v6 accept",
             f"\t\tip daddr @google_play_v4 meta l4proto tcp redirect to :{redir_port}",
         ]
+        if gu:
+            lines.append("\t\tip daddr @cn_ip4 meta l4proto tcp tcp dport { 1119, 2099, 3724, 6012, 6113, 8393-8400, 27014-27050 } accept")
+            if v6:
+                lines.append("\t\tip6 daddr @cn_ip6 meta l4proto tcp tcp dport { 1119, 2099, 3724, 6012, 6113, 8393-8400, 27014-27050 } accept")
         if eb:
             lines.append("\t\tip daddr @cn_ip4 accept")
             if v6:
                 lines.append("\t\tip6 daddr @cn_ip6 accept")
-            lines.append("\t\tip daddr @direct_bypass_v4 accept")
-            lines.append("\t\tip6 daddr @direct_bypass_v6 accept")
+        lines.append("\t\tip daddr @direct_bypass_v4 accept")
+        lines.append("\t\tip6 daddr @direct_bypass_v6 accept")
         if v6:
             lines.append(f"\t\tmeta l4proto tcp redirect to :{redir_port}")
         else:
@@ -16684,10 +16731,22 @@ def generate_nft_rules_file(conf_dir: Path = CONF_DIR, run_dir: Path = RUN_DIR,
     else:
         lines.append(f"\t\tip daddr @google_play_v4 meta l4proto {{ tcp, udp }} tproxy ip to 127.0.0.1:{tproxy_port} meta mark set {fw_mark} accept")
     if gu:
+        lines.append("\t\tip daddr @cn_ip4 meta l4proto tcp tcp dport { 1119, 2099, 3724, 6012, 6113, 8393-8400, 27014-27050 } meta mark set 0x02000000")
+        lines.append("\t\tip daddr @cn_ip4 meta l4proto tcp tcp dport { 1119, 2099, 3724, 6012, 6113, 8393-8400, 27014-27050 } ct mark set 0x02000000")
+        lines.append("\t\tip daddr @cn_ip4 meta l4proto tcp tcp dport { 1119, 2099, 3724, 6012, 6113, 8393-8400, 27014-27050 } accept")
+        lines.append("\t\tip daddr @cn_ip4 meta l4proto udp udp dport { 1119, 2099, 3478, 3479, 3724, 4000-4050, 5000-5550, 6012, 6113, 7000-9010, 10000-20000, 27014-27050 } meta mark set 0x02000000")
+        lines.append("\t\tip daddr @cn_ip4 meta l4proto udp udp dport { 1119, 2099, 3478, 3479, 3724, 4000-4050, 5000-5550, 6012, 6113, 7000-9010, 10000-20000, 27014-27050 } ct mark set 0x02000000")
+        lines.append("\t\tip daddr @cn_ip4 meta l4proto udp udp dport { 1119, 2099, 3478, 3479, 3724, 4000-4050, 5000-5550, 6012, 6113, 7000-9010, 10000-20000, 27014-27050 } accept")
         lines.append("\t\tip daddr @cn_ip4 meta l4proto udp udp dport { 3478, 3479, 4000-4050, 5000-5550, 7000-9010, 10000-20000, 27015-27050 } meta mark set 0x02000000")
         lines.append("\t\tip daddr @cn_ip4 meta l4proto udp udp dport { 3478, 3479, 4000-4050, 5000-5550, 7000-9010, 10000-20000, 27015-27050 } ct mark set 0x02000000")
         lines.append("\t\tip daddr @cn_ip4 meta l4proto udp udp dport { 3478, 3479, 4000-4050, 5000-5550, 7000-9010, 10000-20000, 27015-27050 } accept")
         if v6:
+            lines.append("\t\tip6 daddr @cn_ip6 meta l4proto tcp tcp dport { 1119, 2099, 3724, 6012, 6113, 8393-8400, 27014-27050 } meta mark set 0x02000000")
+            lines.append("\t\tip6 daddr @cn_ip6 meta l4proto tcp tcp dport { 1119, 2099, 3724, 6012, 6113, 8393-8400, 27014-27050 } ct mark set 0x02000000")
+            lines.append("\t\tip6 daddr @cn_ip6 meta l4proto tcp tcp dport { 1119, 2099, 3724, 6012, 6113, 8393-8400, 27014-27050 } accept")
+            lines.append("\t\tip6 daddr @cn_ip6 meta l4proto udp udp dport { 1119, 2099, 3478, 3479, 3724, 4000-4050, 5000-5550, 6012, 6113, 7000-9010, 10000-20000, 27014-27050 } meta mark set 0x02000000")
+            lines.append("\t\tip6 daddr @cn_ip6 meta l4proto udp udp dport { 1119, 2099, 3478, 3479, 3724, 4000-4050, 5000-5550, 6012, 6113, 7000-9010, 10000-20000, 27014-27050 } ct mark set 0x02000000")
+            lines.append("\t\tip6 daddr @cn_ip6 meta l4proto udp udp dport { 1119, 2099, 3478, 3479, 3724, 4000-4050, 5000-5550, 6012, 6113, 7000-9010, 10000-20000, 27014-27050 } accept")
             lines.append("\t\tip6 daddr @cn_ip6 meta l4proto udp udp dport { 3478, 3479, 4000-4050, 5000-5550, 7000-9010, 10000-20000, 27015-27050 } meta mark set 0x02000000")
             lines.append("\t\tip6 daddr @cn_ip6 meta l4proto udp udp dport { 3478, 3479, 4000-4050, 5000-5550, 7000-9010, 10000-20000, 27015-27050 } ct mark set 0x02000000")
             lines.append("\t\tip6 daddr @cn_ip6 meta l4proto udp udp dport { 3478, 3479, 4000-4050, 5000-5550, 7000-9010, 10000-20000, 27015-27050 } accept")
@@ -16699,14 +16758,16 @@ def generate_nft_rules_file(conf_dir: Path = CONF_DIR, run_dir: Path = RUN_DIR,
             lines.append("\t\tip6 daddr @cn_ip6 meta mark set 0x02000000")
             lines.append("\t\tip6 daddr @cn_ip6 ct mark set 0x02000000")
             lines.append("\t\tip6 daddr @cn_ip6 accept")
-        lines.append("\t\tip daddr @direct_bypass_v4 meta mark set 0x02000000")
-        lines.append("\t\tip daddr @direct_bypass_v4 ct mark set 0x02000000")
-        lines.append("\t\tip daddr @direct_bypass_v4 accept")
-        lines.append("\t\tip6 daddr @direct_bypass_v6 meta mark set 0x02000000")
-        lines.append("\t\tip6 daddr @direct_bypass_v6 ct mark set 0x02000000")
-        lines.append("\t\tip6 daddr @direct_bypass_v6 accept")
+    lines.append("\t\tip daddr @direct_bypass_v4 meta mark set 0x02000000")
+    lines.append("\t\tip daddr @direct_bypass_v4 ct mark set 0x02000000")
+    lines.append("\t\tip daddr @direct_bypass_v4 accept")
+    lines.append("\t\tip6 daddr @direct_bypass_v6 meta mark set 0x02000000")
+    lines.append("\t\tip6 daddr @direct_bypass_v6 ct mark set 0x02000000")
+    lines.append("\t\tip6 daddr @direct_bypass_v6 accept")
     if bq:
-        lines.append("\t\tudp dport 443 reject with icmpx type port-unreachable")
+        lines.append("\t\tip daddr != @cn_ip4 udp dport 443 reject with icmpx type port-unreachable")
+        if v6:
+            lines.append("\t\tip6 daddr != @cn_ip6 udp dport 443 reject with icmpx type port-unreachable")
     if dpm == "tun_full":
         lines.append(f"\t\tmeta nfproto ipv4 meta l4proto {{ tcp, udp }} meta mark set {tun_mark} accept")
         if v6:
@@ -16760,15 +16821,19 @@ def generate_nft_rules_file(conf_dir: Path = CONF_DIR, run_dir: Path = RUN_DIR,
         if v6:
             lines.append(f"\t\tip6 daddr fc00::/18 meta l4proto udp meta mark set {fw_mark} accept")
     if gu:
+        lines.append("\t\tip daddr @cn_ip4 meta l4proto tcp tcp dport { 1119, 2099, 3724, 6012, 6113, 8393-8400, 27014-27050 } accept")
+        lines.append("\t\tip daddr @cn_ip4 meta l4proto udp udp dport { 1119, 2099, 3478, 3479, 3724, 4000-4050, 5000-5550, 6012, 6113, 7000-9010, 10000-20000, 27014-27050 } accept")
         lines.append("\t\tip daddr @cn_ip4 meta l4proto udp udp dport { 3478, 3479, 4000-4050, 5000-5550, 7000-9010, 10000-20000, 27015-27050 } accept")
         if v6:
+            lines.append("\t\tip6 daddr @cn_ip6 meta l4proto tcp tcp dport { 1119, 2099, 3724, 6012, 6113, 8393-8400, 27014-27050 } accept")
+            lines.append("\t\tip6 daddr @cn_ip6 meta l4proto udp udp dport { 1119, 2099, 3478, 3479, 3724, 4000-4050, 5000-5550, 6012, 6113, 7000-9010, 10000-20000, 27014-27050 } accept")
             lines.append("\t\tip6 daddr @cn_ip6 meta l4proto udp udp dport { 3478, 3479, 4000-4050, 5000-5550, 7000-9010, 10000-20000, 27015-27050 } accept")
     if eb:
         lines.append("\t\tip daddr @cn_ip4 accept")
         if v6:
             lines.append("\t\tip6 daddr @cn_ip6 accept")
-        lines.append("\t\tip daddr @direct_bypass_v4 accept")
-        lines.append("\t\tip6 daddr @direct_bypass_v6 accept")
+    lines.append("\t\tip daddr @direct_bypass_v4 accept")
+    lines.append("\t\tip6 daddr @direct_bypass_v6 accept")
     if dpm == "tun_full":
         if v6:
             lines.append(f"\t\tmeta l4proto {{ tcp, udp }} meta mark set {tun_mark} accept")
@@ -16819,7 +16884,7 @@ def _sync_ipv6_policy_routing(enable_v6: bool = False) -> bool:
                 orig_f.parent.mkdir(parents=True, exist_ok=True)
                 r_orig = subprocess.run(["sysctl", "-n", "net.netfilter.nf_conntrack_tcp_be_liberal"], capture_output=True, text=True, timeout=2)
                 orig_val = (r_orig.stdout or "").strip()
-                orig_f.write_text((orig_val if orig_val in ("0", "1") else "0") + "\n", encoding="utf-8")
+                _atomic_write_text(orig_f, (orig_val if orig_val in ("0", "1") else "0") + "\n", encoding="utf-8")
             except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                 globals().get("_record_internal_diag", str)(_e_diag)
         subprocess.run(["sysctl", "-w", "net.netfilter.nf_conntrack_tcp_be_liberal=1"], capture_output=True, timeout=2)
@@ -18865,7 +18930,7 @@ def _detect_router_lan_ip() -> str:
             globals().get("_record_internal_diag", str)(_e_diag)
     try:
         addr_out = subprocess.check_output(["ip", "-4", "addr", "show"], text=True, timeout=1.2)
-        m_br = re.search(r"inet\s+(\d+\.\d+\.\d+\.\d+)/\d+.*\b(br-lan|eth0|lan)\b", addr_out)
+        m_br = re.search(rf"inet\s+(\d+\.\d+\.\d+\.\d+)/\d+.*\b({re.escape(_detect_lan_bridge_dev())}|br-lan|eth0|lan)\b", addr_out)
         if m_br:
             _LAN_IP_MEMO["ts"] = now
             _LAN_IP_MEMO["ip"] = m_br.group(1)
@@ -18895,7 +18960,7 @@ def _get_or_create_initial_secret(conf_dir: Path = CONF_DIR) -> str:
                 return val
         cdir.mkdir(parents=True, exist_ok=True)
         rnd_sec = "ailink-" + os.urandom(6).hex()
-        init_f.write_text(rnd_sec + "\n", encoding="utf-8")
+        _atomic_write_text(init_f, rnd_sec + "\n", encoding="utf-8")
         _chmod_0600_safe(init_f)
         return rnd_sec
     except Exception:
@@ -20182,7 +20247,17 @@ def restore_ops_backup(backup_data: dict, conf_dir: Path = CONF_DIR) -> dict:
             (conf_dir / "subscriptions.json").unlink(missing_ok=True)
     if isinstance(backup_data.get("homelink"), list):
         if existing_set is None or "homelink.json" in existing_set or len(backup_data["homelink"]) > 0:
-            save_homelink_nodes(backup_data["homelink"], conf_dir)
+            _hl_in = copy.deepcopy(backup_data["homelink"])
+            _hl_live_map = {str(x.get("id") or ""): x for x in (load_homelink_nodes(conf_dir) or []) if isinstance(x, dict)}
+            for _hn in _hl_in:
+                if not isinstance(_hn, dict):
+                    continue
+                _live_hn = _hl_live_map.get(str(_hn.get("id") or ""))
+                if _live_hn:
+                    for _sk in ("password", "uuid", "private_key", "short_id", "uri", "share_uri"):
+                        if "***" in str(_hn.get(_sk) or "") and _live_hn.get(_sk):
+                            _hn[_sk] = _live_hn[_sk]
+            save_homelink_nodes(_hl_in, conf_dir)
         elif (conf_dir / "homelink.json").is_file():
             (conf_dir / "homelink.json").unlink(missing_ok=True)
     if isinstance(backup_data.get("auto_nodes"), dict):
@@ -20204,7 +20279,17 @@ def restore_ops_backup(backup_data: dict, conf_dir: Path = CONF_DIR) -> dict:
             save_sonar_targets(backup_data["sonar_targets"], conf_dir)
     if isinstance(backup_data.get("alerts_config"), dict):
         if existing_set is None or "alerts_config.json" in existing_set:
-            save_alerts_config(backup_data["alerts_config"], conf_dir)
+            _ac_in = copy.deepcopy(backup_data["alerts_config"])
+            _ac_live = load_alerts_config(conf_dir) if hasattr(globals().get("load_alerts_config"), "__call__") else {}
+            def _is_masked_secret(v):
+                s = str(v or "").strip()
+                return (not s) or ("***" in s) or (set(s) == {"*"})
+            for _sec_k in ("telegram", "webhook", "bark", "email"):
+                if isinstance(_ac_in.get(_sec_k), dict) and isinstance(_ac_live.get(_sec_k), dict):
+                    for _sk in ("bot_token", "token", "secret", "url", "webhook_url", "password", "auth_token"):
+                        if _sk in _ac_in[_sec_k] and _is_masked_secret(_ac_in[_sec_k].get(_sk)) and _ac_live[_sec_k].get(_sk):
+                            _ac_in[_sec_k][_sk] = _ac_live[_sec_k][_sk]
+            save_alerts_config(_ac_in, conf_dir)
     if isinstance(backup_data.get("sub_jaccard_ring"), dict) and backup_data["sub_jaccard_ring"]:
         try:
             _rf_rst = _effective_run_dir(conf_dir) / "sub_jaccard_ring.json"
@@ -20405,7 +20490,7 @@ def _save_traffic_ledger(ledger: dict, conf_dir: Path = CONF_DIR, flush_flash: b
     for p_cand in (conf_dir / "traffic_ledger.json", Path("/tmp/ai-link-traffic-ledger.json")):
         try:
             p_cand.parent.mkdir(parents=True, exist_ok=True)
-            p_cand.write_text(raw, encoding="utf-8")
+            _atomic_write_text(p_cand, raw, encoding="utf-8")
             break
         except Exception:
             continue
@@ -21285,7 +21370,7 @@ def _load_panel_auth(conf_dir: Path = CONF_DIR) -> dict:
                         data["hash"] = hashlib.pbkdf2_hmac("sha256", old_hash.encode("utf-8"), new_salt.encode("utf-8"), 100000).hex()
                         data["customized"] = True
                     try:
-                        auth_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
+                        _atomic_write_text(auth_file, json.dumps(data, indent=2), encoding="utf-8")
                         _chmod_0600_safe(auth_file)
                     except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                         globals().get("_record_internal_diag", str)(_e_diag)
@@ -21298,7 +21383,7 @@ def _load_panel_auth(conf_dir: Path = CONF_DIR) -> dict:
                         data["tokens"] = tokens
                 elif tokens:
                     try:
-                        tok_file.write_text(tokens[-1] + "\n", encoding="utf-8")
+                        _atomic_write_text(tok_file, tokens[-1] + "\n", encoding="utf-8")
                         _chmod_0600_safe(tok_file)
                     except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                         globals().get("_record_internal_diag", str)(_e_diag)
@@ -21322,10 +21407,10 @@ def _load_panel_auth(conf_dir: Path = CONF_DIR) -> dict:
     data = {"salt": salt, "hash": pw_hash, "kdf": "pbkdf2_sha256", "customized": False, "tokens": tokens, "token_exp": dict((t, now_t + 604800) for t in tokens)}
     try:
         conf_dir.mkdir(parents=True, exist_ok=True)
-        auth_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        _atomic_write_text(auth_file, json.dumps(data, indent=2), encoding="utf-8")
         _chmod_0600_safe(auth_file)
         if not tok_file.is_file():
-            tok_file.write_text(tok + "\n", encoding="utf-8")
+            _atomic_write_text(tok_file, tok + "\n", encoding="utf-8")
         _chmod_0600_safe(tok_file)
     except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
         globals().get("_record_internal_diag", str)(_e_diag)
@@ -21369,7 +21454,7 @@ def _verify_panel_password(candidate_pw: str, conf_dir: Path = CONF_DIR) -> tupl
         auth["token_exp"] = texp
         try:
             auth_p = conf_dir / "panel_auth.json"
-            auth_p.write_text(json.dumps(auth, indent=2), encoding="utf-8")
+            _atomic_write_text(auth_p, json.dumps(auth, indent=2), encoding="utf-8")
             _chmod_0600_safe(auth_p)
         except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
             globals().get("_record_internal_diag", str)(_e_diag)
@@ -21386,11 +21471,11 @@ def _update_panel_password(new_pw: str, conf_dir: Path = CONF_DIR, sync_uci: boo
     data = {"salt": salt, "hash": pw_hash, "kdf": "pbkdf2_sha256", "customized": is_cust, "tokens": [tok], "token_exp": {tok: now_t + 604800}}
     conf_dir.mkdir(parents=True, exist_ok=True)
     auth_p = conf_dir / "panel_auth.json"
-    auth_p.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    _atomic_write_text(auth_p, json.dumps(data, indent=2), encoding="utf-8")
     _chmod_0600_safe(auth_p)
     try:
         tok_p = conf_dir / "panel_token"
-        tok_p.write_text(tok + "\n", encoding="utf-8")
+        _atomic_write_text(tok_p, tok + "\n", encoding="utf-8")
         _chmod_0600_safe(tok_p)
     except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
         globals().get("_record_internal_diag", str)(_e_diag)
@@ -21997,14 +22082,7 @@ def _update_ops_settings_locked(payload: dict, conf_dir: Path = CONF_DIR) -> dic
     write_all_configs(conf_dir)
     if is_live and Path("/usr/share/ai-link/nftables/apply_nft.sh").exists() and cur["enabled"] and not is_bypass_active():
         if _is_local_port_listening(int(_uci_get_str("global.tproxy_port", "7893") or 7893)):
-            subprocess.run([
-                "/usr/share/ai-link/nftables/apply_nft.sh",
-                "--entry-bypass", "1" if cur["entry_bypass"] else "0",
-                "--block-quic", "1" if cur["block_quic"] else "0",
-                "--game-udp-direct", "1" if cur["game_udp_direct"] else "0",
-                "--ipv6-proxy", "1" if cur["ipv6_proxy"] else "0",
-                "--data-plane-mode", str(cur.get("data_plane_mode") or "tproxy_redirect"),
-            ], check=False, timeout=20)
+            subprocess.run(["/usr/share/ai-link/nftables/apply_nft.sh", "--entry-bypass", "1" if cur["entry_bypass"] else "0", "--block-quic", "1" if cur["block_quic"] else "0", "--game-udp-direct", "1" if cur["game_udp_direct"] else "0", "--ipv6-proxy", "1" if cur["ipv6_proxy"] else "0", "--data-plane-mode", str(cur.get("data_plane_mode") or "tproxy_redirect")], check=False, timeout=15)
             _sync_tun_policy_routing(cur.get("data_plane_mode", "tproxy_redirect"), enable_v6=bool(cur.get("ipv6_proxy", False)))
             if any(k in payload for k in ("tun_stack", "tun_mtu")):
                 schedule_async_core_reload(force_respawn=True, apply_nft=True)
@@ -22743,8 +22821,9 @@ def run_network_health_doctor(payload: dict = None, conf_dir: Path = CONF_DIR, a
         real_pmtu = 1500
         if is_real_router:
             try:
-                if Path("/sys/class/net/br-lan/mtu").is_file():
-                    real_lan_mtu = int(Path("/sys/class/net/br-lan/mtu").read_text().strip())
+                _lan_mtu_if = _detect_lan_bridge_dev()
+                if Path(f"/sys/class/net/{_lan_mtu_if}/mtu").is_file():
+                    real_lan_mtu = int(Path(f"/sys/class/net/{_lan_mtu_if}/mtu").read_text().strip())
                 for wif in ("pppoe-wan", "wan", "eth1"):
                     p_m = Path(f"/sys/class/net/{wif}/mtu")
                     if p_m.is_file():
@@ -22760,9 +22839,9 @@ def run_network_health_doctor(payload: dict = None, conf_dir: Path = CONF_DIR, a
                 "index": 7,
                 "title": "MTU / 分片",
                 "status": "warn",
-                "summary": f"PMTU 探测到 {pmtu_val}，而 br-lan MTU={lan_mtu}，可能存在分片丢包",
+                "summary": f"PMTU 探测到 {pmtu_val}，而局域网网桥 ({_detect_lan_bridge_dev()}) MTU={lan_mtu}，可能存在分片丢包",
                 "detail": "当出站隧道或 PPPoE 的有效 PMTU 小于局域网接口 MTU 时，大包 TLS 握手容易卡死，建议开启 TCP MSS 自动钳制。",
-                "evidence": f"pmtu={pmtu_val}, br_lan_mtu={lan_mtu}",
+                "evidence": f"pmtu={pmtu_val}, {_detect_lan_bridge_dev()}_mtu={lan_mtu}",
                 "fix": {
                     "type": "api_action",
                     "action": "enable_tcp_mss_clamp",
@@ -22784,7 +22863,7 @@ def run_network_health_doctor(payload: dict = None, conf_dir: Path = CONF_DIR, a
                 "status": "warn",
                 "summary": "检测到系统防火墙开启了 Flow Offloading 流加速，可能导致长连接跳过 TProxy 分流",
                 "detail": "OpenWrt 软件/硬件流加速会将已建立连接送入内核快路径绕过 prerouting TProxy 链，建议在防火墙中关闭软件/硬件流加速。",
-                "evidence": f"pmtu={pmtu_val}, br_lan_mtu={lan_mtu}, flow_offloading={flow_offload}",
+                "evidence": f"pmtu={pmtu_val}, {_detect_lan_bridge_dev()}_mtu={lan_mtu}, flow_offloading={flow_offload}",
                 "fix": None
             }
         return {
@@ -22794,7 +22873,7 @@ def run_network_health_doctor(payload: dict = None, conf_dir: Path = CONF_DIR, a
             "status": "pass",
             "summary": f"链路 PMTU ({pmtu_val}) 与局域网 MTU ({lan_mtu}) 匹配正常",
             "detail": "DF 不分片探测通过，大包传输无分片黑洞风险。",
-            "evidence": f"pmtu={pmtu_val}, br_lan_mtu={lan_mtu}",
+            "evidence": f"pmtu={pmtu_val}, {_detect_lan_bridge_dev()}_mtu={lan_mtu}",
             "fix": None
         }
 
@@ -23098,10 +23177,10 @@ def detect_network_topology(conf_dir: Path = CONF_DIR, mock_env: dict = None) ->
             if m_via:
                 gateway_ip = m_via.group(1)
         except Exception:
-            default_if = default_if or "br-lan"
+            default_if = default_if or _detect_lan_bridge_dev()
         try:
             addr_out = subprocess.check_output(["ip", "-4", "addr", "show"], text=True, timeout=1.5)
-            m_lan = re.search(r"inet\s+(\d+\.\d+\.\d+\.\d+)/\d+.*\b(br-lan|eth0)\b", addr_out)
+            m_lan = re.search(rf"inet\s+(\d+\.\d+\.\d+\.\d+)/\d+.*\b({re.escape(_detect_lan_bridge_dev())}|br-lan|eth0)\b", addr_out)
             if m_lan:
                 lan_ip = m_lan.group(1)
         except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
@@ -23126,7 +23205,7 @@ def detect_network_topology(conf_dir: Path = CONF_DIR, mock_env: dict = None) ->
     if not gateway_ip:
         parts_ip = lan_ip.split(".")
         gateway_ip = f"{parts_ip[0]}.{parts_ip[1]}.{parts_ip[2]}.1" if len(parts_ip) == 4 and lan_ip != "127.0.0.1" else "192.168.1.1"
-    default_if = default_if or "br-lan"
+    default_if = default_if or _detect_lan_bridge_dev()
     dhcp_active = bool(dhcp_active)
     wan_has_public_ip = bool(wan_has_public_ip)
 
@@ -24108,7 +24187,7 @@ def apply_cloud_shunt_action(payload: dict, conf_dir: Path = CONF_DIR) -> dict:
                         },
                     }
                     tmp_chk_p = stage_dir / f".sing-box.srs-check.{os.getpid()}.json"
-                    tmp_chk_p.write_text(json.dumps(chk_cfg, ensure_ascii=False), encoding="utf-8")
+                    _atomic_write_text(tmp_chk_p, json.dumps(chk_cfg, ensure_ascii=False), encoding="utf-8")
                     r_chk = subprocess.run([str(sb_bin), "check", "-c", str(tmp_chk_p)], capture_output=True, text=True, timeout=8)
                     check_rc = int(r_chk.returncode)
                     check_err = (r_chk.stderr or r_chk.stdout or "").strip()
@@ -25259,7 +25338,8 @@ def trace_traffic_flow(payload: dict, conf_dir: Path = CONF_DIR) -> dict:
         final_rtt = matched_group.get("resolved_rtt_ms", 12.0)
         selector_tag = matched_group.get("selector_tag", f"Shunt_{matched_group.get('id')}")
     # Evaluate Stage 1 (Does it enter the kernel or bypass at nftables?) & Warnings
-    game_udp_ports = (3478 <= dport <= 3479) or (4000 <= dport <= 4050) or (5000 <= dport <= 5550) or (7000 <= dport <= 9010) or (10000 <= dport <= 20000) or (27015 <= dport <= 27050)
+    game_udp_ports = (dport in (1119, 2099, 3478, 3479, 3724, 6012, 6113)) or (4000 <= dport <= 4050) or (5000 <= dport <= 5550) or (7000 <= dport <= 9010) or (10000 <= dport <= 20000) or (27014 <= dport <= 27050)
+    game_tcp_ports = (dport in (1119, 2099, 3724, 6012, 6113)) or (8393 <= dport <= 8400) or (27014 <= dport <= 27050)
     custom_proxy_on_cn = bool(matched_group and matched_group.get("id") != "Domestic_CN" and matched_group.get("shunt_mode") != "direct" and matched_group.get("country") not in ("direct", "block") and is_cn_ip)
     warning_msg = ""
     if not ops.get("enabled") or is_bypass_active():
@@ -25290,17 +25370,17 @@ def trace_traffic_flow(payload: dict, conf_dir: Path = CONF_DIR) -> dict:
         enters_kernel = False
         stage1_badge = "🏠 内网/节点地址硬件直通 (不进内核)"
         stage1_detail = f"目标 {clean_host} 命中 nftables fib daddr local / @reserved / @node_server_v4 豁免集合，直接硬件放行。"
-    elif ops.get("game_udp_direct") and proto_l4 == "udp" and is_cn_ip and not custom_proxy_on_cn and game_udp_ports:
+    elif ops.get("game_udp_direct") and is_cn_ip and not custom_proxy_on_cn and ((proto_l4 == "udp" and game_udp_ports) or (proto_l4 == "tcp" and game_tcp_ports)):
         enters_kernel = False
-        stage1_badge = "🎮 国服游戏/高频 UDP 硬件直连 (不进内核)"
-        stage1_detail = f"UDP 端口 {dport} 命中「国服游戏与高频联机 UDP 直连保护」，在 nftables 防火墙层直接硬件放行，不进入 sing-box 内核。"
+        stage1_badge = "🎮 国服游戏/高频 TCP+UDP 硬件直连 (不进内核)"
+        stage1_detail = f"{proto_l4.upper()} 端口 {dport} 命中「国服游戏与高频联机直连保护 (@cn_ip4)」，在 nftables 防火墙层直接硬件放行，不进入 sing-box 内核。"
         final_node = "direct (游戏硬件直连)"
     elif ops.get("entry_bypass") and is_cn_ip and not custom_proxy_on_cn:
         enters_kernel = False
         stage1_badge = "⚡ 国内流量硬件旁路 (不进内核)"
         stage1_detail = "已开启「国内流量不进内核 (entry_bypass)」，DNS 通过 223.5.5.5 返回真实国内 IP，流量命中 nftables @cn_ip4/@cn_ip6 直接硬件直连放行，零内核开销！"
         final_node = "direct (硬件旁路直连)"
-    elif ops.get("block_quic") and proto_l4 == "udp" and dport == 443:
+    elif ops.get("block_quic") and proto_l4 == "udp" and dport == 443 and (not is_cn_ip or custom_proxy_on_cn):
         enters_kernel = False
         stage1_badge = "🛑 QUIC (UDP 443) 防火墙层阻断"
         stage1_detail = "当前已开启「屏蔽代理线路 QUIC (UDP 443)」，nftables 直接返回 ICMP 端口不可达，强制浏览器/应用秒切高速 TCP 443 进入内核分流。"
@@ -25628,9 +25708,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.6.2"
+APP_VERSION = "2.6.3"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.6.2-release-20261115-r31"
+APP_BUILD = "2.6.3-release-20261116-r34"
 
 UPDATE_MANIFEST_PRIMARY = "https://ai-link-official.pages.dev/version.json"
 UPDATE_MANIFEST_GITHUB = "https://raw.githubusercontent.com/Master-AI-007/ai-link-openwrt/main/version.json"
@@ -26437,23 +26517,23 @@ def start_plugin_update(conf_dir: Path = CONF_DIR, force: bool = False) -> dict:
         "package_urls": urls,
     }
     try:
-        UPDATE_PLAN_JSON.write_text(json.dumps(plan, ensure_ascii=False, indent=2), encoding="utf-8")
+        _atomic_write_text(UPDATE_PLAN_JSON, json.dumps(plan, ensure_ascii=False, indent=2), encoding="utf-8")
         _st_payload = json.dumps({
             "target": plan["target"], "started_at": int(time.time()), "from": APP_VERSION,
         }, ensure_ascii=False, indent=2)
-        UPDATE_STATE_JSON.write_text(_st_payload, encoding="utf-8")
+        _atomic_write_text(UPDATE_STATE_JSON, _st_payload, encoding="utf-8")
         try:
             BACKUP_ROOT.mkdir(parents=True, exist_ok=True)
-            PERSIST_UPDATE_STATE.write_text(_st_payload, encoding="utf-8")
+            _atomic_write_text(PERSIST_UPDATE_STATE, _st_payload, encoding="utf-8")
         except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
             globals().get("_record_internal_diag", str)(_e_diag)
         _init_ln = f"{int(time.time())}|prepare|2|正在启动升级到 v{plan['target']}（当前 v{APP_VERSION}）\n"
-        UPDATE_PROGRESS_LOG.write_text(_init_ln, encoding="utf-8")
+        _atomic_write_text(UPDATE_PROGRESS_LOG, _init_ln, encoding="utf-8")
         try:
-            PERSIST_UPDATE_LOG.write_text(_init_ln, encoding="utf-8")
+            _atomic_write_text(PERSIST_UPDATE_LOG, _init_ln, encoding="utf-8")
         except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
             globals().get("_record_internal_diag", str)(_e_diag)
-        UPDATE_SCRIPT.write_text(_update_script_body(plan), encoding="utf-8")
+        _atomic_write_text(UPDATE_SCRIPT, _update_script_body(plan), encoding="utf-8")
         UPDATE_SCRIPT.chmod(0o755)
     except Exception as e:
         return {"ok": False, "error": "prepare_failed", "message": f"写入升级脚本失败: {e}"}
@@ -26538,7 +26618,7 @@ def restart_service_async(delay: float = 1.0) -> dict:
     try:
         UPDATE_DIR.mkdir(parents=True, exist_ok=True)
         sh = UPDATE_DIR / "svc_restart.sh"
-        sh.write_text(
+        _atomic_write_text(sh, 
             "#!/bin/sh\n"
             f"sleep {max(0.2, float(delay)):.1f}\n"
             f"{SERVICE_INIT} restart >/dev/null 2>&1\n",
@@ -26877,7 +26957,7 @@ def health_targets_probe_all():
     try:
         out = Path("/var/run/ai-link/health_targets.json")
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(json.dumps({"ts": _HEALTH_CACHE["ts"], "updated_at": now_str, "targets": items}, ensure_ascii=False))
+        _atomic_write_text(out, json.dumps({"ts": _HEALTH_CACHE["ts"], "updated_at": now_str, "targets": items}, ensure_ascii=False))
     except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
         globals().get("_record_internal_diag", str)(_e_diag)
     return items
@@ -26946,7 +27026,7 @@ def _get_lan_ipv6_neighbors_and_prefixes() -> tuple:
             if not parts:
                 continue
             ip_s = parts[0].strip().lower()
-            if "br-lan" in ln or "lan" in ln or "lladdr" in ln:
+            if _detect_lan_bridge_dev() in ln or "lan" in ln or "lladdr" in ln:
                 ips.add(ip_s)
                 segs = ip_s.split(":")
                 if len(segs) >= 4 and segs[0].startswith("2"):
@@ -27221,8 +27301,8 @@ def _compute_galaxy_snapshot_sync(conf_dir=CONF_DIR):
         r["conns"] = live_conns.get(r["ip"], r.get("conns", 0))
         r["state"] = "ok"
     seen_lan_ips = {r.get("ip") for r in lan_rows if r.get("ip")}
-    for h_ip, h_name in list(host_map.items())[:10]:
-        if len(lan_rows) >= 8:
+    for h_ip, h_name in list(host_map.items())[:_H3_MAX_HOSTS]:
+        if len(lan_rows) >= _H3_MAX_HOSTS:
             break
         if h_ip and h_ip not in seen_lan_ips and _h3_is_lan_ip(h_ip) and h_ip != lan_ip:
             seen_lan_ips.add(h_ip)
@@ -27640,6 +27720,9 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
         return _ip_in_cidr_list(client_ip, cidrs)
 
     def end_headers(self):
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "SAMEORIGIN")
+        self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ws: wss:; frame-ancestors 'self'")
         if not getattr(self, "_custom_cache_control", False):
             self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
             self.send_header("Pragma", "no-cache")
@@ -31574,7 +31657,7 @@ def main():
         _ad_preview = (tmp_shunt_dir / "ai-link-adblock.conf").read_text(encoding="utf-8")
         assert "no-resolv" in _ad_preview and "server=127.0.0.1#7874" in _ad_preview, "Expected no-resolv and server=127.0.0.1#7874 in dnsmasq adblock config"
         _fake_sb_log = tmp_shunt_dir / "singbox_test.log"
-        _fake_sb_log.write_text(
+        _atomic_write_text(_fake_sb_log, 
             "+0800 2026-10-24 23:30:01 DEBUG [99001 0ms] dns: exchange buddycanvas.com. IN A\n"
             "+0800 2026-10-24 23:30:01 DEBUG [99001 1ms] dns: match[0] rule_set=[blocklist_custom] => rcode(REFUSED)\n"
             "+0800 2026-10-24 23:30:02 INFO [99002 0ms] inbound/redirect[redirect-in]: inbound connection to cpro.baidu.com:443\n"
@@ -31763,7 +31846,7 @@ def main():
         except Exception as _e_noop:
             _ = _e_noop
         try:
-            _st_guard_probe2.write_text("selftest_canary_direct", encoding="utf-8")
+            _atomic_write_text(_st_guard_probe2, "selftest_canary_direct", encoding="utf-8")
         except Exception as _e_noop:
             _ = _e_noop
         try:

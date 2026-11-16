@@ -89,6 +89,11 @@ for (const m of nonRootCss.matchAll(/\bgap\s*:\s*([^;\}]+)/g)) {
   const v = m[1].trim();
   if (v !== '0' && !v.includes('var(--sp-')) badGap.push(v);
 }
+const tailCss = nonRootCss.slice(Math.max(0, nonRootCss.indexOf('.galaxy-device-view-toolbar')));
+for (const m of tailCss.matchAll(/\b(?:padding|margin)\s*:\s*([^;\}]+)/g)) {
+  const v = m[1].trim();
+  if (v !== '0' && !v.includes('var(--sp-')) badGap.push(v);
+}
 gate('6. spacing', '网格与弹性间距严格使用 4pt 令牌 (--sp-0 ~ --sp-10)', badGap.length === 0, `bad=${JSON.stringify(badGap)}`);
 
 // 7. duration

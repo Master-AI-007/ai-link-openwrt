@@ -110,7 +110,7 @@ _v7 = {
     "webui_badge": (re.search(r'>v([0-9.]+)</span>', html_text) or [None, "?"])[1],
     "luci_fallback": (re.search(r"\|\s*\|\s*'([0-9.]+)'\);", OV.read_text(encoding="utf-8")) or [None, "?"])[1],
 }
-check("Version Alignment: 包内 7 处版本串 100% 对齐为 2.3.2（且 version 文件严格单行）", len(set(_v7.values())) == 1 and _v7["APP_VERSION"] == "2.6.2", str(_v7))
+check("Version Alignment: 包内 7 处版本串 100% 对齐为 2.3.2（且 version 文件严格单行）", len(set(_v7.values())) == 1 and _v7["APP_VERSION"] == "2.6.3", str(_v7))
 
 # Load daemon module in isolated temp environment for runtime & E2E checks
 spec = importlib.util.spec_from_file_location("ailink_daemon_v102", str(DAEMON))
@@ -468,6 +468,8 @@ try:
         css_text = (ROOT / "root/usr/share/ai-link/webui/nexus.css").read_text(encoding="utf-8")
         html_with_css = re.sub(r'<link rel="stylesheet" href="[^"]*nexus\.css[^"]*">', lambda _: f"<style>{css_text}</style>", html_text)
         driver.execute_script(mock_boot_js, html_with_css)
+        for _m_fn in ("storage.js", "api.js", "modals.js", "galaxy-hud.js", "shunt-nodes.js", "settings-panel.js"):
+            driver.execute_script((ROOT / "root/usr/share/ai-link/webui/modules" / _m_fn).read_text(encoding="utf-8"))
         driver.execute_script((ROOT / "root/usr/share/ai-link/webui/nexus3d.js").read_text(encoding="utf-8"))
         driver.execute_script((ROOT / "root/usr/share/ai-link/webui/nexus.js").read_text(encoding="utf-8"))
         time.sleep(1.5)
@@ -1554,6 +1556,93 @@ try:
             and ml_ui_res.get("hasKwInput") is True
             and ml_ui_res.get("bwVisible") is True,
             str(ml_ui_res)
+        )
+        # v2.6.3 (r33) USER_REPORTED-20261116-01 E2E: Multi-device 24-sample repro + explicit toggle + persistence
+        ur11_e2e_res = driver.execute_script('''
+            const P = window.__NEXUS_PREVIEW__;
+            P.showPage('galaxy');
+            P.state.inspectorTab = 'core';
+            const makeDevs = (n) => Array.from({ length: n }, (_, i) => ({
+                ip: '10.10.10.' + (100 + i),
+                name: 'Device-' + (i + 1),
+                down_rate: (n - i) * 10240,
+                up_rate: (n - i) * 2048,
+                conns: (n - i) * 2,
+                totalMb: (n - i) * 15,
+                is_remote: false,
+                state: 'ok'
+            }));
+            // Ensure default 'all' view first
+            P.setGalaxyDeviceView('all');
+            const seriesAll = [];
+            for (let i = 0; i < 24; i++) {
+                if (i % 2 === 0) {
+                    P.state.galaxyLanDevices = makeDevs(3);
+                    P.mock.devicesTotal = 12;
+                } else {
+                    P.state.galaxyLanDevices = makeDevs(3);
+                    P.mock.devicesTotal = 3;
+                }
+                P.renderInspector(null);
+                const headEl = document.querySelector('#inspector .galaxy-list-head');
+                seriesAll.push(headEl ? headEl.textContent.replace(/\s+/g, ' ').trim() : '');
+            }
+            let adjacentChangesAll = 0;
+            for (let i = 1; i < seriesAll.length; i++) {
+                if (seriesAll[i] !== seriesAll[i - 1]) adjacentChangesAll++;
+            }
+            const toggleBtns = Array.from(document.querySelectorAll('#inspector [data-action="set-galaxy-device-view"], #inspector [data-device-view]'));
+            // Now test with 12 devices in galaxyLanDevices and click TOP3 button
+            P.state.galaxyLanDevices = makeDevs(12);
+            P.mock.devicesTotal = 12;
+            P.renderInspector(null);
+            const rowsInAll = document.querySelectorAll('#inspector .galaxy-entity-row').length;
+            const btnTop3 = document.getElementById('btn-galaxy-device-view-top3');
+            if (btnTop3) btnTop3.click();
+            const rowsInTop3 = document.querySelectorAll('#inspector .galaxy-entity-row').length;
+            const storedTop3 = window.NexusStorage ? window.NexusStorage.get('ailink_galaxy_device_view') : '';
+            const seriesTop3 = [];
+            for (let i = 0; i < 12; i++) {
+                P.mock.devicesTotal = (i % 2 === 0) ? 12 : 3;
+                P.renderInspector(null);
+                const headEl = document.querySelector('#inspector .galaxy-list-head');
+                seriesTop3.push(headEl ? headEl.textContent.replace(/\s+/g, ' ').trim() : '');
+            }
+            let adjacentChangesTop3 = 0;
+            for (let i = 1; i < seriesTop3.length; i++) {
+                if (seriesTop3[i] !== seriesTop3[i - 1]) adjacentChangesTop3++;
+            }
+            // Click back to ALL devices
+            const btnAll = document.getElementById('btn-galaxy-device-view-all');
+            if (btnAll) btnAll.click();
+            const rowsBackToAll = document.querySelectorAll('#inspector .galaxy-entity-row').length;
+            const storedAll = window.NexusStorage ? window.NexusStorage.get('ailink_galaxy_device_view') : '';
+            return {
+                samples: seriesAll.length,
+                adjacentChangesAll,
+                adjacentChangesTop3,
+                toggleCount: toggleBtns.length,
+                rowsInAll,
+                rowsInTop3,
+                rowsBackToAll,
+                storedTop3,
+                storedAll,
+                localStorageCount: (window.NexusStorage && window.NexusStorage.keys) ? window.NexusStorage.keys().length : 0
+            };
+        ''')
+        check(
+            "v2.6.3 (r33) USER_REPORTED-20261116-01 3D 拓扑页局域网终端列表防翻转与显式切换门禁: 多设备 24 次采样列表头相邻变化次数=0 (NO_FLIP_OBSERVED)、显式切换控件 count>=2、TOP3(3行)/所有设备(12行) 切换与 localStorage 持久化正常",
+            isinstance(ur11_e2e_res, dict)
+            and ur11_e2e_res.get("adjacentChangesAll") == 0
+            and ur11_e2e_res.get("adjacentChangesTop3") == 0
+            and ur11_e2e_res.get("toggleCount", 0) >= 2
+            and ur11_e2e_res.get("rowsInAll") == 12
+            and ur11_e2e_res.get("rowsInTop3") == 3
+            and ur11_e2e_res.get("rowsBackToAll") == 12
+            and ur11_e2e_res.get("storedTop3") == "top3"
+            and ur11_e2e_res.get("storedAll") == "all"
+            and ur11_e2e_res.get("localStorageCount", 0) >= 2,
+            str(ur11_e2e_res),
         )
     finally:
         driver.quit()

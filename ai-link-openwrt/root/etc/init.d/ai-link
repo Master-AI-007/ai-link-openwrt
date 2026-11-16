@@ -383,6 +383,7 @@ wait_for_ports_And_apply_nft() {
 	local panel_port="$9"
 
 	(
+		exec 9>&- 2>/dev/null || true
 		trap '' HUP
 		local waited=0
 		local budget="${AI_LINK_PORT_WAIT:-60}"
@@ -441,7 +442,7 @@ wait_for_ports_And_apply_nft() {
 start_service() {
 	mkdir -p /var/lock 2>/dev/null || true
 	exec 9>/var/lock/ai-link-init.lock 2>/dev/null || true
-	command -v flock >/dev/null 2>&1 && flock -w 10 9 2>/dev/null || true
+	command -v flock >/dev/null 2>&1 && { flock -n 9 2>/dev/null || flock -w 3 9 2>/dev/null || true; }
 	config_load 'ai-link'
 	local enabled panel_port tproxy_port mixed_port
 	local entry_bypass block_quic game_udp_direct ipv6_proxy
@@ -487,6 +488,7 @@ start_service() {
 		stop_core_processes
 		cleanup_dnsmasq_upstream
 		logger -t ai-link "Transparent proxy is disabled in UCI (enabled=0); cleaned nftables & dnsmasq upstream, WebUI active on :$panel_port"
+		flock -u 9 2>/dev/null || true; exec 9>&- 2>/dev/null || true
 		return 0
 	fi
 
@@ -528,17 +530,18 @@ start_service() {
 stop_service() {
 	mkdir -p /var/lock 2>/dev/null || true
 	exec 9>/var/lock/ai-link-init.lock 2>/dev/null || true
-	command -v flock >/dev/null 2>&1 && flock -w 10 9 2>/dev/null || true
+	command -v flock >/dev/null 2>&1 && { flock -n 9 2>/dev/null || flock -w 3 9 2>/dev/null || true; }
 	cleanup_routing_and_nft
 	stop_core_processes
 	cleanup_dnsmasq_upstream
 	logger -t ai-link "Stopped AI-LINK and rolled back nftables, policy routing, and dnsmasq upstream."
+	flock -u 9 2>/dev/null || true; exec 9>&- 2>/dev/null || true
 }
 
 reload_service() {
 	mkdir -p /var/lock 2>/dev/null || true
 	exec 9>/var/lock/ai-link-init.lock 2>/dev/null || true
-	command -v flock >/dev/null 2>&1 && flock -w 10 9 2>/dev/null || true
+	command -v flock >/dev/null 2>&1 && { flock -n 9 2>/dev/null || flock -w 3 9 2>/dev/null || true; }
 	config_load 'ai-link'
 	local enabled panel_port tproxy_port mixed_port
 	local entry_bypass block_quic game_udp_direct ipv6_proxy

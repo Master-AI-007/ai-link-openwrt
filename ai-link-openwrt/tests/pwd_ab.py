@@ -35,7 +35,7 @@ def build(src: Path):
 
     store = {"panel_secret": ""}
     ns = {
-        "hashlib": hashlib, "json": json, "os": os, "subprocess": subprocess, "time": time, "_chmod_0600_safe": lambda p: None,
+        "hashlib": hashlib, "json": json, "os": os, "subprocess": subprocess, "time": time, "_chmod_0600_safe": lambda p: None, "_atomic_write_text": lambda p, c, encoding="utf-8": Path(p).write_text(c, encoding=encoding),
         "Path": Path, "CONF_DIR": Path(tempfile.mkdtemp()),
         "get_uci_panel_secret": lambda: store["panel_secret"],
         "PANEL_PWD_DEFAULT": "ai-link-2026",

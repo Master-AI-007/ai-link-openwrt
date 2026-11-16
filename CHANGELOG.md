@@ -1,3 +1,12 @@
+## [v2.6.3] - 2026-11-16
+### 全栈深度优化、3D 切换闭环与国服游戏直连专项（PKG_RELEASE 34）
+- **正常升版**：升至 `v2.6.3`（`PKG_RELEASE:=34` / `r34`），增量基准为已上线的 `v2.6.2`（Release #445935185 / `ba82960` / 部署 `d743cf63`）；现网设备可正常收 OTA 提示。
+- **USER_REPORTED-20261116-01**：3D 终端列表新增显式「TOP3 / 所有设备」切换控件（`#btn-galaxy-device-view-top3` / `#btn-galaxy-device-view-all`），`NexusStorage`/`localStorage`（`ailink_galaxy_device_view`）持久化用户选择，`mergeLanDevices()` 防轮询抖动，多设备 24 次采样相邻翻转 **0 次**。
+- **Aster Design 令牌化**：`nexus.css` 间距与字阶改为 `--sp-*`/`--fs-*` 变量，`design-lint.js` 18/18 PASS。
+- **国服游戏直连 5 项**：魔兽/战网/LoL TCP+UDP 双协议端口内核直通、`@direct_bypass_v4/v6` 移出 `if eb:`、`block_quic` 仅阻断非国内 IP、`Domestic_CN` 优先于 `Outside_CN`、`rum.battle.net`/`fp-upload.dun.163.com` 纳入 `essential_app_protect`。
+- **全栈 10 项**：3D `dispose()`/`removeEventListener` 零泄漏、首屏 ≤8 按钮、分流页 ≤12 按钮、3 级 Elevation Token、6 独立 JS 模块、47 处原子写、HTTP 安全响应头、`apply_nft.sh --generate-configs` 兜底。
+- 验收：`INSTALL_RC=0`、服务全 1、`nft ok:true`、重启自愈、自检 10/10 + 负向、零补发 `run_all 15/15 / RC=0`、混沌 **98/98**、门禁双布局 17/17 与 1 字节篡改转红、11 行指纹 11/11、UI 六页三视口零溢出、设备侧出网 200/200/204。
+
 ## [v2.6.2] - 2026-11-15
 ### 用户前端 UX 审计 P0/P1/P2 全量整改与升级入口恢复（PKG_RELEASE 31）
 - **正常升版**：升至 `v2.6.2`（`PKG_RELEASE:=31` / `r31`），增量基准为已上线的 `v2.6.1`（Release #445649604 / `999fc22` / 部署 `1d2cdaef`）；现网设备可正常收 OTA 提示。

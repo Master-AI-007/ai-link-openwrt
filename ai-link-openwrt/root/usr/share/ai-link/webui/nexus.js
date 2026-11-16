@@ -358,6 +358,12 @@
     page: 'galaxy',
     sceneMode: 'panorama',
     inspectorTab: 'core',
+    galaxyDeviceView: (window.NexusGalaxyHud && window.NexusGalaxyHud.getDeviceView) ? window.NexusGalaxyHud.getDeviceView() : 'all',
+    deviceView: (window.NexusGalaxyHud && window.NexusGalaxyHud.getDeviceView) ? window.NexusGalaxyHud.getDeviceView() : 'all',
+    listView: (window.NexusGalaxyHud && window.NexusGalaxyHud.getDeviceView) ? window.NexusGalaxyHud.getDeviceView() : 'all',
+    viewMode: (window.NexusGalaxyHud && window.NexusGalaxyHud.getDeviceView) ? window.NexusGalaxyHud.getDeviceView() : 'all',
+    showAll: ((window.NexusGalaxyHud && window.NexusGalaxyHud.getDeviceView) ? window.NexusGalaxyHud.getDeviceView() : 'all') === 'all',
+    _lastSyncedDeviceView: (window.NexusGalaxyHud && window.NexusGalaxyHud.getDeviceView) ? window.NexusGalaxyHud.getDeviceView() : 'all',
     selected: null,
     cnUpstream: '223.5.5.5',
     remoteUpstream: 'https://1.1.1.1/dns-query',
@@ -422,12 +428,12 @@
     shuntHitStats: null,
     lastDoctorReport: null,
     forceTunnelDns: true,
-    authEnabled: (function () { try { const c = JSON.parse(localStorage.getItem('ailink_ops_cache_v1') || '{}'); return 'require_lan_auth' in c ? Boolean(c.require_lan_auth) : false; } catch (_) { return false; } })(),
-    entryBypass: (function () { try { const c = JSON.parse(localStorage.getItem('ailink_ops_cache_v1') || '{}'); return 'entry_bypass' in c ? Boolean(c.entry_bypass) : true; } catch (_) { return true; } })(),
-    ipv6Proxy: (function () { try { const c = JSON.parse(localStorage.getItem('ailink_ops_cache_v1') || '{}'); return 'ipv6_proxy' in c ? Boolean(c.ipv6_proxy) : false; } catch (_) { return false; } })(),
-    blockQuic: (function () { try { const c = JSON.parse(localStorage.getItem('ailink_ops_cache_v1') || '{}'); return 'block_quic' in c ? Boolean(c.block_quic) : true; } catch (_) { return true; } })(),
-    gameUdpDirect: (function () { try { const c = JSON.parse(localStorage.getItem('ailink_ops_cache_v1') || '{}'); return 'game_udp_direct' in c ? Boolean(c.game_udp_direct) : true; } catch (_) { return true; } })(),
-    conflictGuard: (function () { try { const c = JSON.parse(localStorage.getItem('ailink_ops_cache_v1') || '{}'); return 'auto_mute_conflicts' in c ? Boolean(c.auto_mute_conflicts) : true; } catch (_) { return true; } })(),
+    authEnabled: (function () { try { const c = JSON.parse((window.NexusStorage ? window.NexusStorage.get : function(k){try{return localStorage.getItem(k)}catch(_){return ''}})('ailink_ops_cache_v1') || '{}'); return 'require_lan_auth' in c ? Boolean(c.require_lan_auth) : false; } catch (_) { return false; } })(),
+    entryBypass: (function () { try { const c = JSON.parse((window.NexusStorage ? window.NexusStorage.get : function(k){try{return localStorage.getItem(k)}catch(_){return ''}})('ailink_ops_cache_v1') || '{}'); return 'entry_bypass' in c ? Boolean(c.entry_bypass) : true; } catch (_) { return true; } })(),
+    ipv6Proxy: (function () { try { const c = JSON.parse((window.NexusStorage ? window.NexusStorage.get : function(k){try{return localStorage.getItem(k)}catch(_){return ''}})('ailink_ops_cache_v1') || '{}'); return 'ipv6_proxy' in c ? Boolean(c.ipv6_proxy) : false; } catch (_) { return false; } })(),
+    blockQuic: (function () { try { const c = JSON.parse((window.NexusStorage ? window.NexusStorage.get : function(k){try{return localStorage.getItem(k)}catch(_){return ''}})('ailink_ops_cache_v1') || '{}'); return 'block_quic' in c ? Boolean(c.block_quic) : true; } catch (_) { return true; } })(),
+    gameUdpDirect: (function () { try { const c = JSON.parse((window.NexusStorage ? window.NexusStorage.get : function(k){try{return localStorage.getItem(k)}catch(_){return ''}})('ailink_ops_cache_v1') || '{}'); return 'game_udp_direct' in c ? Boolean(c.game_udp_direct) : true; } catch (_) { return true; } })(),
+    conflictGuard: (function () { try { const c = JSON.parse((window.NexusStorage ? window.NexusStorage.get : function(k){try{return localStorage.getItem(k)}catch(_){return ''}})('ailink_ops_cache_v1') || '{}'); return 'auto_mute_conflicts' in c ? Boolean(c.auto_mute_conflicts) : true; } catch (_) { return true; } })(),
     bypassActive: false,
     coreAlive: true,
     pwdCustomized: false,
@@ -567,13 +573,13 @@
   }
 
   function getAuthToken() {
-    try { return localStorage.getItem('ailink_panel_token') || ''; } catch (_) { return ''; }
+    try { return (window.NexusStorage ? window.NexusStorage.get : function(k){try{return localStorage.getItem(k)}catch(_){return ''}})('ailink_panel_token') || ''; } catch (_) { return ''; }
   }
 
   function setAuthToken(tok) {
     try {
-      if (tok) localStorage.setItem('ailink_panel_token', tok);
-      else localStorage.removeItem('ailink_panel_token');
+      if (tok) (window.NexusStorage ? window.NexusStorage.set : function(k,v){try{localStorage.setItem(k,v)}catch(_){}})('ailink_panel_token', tok);
+      else (window.NexusStorage ? window.NexusStorage.remove : function(k){try{localStorage.removeItem(k)}catch(_){}})('ailink_panel_token');
     } catch (_) {}
   }
 
@@ -992,6 +998,10 @@
   }
 
   function renderTopBarStatus() {
+    if (window.NexusGalaxyHud && typeof window.NexusGalaxyHud.syncBypassBanner === 'function') {
+      const mObj = mock.routingModes.find(m => m.id === state.routingMode) || mock.routingModes[0];
+      window.NexusGalaxyHud.syncBypassBanner(Boolean(state.bypassActive), mObj ? mObj.name : state.routingMode);
+    }
     const eg = getActiveEgressSummary();
     mock.latency = eg.numericRtt;
     if ($('#top-route-label')) $('#top-route-label').textContent = eg.topLabel;
@@ -1192,8 +1202,11 @@
             hEl.textContent = cellEl.dataset.tip;
           }
         };
-        tm.addEventListener('mouseover', updateHover);
-        tm.addEventListener('click', updateHover);
+        if (!tm.dataset.hoverBound) {
+          tm.dataset.hoverBound = '1';
+          tm.addEventListener('mouseover', updateHover);
+          tm.addEventListener('click', updateHover);
+        }
       }
     }
 
@@ -2209,7 +2222,7 @@
           '</div>' +
           subHealthHtml +
           ((Number(dispCount) === 0 || s.last_sync_error)
-            ? '<div class="sub-fallback-bar" style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:6px 10px;margin-bottom:8px;border-radius:8px;background:var(--surface-2);border:1px solid var(--line-subtle)"><span style="color:var(--amber)">首次拉取受阻？可离线粘贴导入：</span><div style="display:flex;gap:6px"><button type="button" class="button secondary compact" data-action="import">改为粘贴节点文本</button><button type="button" class="button ghost compact" data-action="binding">切换镜像重试</button></div></div>'
+            ? '<div class="sub-fallback-bar" style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:6px 10px;margin-bottom:8px;border-radius:8px;background:var(--surface-2);border:1px solid var(--line-subtle)"><span style="color:var(--amber)">首次拉取受阻？可离线粘贴导入：</span><div style="display:flex;gap:6px"><button type="button" class="button secondary compact" data-action="import">手动粘贴节点原文</button><button type="button" class="button ghost compact" data-action="binding">切换镜像重试</button></div></div>'
             : '') +
           '<div class="sub-actions">' +
             '<button class="button secondary compact" data-action="sub-sync-one" data-sub="' + i + '">立即同步</button>' +
@@ -2394,7 +2407,7 @@
       if (filteredOps.tun_mtu != null) state.tunMtu = Number(filteredOps.tun_mtu) || 1500;
       if (Array.isArray(filteredOps.lan_direct_macs)) state.lanDirectMacs = filteredOps.lan_direct_macs.slice();
       try {
-        localStorage.setItem('ailink_ops_cache_v1', JSON.stringify({
+        (window.NexusStorage ? window.NexusStorage.set : function(k,v){try{localStorage.setItem(k,v)}catch(_){}})('ailink_ops_cache_v1', JSON.stringify({
           require_lan_auth: state.authEnabled,
           entry_bypass: state.entryBypass,
           ipv6_proxy: state.ipv6Proxy,
@@ -3170,6 +3183,53 @@
     if (gv) gv.style.strokeDashoffset = String(314 * (1 - score / 100));
   }
 
+  function getGalaxyDeviceView() {
+    if (window.NexusGalaxyHud && typeof window.NexusGalaxyHud.syncStateDeviceView === 'function') {
+      return window.NexusGalaxyHud.syncStateDeviceView(state);
+    }
+    let raw = state.galaxyDeviceView || state.deviceView || state.listView || state.viewMode || '';
+    try {
+      if (!raw) {
+        raw = (window.NexusStorage ? (window.NexusStorage.get('ailink_galaxy_device_view') || window.NexusStorage.get('deviceView')) : '') || 'all';
+      }
+    } catch (_) {}
+    const mode = (raw === 'top3' || raw === 'TOP3' || raw === 'top' || state.showAll === false) ? 'top3' : 'all';
+    state.galaxyDeviceView = mode;
+    state.deviceView = mode;
+    state.listView = mode;
+    state.viewMode = mode;
+    state.showAll = (mode === 'all');
+    try {
+      if (window.NexusStorage) {
+        window.NexusStorage.set('ailink_galaxy_device_view', mode);
+        window.NexusStorage.set('deviceView', mode);
+      }
+    } catch (_) {}
+    return mode;
+  }
+
+  function setGalaxyDeviceView(nextMode) {
+    const mode = (window.NexusGalaxyHud && typeof window.NexusGalaxyHud.setDeviceView === 'function')
+      ? window.NexusGalaxyHud.setDeviceView(nextMode, state)
+      : ((nextMode === 'top3' || nextMode === 'TOP3' || nextMode === 'top' || nextMode === false) ? 'top3' : 'all');
+    state.galaxyDeviceView = mode;
+    state.deviceView = mode;
+    state.listView = mode;
+    state.viewMode = mode;
+    state.showAll = (mode === 'all');
+    state._lastSyncedDeviceView = mode;
+    try {
+      if (window.NexusStorage) {
+        window.NexusStorage.set('ailink_galaxy_device_view', mode);
+        window.NexusStorage.set('deviceView', mode);
+      }
+    } catch (_) {}
+    state.inspectorTab = 'core';
+    if (state.selected && state.selected.galaxy && state.selected.galaxy !== 'core') state.selected = null;
+    renderInspector(state.selected);
+    return mode;
+  }
+
   function buildGalaxyDetailHtml(tab, selectedItem) {
     const eg = getActiveEgressSummary();
     let spotlightHtml = '';
@@ -3181,11 +3241,25 @@
     }
 
     if (tab === 'core') {
-      const devs = (state.galaxyLanDevices && state.galaxyLanDevices.length)
+      const devViewMode = getGalaxyDeviceView();
+      const hasRawLan = Array.isArray(state.galaxyLanDevices) && state.galaxyLanDevices.length > 0;
+      const baseDevs = hasRawLan
         ? state.galaxyLanDevices
-        : state.insightDevices.map(d => ({ ip: d.ip || '', name: d.name || d.ip, down_rate: 0, up_rate: 0, conns: 0, totalMb: d.totalMb || 0, is_remote: false }));
-      const sortedDevs = devs.slice().sort((a, b) => ((Number(b.down_rate || 0) + Number(b.up_rate || 0)) - (Number(a.down_rate || 0) + Number(a.up_rate || 0))) || ((b.conns || 0) - (a.conns || 0)));
-      const totalOnlineDevs = (Number(mock.devicesTotal) > 0) ? Number(mock.devicesTotal) : sortedDevs.length;
+        : (state.insightDevices || []).map(d => ({ ip: d.ip || '', name: d.name || d.ip, down_rate: 0, up_rate: 0, conns: 0, totalMb: d.totalMb || 0, is_remote: false }));
+      const sortedDevs = baseDevs.slice().sort((a, b) => {
+        const ra = Number(a.down_rate || 0) + Number(a.up_rate || 0);
+        const rb = Number(b.down_rate || 0) + Number(b.up_rate || 0);
+        if (rb !== ra) return rb - ra;
+        const ca = Number(a.conns || 0);
+        const cb = Number(b.conns || 0);
+        if (cb !== ca) return cb - ca;
+        const ma = Number(a.totalMb || 0);
+        const mb = Number(b.totalMb || 0);
+        if (mb !== ma) return mb - ma;
+        return String(a.ip || a.name || '').localeCompare(String(b.ip || b.name || ''));
+      });
+      const totalOnlineDevs = (Number(mock.devicesTotal) > 0) ? Math.max(Number(mock.devicesTotal), sortedDevs.length) : sortedDevs.length;
+      const displayDevs = (devViewMode === 'top3') ? sortedDevs.slice(0, 3) : sortedDevs;
       const maxConns = (Number(mock.conntrackMax) > 0) ? Number(mock.conntrackMax) : 65536;
       const conntrackCur = (Number(mock.conntrackCount) > 0) ? Number(mock.conntrackCount) : Number(mock.connections || 0);
       const maxMemMib = (Number(mock.memTotalMib) > 0) ? Number(mock.memTotalMib) : 1024;
@@ -3194,7 +3268,7 @@
       const rawMemPct = (Number(mock.coreMemMib) / maxMemMib) * 100;
       const memPct = (!state.backendOffline && Number.isFinite(rawMemPct)) ? Math.min(100, Math.max(0, rawMemPct)) : null;
 
-      const rowsHtml = sortedDevs.slice(0, 10).map(d => {
+      const rowsHtml = displayDevs.map(d => {
         const rateSum = Number(d.down_rate || 0) + Number(d.up_rate || 0);
         const speedTxt = rateSum > 0
           ? ('↓ ' + fmtRate(d.down_rate || 0) + ' · ↑ ' + fmtRate(d.up_rate || 0))
@@ -3207,9 +3281,12 @@
         '</div>';
       }).join('');
 
+      const viewLabelFixed = (devViewMode === 'top3') ? '当前视图：TOP3 活跃终端' : '当前视图：所有设备';
+      const kpiSubLabelFixed = (devViewMode === 'top3') ? '已锁定 TOP 3 活跃终端视图' : '含局域网与回家远程终端';
+
       return spotlightHtml +
         '<div class="galaxy-kpi-grid">' +
-          '<div class="galaxy-kpi-card"><span>在线终端总数</span><b style="color:var(--cyan)">' + esc(totalOnlineDevs) + ' 台</b><small>' + (sortedDevs.length < totalOnlineDevs ? ('星图采样 Top ' + esc(sortedDevs.length) + ' 活跃终端') : '含局域网与回家远程终端') + '</small></div>' +
+          '<div class="galaxy-kpi-card"><span>在线终端总数</span><b style="color:var(--cyan)">' + esc(totalOnlineDevs) + ' 台</b><small>' + kpiSubLabelFixed + '</small></div>' +
           '<div class="galaxy-kpi-card"><span>代理活跃会话</span><b style="color:var(--violet)">' + esc(mock.connections) + '</b><small>内核运行: ' + esc(mock.uptimeStr) + '</small></div>' +
           '<div class="galaxy-kpi-card"><span>实时总下行</span><b style="color:var(--mint)">' + esc(mock.downText) + '</b><small>累计下载 ' + esc(mock.inTotalText) + '</small></div>' +
           '<div class="galaxy-kpi-card"><span>实时总上行</span><b style="color:var(--amber)">' + esc(mock.upText) + '</b><small>累计上传 ' + esc(mock.outTotalText) + '</small></div>' +
@@ -3224,8 +3301,15 @@
             '<div class="galaxy-waterline-bar"><i style="width:' + (memPct !== null ? Math.max(6, memPct) : 0) + '%"></i></div>' +
           '</div>' +
         '</div>' +
-        '<div class="galaxy-list-head"><b>接入终端列表 (按实时速率排序)</b><span>' + (sortedDevs.length < totalOnlineDevs ? ('活跃 Top ' + esc(sortedDevs.length) + ' / 共 ' + esc(totalOnlineDevs) + ' 台') : ('共 ' + esc(totalOnlineDevs) + ' 台')) + '</span></div>' +
-        '<div class="galaxy-entity-list">' + (rowsHtml || '<div class="empty-state"><h4>暂无活跃局域网终端</h4></div>') + '</div>';
+        '<div class="galaxy-device-view-toolbar" role="tablist" aria-label="局域网终端列表视图切换 (TOP3 / 所有设备)">' +
+          '<span class="galaxy-device-view-caption">终端视图</span>' +
+          '<div class="galaxy-device-view-seg">' +
+            '<button type="button" id="btn-galaxy-device-view-all" class="button ghost compact galaxy-dev-view-btn show-all' + (devViewMode === 'all' ? ' active' : '') + '" role="tab" aria-selected="' + (devViewMode === 'all' ? 'true' : 'false') + '" data-action="set-galaxy-device-view" data-device-view="all" data-view-mode="all" data-show-all="true" title="固定显示所有设备 (全部终端)">所有设备</button>' +
+            '<button type="button" id="btn-galaxy-device-view-top3" class="button ghost compact galaxy-dev-view-btn top3' + (devViewMode === 'top3' ? ' active' : '') + '" role="tab" aria-selected="' + (devViewMode === 'top3' ? 'true' : 'false') + '" data-action="set-galaxy-device-view" data-device-view="top3" data-view-mode="top3" data-show-all="false" title="固定显示实时速率 TOP3 活跃终端">TOP3</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="galaxy-list-head" data-device-view="' + esc(devViewMode) + '"><b>接入终端列表 (按实时速率排序)</b><span id="galaxy-device-view-status">' + viewLabelFixed + '</span></div>' +
+        '<div class="galaxy-entity-list" data-device-view="' + esc(devViewMode) + '">' + (rowsHtml || '<div class="empty-state"><h4>暂无活跃局域网终端</h4></div>') + '</div>';
     }
 
     if (tab === 'cn') {
@@ -3725,7 +3809,9 @@
       if (galRes && galRes.ok !== false) {
         state.rawGalaxy = galRes;
         if (Array.isArray(galRes.lan)) {
-          state.galaxyLanDevices = galRes.lan;
+          state.galaxyLanDevices = (window.NexusGalaxyHud && typeof window.NexusGalaxyHud.mergeLanDevices === 'function')
+            ? window.NexusGalaxyHud.mergeLanDevices(galRes.lan, state.insightDevices, state.galaxyLanDevices)
+            : galRes.lan;
         }
         if (Array.isArray(galRes.domestic)) {
           state.galaxyDomesticSites = galRes.domestic;
@@ -4178,7 +4264,10 @@
               state.insightDevices = idata.devices;
               mock.devicesTotal = idata.devices.length;
               mock.devicesActive = idata.devices.length ? Math.max(1, idata.devices.filter(d => Number(d.totalBytes || 0) > 0).length) : 0;
-              if (!galRes || !Array.isArray(galRes.lan) || !galRes.lan.length) {
+              if (window.NexusGalaxyHud && typeof window.NexusGalaxyHud.mergeLanDevices === 'function') {
+                const primaryLan = (galRes && Array.isArray(galRes.lan) && galRes.lan.length) ? galRes.lan : null;
+                state.galaxyLanDevices = window.NexusGalaxyHud.mergeLanDevices(primaryLan, idata.devices, state.galaxyLanDevices);
+              } else if (!state.galaxyLanDevices || !state.galaxyLanDevices.length) {
                 state.galaxyLanDevices = idata.devices.map(d => ({
                   ip: d.ip || '',
                   name: d.name || d.ip || '局域网终端',
@@ -6160,7 +6249,7 @@
           if (detailEl) {
             detailEl.innerHTML = esc(isStalePreview ? ('安全拦截：' + errMsg) : ('失败原因：' + errMsg)) +
               ' <span class="inline-fallback-actions" style="display:inline-flex;gap:6px;margin-left:8px;vertical-align:middle">' +
-                '<button type="button" class="button secondary compact" data-action="import">改为粘贴节点文本</button>' +
+                '<button type="button" class="button secondary compact" data-action="import">手动粘贴节点原文</button>' +
                 '<button type="button" class="button ghost compact" data-action="binding">切换镜像重试</button>' +
               '</span>';
             detailEl.style.color = 'var(--rose)';
@@ -6888,6 +6977,13 @@
         }
         break;
       }
+      case 'set-galaxy-device-view':
+      case 'set-device-view': {
+        const rawTarget = (el && (el.dataset.deviceView || el.dataset.viewMode || (el.dataset.showAll === 'false' ? 'top3' : 'all'))) || 'all';
+        const appliedMode = setGalaxyDeviceView(rawTarget);
+        toast('终端列表视图已固定为：' + (appliedMode === 'top3' ? 'TOP3 活跃终端' : '所有设备'));
+        break;
+      }
       case 'restore-proxy': {
         const res = await callRouterApi('/api/restore_proxy', 'POST', {});
         toast((res && res.message) || '已恢复透明代理接管');
@@ -6971,6 +7067,22 @@
           },
           '确认删除节点'
         );
+        break;
+      }
+      case 'toggle-shunt-more-menu': {
+        const menu = $('#shunt-more-menu');
+        if (menu) {
+          const isOpen = !menu.classList.contains('hidden');
+          menu.classList.toggle('hidden', isOpen);
+          if (el) el.setAttribute('aria-expanded', isOpen ? 'false' : 'true');
+        }
+        break;
+      }
+      case 'restore-proxy-banner': {
+        await callRouterApi('/api/restore_proxy', 'POST', {});
+        state.bypassActive = false;
+        renderAll();
+        toast('已恢复透明代理接管');
         break;
       }
       case 'trace':
@@ -10502,7 +10614,7 @@
       if (m && m[1]) {
         const tok = decodeURIComponent(m[1]).trim();
         if (tok) {
-          localStorage.setItem('ailink_panel_token', tok);
+          (window.NexusStorage ? window.NexusStorage.set : function(k,v){try{localStorage.setItem(k,v)}catch(_){}})('ailink_panel_token', tok);
         }
         if (window.history && typeof window.history.replaceState === 'function') {
           window.history.replaceState(null, document.title, window.location.pathname + window.location.search);
@@ -10529,19 +10641,26 @@
   });
 
   // P2-4: Domain Module Registry (core, modal, galaxy, overview, shunt, homelink, dns, nodes, settings)
-  window.NexusModules = {
+  window.NexusModules = Object.assign({
+    storage: window.NexusStorage,
+    api: window.NexusApi,
+    modalsMod: window.NexusModals,
+    galaxyHud: window.NexusGalaxyHud,
+    shuntNodes: window.NexusShuntNodes,
+    settingsPanel: window.NexusSettingsPanel,
     core: { state, mock, callRouterApi, syncBackendStatus, renderAll },
     modal: { openModal, openDrawer, closeModal, confirmModal, stack: _modalStack },
-    galaxy: { renderTopBarStatus },
+    galaxy: { renderTopBarStatus, renderInspector, buildGalaxyDetailHtml, getGalaxyDeviceView, setGalaxyDeviceView },
     overview: { renderOverviewDashboard, getActiveEgressSummary },
     shunt: { renderShuntMatrix, renderShuntHitLeaderboard },
     homelink: { renderHomeLinkSection },
     dns: { renderDnsAndFilterSection },
     nodes: { renderSubscriptionsAndNodes },
     settings: { renderOpsAndUpdatesSection, renderConnectionsSection }
-  };
+  }, window.NexusModules || {});
 
-  window.__NEXUS_PREVIEW__ = { state, mock, showPage, setSceneMode, syncBackendStatus, handleToggleEntryBypass, openOverviewDetailModal, openNetworkDoctorModal, renderShuntHitLeaderboard, computeSpeedGearInfo, get scene() { return scene; } };
+  getGalaxyDeviceView();
+  window.__NEXUS_PREVIEW__ = { state, mock, showPage, setSceneMode, renderInspector, buildGalaxyDetailHtml, getGalaxyDeviceView, setGalaxyDeviceView, syncBackendStatus, handleToggleEntryBypass, openOverviewDetailModal, openNetworkDoctorModal, renderShuntHitLeaderboard, computeSpeedGearInfo, get scene() { return scene; } };
   }
 
   init();

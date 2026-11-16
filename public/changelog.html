@@ -18,7 +18,7 @@
         <circle cx="20" cy="20" r="5.4" fill="none" stroke="#a994ff" stroke-width="1.6"/>
         <circle cx="20" cy="20" r="1.8" fill="#6ee7f5"/>
       </svg>
-      <span style="display:block"><b>AI-LINK</b><span>NEXUS · 2.6.2</span></span>
+      <span style="display:block"><b>AI-LINK</b><span>NEXUS · 2.6.3</span></span>
     </a>
     <div class="nav-links">
       <a href="/#features">核心能力</a>
@@ -36,12 +36,22 @@
 <main class="wrap log-wrap">
   <div class="log-head">
     <h1>更新日志</h1>
-    <span class="pill"><i></i> 当前最新 2.6.2</span>
+    <span class="pill"><i></i> 当前最新 2.6.3</span>
   </div>
 <article class="log-item latest">
   <div class="log-top">
-    <h2>v2.6.2</h2>
+    <h2>v2.6.3</h2>
     <span class="tag c">最新</span>
+    <time>2026-11-16</time>
+  </div>
+  <p style="margin:2px 0 6px;color:var(--dim)"></p>
+<h3>全栈深度优化、3D 切换闭环与国服游戏直连专项（PKG_RELEASE 34）</h3>
+<ul><li><b>正常升版</b>：升至 <code>v2.6.3</code>（<code>PKG_RELEASE:=34</code> / <code>r34</code>），增量基准为已上线的 <code>v2.6.2</code>（Release #445935185 / <code>ba82960</code> / 部署 <code>d743cf63</code>）；现网设备可正常收 OTA 提示。</li><li><b>USER_REPORTED-20261116-01</b>：3D 终端列表新增显式「TOP3 / 所有设备」切换控件（<code>#btn-galaxy-device-view-top3</code> / <code>#btn-galaxy-device-view-all</code>），<code>NexusStorage</code>/<code>localStorage</code>（<code>ailink_galaxy_device_view</code>）持久化用户选择，<code>mergeLanDevices()</code> 防轮询抖动，多设备 24 次采样相邻翻转 <b>0 次</b>。</li><li><b>Aster Design 令牌化</b>：<code>nexus.css</code> 间距与字阶改为 <code>--sp-*</code>/<code>--fs-*</code> 变量，<code>design-lint.js</code> 18/18 PASS。</li><li><b>国服游戏直连 5 项</b>：魔兽/战网/LoL TCP+UDP 双协议端口内核直通、<code>@direct_bypass_v4/v6</code> 移出 <code>if eb:</code>、<code>block_quic</code> 仅阻断非国内 IP、<code>Domestic_CN</code> 优先于 <code>Outside_CN</code>、<code>rum.battle.net</code>/<code>fp-upload.dun.163.com</code> 纳入 <code>essential_app_protect</code>。</li><li><b>全栈 10 项</b>：3D <code>dispose()</code>/<code>removeEventListener</code> 零泄漏、首屏 ≤8 按钮、分流页 ≤12 按钮、3 级 Elevation Token、6 独立 JS 模块、47 处原子写、HTTP 安全响应头、<code>apply_nft.sh --generate-configs</code> 兜底。</li><li>验收：<code>INSTALL_RC=0</code>、服务全 1、<code>nft ok:true</code>、重启自愈、自检 10/10 + 负向、零补发 <code>run_all 15/15 / RC=0</code>、混沌 <b>98/98</b>、门禁双布局 17/17 与 1 字节篡改转红、11 行指纹 11/11、UI 六页三视口零溢出、设备侧出网 200/200/204。</li></ul>
+</article>
+<article class="log-item">
+  <div class="log-top">
+    <h2>v2.6.2</h2>
+    <span class="tag">历史</span>
     <time>2026-11-15</time>
   </div>
   <p style="margin:2px 0 6px;color:var(--dim)"></p>
