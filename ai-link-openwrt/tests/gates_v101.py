@@ -264,7 +264,7 @@ def tar_dedup_and_size_gate():
         files = [m for m in members if m.isfile()]
         uncomp_size = sum(m.size for m in files)
     dup_cnt = len(names) - len(set(names))
-    ipk_path = next(iter(list(repo_root.glob(f"luci-app-ai-link_{APP_VER}-r*_all.ipk")) + list(repo_root.parent.glob(f"luci-app-ai-link_{APP_VER}-r*_all.ipk"))), repo_root / f"luci-app-ai-link_{APP_VER}-r34_all.ipk")
+    ipk_path = next(iter(list(repo_root.glob(f"luci-app-ai-link_{APP_VER}-r*_all.ipk")) + list(repo_root.parent.glob(f"luci-app-ai-link_{APP_VER}-r*_all.ipk"))), repo_root / f"luci-app-ai-link_{APP_VER}-r35_all.ipk")
     ipk_ok = True
     ipk_detail = ""
     if ipk_path.is_file():
@@ -417,7 +417,7 @@ def fb250_packaging_and_luci_gate():
                 if actual_cn != cn_nums[:len(actual_cn)] or len(actual_cn) < 5:
                     fp_mismatches.append(f"{doc_name}:non_consecutive_h2={actual_cn}")
                 # FB-257-2: Verify report contains post-injected run_all summary and environment note
-                for _req_tok in ("验证环境", "本轮增量说明", "（构建容器）", "合计 15 套，通过 15，失败 0", "115/115", "152/152", "96/96", "Stage 7.28", "Stage 7.29", "Stage 7.30", "Stage 7.31", "Stage 7.32", "Stage 7.33", "Stage 7.34", "Stage 7.35", "153/153", "98/98", "#445935185", "ba82960", "live_write_leaked"):
+                for _req_tok in ("验证环境", "本轮增量说明", "（构建容器）", "合计 15 套，通过 15，失败 0", "115/115", "153/153", "99/99", "Stage 7.28", "Stage 7.29", "Stage 7.30", "Stage 7.31", "Stage 7.32", "Stage 7.33", "Stage 7.34", "Stage 7.35", "Stage 7.36", "#446563163", "243e19b", "live_write_leaked"):
                     if _req_tok not in doc_txt:
                         fp_mismatches.append(f"{doc_name}:missing_fb257_2_token({_req_tok})")
             rows = re.findall(r"^\|\s*`([^`]+)`\s*\|\s*[^|]*?`(\d+)`[^|]*\|\s*`([0-9a-f]{32})`\s*\|\s*`([0-9a-f]{64})`\s*\|", doc_txt, re.M)

@@ -6,7 +6,7 @@ set -e
 export PYTHONDONTWRITEBYTECODE="1"
 PANEL_PORT=$(uci -q get ai-link.global.panel_port 2>/dev/null || echo "9099")
 APP_VER=$(cat /etc/ai-link/version 2>/dev/null | head -n1 | awk '{print $1}' || true)
-[ -z "$APP_VER" ] && APP_VER="2.6.2"
+[ -z "$APP_VER" ] && APP_VER="2.6.4"
 PANEL_PWD_CUSTOM=$(uci -q get ai-link.global.panel_pwd_customized || echo "")
 # N-P0-2: Read panel_auth.json customized flag & /etc/ai-link/initial_password as single source of truth
 AUTH_CUST=$(python3 -B - <<'PY' 2>/dev/null
@@ -39,6 +39,22 @@ if command -v sing-box >/dev/null 2>&1; then
 	CORE_VER="sing-box $(sing-box version 2>/dev/null | head -n1 | awk '{print $3}' || echo unknown)"
 fi
 BUILD_MODE=$(cat /etc/ai-link/build_mode.txt 2>/dev/null || echo "auto" || true)
+
+CLI_ERR_RUNTIME=1
+CLI_ERR_USAGE=2
+CLI_ERR_SERVICE=3
+
+run_checked() {
+	set +e
+	"$@"
+	_rc=$?
+	set -e
+	if [ "$_rc" -ne 0 ]; then
+		echo "❌ [AI-LINK CLI] 子命令执行失败 (exit_code=${_rc}): $*" >&2
+		exit "$_rc"
+	fi
+	return 0
+}
 
 wait_core_ready() {
 	python3 -B - <<'PY' 2>/dev/null
@@ -136,14 +152,14 @@ PY
 		fi
 		;;
 	probe)
-		/usr/bin/env python3 -B /usr/share/ai-link/ai-link-daemon.py --self-test
+		run_checked /usr/bin/env python3 -B /usr/share/ai-link/ai-link-daemon.py --self-test
 		;;
 	probe-now)
 		wait_core_ready
 		/usr/bin/env python3 -B /usr/share/ai-link/ai-link-daemon.py --probe-now
 		;;
 	check)
-		/usr/bin/env python3 -B /usr/share/ai-link/ai-link-daemon.py --check-config
+		run_checked /usr/bin/env python3 -B /usr/share/ai-link/ai-link-daemon.py --check-config
 		;;
 	max-nodes)
 		if [ -n "$2" ]; then

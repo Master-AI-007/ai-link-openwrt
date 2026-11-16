@@ -1,18 +1,34 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.6.3",
+  "latest": "2.6.4",
   "release_date": "2026-11-16",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.6.3",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.6.4",
   "highlights": [
-    "升版至 v2.6.3（PKG_RELEASE 34）：全量闭环 11 项全栈深度优化与国服游戏直连 5 项专项",
-    "闭环 USER_REPORTED-20261116-01：3D 终端列表新增显式「TOP3 / 所有设备」切换控件并持久化（24 次多设备采样 0 翻转）",
-    "Aster Design 门禁合规：nexus.css 间距与字阶令牌化（design-lint 18/18 PASS）",
-    "国服游戏直连：魔兽/战网 TCP+UDP 双协议直通、@direct_bypass 脱钩 entry_bypass、QUIC 仅阻断非国内 IP、Domestic_CN 优先、战网/网易白名单",
-    "前端架构：首屏 HUD ≤8 按钮、分流页 ≤12 按钮、3 级 Elevation Token、6 独立 JS 模块、47 处原子写、HTTP 安全响应头",
-    "真机零补发 run_all 15/15、混沌 98/98（新增 Stage 7.33/7.34/7.35）、门禁双布局 17/17、11 行指纹 11/11、自检 10/10 + 负向检出"
+    "升版至 v2.6.4（PKG_RELEASE 36）：闭环 Hydrogen v2.6.4 审计 2 项 Blocker + 4 项 Major + 10 项穿透优化",
+    "Blocker B-264-01/M-264-04：解除 .glass-card/.metric-card overflow:hidden，下拉菜单 z-index 提升至 300，新增 closeShuntMoreMenu() 外部点击/Escape 关闭",
+    "Blocker B-264-02：27 处交互向导/编辑表单恢复居中 openModal()（.modal-panel.wide min(880px,100%)，centerDeltaX=0px），13 处只读详情保留 openDrawer() 并零内边距右贴边",
+    "响应式补齐：768px 下 modal/drawer 满宽底部抽屉与 shunt-more-menu 零溢出，1280px 顶栏优雅折行（375/430px 零横向溢出）",
+    "代码质量：清理未定义 --z-dropdown/--z-popover 令牌（0 残留）、消除 index.html 6 处 title=/data-tip= 双重 Tooltip",
+    "设置页低频排障入口折入折叠面板（静态按钮压降至 22 个，完整保留内核升级与 OTA 入口）；Modal 栈保存恢复 scrollTop；3D 多指触控防抖",
+    "真机零补发 run_all 15/15、混沌 100/100（新增 Stage 7.36/7.37）、门禁双布局 17/17、design-lint 18/18、11 行指纹 11/11、自检 10/10 + 负向检出"
   ],
   "changelog": [
+    {
+      "version": "2.6.4",
+      "date": "2026-11-16",
+      "type": "feature",
+      "title": "3D 与稳定性深度优化、审计 Blocker/Major 全量闭环",
+      "items": [
+        "正常升版至 `v2.6.4`（`PKG_RELEASE:=36` / `r36`），增量基准为线上 `v2.6.3`（Release #446563163 / `243e19b` / 部署 `5faca0d2`）；现网设备可正常收 OTA 提示",
+        "Blocker `B-264-01` & Major `M-264-04`：解除 `.glass-card`/`.metric-card` 的 `overflow:hidden`（顶部高光改圆角裁切），`#shunt-more-menu` z-index 提升至 `var(--z-overlay)`(300)，新增 `closeShuntMoreMenu()` 支持外部点击/菜单项/Escape 关闭，E2E 新增 `elementFromPoint` 100% 命中断言",
+        "Blocker `B-264-02`：严格语义二分，27 处交互式向导/编辑表单恢复居中 `openModal()`（复杂表单自动挂载 `.modal-panel.wide min(880px,100%)`，实测 `centerDeltaX=0px`），仅 13 处只读明细/诊断保留 `openDrawer()` 并通过 `:has(.drawer-panel)` 归零内边距实现右贴边",
+        "Major `M-264-03`：补齐 `@media (max-width:768px)` 下 modal/drawer 满宽底部抽屉与 `.shunt-more-menu` 零溢出规则，`@media (max-width:1280px)` 顶栏优雅折行",
+        "Major `M-264-05`/`M-264-06`：清理 `nexus.css` 未定义 `--z-dropdown`/`--z-popover`（0 残留），清理 `index.html` 6 处 `title=`/`data-tip=` 双重 Tooltip",
+        "穿透项 7~10：`#page-settings` 低频排障入口折入 `<details>`（静态按钮 22 个，完整保留 `#btn-check-core-update` 与 `#btn-ota-check`/`#btn-ota-apply`）；`_modalStack` 保存恢复 `scrollTop`；`nexus3d.js` 多指触控防抖 + `touch-action:none`",
+        "完整保留并回归 r35 的 OPT-264-01~10；验收：真机 `INSTALL_RC=0`、自检 10/10 零写盘泄漏 + 负向 `RC=1` 检出、重启自愈、零补发 `run_all 15/15 RC=0`、混沌 **100/100**、门禁双布局 17/17、design-lint 18/18、UI 六页三视口零溢出、出网 200/200/204"
+      ]
+    },
     {
       "version": "2.6.3",
       "date": "2026-11-16",
@@ -576,13 +592,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.6.3/AI-LINK-v2.6.3.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.6.4/AI-LINK-v2.6.4.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.6.3.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.6.4.tar.gz"
       ],
-      "size": 1156709,
-      "md5": "2edb06e886cec1750343a85f1d7c1264",
-      "sha256": "b27a38b0956bfb01734e17187e5b660f6851d79c9b19be79cae93d01789bf2c4"
+      "size": 1166184,
+      "md5": "978986b91fa755c774137e3b8b3b834e",
+      "sha256": "52cc132c357695542516f9260e5f0849bb0587e2a08c908f0df684a544cc157a"
     }
   }
 }

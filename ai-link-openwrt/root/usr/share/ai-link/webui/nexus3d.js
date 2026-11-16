@@ -201,6 +201,20 @@
       if (this.scene) {
         this.disposeObject3D(this.scene);
       }
+      [this.glowTexture, this.coronaTexture, this.bhDiskTexture, this.particleTexture, this.ringTexture].forEach((tex) => {
+        if (tex && typeof tex.dispose === 'function') {
+          try { tex.dispose(); } catch (_) {}
+        }
+      });
+      if (Array.isArray(this.dynamicBeams)) {
+        this.dynamicBeams.forEach((b) => {
+          if (b && b.geometry && typeof b.geometry.dispose === 'function') { try { b.geometry.dispose(); } catch (_) {} }
+          if (b && b.material && typeof b.material.dispose === 'function') { try { b.material.dispose(); } catch (_) {} }
+        });
+      }
+      if (this.renderTarget && typeof this.renderTarget.dispose === 'function') {
+        try { this.renderTarget.dispose(); } catch (_) {}
+      }
       if (this.renderer && typeof this.renderer.dispose === 'function') {
         try { this.renderer.dispose(); } catch (_) {}
       }
@@ -838,6 +852,7 @@
         if (ch.traverse) {
           ch.traverse(o => {
             if (o.geometry && o.geometry.dispose) o.geometry.dispose();
+            if (o.material && o.material.map && o.material.map.dispose) o.material.map.dispose();
             if (o.material && o.material.dispose) o.material.dispose();
           });
         }
@@ -1095,6 +1110,7 @@
         if (ch.traverse) {
           ch.traverse(o => {
             if (o.geometry && o.geometry.dispose) o.geometry.dispose();
+            if (o.material && o.material.map && o.material.map.dispose) o.material.map.dispose();
             if (o.material && o.material.dispose) o.material.dispose();
           });
         }
@@ -1325,14 +1341,24 @@
     bindControls() {
       let lastX = 0;
       let lastY = 0;
+      this._activePointers = new Set();
+      if (this.canvas && this.canvas.style) {
+        this.canvas.style.touchAction = 'none';
+      }
       this._listen(this.canvas, 'pointerdown', event => {
+        this._activePointers.add(event.pointerId);
+        if (this._activePointers.size > 1) {
+          this.dragging = false;
+          return;
+        }
         this.dragging = true;
         this.dragDistance = 0;
         lastX = event.clientX;
         lastY = event.clientY;
-        this.canvas.setPointerCapture(event.pointerId);
+        try { this.canvas.setPointerCapture(event.pointerId); } catch (_) {}
       });
       this._listen(this.canvas, 'pointermove', event => {
+        if (this._activePointers && this._activePointers.size > 1) return;
         const dx = event.clientX - lastX;
         const dy = event.clientY - lastY;
         if (this.dragging) {
@@ -1349,11 +1375,15 @@
         lastY = event.clientY;
       });
       this._listen(this.canvas, 'pointerup', event => {
-        if (this.dragDistance < 6) this.pick(event);
+        if (this._activePointers) this._activePointers.delete(event.pointerId);
+        if (this.dragDistance < 6 && (!this._activePointers || this._activePointers.size === 0)) this.pick(event);
         this.dragging = false;
         try { this.canvas.releasePointerCapture(event.pointerId); } catch (_) {}
       });
-      this._listen(this.canvas, 'pointercancel', () => { this.dragging = false; });
+      this._listen(this.canvas, 'pointercancel', event => {
+        if (this._activePointers) this._activePointers.delete(event.pointerId);
+        this.dragging = false;
+      });
       this._listen(this.canvas, 'pointerleave', () => { this.tooltip.hidden = true; });
       this._listen(this.canvas, 'wheel', event => {
         event.preventDefault();

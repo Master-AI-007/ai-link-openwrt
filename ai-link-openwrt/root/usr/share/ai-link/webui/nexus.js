@@ -732,6 +732,7 @@
       while (bEl.firstChild) {
         savedFrag.appendChild(bEl.firstChild);
       }
+      const savedScrollTop = bEl ? bEl.scrollTop : 0;
       _modalStack.push({
         title: tEl ? tEl.textContent : _lastModalTitle,
         kicker: kEl ? kEl.textContent : 'AI-LINK NEXUS',
@@ -740,6 +741,7 @@
         handler: modalConfirmHandler,
         isWide: Boolean(panel && panel.classList.contains('wide')),
         isDrawer: Boolean(panel && panel.classList.contains('drawer-panel')),
+        scrollTop: savedScrollTop,
         frag: savedFrag
       });
     } else if (m && m.hidden) {
@@ -772,7 +774,13 @@
       footNote.textContent = modalConfirmHandler ? '修改将实时同步至 AI-LINK 守护进程与内核' : 'AI-LINK NEXUS 实时控制中心';
     }
     if (panel) {
-      const isWide = Boolean(html && (html.includes('ov-insight-modal-wrap') || html.includes('table-wrap')));
+      const isWide = !asDrawer && Boolean(html && (
+        html.includes('ov-insight-modal-wrap') ||
+        html.includes('table-wrap') ||
+        html.includes('an-builder-root') ||
+        html.includes('mdl-grp-mode-cards') ||
+        html.includes('modal-grid-3')
+      ));
       panel.classList.toggle('wide', isWide);
       panel.classList.toggle('drawer-panel', Boolean(asDrawer));
     }
@@ -781,12 +789,13 @@
     $$('.pool-more-menu').forEach(el => el.classList.add('hidden'));
     $$('.auto-pool.hud-pool-card').forEach(c => c.classList.remove('menu-open'));
     state.openPoolMenuIdx = null;
+    closeShuntMoreMenu();
     if (m) {
       m.hidden = false;
       m.setAttribute('role', 'dialog');
       m.setAttribute('aria-modal', 'true');
       m.setAttribute('aria-labelledby', 'modal-title');
-      setTimeout(() => {
+      _scheduleKeyedTimer('modal:focus', () => {
         const focusables = m.querySelectorAll('input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])');
         if (focusables.length) {
           try { focusables[0].focus(); } catch (_) {}
@@ -795,6 +804,15 @@
         }
       }, 10);
     }
+  }
+
+  function closeShuntMoreMenu() {
+    const menu = $('#shunt-more-menu');
+    const btn = $('#btn-shunt-more-menu');
+    if (menu && !menu.classList.contains('hidden')) {
+      menu.classList.add('hidden');
+    }
+    if (btn) btn.setAttribute('aria-expanded', 'false');
   }
 
   function openModal(title, html, kicker, onConfirm, confirmText) {
@@ -821,6 +839,9 @@
       if (kEl) kEl.textContent = prev.kicker;
       if (bEl && prev.frag) {
         bEl.replaceChildren(prev.frag);
+        if (typeof prev.scrollTop === 'number') {
+          bEl.scrollTop = prev.scrollTop;
+        }
       }
       modalConfirmHandler = prev.handler || null;
       if (confirmBtn) {
@@ -834,6 +855,7 @@
       }
       return;
     }
+    _clearManagedTimersByPrefix('modal:');
     _modalStack.length = 0;
     if (m) m.hidden = true;
     const panel = $('.modal-panel');
@@ -851,10 +873,13 @@
   }
 
   document.addEventListener('keydown', (ev) => {
-    if (ev.key === 'Escape' && state.openPoolMenuIdx !== null) {
-      state.openPoolMenuIdx = null;
-      $$('.pool-more-menu').forEach(el => el.classList.add('hidden'));
-      $$('.auto-pool.hud-pool-card').forEach(c => c.classList.remove('menu-open'));
+    if (ev.key === 'Escape') {
+      closeShuntMoreMenu();
+      if (state.openPoolMenuIdx !== null) {
+        state.openPoolMenuIdx = null;
+        $$('.pool-more-menu').forEach(el => el.classList.add('hidden'));
+        $$('.auto-pool.hud-pool-card').forEach(c => c.classList.remove('menu-open'));
+      }
     }
     const m = $('#modal');
     if (!m || m.hidden) return;
@@ -1964,7 +1989,13 @@
       const sumSubEl = $('#dns-filter-lists-summary');
       if (sumSubEl) {
         const totRulesDecl = mock.filterLists.reduce((acc, l) => acc + (l && l.enabled !== false ? Number(l.rules_count || 0) : 0), 0);
-        sumSubEl.textContent = '共挂载 ' + mock.filterLists.length + ' 个规则源（已启用 ' + enabledFlCnt + ' 个 · 覆盖 ' + totRulesDecl.toLocaleString('zh-CN') + ' 条规则）';
+        const dfRaw = (state.rawStatus && state.rawStatus.dns_filter) || {};
+        const effRules = Number(dfRaw.effective_rules_count || Math.min(50000, totRulesDecl));
+        const isTrunc = Boolean(dfRaw.truncated || totRulesDecl > 50000);
+        const truncTail = isTrunc
+          ? (' · 去重生效 ' + effRules.toLocaleString('zh-CN') + ' 条 [已触发 50,000 条上限截断]')
+          : (effRules > 0 ? (' · 去重生效 ' + effRules.toLocaleString('zh-CN') + ' / 50,000 条') : '');
+        sumSubEl.textContent = '共挂载 ' + mock.filterLists.length + ' 个规则源（已启用 ' + enabledFlCnt + ' 个 · 声明 ' + totRulesDecl.toLocaleString('zh-CN') + ' 条' + truncTail + '）';
       }
       flList.innerHTML = mock.filterLists.length
         ? mock.filterLists.map((l, idx) => {
@@ -2493,7 +2524,7 @@
     const topo = det.topology || 'bypass';
     const evList = (det.evidence || []).map(e => '<li>' + esc(e) + '</li>').join('');
     const step2 = ((det.wizard_steps || [])[1]) || {};
-    openDrawer(
+    openModal(
       '拓扑自动识别与 3 步快速接入向导',
       '<div class="trace-stages">' +
         '<div class="trace-stage"><i>识别</i><div><b>自动识别结论：' + esc(det.topology_label || topo) + '</b><span>置信度 ' + Math.round((det.confidence || 0.94) * 100) + '% · 本机 LAN IP: ' + esc(det.lan_ip || location.hostname || '127.0.0.1') + '</span></div><strong>' + esc(topo.toUpperCase()) + '</strong></div>' +
@@ -2595,7 +2626,7 @@
       '<button type="button" class="button ghost compact" id="btn-rb-add-new">+ 新增规则块</button>' +
       (rbs.length > 0 ? '<button type="button" class="button ghost danger-text compact" id="btn-rb-del-cur">删除当前块</button>' : '') +
     '</div>';
-    openDrawer(
+    openModal(
       '增强规则块与实时草稿试匹配 · ' + grp.name + ' (共 ' + rbs.length + ' 块)',
       '<div class="modal-form">' +
         blockTabsHtml +
@@ -2722,7 +2753,7 @@
     const rowsHtml = list.length
       ? list.map(p => '<div class="trace-stage"><i></i><div style="min-width:0"><b>' + esc(p.name) + ' ' + esc(p.group_id) + ' (' + Number(p.rule_count || 0) + ' 条)</b><span class="mono" style="display:block;overflow:hidden;text-overflow:ellipsis">' + esc(p.url) + ' · ' + (p.last_error ? ('失败: ' + esc(p.last_error) + ' (已保留旧规则)') : '同步正常') + '</span></div><div class="button-row" style="gap:5px"><button type="button" class="button ghost compact" data-action="sync-rule-provider" data-rp-id="' + esc(p.id) + '">同步</button><button type="button" class="button danger compact" data-action="delete-rule-provider" data-rp-id="' + esc(p.id) + '" data-rp-name="' + esc(p.name) + '">删除</button></div></div>').join('')
       : '<div class="trace-stage"><i>ℹ</i><div><b>尚无远程规则订阅</b><span>添加后每 24h 自动拉取更新，更新失败自动保留旧版本不影响现有分流</span></div><strong>就绪</strong></div>';
-    openDrawer(
+    openModal(
       '远程分流规则订阅管理 · 导入式原子更新',
       '<div class="trace-stages">' + rowsHtml + '</div>' +
       '<div class="modal-form" style="margin-top:12px">' +
@@ -2776,7 +2807,7 @@
         '<strong class="mono">' + (c.installed ? '已就绪' : ('种子 ' + Number(c.seed_count || 0) + ' 项')) + '</strong>' +
       '</div>';
     }).join('');
-    openDrawer(
+    openModal(
       '云端 GeoIP / Geosite 场景规则中心 · 共 ' + Number(sum.total_sets || catalog.length) + ' 套在线列表',
       '<div class="modal-form">' +
         '<div class="syntax-guide" style="margin-bottom:8px">' +
@@ -2873,7 +2904,7 @@
     const evRows = evs.length
       ? evs.slice(0, 15).map(e => '<div class="trace-stage"><i>' + (e.status === 'recovered' ? '' : '') + '</i><div><b>' + esc(e.title) + '</b><span>' + esc(e.detail) + '</span></div><strong>' + esc((e.delivered_channels || []).join(',') || '已记录') + '</strong></div>').join('')
       : '<div class="trace-stage"><i></i><div><b>事件中心暂无异常告警</b><span>支持节点全挂、订阅同步失败、DDNS 失步、内核重启、证书到期、磁盘不足、体检失败 7 类事件（30 分钟智能去重）</span></div><strong>正常</strong></div>';
-    openDrawer(
+    openModal(
       '告警通道与事件中心 · Webhook / Telegram / SMTP',
       '<div class="modal-form">' +
         '<div class="modal-grid-3">' +
@@ -3079,6 +3110,28 @@
     renderInspector(state.selected);
   }
 
+  const _managedTimers = new Map();
+  function _scheduleKeyedTimer(key, fn, delayMs) {
+    if (_managedTimers.has(key)) {
+      clearTimeout(_managedTimers.get(key));
+      _managedTimers.delete(key);
+    }
+    const tid = setTimeout(() => {
+      _managedTimers.delete(key);
+      try { fn(); } catch (_) {}
+    }, delayMs);
+    _managedTimers.set(key, tid);
+    return tid;
+  }
+  function _clearManagedTimersByPrefix(prefix) {
+    for (const [k, tid] of Array.from(_managedTimers.entries())) {
+      if (!prefix || String(k).startsWith(prefix)) {
+        clearTimeout(tid);
+        _managedTimers.delete(k);
+      }
+    }
+  }
+
   let _deferredRenderTimer = null;
   function scheduleDeferredRenderAll() {
     if (_deferredRenderTimer) clearTimeout(_deferredRenderTimer);
@@ -3116,12 +3169,13 @@
     if (scene) {
       scene.options.page = normalized;
       scene.setActive(normalized === 'galaxy');
-      if (normalized === 'galaxy') setTimeout(() => scene.resize(), 50);
+      if (normalized === 'galaxy') _scheduleKeyedTimer('page:galaxy:resize', () => scene.resize(), 50);
     }
-    if (normalized === 'galaxy' && !scene && !state.authRequiredLock) setTimeout(initScene, 20);
+    _clearManagedTimersByPrefix('page: transient:');
+    if (normalized === 'galaxy' && !scene && !state.authRequiredLock) _scheduleKeyedTimer('page:galaxy:init', initScene, 20);
     if (normalized === 'nodes' || normalized === 'homelink') ensureQrCodeLoaded();
     if (normalized === 'nodes' && !state.rawNodes.length && !state.authRequiredLock && !window.__MOCK_STATUS) syncBackendStatus(true, false);
-    if (normalized === 'overview') setTimeout(drawTrafficChart, 60);
+    if (normalized === 'overview') _scheduleKeyedTimer('page:overview:chart', drawTrafficChart, 60);
     if (normalized === 'overview' && !state.authRequiredLock && !window.__MOCK_STATUS) {
       if (!state.overviewTelemetryFull || !Array.isArray(state.overviewTelemetryFull.matrix_7x24) || (Date.now() - Number(state._lastOvFullTs || 0)) > 12000) {
         callRouterApi('/api/overview/telemetry', 'GET', null, 8000, true).then(ovRes => {
@@ -4528,7 +4582,7 @@
 
   /* T1: One-Click Network Health Doctor (8 Parallel Checks + 1-Click Auto Fix) */
   async function openNetworkDoctorModal(autoRun) {
-    openDrawer(
+    openModal(
       '网络健康医生 · 8 项全链路并发诊断与一键修复',
       '<div id="network-doctor-root" class="modal-form">' +
         '<div class="doctor-summary-banner">' +
@@ -4635,7 +4689,7 @@
         });
       }
     }
-    openDrawer(
+    openModal(
       '节点详情与编辑 · ' + n.name,
       '<div class="detail-grid">' +
         '<div><span>线路属性识别</span><b>' + esc(n.line_badge || '直连线路') + (n.detour_target ? (' (前置: ' + esc(n.detour_target) + ')') : '') + '</b></div>' +
@@ -4693,7 +4747,7 @@
     const nodeOpts = (mock.nodes || []).filter(n => !n.is_chained).slice(0, 30).map(n =>
       '<option value="' + esc(n.tag || n.name) + '">前置单节点：' + esc(cleanNodeDisplayName(n.name)) + '</option>'
     ).join('');
-    openDrawer(
+    openModal(
       '配置链式代理落地节点 (Chained Proxy / Detour)',
       '<div class="modal-form">' +
         '<div class="syntax-guide"><b>链式代理工作流：</b>将自购的海外静态住宅 IP（Socks5 / HTTP / VLESS 等）设为最终落地节点，并选择任意<b>自动节点池</b>或<b>高速专线节点</b>作为前置中转跳板，自动生成无环路的 sing-box <code>detour</code> 级联链路。</div>' +
@@ -4791,7 +4845,7 @@
       );
     };
     const initData = state.lastTrafficInsights || { hourly_series: [], daily_series: [], by_device: [], by_node: [], by_domain: [] };
-    openDrawer(
+    openModal(
       '按天/按小时三维流量归因洞察 (终端 × 节点 × 目标域名)',
       '<div class="ov-insight-modal-wrap modal-form" style="gap:12px">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">' +
@@ -4863,7 +4917,7 @@
   function openNewRuleModal(existingGroup) {
     const g = existingGroup || null;
     const autoOpts = mock.autoPools.map(p => '<option value="' + esc(p.id) + '" ' + (g && g.auto_node_id === p.id ? 'selected' : '') + '>' + esc(p.name) + '</option>').join('');
-    openDrawer(
+    openModal(
       g ? ('编辑分流策略组 · ' + g.name) : '添加自定义高优先级分流规则',
       '<div class="modal-form">' +
         '<div class="syntax-guide">' +
@@ -5044,7 +5098,7 @@
       return out;
     };
 
-    openDrawer(
+    openModal(
       p ? ('配置自动节点池 · ' + p.name) : '创建智能自动节点池',
       '<div id="an-builder-root" class="ov-insight-modal-wrap modal-form" style="gap:10px">' +
         '<div class="syntax-guide" style="margin-bottom:0;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">' +
@@ -5886,7 +5940,7 @@
       '</tr>';
     }).join('');
 
-    openDrawer(
+    openModal(
       title,
       '<div class="modal-form" id="url-ping-progress-modal">' +
         '<div class="sub-health-box" style="padding:var(--sp-3)">' +
@@ -6089,7 +6143,7 @@
       '</div>';
     }).join('');
 
-    openDrawer(
+    openModal(
       '订阅同步与节点预热实时进度',
       '<div class="modal-form" id="sub-sync-progress-modal">' +
         '<div class="sub-health-box" style="padding:var(--sp-3)">' +
@@ -6285,7 +6339,7 @@
     const s = (subIdx != null && mock.subscriptions[subIdx]) ? mock.subscriptions[subIdx] : null;
     const initAutoUpdate = s ? (s.auto_update !== false) : true;
     const initInterval = s ? (Number(s.update_interval_min) > 0 ? Number(s.update_interval_min) : 360) : 360;
-    openDrawer(
+    openModal(
       s ? ('编辑订阅源 · ' + s.name) : '新增或更新机场订阅源',
       '<div class="modal-form">' +
         '<div class="modal-grid-2">' +
@@ -6415,7 +6469,7 @@
       '<div class="button-row"><button class="button secondary compact" style="padding:0 8px;" data-action="run-sched-now" data-sid="' + esc(s.id) + '">立即运行</button>' +
       '<button class="button danger compact" style="padding:0 8px;" data-action="del-sched" data-sid="' + esc(s.id) + '">删除</button></div></div>'
     ).join('');
-    openDrawer(
+    openModal(
       '定时 URL Ping 测速巡检计划',
       '<div class="modal-form">' +
         '<div class="trace-stages">' + (schedRows || '<p>当前暂无定时计划</p>') + '</div>' +
@@ -6472,7 +6526,7 @@
       ? state.lanDirectMacs.join(', ')
       : (Array.isArray(state.rawOps && state.rawOps.lan_direct_macs) ? state.rawOps.lan_direct_macs.join(', ') : '');
     const curMtu = Number(state.tunMtu || (state.rawOps && state.rawOps.tun_mtu) || 1500);
-    openDrawer(
+    openModal(
       '面板监听、免密网段与设备直通白名单配置',
       '<div class="modal-form">' +
         '<div class="modal-grid-2">' +
@@ -7202,7 +7256,7 @@
         const ffList = (res && Array.isArray(res.fakeip_filter) && res.fakeip_filter.length)
           ? res.fakeip_filter
           : ['localbattle.net', 'cn.localbattle.net', 'steamloopback.host', 'spotilocal.com', 'localhost.ptlogin2.qq.com', 'plex.direct', 'direct.quickconnect.to', 'lvh.me', 'nip.io', 'sslip.io'];
-        openDrawer(
+        openModal(
           '双栈 DNS 上游与 Fake-IP 本地回环豁免配置',
           '<div class="modal-form">' +
             '<div class="syntax-guide">' +
@@ -7236,7 +7290,7 @@
       case 'ota-status': {
         const res = await callRouterApi('/api/system/update/status', 'GET');
         const prog = (res && res.progress) || {};
-        openDrawer(
+        openModal(
           'OTA 在线升级状态与确认',
           '<div class="detail-grid">' +
             '<div><span>当前运行版本</span><b class="mono">v' + esc((res && res.current) || (state.rawStatus && state.rawStatus.version) || '2.5.5') + '</b></div>' +
@@ -7255,7 +7309,7 @@
         break;
       }
       case 'add-single-node': {
-        openDrawer(
+        openModal(
           '手动添加单个节点 & 分享链接解析预览',
           '<div class="modal-form">' +
             '<div class="modal-field">' +
@@ -7858,7 +7912,7 @@
             if (confirmBtn) confirmBtn.disabled = false;
           }
         };
-        openDrawer(
+        openModal(
           '创建加密回家节点 (支持单节点独立回家路由模式)',
           '<div class="modal-form">' +
             '<div class="modal-grid-3" style="margin-bottom:8px">' +
@@ -8022,7 +8076,7 @@
             } catch (_) {}
           });
         }
-        openDrawer(
+        openModal(
           '分享回家配置 · ' + (hlNode ? hlNode.name : ''),
           qrHtml +
           '<div class="modal-field"><label>标准客户端导入 URI（支持 v2rayNG / Shadowrocket / NekoBox / Sing-box 扫码或复制）</label><input class="mono" value="' + esc(uri) + '" readonly onclick="this.select()"></div>' +
@@ -8034,7 +8088,7 @@
       case 'edit-node': {
         const nid = el && el.dataset.node;
         const hlNode = mock.homelinkNodes.find(x => x.id === nid) || mock.homelinkNodes[0];
-        openDrawer(
+        openModal(
           '编辑回家节点 · ' + (hlNode ? hlNode.name : ''),
           '<div class="modal-form">' +
             '<div class="modal-grid-2">' +
@@ -8522,7 +8576,7 @@
         }).join('');
         const curBlockedStr = Array.isArray(state.dnsCustomBlocked) ? state.dnsCustomBlocked.join(', ') : '';
         const curAllowedStr = Array.isArray(state.dnsCustomAllowed) ? state.dnsCustomAllowed.join(', ') : '';
-        openDrawer(
+        openModal(
           '管理云端过滤规则库、GitHub 预设源与黑白名单',
           '<div class="modal-form">' +
             '<div class="modal-field">' +
@@ -8762,7 +8816,7 @@
           : ((sameTagCnt === 0 && remCnt === 0 && !res.dynamic_random_sub)
               ? '<div class="trace-stage"><i></i><div><b>所有自动节点池成员完整率 100%</b><span>本次订阅更新不会导致任何正在使用的自动节点池失去活跃出口。</span></div><strong>无损更新</strong></div>'
               : '<div class="trace-stage"><i></i><div><b>部分节点发生轮换（活跃池具备充足备份）</b><span>本次更新包含节点增删或同名替换，同步后将自动触发增量健康探测。</span></div><strong>增量重算</strong></div>');
-        openDrawer(
+        openModal(
           '订阅更新影响预览 · ' + (s ? s.name : '全部订阅'),
           '<div class="modal-form">' +
             riskBannerHtml +
@@ -8933,7 +8987,7 @@
             ? ('发现新内核 v' + latV + ' · 架构 ' + (archObj.preferred_suffix || 'linux-musl') + ' · Schema: ' + schemaProf)
             : ('当前内核 v' + curV + ' 已就绪 · 架构 ' + (archObj.preferred_suffix || 'linux-musl') + ' · Schema: ' + schemaProf);
         }
-        openDrawer(
+        openModal(
           'sing-box 代理内核版本检测与安全热升级',
           '<div class="modal-form">' +
             '<div class="kv-list">' +
@@ -9204,7 +9258,7 @@
             '<select class="select-compact sonar-cfg-sel">' + optsHtml + '</select>' +
           '</div>';
         };
-        openDrawer(
+        openModal(
           '自定义全球核心应用延迟声呐探测目标',
           '<div class="modal-form">' +
             '<p class="muted" style="margin:0 0 10px;line-height:1.5">自定义圆形声呐上的 8 个核心探测点（名称、探测 URL 与绑定分流策略组）。保存后支持一键并发实测，断网或节点不可达时自动显示超时告警。</p>' +
@@ -9444,7 +9498,7 @@
           const srcList = filtered.length ? filtered : mock.nodes;
           return srcList.map(n => '<option value="' + esc(n.tag || n.name) + '" ' + ((n.tag || n.name) === curManualSel ? 'selected' : '') + '>' + esc(cleanNodeDisplayName(n.name)) + ' (' + formatLatencyText(n.rtt, false) + ')</option>').join('');
         };
-        openDrawer(
+        openModal(
           '分流策略组编排 · ' + g.name,
           '<div class="trace-stages">' +
             '<div class="trace-stage"><i>01</i><div><b>匹配范围</b><span>' + esc(g.subtitle) + '</span></div><strong>' + (g.domains ? g.domains.length : 0) + ' 条规则</strong></div>' +
@@ -9632,6 +9686,15 @@
         !event.target.closest('.pool-more-wrap') &&
         (event.target.closest('[data-action], [data-group], [data-auto-pool], [data-page]') || (!event.isTrusted && event.target === document.body))
       );
+      const _shuntMenuEl = $('#shunt-more-menu');
+      if (_shuntMenuEl && !_shuntMenuEl.classList.contains('hidden')) {
+        const _inShuntTrigger = Boolean(event.target.closest('#btn-shunt-more-menu'));
+        const _inShuntItem = Boolean(event.target.closest('#shunt-more-menu [data-action]'));
+        const _outsideShuntWrap = Boolean(!event.target.closest('.shunt-more-wrap'));
+        if (_inShuntItem || (!_inShuntTrigger && _outsideShuntWrap)) {
+          closeShuntMoreMenu();
+        }
+      }
       if (_clickedMenuAction || (!_hasActiveSelection && !state._pointerDownInPopupOrModal && _clickedOtherTrigger)) {
         state.openPoolMenuIdx = null;
         $$('.pool-more-menu').forEach(m => m.classList.add('hidden'));

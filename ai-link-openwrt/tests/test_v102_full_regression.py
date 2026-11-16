@@ -110,7 +110,7 @@ _v7 = {
     "webui_badge": (re.search(r'>v([0-9.]+)</span>', html_text) or [None, "?"])[1],
     "luci_fallback": (re.search(r"\|\s*\|\s*'([0-9.]+)'\);", OV.read_text(encoding="utf-8")) or [None, "?"])[1],
 }
-check("Version Alignment: 包内 7 处版本串 100% 对齐为 2.3.2（且 version 文件严格单行）", len(set(_v7.values())) == 1 and _v7["APP_VERSION"] == "2.6.3", str(_v7))
+check("Version Alignment: 包内 7 处版本串 100% 对齐为 2.3.2（且 version 文件严格单行）", len(set(_v7.values())) == 1 and _v7["APP_VERSION"] == "2.6.4", str(_v7))
 
 # Load daemon module in isolated temp environment for runtime & E2E checks
 spec = importlib.util.spec_from_file_location("ailink_daemon_v102", str(DAEMON))
@@ -1643,6 +1643,112 @@ try:
             and ur11_e2e_res.get("storedAll") == "all"
             and ur11_e2e_res.get("localStorageCount", 0) >= 2,
             str(ur11_e2e_res),
+        )
+
+        # v2.6.4 (r36) B-264-01 / B-264-02 / M-264-03~06 E2E Geometric & Responsive Gate:
+        # 1) #shunt-more-menu unclipped by parent .glass-card (overflow=visible, bottom item hitSelf=true, Escape closes)
+        # 2) Auto-Pool Wizard opens as centered .modal-panel.wide (Math.abs(panelCenterX - viewportCenterX) < 20, !drawer-panel)
+        # 3) Read-only HUD Help opens as flush-right .drawer-panel (Math.abs(viewportWidth - rect.right) <= 2)
+        # 4) Mobile (375px / 430px) #shunt-more-menu & modal zero horizontal overflow
+        driver.set_window_size(1440, 900)
+        time.sleep(0.1)
+        r36_geom_res = driver.execute_script('''
+            window.closeModal(true);
+            window.__NEXUS_PREVIEW__.showPage('shunt');
+            const shuntSec = document.getElementById('page-shunt');
+            if (shuntSec) shuntSec.scrollTop = 0;
+            window.scrollTo(0, 0);
+            const moreBtn = document.getElementById('btn-shunt-more-menu');
+            const moreMenu = document.getElementById('shunt-more-menu');
+            const heroCard = moreMenu ? moreMenu.closest('.glass-card') : null;
+            if (moreBtn && moreMenu.classList.contains('hidden')) moreBtn.click();
+            const heroOverflow = heroCard ? window.getComputedStyle(heroCard).overflow : '';
+            const heroRect = heroCard ? heroCard.getBoundingClientRect() : { bottom: 0 };
+            const menuRect = moreMenu ? moreMenu.getBoundingClientRect() : { height: 0, bottom: 0 };
+            const lastItem = moreMenu ? moreMenu.querySelector('[data-action="matrix-test"]') : null;
+            let lastItemHitSelf = false;
+            if (lastItem) {
+                const ir = lastItem.getBoundingClientRect();
+                const topEl = document.elementFromPoint(Math.round(ir.left + ir.width / 2), Math.round(ir.top + ir.height / 2));
+                lastItemHitSelf = Boolean(topEl === lastItem || lastItem.contains(topEl));
+                var hitDebug = topEl ? (topEl.tagName + "#" + topEl.id + "." + topEl.className + "@" + Math.round(ir.top)) : "null@" + Math.round(ir.top);
+            }
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            const closedAfterEsc = moreMenu ? moreMenu.classList.contains('hidden') : false;
+
+            // Open Auto-Pool Wizard (interactive multi-step form -> centered wide modal)
+            const poolEditBtn = document.querySelector('[data-auto-pool="0"]');
+            if (poolEditBtn) poolEditBtn.click();
+            const panel = document.querySelector('#modal .modal-panel');
+            const pRect = panel ? panel.getBoundingClientRect() : { left: 0, width: 0 };
+            const panelCenterX = pRect.left + pRect.width / 2;
+            const viewportCenterX = window.innerWidth / 2;
+            const autoPoolCentered = Boolean(
+                panel &&
+                !panel.classList.contains('drawer-panel') &&
+                panel.classList.contains('wide') &&
+                Math.abs(panelCenterX - viewportCenterX) < 20 &&
+                pRect.width >= 760
+            );
+            window.closeModal(true);
+
+            // Open read-only HUD help -> flush-right drawer
+            const helpBtn = document.getElementById('shunt-hero-help-btn');
+            if (helpBtn) helpBtn.click();
+            const dRect = panel ? panel.getBoundingClientRect() : { right: 0, top: 99 };
+            const drawerFlushRight = Boolean(
+                panel &&
+                panel.classList.contains('drawer-panel') &&
+                Math.abs(window.innerWidth - dRect.right) <= 2 &&
+                Math.abs(dRect.top) <= 2
+            );
+            window.closeModal(true);
+
+            return {
+                heroOverflow,
+                menuHeight: Math.round(menuRect.height),
+                extendsBelowHero: menuRect.bottom > heroRect.bottom,
+                lastItemHitSelf,
+                closedAfterEsc,
+                autoPoolCentered,
+                centerDeltaX: Math.round(Math.abs(panelCenterX - viewportCenterX)),
+                drawerFlushRight,
+                hitDebug: typeof hitDebug !== "undefined" ? hitDebug : ""
+            };
+        ''')
+        r36_mobile_ok = True
+        for _mw, _mh in [(430, 932), (375, 812)]:
+            driver.set_window_size(_mw, _mh)
+            time.sleep(0.1)
+            _m_chk = driver.execute_script('''
+                window.__NEXUS_PREVIEW__.showPage('shunt');
+                const moreBtn = document.getElementById('btn-shunt-more-menu');
+                const moreMenu = document.getElementById('shunt-more-menu');
+                if (moreBtn && moreMenu.classList.contains('hidden')) moreBtn.click();
+                const mr = moreMenu.getBoundingClientRect();
+                const menuInBounds = mr.left >= -1 && mr.right <= window.innerWidth + 1;
+                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+                const poolEditBtn = document.querySelector('[data-auto-pool="0"]');
+                if (poolEditBtn) poolEditBtn.click();
+                const panel = document.querySelector('#modal .modal-panel');
+                const pr = panel.getBoundingClientRect();
+                const modalInBounds = pr.left >= -1 && pr.right <= window.innerWidth + 1;
+                window.closeModal(true);
+                return { menuInBounds, modalInBounds };
+            ''')
+            if not (_m_chk.get("menuInBounds") and _m_chk.get("modalInBounds")):
+                r36_mobile_ok = False
+        driver.set_window_size(1440, 900)
+        check(
+            "v2.6.4 (r36) B-264-01 / B-264-02 / M-264-03 几何与响应式门禁: #shunt-more-menu 零裁剪(overflow=visible & hitSelf=true) + 配置自动节点池居中宽弹窗(centerDeltaX<20) + 只读抽屉右贴边 + 375/430px 零横向溢出",
+            isinstance(r36_geom_res, dict)
+            and r36_geom_res.get("heroOverflow") == "visible"
+            and r36_geom_res.get("lastItemHitSelf") is True
+            and r36_geom_res.get("closedAfterEsc") is True
+            and r36_geom_res.get("autoPoolCentered") is True
+            and r36_geom_res.get("drawerFlushRight") is True
+            and r36_mobile_ok is True,
+            f"geom={r36_geom_res}, mobile_ok={r36_mobile_ok}",
         )
     finally:
         driver.quit()

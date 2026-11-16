@@ -13753,16 +13753,32 @@ def sync_dns_filter_lists(conf_dir: Path = CONF_DIR, target_list_id: str = "") -
                 dom = _normalize_filter_domain_line(ln)
                 if dom:
                     cnt += 1
-                    if dom not in seen_doms and len(pulled_domains) < 50000:
+                    if dom not in seen_doms:
                         seen_doms.add(dom)
-                        pulled_domains.append(dom)
+                        if len(pulled_domains) < 50000:
+                            pulled_domains.append(dom)
             if cnt > 0:
                 item["rules_count"] = cnt
                 item["updated_at"] = now_str
         else:
             item["updated_at"] = now_str
         total_rules += int(item.get("rules_count", 0))
+    # OPT-264-09: Record deduplicated effective rule count & 50,000 cap truncation notice
+    _unique_total = len(seen_doms)
+    _eff_cnt = len(pulled_domains)
+    _truncated_cnt = max(0, _unique_total - _eff_cnt)
+    _is_truncated = bool(_truncated_cnt > 0 or (_eff_cnt >= 50000 and total_rules > 50000))
     fcfg["last_sync_ts"] = int(time.time())
+    fcfg["effective_rules_count"] = _eff_cnt
+    fcfg["unique_candidates_count"] = _unique_total
+    fcfg["max_rules_limit"] = 50000
+    fcfg["truncated"] = _is_truncated
+    fcfg["truncated_count"] = _truncated_cnt
+    fcfg["truncation_notice"] = (
+        f"去重后实际生效 {_eff_cnt:,} 条规则（已触发 50,000 条内存上限截断，超出 {_truncated_cnt:,} 条）"
+        if _is_truncated
+        else f"去重后实际生效 {_eff_cnt:,} 条规则（上限 50,000 条）"
+    )
     save_dns_filter_config(fcfg, conf_dir)
     rules_dir = conf_dir / "rules"
     rules_dir.mkdir(parents=True, exist_ok=True)
@@ -13775,6 +13791,11 @@ def sync_dns_filter_lists(conf_dir: Path = CONF_DIR, target_list_id: str = "") -
         "synced_at": now_str,
         "total_active_rules": len(pulled_domains),
         "declared_rules_total": total_rules,
+        "effective_rules_count": _eff_cnt,
+        "max_rules_limit": 50000,
+        "truncated": _is_truncated,
+        "truncated_count": _truncated_cnt,
+        "truncation_notice": fcfg["truncation_notice"],
         "active_lists": sum(1 for x in fcfg.get("lists", []) if x.get("enabled", True)),
         "errors": sync_errors[:5],
         "dns_filter": fcfg
@@ -14392,6 +14413,45 @@ def _parse_sb_version_tuple(version_str: str) -> tuple:
     return (int(m.group(1)), int(m.group(2)), int(m.group(3) or 0))
 
 
+def _detect_pppoe_adaptive_tun_mtu(conf_dir: Path = CONF_DIR, default_mtu: int = 1500, mock_env: dict = None) -> dict:
+    """OPT-264-08: Detects PPPoE WAN (MTU 1492/1480) and recommends tun_mtu <= 1412 (1400) to avoid fragmentation."""
+    wan_mtu = 1500
+    is_pppoe = False
+    wan_if = "wan"
+    if isinstance(mock_env, dict) and (mock_env.get("wan_proto") == "pppoe" or int(mock_env.get("pmtu") or 1500) in (1492, 1480)):
+        is_pppoe = True
+        wan_mtu = int(mock_env.get("pmtu") or 1492)
+        wan_if = str(mock_env.get("wan_if") or "pppoe-wan")
+    else:
+        try:
+            if Path("/sys/class/net/pppoe-wan/mtu").is_file():
+                is_pppoe = True
+                wan_if = "pppoe-wan"
+                wan_mtu = int(Path("/sys/class/net/pppoe-wan/mtu").read_text().strip())
+            else:
+                proto = _uci_get_str("network.wan.proto", "").strip().lower()
+                if proto == "pppoe":
+                    is_pppoe = True
+                for cand_if in ("pppoe-wan", "wan", "eth1"):
+                    p_m = Path(f"/sys/class/net/{cand_if}/mtu")
+                    if p_m.is_file():
+                        m_v = int(p_m.read_text().strip())
+                        if m_v <= 1492:
+                            is_pppoe = True
+                            wan_mtu = m_v
+                            wan_if = cand_if
+                            break
+        except Exception:
+            pass
+    rec_tun_mtu = min(1412, max(1280, wan_mtu - 80)) if is_pppoe else int(default_mtu or 1500)
+    return {
+        "is_pppoe": bool(is_pppoe),
+        "wan_if": wan_if,
+        "wan_mtu": int(wan_mtu),
+        "recommended_tun_mtu": int(rec_tun_mtu),
+    }
+
+
 def build_tun_inbound_config(tun_name: str = "ailink0", sb_version: str = None,
                              tun_stack: str = None, tun_mtu: int = None,
                              conf_dir: Path = CONF_DIR) -> dict:
@@ -14410,10 +14470,15 @@ def build_tun_inbound_config(tun_name: str = "ailink0", sb_version: str = None,
         stack_val = "mixed"
     eff_stack = "mixed" if stack_val == "auto" else stack_val
     try:
-        mtu_val = int(tun_mtu if tun_mtu is not None else (ops.get("tun_mtu") or 1500))
+        raw_req_mtu = int(tun_mtu if tun_mtu is not None else (ops.get("tun_mtu") or 1500))
     except Exception:
-        mtu_val = 1500
-    mtu_val = max(1280, min(9000, mtu_val))
+        raw_req_mtu = 1500
+    mtu_val = max(1280, min(9000, raw_req_mtu))
+    # OPT-264-08: Adaptive tun_mtu <= 1412 (1400) when WAN is PPPoE (MTU 1492/1480) and user kept default 1500
+    if tun_mtu is None and mtu_val == 1500 and not bool(ops.get("tun_mtu_user_pinned", False)):
+        _pppoe_info = _detect_pppoe_adaptive_tun_mtu(conf_dir, default_mtu=mtu_val)
+        if _pppoe_info.get("is_pppoe"):
+            mtu_val = int(_pppoe_info.get("recommended_tun_mtu") or 1400)
     tun_in = {
         "type": "tun",
         "tag": "tun-in",
@@ -18498,6 +18563,44 @@ def build_traffic_insights_response(conf_dir: Path = CONF_DIR, include_direct: b
         "by_node": by_node,
         "by_domain": by_domain,
     }
+
+
+_STATUS_COW_CACHE = {
+    "lite": None,
+    "full": None,
+    "sig": None,
+    "ts": 0.0,
+}
+
+
+def get_status_cow_snapshot(conf_dir: Path = CONF_DIR, include_fields=None, lite: bool = False) -> dict:
+    """OPT-264-06: Lock-free Copy-On-Write snapshot reader for /api/status so probe locks never stall UI heartbeats."""
+    if include_fields:
+        return build_status_api_response(conf_dir, include_fields=include_fields, lite=lite)
+    now_m = time.monotonic()
+    slot = "lite" if lite else "full"
+    try:
+        sh_p = Path(conf_dir) / "shunt.json"
+        op_p = Path(conf_dir) / "ops_settings.json"
+        np_p = Path(conf_dir) / "node_probe.json"
+        sig = (
+            str(Path(conf_dir).resolve()),
+            sh_p.stat().st_mtime_ns if sh_p.exists() else 0,
+            op_p.stat().st_mtime_ns if op_p.exists() else 0,
+            np_p.stat().st_mtime_ns if np_p.exists() else 0,
+            bool(is_bypass_active()),
+        )
+    except Exception:
+        sig = None
+    cached_ref = _STATUS_COW_CACHE.get(slot)
+    if cached_ref is not None and sig is not None and _STATUS_COW_CACHE.get("sig") == sig and (now_m - float(_STATUS_COW_CACHE.get("ts") or 0.0)) < 1.2:
+        return copy.deepcopy(cached_ref)
+    fresh = build_status_api_response(conf_dir, include_fields=None, lite=lite)
+    if sig is not None:
+        _STATUS_COW_CACHE[slot] = copy.deepcopy(fresh)
+        _STATUS_COW_CACHE["sig"] = sig
+        _STATUS_COW_CACHE["ts"] = now_m
+    return fresh
 
 
 def _mask_status_secrets(payload: dict) -> dict:
@@ -22833,6 +22936,8 @@ def run_network_health_doctor(payload: dict = None, conf_dir: Path = CONF_DIR, a
                 globals().get("_record_internal_diag", str)(_e_diag)
         pmtu_val = int(mock_env.get("pmtu") or real_pmtu)
         lan_mtu = int(mock_env.get("lan_mtu") or real_lan_mtu)
+        _pppoe_rec = _detect_pppoe_adaptive_tun_mtu(conf_dir, default_mtu=1500, mock_env={"pmtu": pmtu_val, "wan_proto": "pppoe" if pmtu_val <= 1492 else ""})
+        _rec_tun_mtu = int(_pppoe_rec.get("recommended_tun_mtu") or 1400)
         if pmtu_val < lan_mtu:
             return {
                 "id": "mtu_pmtu",
@@ -22840,7 +22945,8 @@ def run_network_health_doctor(payload: dict = None, conf_dir: Path = CONF_DIR, a
                 "title": "MTU / 分片",
                 "status": "warn",
                 "summary": f"PMTU 探测到 {pmtu_val}，而局域网网桥 ({_detect_lan_bridge_dev()}) MTU={lan_mtu}，可能存在分片丢包",
-                "detail": "当出站隧道或 PPPoE 的有效 PMTU 小于局域网接口 MTU 时，大包 TLS 握手容易卡死，建议开启 TCP MSS 自动钳制。",
+                "detail": f"当出站隧道或 PPPoE 的有效 PMTU ({pmtu_val}) 小于局域网接口 MTU 时，建议开启 TCP MSS 自动钳制并将 tun_mtu 设为 <= 1412 (推荐 {_rec_tun_mtu})。",
+                "recommended_tun_mtu": _rec_tun_mtu,
                 "evidence": f"pmtu={pmtu_val}, {_detect_lan_bridge_dev()}_mtu={lan_mtu}",
                 "fix": {
                     "type": "api_action",
@@ -25708,9 +25814,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.6.3"
+APP_VERSION = "2.6.4"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.6.3-release-20261116-r34"
+APP_BUILD = "2.6.4-release-20261116-r36"
 
 UPDATE_MANIFEST_PRIMARY = "https://ai-link-official.pages.dev/version.json"
 UPDATE_MANIFEST_GITHUB = "https://raw.githubusercontent.com/Master-AI-007/ai-link-openwrt/main/version.json"
@@ -25772,14 +25878,13 @@ def _update_http_get(url: str, timeout: float = 10.0, max_bytes: int = 2 * 1024 
         with direct.open(req, timeout=timeout) as r:
             return r.read(max_bytes)
     except ssl.SSLError:
-        if Path("/etc/ssl/certs").is_dir() and any(Path("/etc/ssl/certs").iterdir()):
+        # OPT-264-01 Fix: Only allow unverified TLS fallback when allow_insecure_tls is explicitly enabled by user
+        if not bool(get_ops_settings(CONF_DIR).get("allow_insecure_tls", False)):
             raise
-        ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
+        insecure_ctx = _get_ssl_context(CONF_DIR, allow_insecure=True) if "_get_ssl_context" in globals() else ssl._create_unverified_context()
         direct_ssl = urllib.request.build_opener(
             urllib.request.ProxyHandler({}),
-            urllib.request.HTTPSHandler(context=ctx),
+            urllib.request.HTTPSHandler(context=insecure_ctx),
         )
         with direct_ssl.open(req, timeout=timeout) as r:
             return r.read(max_bytes)
@@ -27843,7 +27948,7 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             inc_raw = str(qs.get("include") or "").strip()
             inc_set = {x.strip() for x in inc_raw.split(",") if x.strip()} if inc_raw else None
             lite_mode = str(qs.get("lite") or "0").lower() in ("1", "true", "yes")
-            status_payload = build_status_api_response(CONF_DIR, include_fields=inc_set, lite=lite_mode)
+            status_payload = get_status_cow_snapshot(CONF_DIR, include_fields=inc_set, lite=lite_mode)
             is_authed = bool(self._auth_ok())
             is_strict = bool(self._strict_auth_ok())
             status_payload["pwd_customized"] = is_panel_pwd_customized(CONF_DIR)
@@ -27857,8 +27962,8 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             self._send_json({
                 "ok": True,
                 "version": APP_VERSION,
-                "pkg_release": "r29",
-                "release": f"{APP_VERSION}-r29",
+                "pkg_release": "r36",
+                "release": f"{APP_VERSION}-r36",
                 "channel": APP_CHANNEL,
                 "build": APP_BUILD,
                 "version_file": _read_version_file(),
@@ -28275,6 +28380,30 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
         if self._serve_webui_static(parsed_url.path, head_only=True):
             return
         return super().do_HEAD()
+    def _read_post_json_body(self, max_bytes: int = 35 * 1024 * 1024) -> tuple:
+        """OPT-264-07: Unified POST request body reader with Content-Length & JSON object validation."""
+        try:
+            length = int(self.headers.get("Content-Length", "0") or 0)
+        except (ValueError, TypeError):
+            self._send_json({"ok": False, "error": "invalid_content_length", "message": "请求头 Content-Length 必须为非负整数"}, status=400)
+            return False, None
+        if length < 0:
+            self._send_json({"ok": False, "error": "negative_content_length", "message": "请求头 Content-Length 不能为负数"}, status=400)
+            return False, None
+        if length > max_bytes:
+            self._send_json({"ok": False, "error": "payload_too_large", "message": "请求体超过 35MB 上限"}, status=413)
+            return False, None
+        body_raw = self.rfile.read(length).decode("utf-8", errors="replace") if length > 0 else "{}"
+        try:
+            payload = json.loads(body_raw) if body_raw.strip() else {}
+        except Exception as e:
+            self._send_json({"ok": False, "error": "invalid_json", "message": f"请求体 JSON 格式不合法: {e}"}, status=400)
+            return False, None
+        if not isinstance(payload, dict):
+            self._send_json({"ok": False, "error": "invalid_payload_type", "message": "请求体必须为 JSON 对象 (object)"}, status=400)
+            return False, None
+        return True, payload
+
     def do_POST(self):
         try:
             return self._do_POST_inner()
@@ -28295,25 +28424,8 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
         if clean_path != "/api/login" and clean_path.startswith("/api/") and not self._auth_ok():
             self._send_json({"ok": False, "error": "unauthorized", "message": "未授权访问，请先登录面板获取令牌"}, status=401)
             return
-        try:
-            length = int(self.headers.get("Content-Length", "0") or 0)
-        except (ValueError, TypeError):
-            self._send_json({"ok": False, "error": "invalid_content_length", "message": "请求头 Content-Length 必须为非负整数"}, status=400)
-            return
-        if length < 0:
-            self._send_json({"ok": False, "error": "negative_content_length", "message": "请求头 Content-Length 不能为负数"}, status=400)
-            return
-        if length > 35 * 1024 * 1024:
-            self._send_json({"ok": False, "error": "payload_too_large", "message": "请求体超过 35MB 上限"}, status=413)
-            return
-        body_raw = self.rfile.read(length).decode("utf-8", errors="replace") if length > 0 else "{}"
-        try:
-            payload = json.loads(body_raw) if body_raw.strip() else {}
-        except Exception as e:
-            self._send_json({"ok": False, "error": "invalid_json", "message": f"请求体 JSON 格式不合法: {e}"}, status=400)
-            return
-        if not isinstance(payload, dict):
-            self._send_json({"ok": False, "error": "invalid_payload_type", "message": "请求体必须为 JSON 对象 (object)"}, status=400)
+        ok_body, payload = self._read_post_json_body(max_bytes=35 * 1024 * 1024)
+        if not ok_body:
             return
         # SEC-02 Fix: Strip unisolated test `mock_*` keys on production router HTTP requests unless test hooks are explicitly enabled
         _is_real_prod_http = (
