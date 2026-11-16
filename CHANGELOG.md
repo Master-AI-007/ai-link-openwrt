@@ -1,3 +1,13 @@
+## [v2.6.4] - 2026-11-16
+### 3D 与稳定性深度优化、审计 Blocker/Major 全量闭环（PKG_RELEASE 36）
+- **正常升版**：升至 `v2.6.4`（`PKG_RELEASE:=36` / `r36`），增量基准为已上线的 `v2.6.3`（Release #446563163 / `243e19b` / 部署 `5faca0d2`）；现网设备可正常收 OTA 提示。
+- **Blocker B-264-01 & Major M-264-04**：解除 `.glass-card`/`.metric-card` 的 `overflow:hidden`（顶部高光改用圆角裁切），`#shunt-more-menu` z-index 提升至 `var(--z-overlay)`(300)，新增 `closeShuntMoreMenu()` 支持外部点击/菜单项/Escape 关闭，E2E 新增 `elementFromPoint` 100% 命中断言。
+- **Blocker B-264-02**：严格语义二分，27 处交互式向导/编辑表单恢复居中 `openModal()`（复杂表单自动挂载 `.modal-panel.wide min(880px,100%)`，实测 `centerDeltaX=0px`），仅 13 处只读明细/诊断保留 `openDrawer()` 并通过 `:has(.drawer-panel)` 归零内边距实现右贴边。
+- **Major M-264-03**：补齐 `@media (max-width:768px)` 下 modal/drawer 满宽底部抽屉与 `.shunt-more-menu` 零溢出规则，`@media (max-width:1280px)` 顶栏优雅折行。
+- **Major M-264-05 / M-264-06**：清理 `nexus.css` 未定义 `--z-dropdown`/`--z-popover`（0 残留），清理 `index.html` 6 处 `title=`/`data-tip=` 双重 Tooltip。
+- **穿透项 7~10**：`#page-settings` 低频排障入口折入 `<details>`（静态按钮 22 个，完整保留 `#btn-check-core-update` 与 `#btn-ota-check`/`#btn-ota-apply`）；`_modalStack` 保存恢复 `scrollTop`；`nexus3d.js` 多指触控防抖 + `touch-action:none`。
+- 验收：`INSTALL_RC=0`、服务全 1、`nft ok:true`、重启自愈、自检 10/10 + 负向、零补发 `run_all 15/15 / RC=0`、混沌 **100/100**（新增 Stage 7.36/7.37）、门禁双布局 17/17、design-lint 18/18、11 行指纹 11/11、UI 六页三视口零溢出、设备侧出网 200/200/204。
+
 ## [v2.6.3] - 2026-11-16
 ### 全栈深度优化、3D 切换闭环与国服游戏直连专项（PKG_RELEASE 34）
 - **正常升版**：升至 `v2.6.3`（`PKG_RELEASE:=34` / `r34`），增量基准为已上线的 `v2.6.2`（Release #445935185 / `ba82960` / 部署 `d743cf63`）；现网设备可正常收 OTA 提示。
