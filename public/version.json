@@ -1,21 +1,44 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.6.6",
-  "release_date": "2026-11-17",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.6.6",
+  "latest": "2.6.7",
+  "release_date": "2026-11-18",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.6.7",
   "highlights": [
-    "升版至 v2.6.6（PKG_RELEASE 38）：闭环 10 项全栈打磨优化（OPT-266-01 ~ OPT-266-10）",
-    "守护进程四域子模块架构：封装配置生成、网络探针、HTTP API 与安全审计四大子系统领域类",
-    "前端视图渲染模块下沉：将自适应轮询、SRS 降级横幅与脱敏徽标下沉至 webui/modules/",
-    "异常捕获严格收窄：全文件裸 except Exception 降为 0 处，并在 /api/status 暴露结构化异常遥测",
-    "响应式与样式规范锁定：全文件 768px 响应式块严格仅 1 处，普通选择器 !important 覆盖债务归零",
-    "统一 HTTP 客户端 helper：封装 _open_url_with_retry()，裸 urllib.request.urlopen 调用降为 0 处",
-    "系统韧性与水位保护：规则集 .srs 自愈降级横幅、500+ 节点并发测速内存水位防 OOM 保护、长轮询自适应心跳",
-    "诊断数据安全脱敏：导出诊断快照前自动执行正则脱敏与零泄漏自检（leaked_secrets_count=0）",
-    "真机零补发 run_all 15/15、混沌 102/102（新增 Stage 7.39）、门禁双布局 17/17、design-lint 18/18、11 行指纹 11/11、自检 10/10 + 负向检出"
+    "升版至 v2.6.7（PKG_RELEASE 39）：闭环 10 项全栈打磨优化（OPT-267-01 ~ OPT-267-10）",
+    "OPT-267-01 Toast 容器显式补齐 aria-live=\"polite\" 与 aria-atomic=\"false\"，强化无障碍播报契约",
+    "OPT-267-02 overview.js LuCI 轮询失败指数退避状态机（3s → 6s → 15s），恢复后即时复位 3s",
+    "OPT-267-03 ai-link-daemon.py 22 处 global 声明全量收拢至 DaemonState 单例容器（清零）",
+    "OPT-267-04 82 处裸 json.loads() 统一收拢至 _safe_json_loads() 安全包装与异常诊断（清零）",
+    "OPT-267-05 25 处 time.sleep() 持锁安全性审计，持锁阻塞区间清零（0 处）",
+    "OPT-267-06 四子模块边界拆分映射（config_gen / net_probe / http_api / nft_rules）",
+    "OPT-267-07 nexus.js 视图下沉：节点表与分流矩阵片段迁入 webui/modules/shunt-nodes.js",
+    "OPT-267-08 nexus.css 冗余规则清理，精简至 4,174 行 / 151,438 B，design-lint 18/18 零违规",
+    "OPT-267-09 订阅解析前置非法端口/空 host 过滤告警，返回 empty_host / invalid_port 精确计数",
+    "OPT-267-10 构建脚本双向校验 webui/modules/*.js 与 ?v= 哈希（unreferenced_modules=[]）",
+    "真机零补发 run_all 15/15、混沌 103/103（新增 Stage 7.40）、门禁双布局 17/17、design-lint 18/18、11 行指纹 11/11、自检 10/10 + 负向检出"
   ],
   "changelog": [
+    {
+      "version": "2.6.7",
+      "date": "2026-11-18",
+      "type": "feature",
+      "title": "10 项全栈打磨优化、异步退避与架构解耦加固",
+      "items": [
+        "正常升版至 `v2.6.7`（`PKG_RELEASE:=39` / `r39`），增量基准为线上 `v2.6.6`（Release #448952330 / `83abe5a` / 部署 `874f0142`）；现网设备可正常接收 OTA 升级提示",
+        "`OPT-267-01`：Toast 容器显式调用 `setAttribute('aria-live', 'polite')` 与 `setAttribute('aria-atomic', 'false')`，提升无障碍朗读契约规范性",
+        "`OPT-267-02`：在 `overview.js` 引入 `computeLuciPollBackoffSec` 状态机，LuCI 轮询失败自动按 `3s → 6s → 15s` 指数退避，恢复后立即重置为 3s",
+        "`OPT-267-03`：重构 `DaemonState` 单例状态容器，`ai-link-daemon.py` 全文件 `global` 声明从 22 处彻底降为 `0` 处",
+        "`OPT-267-04`：封装 `_safe_json_loads(raw, default)` 并挂钩结构化诊断记录，全文件裸 `json.loads(` 从 82 处彻底降为 `0` 处",
+        "`OPT-267-05`：持锁区间安全性深度重构，确保无任何 `time.sleep()` 发生在锁保护区间内阻塞并发请求（持锁 sleep 降为 `0` 处）",
+        "`OPT-267-06`：在 `get_daemon_module_architecture()` 建立 `config_gen.py`、`net_probe.py`、`http_api.py`、`nft_rules.py` 四子模块映射，同时保持条目零偏移",
+        "`OPT-267-07`：将 `renderNodeTableFragment` 与 `renderShuntMatrixSummaryBadge` 下沉至 `webui/modules/shunt-nodes.js` 并接入 `window.NexusViewRenderers`",
+        "`OPT-267-08`：清理跨版本合并遗留的重复规则块与冗余注释，`nexus.css` 精简至 4,174 行 / 151,438 B，且 `design-lint.js` 18/18 零违规",
+        "`OPT-267-09`：在 `NodeURIParser` 与订阅校验中前置过滤空 server 与越界端口（<1 或 >65535），返回 `empty_host` / `invalid_port` 精确计数",
+        "`OPT-267-10`：在 `gates_v101.py` 实现 `index.html <-> webui/modules/*.js` 双向哈希核验（`unreferenced_modules=[]`）",
+        "真机验收：`INSTALL_RC=0`、自检 10/10 零写盘泄漏（blocked=7/leaked=0）+ 负向检出有效、重启自愈、零补发 `run_all 15/15 RC=0`、混沌 **103/103 PASS**（新增 `Stage 7.40`）、门禁双布局 17/17、UI 六页三视口零溢出、出网 200/200/204"
+      ]
+    },
     {
       "version": "2.6.6",
       "date": "2026-11-17",

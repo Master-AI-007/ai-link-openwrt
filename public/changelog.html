@@ -18,7 +18,7 @@
         <circle cx="20" cy="20" r="5.4" fill="none" stroke="#a994ff" stroke-width="1.6"/>
         <circle cx="20" cy="20" r="1.8" fill="#6ee7f5"/>
       </svg>
-      <span style="display:block"><b>AI-LINK</b><span>NEXUS · 2.6.6</span></span>
+      <span style="display:block"><b>AI-LINK</b><span>NEXUS · v2.6.7</span></span>
     </a>
     <div class="nav-links">
       <a href="/#features">核心能力</a>
@@ -36,12 +36,22 @@
 <main class="wrap log-wrap">
   <div class="log-head">
     <h1>更新日志</h1>
-    <span class="pill"><i></i> 当前最新 2.6.6</span>
+    <span class="pill"><i></i> 当前最新 v2.6.7</span>
   </div>
 <article class="log-item latest">
   <div class="log-top">
-    <h2>v2.6.6</h2>
+    <h2>v2.6.7</h2>
     <span class="tag c">最新</span>
+    <time>2026-11-18</time>
+  </div>
+  <p style="margin:2px 0 6px;color:var(--dim)"></p>
+<h3>10 项全栈打磨优化、异步退避与架构解耦加固（PKG_RELEASE 39）</h3>
+<ul><li><b>正常升版</b>：升至 <code>v2.6.7</code>（<code>PKG_RELEASE:=39</code> / <code>r39</code>），增量基准为已上线的 <code>v2.6.6</code>（Release #448952330 / <code>83abe5a</code> / 部署 <code>874f0142</code>）；现网设备可正常接收 OTA 升级提示。</li><li><b>OPT-267-01 Toast 容器显式补齐 aria-live=&quot;polite&quot;</b>：<code>stack.setAttribute(&#x27;aria-live&#x27;, &#x27;polite&#x27;)</code>，完善无障碍朗读契约。</li><li><b>OPT-267-02 overview.js LuCI 轮询指数退避</b>：连续超时自动按 <code>3s → 6s → 15s</code> 指数退避，恢复后立即重置为 3s。</li><li><b>OPT-267-03 收拢 22 处 global 声明</b>：构建 <code>DaemonState</code> 单例容器，全文件 <code>global</code> 声明降为 <code>0</code> 处。</li><li><b>OPT-267-04 统一 82 处 json.loads() 安全包装</b>：抽离 <code>_safe_json_loads</code>，全文件裸 <code>json.loads</code> 降为 <code>0</code> 处。</li><li><b>OPT-267-05 审查 25 处 time.sleep() 与持锁作用域</b>：确保持锁区间内 <code>sleep</code> 降为 <code>0</code> 处，无阻塞风险。</li><li><b>OPT-267-06 ai-link-daemon.py 四子模块边界拆分映射</b>：建立清晰子模块架构映射，条目零偏移。</li><li><b>OPT-267-07 nexus.js 视图下沉</b>：节点表与分流矩阵片段下沉至 <code>webui/modules/shunt-nodes.js</code>。</li><li><b>OPT-267-08 nexus.css 冗余规则清理</b>：精简至 4,174 行 / 151,438 B，design-lint 18/18 零违规。</li><li><b>OPT-267-09 订阅解析前置非法端口/空 host 过滤告警</b>：返回 <code>empty_host</code> / <code>invalid_port</code> 精确计数。</li><li><b>OPT-267-10 构建脚本双向校验 webui/modules/*.js 与 ?v= 哈希</b>：双向核验防漏防缓存污染。</li><li>验收：<code>INSTALL_RC=0</code>、服务全 1、<code>nft ok:true</code>、重启自愈、自检 10/10 + 负向、零补发 <code>run_all 15/15 / RC=0</code>、混沌 <b>103/103 PASS</b>（新增 Stage 7.40）、门禁双布局 17/17、design-lint 18/18、11 行指纹 11/11、UI 六页三视口零溢出、设备侧出网 200/200/204。</li></ul>
+</article>
+<article class="log-item">
+  <div class="log-top">
+    <h2>v2.6.6</h2>
+    <span class="tag">历史</span>
     <time>2026-11-17</time>
   </div>
   <p style="margin:2px 0 6px;color:var(--dim)"></p>

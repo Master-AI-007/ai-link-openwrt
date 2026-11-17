@@ -649,8 +649,10 @@
   window.toastWithUndo = toastWithUndo;
 
   function toast(message, type, opts) {
-    const stack = $('#toast-stack');
+    const stack = $('#toast-stack') || $('#toast-wrap');
     if (!stack) return;
+    stack.setAttribute('aria-live', 'polite');
+    stack.setAttribute('aria-atomic', 'false');
     const msgStr = String(message == null ? '' : message);
     const existing = Array.from(stack.querySelectorAll('.toast:not(.out)')).find(el => {
       const sp = el.querySelector('span');
@@ -10766,6 +10768,8 @@ window.HOMELINK_QR_SECURITY_TIP_CLASS = 'homelink-qr-security-tip';
 window.NexusViewRenderers = {
   computeAdaptivePollIntervalMs: (...args) => (window.computeAdaptivePollIntervalMs ? window.computeAdaptivePollIntervalMs(...args) : 3000),
   formatSrsDegradedBannerHtml: (...args) => (window.formatSrsDegradedBannerHtml ? window.formatSrsDegradedBannerHtml(...args) : ''),
-  renderDiagRedactionBadge: (...args) => (window.renderDiagRedactionBadge ? window.renderDiagRedactionBadge(...args) : '')
+  renderDiagRedactionBadge: (...args) => (window.renderDiagRedactionBadge ? window.renderDiagRedactionBadge(...args) : ''),
+  renderNodeTableFragment: (...args) => (window.renderNodeTableFragment ? window.renderNodeTableFragment(...args) : null),
+  renderShuntMatrixSummaryBadge: (...args) => (window.renderShuntMatrixSummaryBadge ? window.renderShuntMatrixSummaryBadge(...args) : null)
 };
 

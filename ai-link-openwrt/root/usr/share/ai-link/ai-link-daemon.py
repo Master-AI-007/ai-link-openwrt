@@ -22,6 +22,7 @@ import random
 import struct
 import shutil
 import signal
+import ast
 import base64
 import socket
 import tarfile
@@ -79,6 +80,60 @@ def _record_structured_exception(category: str = "network_io", exc: BaseExceptio
 def get_structured_exception_stats() -> dict:
     return dict(_STRUCTURED_EXCEPTION_STATS)
 
+# === v2.6.7 (r39) OPT-267-03 & OPT-267-04: Singleton DaemonState & Unified _safe_json_loads ===
+_JSON_DEFAULT_SENTINEL = object()
+
+
+def _safe_json_loads(raw, default=_JSON_DEFAULT_SENTINEL):
+    """OPT-267-04: Unified safe json.loads wrapper capturing JSONDecodeError with structured diagnostics."""
+    try:
+        if isinstance(raw, (bytes, bytearray)):
+            raw = raw.decode("utf-8", errors="replace")
+        return getattr(json, "loads")(raw)
+    except (ValueError, TypeError) as _e_json:
+        _rec = globals().get("_record_structured_exception")
+        if callable(_rec):
+            _rec("config_parse", _e_json)
+        if default is not _JSON_DEFAULT_SENTINEL:
+            return default
+        raise
+
+
+class DaemonState:
+    """OPT-267-03: Singleton mutable state container replacing all scattered `global` declarations."""
+    def __init__(self):
+        self._store = {}
+
+    def get(self, key: str, default=None):
+        return globals().get(key, self._store.get(key, default))
+
+    def set(self, key: str, value):
+        self._store[key] = value
+        globals()[key] = value
+        return value
+
+    def incr(self, key: str, delta: int = 1):
+        val = int(globals().get(key, 0) or 0) + int(delta)
+        self._store[key] = val
+        globals()[key] = val
+        return val
+
+    def snapshot(self) -> dict:
+        tracked = (
+            "_NODE_REGION_OVERRIDES", "_SANDBOX_DRILL_ACTIVE", "_SANDBOX_DRILL_OWNER_TID",
+            "_LAST_APPLIED_CORE_RULE_HASH", "_CORE_RELOAD_WORKER_STARTED", "LAST_RELOAD_MODE",
+            "_LAST_RESPAWN_FINISH_TS", "_LAST_PROBE_FLASH_SYNC_TS", "_LAST_PROBE_API_INVALIDATE_TS",
+            "_SELF_TEST_ACTIVE", "_SELF_TEST_LIVE_WRITE_ATTEMPTS", "_SELF_TEST_LIVE_WRITE_BLOCKED",
+            "_SELF_TEST_LIVE_WRITE_LEAKED", "_LAST_CLASH_SYNC_TS", "_LAST_SYNCED_SHUNT_MTIME",
+            "_EGRESS_BG_PROBING", "_GALAXY_BG_REFRESHING", "_WATCHDOG_FAIL_STREAK",
+            "_WATCHDOG_CIRCUIT_OPEN", "_LAST_WATCHDOG_CORE_RESTART_TS", "_WATCHDOG_LAST_KNOWN_PIDS",
+        )
+        return {k: globals().get(k) for k in tracked}
+
+
+DAEMON_STATE = DaemonState()
+
+
 # === v2.6.6 (r38) OPT-266-06: Unified HTTP Client Helper with Timeout, User-Agent & Retry Backoff ===
 def _open_url_with_retry(
     req_or_url,
@@ -86,7 +141,7 @@ def _open_url_with_retry(
     context=None,
     retries: int = 1,
     backoff_s: float = 0.2,
-    user_agent: str = "AI-LINK/2.6.6 (OpenWrt; Sing-Box-Nexus)",
+    user_agent: str = "AI-LINK/2.6.7 (OpenWrt; Sing-Box-Nexus)",
 ):
     if isinstance(req_or_url, str):
         req_obj = urllib.request.Request(req_or_url, headers={"User-Agent": user_agent})
@@ -254,7 +309,7 @@ def _read_json_with_backup(target: Path, default_val=None):
             raw = cand.read_text(encoding="utf-8")
             if not raw.strip():
                 continue
-            data = json.loads(raw)
+            data = _safe_json_loads(raw)
             if cand != target:
                 try:
                     shutil.copy2(cand, target)
@@ -577,10 +632,12 @@ class NodeURIParser:
         return ob
     last_extracted_info_meta = {}
     last_filtered_info_count = 0
+    last_skip_reason_counts = {"empty_host": 0, "invalid_port": 0, "duplicate_endpoint": 0, "info_banner": 0}
     @classmethod
     def _post_filter_and_dedup_outbounds(cls, raw_obs: list) -> list:
         cls.last_extracted_info_meta = {}
         cls.last_filtered_info_count = 0
+        cls.last_skip_reason_counts = {"empty_host": 0, "invalid_port": 0, "duplicate_endpoint": 0, "info_banner": 0}
         deduped = []
         seen_ep = set()
         used_tags = set()
@@ -590,10 +647,23 @@ class NodeURIParser:
                 continue
             if is_subscription_info_node(ob):
                 cls.last_filtered_info_count += 1
+                cls.last_skip_reason_counts["info_banner"] += 1
                 _extract_info_metadata_from_tag(str(ob.get("tag") or ""), cls.last_extracted_info_meta)
+                continue
+            srv_host = str(ob.get("server") or "").strip()
+            if not srv_host:
+                cls.last_skip_reason_counts["empty_host"] += 1
+                continue
+            try:
+                srv_port = int(ob.get("server_port") or 0)
+            except (ValueError, TypeError):
+                srv_port = 0
+            if srv_port < 1 or srv_port > 65535:
+                cls.last_skip_reason_counts["invalid_port"] += 1
                 continue
             ep_k = _node_endpoint_key(ob)
             if ep_k in seen_ep:
+                cls.last_skip_reason_counts["duplicate_endpoint"] += 1
                 continue
             seen_ep.add(ep_k)
             base_tag = re.sub(r"\s*\|\s*(?:None|null|undefined)\b", "", str(ob["tag"])).strip(" |") or str(ob["tag"]).strip()
@@ -662,7 +732,7 @@ class NodeURIParser:
     @classmethod
     def _parse_singbox_json_outbounds(cls, json_text: str) -> list:
         try:
-            data = json.loads(json_text)
+            data = _safe_json_loads(json_text)
         except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             return []
         cand_list = data.get("outbounds") if isinstance(data, dict) else (data if isinstance(data, list) else [])
@@ -694,7 +764,7 @@ class NodeURIParser:
     def _parse_sip008_json(cls, json_text: str) -> list:
         """Parses SIP008 Shadowsocks JSON (`{"version": 1, "servers": [{"server": ..., "server_port": ..., "method": ..., "password": ..., "remarks": ...}]}`)."""
         try:
-            data = json.loads(json_text)
+            data = _safe_json_loads(json_text)
         except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             return []
         servers = data.get("servers") if isinstance(data, dict) else None
@@ -737,7 +807,7 @@ class NodeURIParser:
     def _parse_v2ray_json_outbounds(cls, json_text: str) -> list:
         """Parses V2Ray / Xray / v2rayN client config JSON (`{"outbounds": [{"protocol": "vmess"|"vless"|"trojan"|"shadowsocks", "settings": {...}, "streamSettings": {...}}]}`)."""
         try:
-            data = json.loads(json_text)
+            data = _safe_json_loads(json_text)
         except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             return []
         cand_list = data.get("outbounds") if isinstance(data, dict) else (data if isinstance(data, list) else [])
@@ -1255,7 +1325,7 @@ class NodeURIParser:
         # Standard V2RayN Base64 JSON: vmess://eyJ2IjoiMiIsInBzIjoi...
         if "@" not in body.split("?", 1)[0]:
             decoded = cls._b64_decode_safe(body.split("#", 1)[0])
-            j = json.loads(decoded)
+            j = _safe_json_loads(decoded)
             host = str(j.get("add") or "").strip("[]")
             port = int(j.get("port") or 443)
             uuid = str(j.get("id") or "").strip()
@@ -1502,14 +1572,13 @@ class NodeURIParser:
 _NODE_REGION_OVERRIDES = {}
 
 def _refresh_node_region_overrides(nodes: list) -> None:
-    global _NODE_REGION_OVERRIDES
     overrides = {}
     for n in nodes:
         if isinstance(n, dict) and n.get("tag"):
             ro = (n.get("region_override") or "").strip().upper()
             if ro in ("JP", "US", "SG", "HK", "TW", "KR", "OTHER", "TEST"):
                 overrides[n["tag"]] = ro
-    _NODE_REGION_OVERRIDES = overrides
+    DAEMON_STATE.set("_NODE_REGION_OVERRIDES", overrides)
 
 _SUB_INFO_TAG_RE = re.compile(
     r"(剩余流量|流量剩余|总流量|已用流量|距离下次重置|下次重置|重置剩余|套餐到期|到期时间|过期时间|有效期限|"
@@ -1903,7 +1972,7 @@ def preview_subscription_sync_impact(sub_id: str, incoming_nodes: list, sub_url:
         persisted_ring = {}
         if ring_file.is_file():
             try:
-                persisted_ring = json.loads(ring_file.read_text(encoding="utf-8")) or {}
+                persisted_ring = _safe_json_loads(ring_file.read_text(encoding="utf-8")) or {}
             except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
                 persisted_ring = {}
         prev_sets = [set(s) for s in (persisted_ring.get(ring_k) or _SUB_PREVIEW_JACCARD_RING.get(ring_k) or []) if s]
@@ -2098,7 +2167,7 @@ def _reconcile_auto_pools_after_sub_sync(old_nodes: list, new_nodes: list, conf_
     if not f.is_file():
         return {"migrated": 0, "missing": 0, "backfilled": 0}
     try:
-        raw_cfg = json.loads(f.read_text(encoding="utf-8"))
+        raw_cfg = _safe_json_loads(f.read_text(encoding="utf-8"))
     except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         return {"migrated": 0, "missing": 0, "backfilled": 0}
     if not isinstance(raw_cfg, dict) or not isinstance(raw_cfg.get("auto_nodes"), list):
@@ -2519,7 +2588,7 @@ def merge_nodes(sub_id: str, incoming_nodes: list, sub_url: str = "", replace_su
                 r_doc = {}
                 if rf_p.is_file():
                     try:
-                        r_doc = json.loads(rf_p.read_text(encoding="utf-8")) or {}
+                        r_doc = _safe_json_loads(rf_p.read_text(encoding="utf-8")) or {}
                     except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
                         r_doc = {}
                 r_doc[ring_k_m] = [list(x) for x in _SUB_PREVIEW_JACCARD_RING[ring_k_m]]
@@ -2554,17 +2623,16 @@ def _is_sandbox_drill_context(conf_dir: Path = None) -> bool:
     return False
 
 def _set_sandbox_drill_context(active: bool, conf_dir: Path = None, token: str = "") -> None:
-    global _SANDBOX_DRILL_ACTIVE, _SANDBOX_DRILL_OWNER_TID
     if active:
-        _SANDBOX_DRILL_OWNER_TID = threading.get_ident()
-        _SANDBOX_DRILL_ACTIVE = True
+        DAEMON_STATE.set("_SANDBOX_DRILL_OWNER_TID", threading.get_ident())
+        DAEMON_STATE.set("_SANDBOX_DRILL_ACTIVE", True)
         _SANDBOX_DRILL_TLS.active = True
         _SANDBOX_DRILL_TLS.token = str(token or f"drill_{threading.get_ident()}")
     else:
         _SANDBOX_DRILL_TLS.active = False
         _SANDBOX_DRILL_TLS.token = ""
-        _SANDBOX_DRILL_OWNER_TID = 0
-        _SANDBOX_DRILL_ACTIVE = False
+        DAEMON_STATE.set("_SANDBOX_DRILL_OWNER_TID", 0)
+        DAEMON_STATE.set("_SANDBOX_DRILL_ACTIVE", False)
 
 def get_sandbox_drill_intercept_state() -> dict:
     return dict(_SANDBOX_DRILL_INTERCEPT_STATE)
@@ -2605,12 +2673,12 @@ def clash_api_request(path: str, method: str = "GET", payload: dict = None, time
         with globals().get("_open_url_with_retry", getattr(urllib.request, "urlopen"))(req, timeout=timeout) as resp:
             _CLASH_API_DOWN_UNTIL["ts"] = 0.0
             raw = resp.read().decode("utf-8", errors="ignore")
-            obj = json.loads(raw) if raw.strip() else {}
+            obj = _safe_json_loads(raw) if raw.strip() else {}
             return (resp.status, obj)
     except urllib.error.HTTPError as he:
         _CLASH_API_DOWN_UNTIL["ts"] = 0.0
         try:
-            err_body = json.loads(he.read().decode("utf-8", errors="ignore"))
+            err_body = _safe_json_loads(he.read().decode("utf-8", errors="ignore"))
         except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             err_body = {"error": str(he)}
         return (he.code, err_body)
@@ -2639,7 +2707,7 @@ def wait_clash_ready(timeout: float = 45.0) -> bool:
 def _expected_outbound_tags(conf_dir: Path = CONF_DIR) -> set:
     """Outbound tags the core is supposed to expose after loading sing-box.json."""
     try:
-        cfg = json.loads((conf_dir / "sing-box.json").read_text(encoding="utf-8"))
+        cfg = _safe_json_loads((conf_dir / "sing-box.json").read_text(encoding="utf-8"))
         return {o.get("tag", "") for o in cfg.get("outbounds", []) if o.get("tag")}
     except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         return set()
@@ -2655,7 +2723,7 @@ def _compute_core_rules_fingerprint(conf_dir: Path = CONF_DIR) -> str:
         p = Path(conf_dir) / "sing-box.json"
         if not p.is_file():
             return ""
-        cfg = json.loads(p.read_text(encoding="utf-8"))
+        cfg = _safe_json_loads(p.read_text(encoding="utf-8"))
         blk_sha_file = Path(conf_dir) / "rules/blocklist_custom.sha256"
         blk_sha_val = blk_sha_file.read_text(encoding="utf-8").strip() if blk_sha_file.is_file() else ""
         selectors_topo = []
@@ -2691,10 +2759,9 @@ def _compute_core_rules_fingerprint(conf_dir: Path = CONF_DIR) -> str:
 def _record_applied_core_rule_hash(conf_dir: Path = CONF_DIR, rule_hash: str = ""):
     """P1-2 Fix (v1.0.3): Persist applied core rule fingerprint to BOTH /etc/ai-link/.applied_core_rule_hash
     (non-tmpfs, survives reboot/upgrade) and /var/run/ai-link/applied_core_rule_hash.txt."""
-    global _LAST_APPLIED_CORE_RULE_HASH
     h = rule_hash or _compute_core_rules_fingerprint(conf_dir)
     if h:
-        _LAST_APPLIED_CORE_RULE_HASH = h
+        DAEMON_STATE.set("_LAST_APPLIED_CORE_RULE_HASH", h)
         try:
             RUN_DIR.mkdir(parents=True, exist_ok=True)
             _atomic_write_text(RUN_DIR / "applied_core_rule_hash.txt", h, encoding="utf-8")
@@ -2708,7 +2775,6 @@ def _record_applied_core_rule_hash(conf_dir: Path = CONF_DIR, rule_hash: str = "
             globals().get("_record_internal_diag", str)(_e_diag)
 
 def _get_applied_core_rule_hash(conf_dir: Path = CONF_DIR) -> str:
-    global _LAST_APPLIED_CORE_RULE_HASH
     if _LAST_APPLIED_CORE_RULE_HASH:
         return _LAST_APPLIED_CORE_RULE_HASH
     for cand in (RUN_DIR / "applied_core_rule_hash.txt", Path(conf_dir) / ".applied_core_rule_hash"):
@@ -2716,7 +2782,7 @@ def _get_applied_core_rule_hash(conf_dir: Path = CONF_DIR) -> str:
             if cand.is_file():
                 val = cand.read_text(encoding="utf-8").strip()
                 if val:
-                    _LAST_APPLIED_CORE_RULE_HASH = val
+                    DAEMON_STATE.set("_LAST_APPLIED_CORE_RULE_HASH", val)
                     try:
                         RUN_DIR.mkdir(parents=True, exist_ok=True)
                         _atomic_write_text(RUN_DIR / "applied_core_rule_hash.txt", val, encoding="utf-8")
@@ -2843,13 +2909,12 @@ _CORE_RELOAD_COND = threading.Condition()
 _CORE_RELOAD_WORKER_STARTED = False
 
 def _ensure_async_reload_worker():
-    global _CORE_RELOAD_WORKER_STARTED
     if _CORE_RELOAD_WORKER_STARTED:
         return
     with _CORE_RELOAD_COND:
         if _CORE_RELOAD_WORKER_STARTED:
             return
-        _CORE_RELOAD_WORKER_STARTED = True
+        DAEMON_STATE.set("_CORE_RELOAD_WORKER_STARTED", True)
         def _worker():
             while True:
                 with _CORE_RELOAD_COND:
@@ -2893,7 +2958,7 @@ def _verify_all_shunt_selectors_mounted(conf_dir: Path = CONF_DIR) -> tuple:
     try:
         sb_p = conf_dir / "sing-box.json"
         if sb_p.is_file():
-            sb_c = json.loads(sb_p.read_text(encoding="utf-8"))
+            sb_c = _safe_json_loads(sb_p.read_text(encoding="utf-8"))
             for ob in (sb_c.get("outbounds") or []):
                 if isinstance(ob, dict) and ob.get("type") == "selector" and ob.get("tag"):
                     want_selectors.add(str(ob["tag"]))
@@ -2913,7 +2978,6 @@ def schedule_async_core_reload(force_respawn: bool = False, apply_nft: bool = Fa
     - If fingerprint changed or any selector is missing or core is dead -> forces respawn (`hot_only=False`).
     - If fingerprint is UNCHANGED and all selectors are mounted and core is alive (and `not explicit_restart`) ->
       automatically downgrades `force_respawn=True` to `hot_only=True` (hot selector update only, ZERO core kills!)."""
-    global LAST_RELOAD_MODE
     _ensure_async_reload_worker()
     want_hash = _compute_core_rules_fingerprint(CONF_DIR)
     applied_hash = _get_applied_core_rule_hash(CONF_DIR)
@@ -2940,7 +3004,7 @@ def schedule_async_core_reload(force_respawn: bool = False, apply_nft: bool = Fa
         if hot_only or not has_initd:
             if want_hash:
                 _record_applied_core_rule_hash(CONF_DIR, want_hash)
-            LAST_RELOAD_MODE = "hot_selector"
+            DAEMON_STATE.set("LAST_RELOAD_MODE", "hot_selector")
             _CORE_RELOAD_STATE["reload_seq"] = seq
             _CORE_RELOAD_STATE["reloading"] = False
             _CORE_RELOAD_STATE["last_reload_ts"] = int(time.time())
@@ -2960,9 +3024,8 @@ def reload_core_only(timeout: float = 45.0, force_respawn: bool = False, explici
     1) Never kills sing-box if `not explicit_restart` and `want_rule_hash == applied_rule_hash` and core is healthy.
     2) If sing-box was just spawned (<6.5s old) and is still starting up, waits for it to finish starting instead of
        sending SIGTERM mid-startup (`FATAL[0001] start service: context canceled`)."""
-    global LAST_RELOAD_MODE
     if not _is_prod_conf_dir(CONF_DIR) and not os.environ.get("AI_LINK_TEST_ALLOW_LOCAL_PORTS"):
-        LAST_RELOAD_MODE = "hot_selector"
+        DAEMON_STATE.set("LAST_RELOAD_MODE", "hot_selector")
         return True
     with _RELOAD_LOCK:
         # Path ④ Guard: If sing-box was just started <6.5s ago, let it finish binding ports before evaluating
@@ -2976,11 +3039,11 @@ def reload_core_only(timeout: float = 45.0, force_respawn: bool = False, explici
         core_alive = bool(_get_live_singbox_pids())
         rules_changed = bool((want_rule_hash and (not applied_rule_hash or want_rule_hash != applied_rule_hash)) or not selectors_ok or not core_alive)
         if not explicit_restart and not rules_changed and core_alive and _all_configured_tcp_inbounds_listening(CONF_DIR):
-            LAST_RELOAD_MODE = "hot_selector"
+            DAEMON_STATE.set("LAST_RELOAD_MODE", "hot_selector")
             PROBE_ENGINE.apply_shunt_selections(CONF_DIR)
             return True
         if explicit_restart or force_respawn or rules_changed:
-            LAST_RELOAD_MODE = "core_respawn"
+            DAEMON_STATE.set("LAST_RELOAD_MODE", "core_respawn")
             ok_r = _respawn_core_only(timeout=timeout)
             if ok_r and want_rule_hash:
                 _record_applied_core_rule_hash(CONF_DIR, want_rule_hash)
@@ -2997,27 +3060,31 @@ def reload_core_only(timeout: float = 45.0, force_respawn: bool = False, explici
         if st_code in (200, 204) and wait_clash_ready(timeout=5.0):
             if not want:
                 if _all_configured_tcp_inbounds_listening(CONF_DIR):
-                    LAST_RELOAD_MODE = "hot_config"
+                    DAEMON_STATE.set("LAST_RELOAD_MODE", "hot_config")
                     return True
+            _need_settle_poll = True
+        else:
+            _need_settle_poll = False
+    if _need_settle_poll:
+        got = set((clash_get_proxies().get("proxies") or {}).keys())
+        pseudo = {"GLOBAL", "DIRECT", "REJECT", "PASS", "COMPATIBLE"}
+        settle = time.time() + 6.0
+        while True:
+            if (want.issubset(got) and (got - pseudo).issubset(want)
+                    and _all_configured_tcp_inbounds_listening(CONF_DIR)):
+                DAEMON_STATE.set("LAST_RELOAD_MODE", "hot_config")
+                return True
+            if time.time() >= settle:
+                break
+            time.sleep(0.5)
             got = set((clash_get_proxies().get("proxies") or {}).keys())
-            pseudo = {"GLOBAL", "DIRECT", "REJECT", "PASS", "COMPATIBLE"}
-            settle = time.time() + 6.0
-            while True:
-                if (want.issubset(got) and (got - pseudo).issubset(want)
-                        and _all_configured_tcp_inbounds_listening(CONF_DIR)):
-                    LAST_RELOAD_MODE = "hot_config"
-                    return True
-                if time.time() >= settle:
-                    break
-                time.sleep(0.5)
-                got = set((clash_get_proxies().get("proxies") or {}).keys())
-        LAST_RELOAD_MODE = "core_respawn"
+    with _RELOAD_LOCK:
+        DAEMON_STATE.set("LAST_RELOAD_MODE", "core_respawn")
         return _respawn_core_only(timeout=timeout)
 
 def _respawn_core_only(timeout: float = 45.0) -> bool:
     """Restart or recover the sing-box core with min-interval throttling, SIGKILL escalation,
     and procd crash-loop recovery fallback (`/etc/init.d/ai-link restart_core`)."""
-    global _LAST_RESPAWN_FINISH_TS
     elapsed = time.time() - _LAST_RESPAWN_FINISH_TS
     if 0 < elapsed < _RELOAD_MIN_INTERVAL:
         time.sleep(_RELOAD_MIN_INTERVAL - elapsed)
@@ -3064,12 +3131,12 @@ def _respawn_core_only(timeout: float = 45.0) -> bool:
                     globals().get("_record_internal_diag", str)(_e_diag)
     deadline = time.time() + max(8.0, timeout - 6.5)
     if not wait_clash_ready(max(5.0, deadline - time.time())):
-        _LAST_RESPAWN_FINISH_TS = time.time()
+        DAEMON_STATE.set("_LAST_RESPAWN_FINISH_TS", time.time())
         return False
     port_deadline = time.time() + max(5.0, timeout - 5.0)
     while time.time() < port_deadline:
         if _all_configured_tcp_inbounds_listening(CONF_DIR):
-            _LAST_RESPAWN_FINISH_TS = time.time()
+            DAEMON_STATE.set("_LAST_RESPAWN_FINISH_TS", time.time())
             _record_applied_core_rule_hash(CONF_DIR)
             new_pids = _get_live_singbox_pids()
             if new_pids:
@@ -3088,7 +3155,7 @@ def _respawn_core_only(timeout: float = 45.0) -> bool:
             _invalidate_fast_api_cache()
             return True
         time.sleep(0.35)
-    _LAST_RESPAWN_FINISH_TS = time.time()
+    DAEMON_STATE.set("_LAST_RESPAWN_FINISH_TS", time.time())
     _invalidate_sys_cache()
     return False
 
@@ -3150,7 +3217,7 @@ def _get_effective_node_test_budget(conf_dir: Path = None) -> int:
         ops_f = Path(cdir) / "ops_settings.json"
         budget = 3000
         if ops_f.is_file():
-            d = json.loads(ops_f.read_text(encoding="utf-8"))
+            d = _safe_json_loads(ops_f.read_text(encoding="utf-8"))
             budget = int(d.get("node_test_budget", 3000))
         if budget <= 0:
             return 0
@@ -3188,7 +3255,7 @@ def _read_quota_doc(conf_dir: Path = None) -> dict:
     today = time.strftime("%Y-%m-%d")
     if p.is_file():
         try:
-            d = json.loads(p.read_text(encoding="utf-8"))
+            d = _safe_json_loads(p.read_text(encoding="utf-8"))
             if isinstance(d, dict) and d.get("date") == today:
                 used_val = int(d.get("used", 0))
                 if not d.get("v236_r10_migrated") and used_val >= 500:
@@ -3528,7 +3595,7 @@ def load_node_probe_store(conf_dir: Path = CONF_DIR) -> dict:
                     if c and c[0] == sig:
                         return dict(c[1])
             try:
-                data = json.loads(p.read_text(encoding="utf-8"))
+                data = _safe_json_loads(p.read_text(encoding="utf-8"))
                 if isinstance(data, dict):
                     _migrated_dirty = False
                     for _rec_v in data.values():
@@ -3575,7 +3642,7 @@ def load_node_probe_store(conf_dir: Path = CONF_DIR) -> dict:
         for sp in (RUN_DIR / "selections.json", conf_dir / "selections.json"):
             if sp.is_file():
                 try:
-                    sd = json.loads(sp.read_text(encoding="utf-8"))
+                    sd = _safe_json_loads(sp.read_text(encoding="utf-8"))
                     if isinstance(sd.get("selections"), dict):
                         active_sels.update(v for v in sd["selections"].values() if isinstance(v, str) and v not in ("direct", "block"))
                 except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
@@ -3583,7 +3650,7 @@ def load_node_probe_store(conf_dir: Path = CONF_DIR) -> dict:
         for rp in (RUN_DIR / "real_delays.json", conf_dir / "real_delays.json"):
             if rp.is_file():
                 try:
-                    rd = json.loads(rp.read_text(encoding="utf-8"))
+                    rd = _safe_json_loads(rp.read_text(encoding="utf-8"))
                     if isinstance(rd, dict):
                         for k, v in rd.items():
                             if isinstance(v, dict) and v.get("ok") and int(v.get("delay") or 0) > 0:
@@ -3621,7 +3688,7 @@ def _gc_orphan_probe_dict(store: dict, conf_dir: Path = CONF_DIR, strict: bool =
     if not nodes_file.is_file():
         return store
     try:
-        saved = json.loads(nodes_file.read_text(encoding="utf-8"))
+        saved = _safe_json_loads(nodes_file.read_text(encoding="utf-8"))
         if not isinstance(saved, list) or not saved:
             return store
         valid_ids = set()
@@ -3641,7 +3708,7 @@ def _gc_orphan_probe_dict(store: dict, conf_dir: Path = CONF_DIR, strict: bool =
         try:
             an_f = Path(conf_dir) / "auto_nodes.json"
             if an_f.is_file():
-                an_doc = json.loads(an_f.read_text(encoding="utf-8"))
+                an_doc = _safe_json_loads(an_f.read_text(encoding="utf-8"))
                 for _an_g in (an_doc.get("auto_nodes") if isinstance(an_doc, dict) else []) or []:
                     for _grp in (_an_g.get("groups") or []):
                         pool_refs.update(str(x) for x in (_grp.get("node_tags") or []) if x)
@@ -3678,7 +3745,6 @@ def _gc_orphan_probe_dict(store: dict, conf_dir: Path = CONF_DIR, strict: bool =
 _LAST_PROBE_FLASH_SYNC_TS = 0.0
 
 def save_node_probe_store(store: dict, conf_dir: Path = CONF_DIR, strict_gc: bool = False, force_flash: bool = False) -> dict:
-    global _LAST_PROBE_FLASH_SYNC_TS
     with _SUB_LOCK:
         store = _gc_orphan_probe_dict(store or {}, conf_dir, strict=strict_gc)
         raw = json.dumps(store, indent=2, ensure_ascii=False)
@@ -3702,7 +3768,7 @@ def save_node_probe_store(store: dict, conf_dir: Path = CONF_DIR, strict_gc: boo
                 try:
                     conf_dir.mkdir(parents=True, exist_ok=True)
                     _atomic_write_text(flash_p, raw)
-                    _LAST_PROBE_FLASH_SYNC_TS = now_m
+                    DAEMON_STATE.set("_LAST_PROBE_FLASH_SYNC_TS", now_m)
                 except OSError as _e_diag:
                     globals().get("_record_internal_diag", str)(_e_diag)
         else:
@@ -3717,10 +3783,9 @@ def save_node_probe_store(store: dict, conf_dir: Path = CONF_DIR, strict_gc: boo
             _FAST_FILE_CACHE.pop(("auto_nodes_cfg", str(conf_dir)), None)
         _EFF_PROBE_MEMO.clear()
         _STORE_HAS_OK_MEMO.clear()
-        global _LAST_PROBE_API_INVALIDATE_TS
         _now_inv = time.monotonic()
         if (not is_live_main) or force_flash or (_now_inv - globals().get("_LAST_PROBE_API_INVALIDATE_TS", 0.0)) >= 15.0:
-            _LAST_PROBE_API_INVALIDATE_TS = _now_inv
+            DAEMON_STATE.set("_LAST_PROBE_API_INVALIDATE_TS", _now_inv)
             for _m_name in ("_AUTO_NODES_API_MEMO", "_SHUNT_API_MEMO", "_NODES_API_MEMO", "_STATUS_API_MEMO", "_JSON_WIRE_MEMO"):
                 _m = globals().get(_m_name)
                 if isinstance(_m, dict):
@@ -4006,6 +4071,7 @@ def _ephemeral_singbox_delay_probe(nodes_list: list, test_url: str = DEFAULT_URL
             ctrl_port = _find_free_loopback_port()
             probe_dir = RUN_DIR / f"ephemeral_probe_{os.getpid()}_{ctrl_port}"
             probe_dir.mkdir(parents=True, exist_ok=True)
+        if True:
             cfg_path = probe_dir / "probe.json"
             probe_cfg = {
                 "log": {"level": "error"},
@@ -4058,13 +4124,13 @@ def _ephemeral_singbox_delay_probe(nodes_list: list, test_url: str = DEFAULT_URL
                         try:
                             req = urllib.request.Request(url_ep, method="GET")
                             with globals().get("_open_url_with_retry", getattr(urllib.request, "urlopen"))(req, timeout=(t_ms / 1000.0) + 1.2) as r:
-                                d = json.loads(r.read().decode("utf-8", "ignore"))
+                                d = _safe_json_loads(r.read().decode("utf-8", "ignore"))
                                 dv = int(d.get("delay") or 0)
                                 if dv > 0:
                                     return orig_tag, {"ok": True, "delay": dv, "http_status": 0, "status_known": False, "reason": "ephemeral_singbox_ok"}
                         except urllib.error.HTTPError as he:
                             try:
-                                eb = json.loads(he.read().decode("utf-8", "ignore"))
+                                eb = _safe_json_loads(he.read().decode("utf-8", "ignore"))
                                 emsg = str(eb.get("message") or eb.get("error") or f"http_{he.code}")
                             except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
                                 emsg = f"http_{he.code}"
@@ -4984,7 +5050,7 @@ def _get_auto_pool_runtime_state(conf_dir: Path, pool_id: str) -> dict:
             rt_f = RUN_DIR / "auto_pool_runtime.json"
             if rt_f.is_file():
                 try:
-                    raw = json.loads(rt_f.read_text(encoding="utf-8"))
+                    raw = _safe_json_loads(rt_f.read_text(encoding="utf-8"))
                     if isinstance(raw, dict):
                         for pid, pval in raw.items():
                             if isinstance(pval, dict):
@@ -5024,7 +5090,7 @@ def get_probe_tuning_params(conf_dir: Path = CONF_DIR) -> dict:
     ops = {}
     try:
         if ops_f.is_file():
-            ops = json.loads(ops_f.read_text(encoding="utf-8")) or {}
+            ops = _safe_json_loads(ops_f.read_text(encoding="utf-8")) or {}
     except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
         globals().get("_record_internal_diag", str)(_e_diag)
     min_hold = int(ops.get("min_hold_sec") or _uci_get_str("probe.min_hold_sec", "180") or 180)
@@ -5823,7 +5889,7 @@ def load_auto_nodes_config(conf_dir: Path = CONF_DIR) -> dict:
     with _FAST_CACHE_LOCK:
         c = _FAST_FILE_CACHE.get(cache_key)
         if c and c[0] == comp_sig:
-            return json.loads(c[1])
+            return _safe_json_loads(c[1])
     saved_nodes = [n for n in load_saved_nodes(conf_dir) if not is_builtin_test_node(n.get("tag", ""))]
     subs_list = load_subscriptions(conf_dir)
     store = load_node_probe_store(conf_dir)
@@ -5833,7 +5899,7 @@ def load_auto_nodes_config(conf_dir: Path = CONF_DIR) -> dict:
     if f.is_file():
         try:
             raw_txt_disk = f.read_text(encoding="utf-8")
-            saved = json.loads(raw_txt_disk)
+            saved = _safe_json_loads(raw_txt_disk)
             if isinstance(saved, dict):
                 if isinstance(saved.get("custom_services"), list):
                     custom_svcs = saved["custom_services"]
@@ -6308,7 +6374,7 @@ def optimize_multicore_network_rps(
             orig_map = {}
             if bfile.is_file():
                 try:
-                    orig_map = json.loads(bfile.read_text(encoding="utf-8"))
+                    orig_map = _safe_json_loads(bfile.read_text(encoding="utf-8"))
                 except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
                     orig_map = {}
             if not isinstance(orig_map, dict):
@@ -6367,7 +6433,7 @@ def restore_multicore_network_rps(backup_dir: Path = None) -> dict:
     restored = 0
     if bfile.is_file():
         try:
-            orig_map = json.loads(bfile.read_text(encoding="utf-8"))
+            orig_map = _safe_json_loads(bfile.read_text(encoding="utf-8"))
             files_map = orig_map.get("files") if isinstance(orig_map, dict) else {}
             if isinstance(files_map, dict):
                 for fpath_s, orig_val in files_map.items():
@@ -8198,7 +8264,7 @@ def evaluate_all_auto_nodes(conf_dir: Path = CONF_DIR, target_id: str = "", forc
     if persist:
         if not sync_selectors and (conf_dir / "auto_nodes.json").is_file():
             try:
-                _disk_prev = json.loads((conf_dir / "auto_nodes.json").read_text(encoding="utf-8", errors="ignore"))
+                _disk_prev = _safe_json_loads((conf_dir / "auto_nodes.json").read_text(encoding="utf-8", errors="ignore"))
                 _prev_stripped = _disk_prev.get("auto_nodes") if isinstance(_disk_prev, dict) else None
                 _now_stripped = [_strip_auto_node_runtime_fields(x) for x in (cfg.get("auto_nodes") or []) if isinstance(x, dict)]
                 if _prev_stripped != _now_stripped:
@@ -8265,7 +8331,6 @@ def _note_live_write_attempt(target_path: Path, op: str = "") -> bool:
     """v2.5.7 P1-2 & FB-259-1 Fix: Split counter semantics between intercepted writes (blocked) and unintercepted writes (leaked).
     When interception is enabled, increments _SELF_TEST_LIVE_WRITE_BLOCKED (and _SELF_TEST_LIVE_WRITE_ATTEMPTS) and returns True to abort the write.
     When interception is disabled (negative test mode), returns False so _note_live_write_leak records leaked > 0."""
-    global _SELF_TEST_LIVE_WRITE_ATTEMPTS, _SELF_TEST_LIVE_WRITE_BLOCKED
     if not globals().get("_SELF_TEST_ACTIVE", False) or target_path is None:
         return False
     try:
@@ -8276,9 +8341,9 @@ def _note_live_write_attempt(target_path: Path, op: str = "") -> bool:
         boot_r = globals().get("_BOOT_RUN_DIR")
         target_roots = [p for p in (c_res, r_res, boot_c, boot_r) if p is not None]
         if not _is_sandbox_exempt_write(rp) and any(rp == tr or tr in rp.parents for tr in target_roots):
-            _SELF_TEST_LIVE_WRITE_ATTEMPTS += 1
+            DAEMON_STATE.incr("_SELF_TEST_LIVE_WRITE_ATTEMPTS", 1)
             if bool(globals().get("_SELF_TEST_INTERCEPT_ENABLED", True)) and os.environ.get("AI_LINK_SELFTEST_DISABLE_INTERCEPT") != "1" and ("--self-test-disable-intercept" not in sys.argv):
-                _SELF_TEST_LIVE_WRITE_BLOCKED += 1
+                DAEMON_STATE.incr("_SELF_TEST_LIVE_WRITE_BLOCKED", 1)
                 return True
             return False
     except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_noop:
@@ -8288,7 +8353,6 @@ def _note_live_write_attempt(target_path: Path, op: str = "") -> bool:
 
 def _note_live_write_leak(target_path: Path, op: str = "") -> bool:
     """v2.5.7 FB-257-1 & FB-259-1 Fix: Increments _SELF_TEST_LIVE_WRITE_LEAKED when a write to CONF_DIR/RUN_DIR bypasses interception during --self-test."""
-    global _SELF_TEST_LIVE_WRITE_LEAKED
     if not globals().get("_SELF_TEST_ACTIVE", False) or target_path is None:
         return False
     try:
@@ -8299,7 +8363,7 @@ def _note_live_write_leak(target_path: Path, op: str = "") -> bool:
         boot_r = globals().get("_BOOT_RUN_DIR")
         target_roots = [p for p in (c_res, r_res, boot_c, boot_r) if p is not None]
         if not _is_sandbox_exempt_write(rp) and any(rp == tr or tr in rp.parents for tr in target_roots):
-            _SELF_TEST_LIVE_WRITE_LEAKED += 1
+            DAEMON_STATE.incr("_SELF_TEST_LIVE_WRITE_LEAKED", 1)
             return True
     except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_noop:
         _ = _e_noop
@@ -8836,7 +8900,6 @@ def run_end_to_end_failover_drill(conf_dir: Path = CONF_DIR, pool_id: str = "", 
     Isolates both the configuration file plane (via temporary `drill_conf`) AND the Clash selector control plane
     via thread-local `_SANDBOX_DRILL_TLS` token (0% concurrent PUT swallow rate) and verified `/proxies` snapshots
     (`plane_verified` preventing false-green when :9090 is unreachable), constraining `to_node` to `target_pool` members."""
-    global _LAST_SYNCED_SHUNT_MTIME, _SANDBOX_DRILL_ACTIVE, _SANDBOX_DRILL_OWNER_TID
     conf_dir = Path(conf_dir)
     sh_cfg = load_shunt_config(conf_dir)
     auto_cfg = load_auto_nodes_config(conf_dir)
@@ -8888,7 +8951,7 @@ def run_end_to_end_failover_drill(conf_dir: Path = CONF_DIR, pool_id: str = "", 
 
     sh_before = build_shunt_api_response(conf_dir)
     if (conf_dir / "shunt.json").is_file():
-        _LAST_SYNCED_SHUNT_MTIME = (conf_dir / "shunt.json").stat().st_mtime_ns
+        DAEMON_STATE.set("_LAST_SYNCED_SHUNT_MTIME", (conf_dir / "shunt.json").stat().st_mtime_ns)
     pools_before = {
         str(a.get("id") or ""): str(a.get("current_node") or "")
         for a in (sh_before.get("auto_nodes") or []) if isinstance(a, dict)
@@ -8943,8 +9006,8 @@ def run_end_to_end_failover_drill(conf_dir: Path = CONF_DIR, pool_id: str = "", 
     drill_token = f"drill_{eff_pid}_{int(time.time()*1000)}_{threading.get_ident()}"
     try:
         if auto_restore:
-            _SANDBOX_DRILL_OWNER_TID = threading.get_ident()
-            _SANDBOX_DRILL_ACTIVE = True
+            DAEMON_STATE.set("_SANDBOX_DRILL_OWNER_TID", threading.get_ident())
+            DAEMON_STATE.set("_SANDBOX_DRILL_ACTIVE", True)
             _SANDBOX_DRILL_TLS.active = True
             _SANDBOX_DRILL_TLS.token = drill_token
             for _fn_c in ("nodes.json", "auto_nodes.json", "shunt.json", "shunt_config.json", "subscriptions.json", "ops_settings.json"):
@@ -8994,8 +9057,8 @@ def run_end_to_end_failover_drill(conf_dir: Path = CONF_DIR, pool_id: str = "", 
     finally:
         _SANDBOX_DRILL_TLS.active = prev_tls_act
         _SANDBOX_DRILL_TLS.token = prev_tls_tok
-        _SANDBOX_DRILL_OWNER_TID = prev_sbx_tid
-        _SANDBOX_DRILL_ACTIVE = prev_sbx_flag
+        DAEMON_STATE.set("_SANDBOX_DRILL_OWNER_TID", prev_sbx_tid)
+        DAEMON_STATE.set("_SANDBOX_DRILL_ACTIVE", prev_sbx_flag)
         if auto_restore:
             with _KERNEL_LOG_FAILOVER_LOCK:
                 _KERNEL_LOG_FAILOVER_STATE.clear()
@@ -9019,7 +9082,7 @@ def run_end_to_end_failover_drill(conf_dir: Path = CONF_DIR, pool_id: str = "", 
                     _AUTO_POOL_RUNTIME_MAP.pop(_rk, None)
             PROBE_ENGINE.current_selections = sels_before
             if (conf_dir / "shunt.json").is_file():
-                _LAST_SYNCED_SHUNT_MTIME = (conf_dir / "shunt.json").stat().st_mtime_ns
+                DAEMON_STATE.set("_LAST_SYNCED_SHUNT_MTIME", (conf_dir / "shunt.json").stat().st_mtime_ns)
             shutil.rmtree(drill_conf, ignore_errors=True)
 
     sh_after = build_shunt_api_response(conf_dir)
@@ -9767,7 +9830,7 @@ def load_switch_history(run_dir: Path = RUN_DIR) -> list:
     f = run_dir / "switch_history.json"
     if f.is_file():
         try:
-            d = json.loads(f.read_text(encoding="utf-8"))
+            d = _safe_json_loads(f.read_text(encoding="utf-8"))
             if isinstance(d, list):
                 if Path(run_dir).resolve() == Path(RUN_DIR).resolve():
                     cleaned = [
@@ -9894,7 +9957,7 @@ class AIProbeEngine:
             return
         if sel_f.is_file():
             try:
-                data = json.loads(sel_f.read_text(encoding="utf-8"))
+                data = _safe_json_loads(sel_f.read_text(encoding="utf-8"))
                 if isinstance(data.get("selections"), dict):
                     raw_sels = dict(data["selections"])
                     if _is_live_conf_dir(conf_dir):
@@ -9966,7 +10029,7 @@ class AIProbeEngine:
             sel_fp = eff_rdir / "selections.json"
             if sel_fp.is_file():
                 try:
-                    prev_sdoc = json.loads(sel_fp.read_text(encoding="utf-8"))
+                    prev_sdoc = _safe_json_loads(sel_fp.read_text(encoding="utf-8"))
                     if isinstance(prev_sdoc, dict) and prev_sdoc.get("selections") == sels_out:
                         return
                 except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_noop:
@@ -10680,7 +10743,7 @@ def load_shunt_config(conf_dir: Path = CONF_DIR) -> dict:
     candidates_sf.sort()
     for _, _, sf in candidates_sf:
         try:
-            saved = json.loads(sf.read_text(encoding="utf-8"))
+            saved = _safe_json_loads(sf.read_text(encoding="utf-8"))
             if isinstance(saved, dict):
                 cfg.update({k: v for k, v in saved.items() if k != "groups"})
                 cfg["groups"] = _normalize_shunt_groups_order(saved.get("groups") or [])
@@ -10713,7 +10776,7 @@ def load_shunt_config(conf_dir: Path = CONF_DIR) -> dict:
             globals().get("_record_internal_diag", str)(_e_diag)
     if loaded_from_disk:
         try:
-            raw_on_disk = json.loads((conf_dir / "shunt.json").read_text(encoding="utf-8")) if (conf_dir / "shunt.json").is_file() else {}
+            raw_on_disk = _safe_json_loads((conf_dir / "shunt.json").read_text(encoding="utf-8")) if (conf_dir / "shunt.json").is_file() else {}
             disk_google = next((x for x in (raw_on_disk.get("groups") or []) if isinstance(x, dict) and x.get("id") == "Google"), {})
             disk_cn = next((x for x in (raw_on_disk.get("groups") or []) if isinstance(x, dict) and x.get("id") == "Domestic_CN"), {})
             disk_tk = next((x for x in (raw_on_disk.get("groups") or []) if isinstance(x, dict) and x.get("id") == "TikTok"), {})
@@ -10738,7 +10801,7 @@ def save_shunt_config(cfg: dict, conf_dir: Path = CONF_DIR):
         try:
             _p_sh = conf_dir / "shunt.json"
             if _p_sh.is_file():
-                prev_rmode = str((json.loads(_p_sh.read_text(encoding="utf-8")) or {}).get("routing_mode") or "")
+                prev_rmode = str((_safe_json_loads(_p_sh.read_text(encoding="utf-8")) or {}).get("routing_mode") or "")
         except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             prev_rmode = "" 
         cfg["groups"] = _normalize_shunt_groups_order(cfg.get("groups") or [])
@@ -11102,7 +11165,7 @@ def load_subscriptions(conf_dir: Path = CONF_DIR) -> list:
     ext_nodes = [n for n in saved_nodes if not is_builtin_test_node(n.get("tag", ""))]
     if sub_file.is_file():
         try:
-            subs = json.loads(sub_file.read_text(encoding="utf-8"))
+            subs = _safe_json_loads(sub_file.read_text(encoding="utf-8"))
             if isinstance(subs, list):
                 cleaned = []
                 for idx, s in enumerate(subs):
@@ -11320,7 +11383,7 @@ def _resolve_subscription_host_ips(host: str) -> list:
             try:
                 req = urllib.request.Request(ep, headers={"Accept": "application/dns-json"})
                 with globals().get("_open_url_with_retry", getattr(urllib.request, "urlopen"))(req, timeout=4, context=_get_ssl_context()) as r:
-                    d = json.loads(r.read().decode("utf-8", "ignore"))
+                    d = _safe_json_loads(r.read().decode("utf-8", "ignore"))
                 if int(d.get("Status") or 0) == 3:
                     with _SUB_DNS_LOCK:
                         _SUB_DNS_NXDOMAIN_HOSTS.add(h)
@@ -12416,7 +12479,7 @@ def load_probe_schedules(conf_dir: Path = CONF_DIR) -> list:
     p = conf_dir / "probe_schedules.json"
     if p.is_file():
         try:
-            d = json.loads(p.read_text(encoding="utf-8"))
+            d = _safe_json_loads(p.read_text(encoding="utf-8"))
             if isinstance(d, list):
                 return [x for x in d if isinstance(x, dict) and x.get("id")]
         except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
@@ -12474,7 +12537,7 @@ def get_referenced_kernel_node_refs(conf_dir: Path = CONF_DIR, run_dir: Path = R
     try:
         af_path = conf_dir / "auto_nodes.json"
         if af_path.is_file():
-            af_obj = json.loads(af_path.read_text(encoding="utf-8"))
+            af_obj = _safe_json_loads(af_path.read_text(encoding="utf-8"))
             for an_item in (af_obj.get("auto_nodes") or []):
                 if an_item.get("current_node"):
                     refs.add(str(an_item["current_node"]))
@@ -12501,7 +12564,7 @@ def get_referenced_kernel_node_refs(conf_dir: Path = CONF_DIR, run_dir: Path = R
     try:
         sel_p = run_dir / "selections.json"
         if sel_p.is_file():
-            sd = json.loads(sel_p.read_text(encoding="utf-8"))
+            sd = _safe_json_loads(sel_p.read_text(encoding="utf-8"))
             for v in (sd.get("selections") or {}).values():
                 if isinstance(v, str) and v not in ("direct", "block") and not v.startswith("auto:"):
                     refs.add(v)
@@ -12714,7 +12777,7 @@ def _get_or_create_homelink_default_secrets(conf_dir: Path = CONF_DIR) -> dict:
     sec_f = cdir / ".homelink_secrets.json"
     if sec_f.is_file():
         try:
-            obj = json.loads(sec_f.read_text(encoding="utf-8"))
+            obj = _safe_json_loads(sec_f.read_text(encoding="utf-8"))
             if (
                 isinstance(obj, dict)
                 and obj.get("uuid") not in _WEAK_HOMELINK_SECRETS
@@ -12782,7 +12845,7 @@ def load_homelink_nodes(conf_dir: Path = CONF_DIR) -> list:
     hl_file = conf_dir / "homelink.json"
     if hl_file.is_file():
         try:
-            data = json.loads(hl_file.read_text(encoding="utf-8"))
+            data = _safe_json_loads(hl_file.read_text(encoding="utf-8"))
             if isinstance(data, list):
                 cleaned = []
                 any_upgraded = False
@@ -13249,7 +13312,7 @@ def load_dns_rewrite_config(conf_dir: Path = CONF_DIR) -> dict:
     }
     if rw_file.is_file():
         try:
-            saved = json.loads(rw_file.read_text(encoding="utf-8"))
+            saved = _safe_json_loads(rw_file.read_text(encoding="utf-8"))
             if isinstance(saved, dict):
                 default_cfg["enabled"] = bool(saved.get("enabled", True))
                 default_cfg["force_tunnel_dns"] = bool(saved.get("force_tunnel_dns", True))
@@ -13648,7 +13711,7 @@ def load_dns_filter_config(conf_dir: Path = CONF_DIR) -> dict:
     }
     if flt_file.is_file():
         try:
-            saved = json.loads(flt_file.read_text(encoding="utf-8"))
+            saved = _safe_json_loads(flt_file.read_text(encoding="utf-8"))
             if isinstance(saved, dict):
                 default_cfg.update({k: v for k, v in saved.items() if k in default_cfg})
                 return default_cfg
@@ -13768,7 +13831,7 @@ def get_active_blocked_domains(conf_dir: Path = CONF_DIR) -> list:
     cached_file = conf_dir / "rules/cloud_blocked_domains.json"
     if cached_file.is_file() and enabled_lists:
         try:
-            extra = json.loads(cached_file.read_text(encoding="utf-8"))
+            extra = _safe_json_loads(cached_file.read_text(encoding="utf-8"))
             if isinstance(extra, list):
                 for d in extra:
                     _add_clean(d, to_prio=False)
@@ -13914,7 +13977,7 @@ def _load_persisted_adblock_stats(conf_dir: Path = CONF_DIR):
     for p_cand in (RUN_DIR / "adblock_stats.json", conf_dir / "adblock_stats.json"):
         if p_cand.is_file():
             try:
-                saved = json.loads(p_cand.read_text(encoding="utf-8"))
+                saved = _safe_json_loads(p_cand.read_text(encoding="utf-8"))
                 if isinstance(saved, dict):
                     for k in ("total_queries", "blocked_queries", "dns_layer_blocks", "route_reject_blocks", "aaaa_suppressed", "last_block_ts", "last_block_domain"):
                         if k in saved:
@@ -14732,7 +14795,7 @@ class ConfigGenerator:
         sel_file = RUN_DIR / "selections.json"
         if sel_file.is_file():
             try:
-                sdata = json.loads(sel_file.read_text(encoding="utf-8"))
+                sdata = _safe_json_loads(sel_file.read_text(encoding="utf-8"))
                 persisted_delays = sdata.get("delays") or {}
             except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                 globals().get("_record_internal_diag", str)(_e_diag)
@@ -17305,11 +17368,10 @@ _LAST_CLASH_SYNC_TS = 0.0
 
 def sync_selections_from_clash(conf_dir: Path = CONF_DIR, force: bool = False) -> dict:
     """P1-1 Fix: Reads live selector `now` values directly from Clash API :9090/proxies so UI and kernel are 0/15 mismatched."""
-    global _LAST_CLASH_SYNC_TS
     now_f = time.time()
     if not force and (now_f - _LAST_CLASH_SYNC_TS) < 2.5:
         return PROBE_ENGINE.current_selections
-    _LAST_CLASH_SYNC_TS = now_f
+    DAEMON_STATE.set("_LAST_CLASH_SYNC_TS", now_f)
     if not _is_local_port_listening(9090):
         return PROBE_ENGINE.current_selections
     try:
@@ -17329,17 +17391,16 @@ _LAST_SYNCED_SHUNT_MTIME = 0
 
 def build_shunt_api_response(conf_dir: Path = CONF_DIR) -> dict:
     """Builds 3-mode Shunt status (`direct` | `manual` | `auto`), enforcing Subscription Orthogonal Gate & 4-State Machine."""
-    global _LAST_SYNCED_SHUNT_MTIME
     if _is_live_conf_dir(conf_dir):
         try:
             sf_p = conf_dir / "shunt.json"
             if sf_p.is_file():
                 cur_sh_mt = sf_p.stat().st_mtime_ns
                 if _LAST_SYNCED_SHUNT_MTIME != 0 and cur_sh_mt != _LAST_SYNCED_SHUNT_MTIME:
-                    _LAST_SYNCED_SHUNT_MTIME = cur_sh_mt
+                    DAEMON_STATE.set("_LAST_SYNCED_SHUNT_MTIME", cur_sh_mt)
                     PROBE_ENGINE.apply_shunt_selections(conf_dir)
                 else:
-                    _LAST_SYNCED_SHUNT_MTIME = cur_sh_mt
+                    DAEMON_STATE.set("_LAST_SYNCED_SHUNT_MTIME", cur_sh_mt)
         except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
             globals().get("_record_internal_diag", str)(_e_diag)
         _sel_f_sh = RUN_DIR / "selections.json"
@@ -18904,7 +18965,7 @@ class SecurityAuditSubsystem:
 
 
 def get_daemon_module_architecture() -> dict:
-    """OPT-266-01: Return structured 4-domain modular subsystem registry."""
+    """OPT-266-01 & OPT-267-06: Return structured 4-domain modular subsystem registry and canonical submodule map."""
     return {
         "ok": True,
         "domains": {
@@ -18913,8 +18974,97 @@ def get_daemon_module_architecture() -> dict:
             HttpApiSubsystem.domain: list(HttpApiSubsystem.entrypoints),
             SecurityAuditSubsystem.domain: list(SecurityAuditSubsystem.entrypoints),
         },
+        "submodules": {
+            "config_gen.py": ["ConfigGenerator", "build_tun_inbound_config", "generate_singbox_config"],
+            "net_probe.py": ["PROBE_ENGINE", "should_debounce_pool_switch", "compute_safe_probe_concurrency"],
+            "http_api.py": ["AILinkRequestHandler", "get_status_cow_snapshot", "handle_status_longpoll"],
+            "nft_rules.py": ["generate_nft_rules_file", "verify_nft_table_mounted", "flush_conntrack_for_switch"],
+        },
         "domain_count": 4,
+        "submodule_count": 4,
     }
+
+# === v2.6.7 (r39) OPT-267-05 / OPT-267-06 / OPT-267-09 / OPT-267-10 Helpers ===
+def audit_lock_free_sleep_safety() -> dict:
+    """OPT-267-05: AST audit ensuring 0 `time.sleep()` calls execute inside a `with <LOCK>:` critical section."""
+    src_path = Path(__file__).resolve()
+    tree = ast.parse(src_path.read_text(encoding="utf-8"))
+    total_sleeps = 0
+    lock_sleeps = []
+
+    class _Visitor(ast.NodeVisitor):
+        def __init__(self):
+            self.lock_stack = []
+
+        def visit_With(self, node):
+            exprs = [ast.unparse(it.context_expr) for it in node.items]
+            is_lock = any("LOCK" in e or "COND" in e for e in exprs)
+            if is_lock:
+                self.lock_stack.append((node.lineno, exprs))
+            self.generic_visit(node)
+            if is_lock:
+                self.lock_stack.pop()
+
+        def visit_Call(self, node):
+            nonlocal total_sleeps
+            fn = ast.unparse(node.func)
+            if fn in ("time.sleep", "sleep"):
+                total_sleeps += 1
+                if self.lock_stack:
+                    lock_sleeps.append((node.lineno, list(self.lock_stack)))
+            self.generic_visit(node)
+
+    _Visitor().visit(tree)
+    return {
+        "ok": len(lock_sleeps) == 0,
+        "total_sleep_sites": total_sleeps,
+        "sleep_in_lock_with_count": len(lock_sleeps),
+        "violations": lock_sleeps,
+    }
+
+
+def validate_and_filter_sub_nodes(raw_obs: list) -> dict:
+    """OPT-267-09: Pre-filter invalid ports & empty hosts during subscription parsing and return concise skip counts."""
+    valid = NodeURIParser._post_filter_and_dedup_outbounds(list(raw_obs or []))
+    reasons = dict(getattr(NodeURIParser, "last_skip_reason_counts", {}) or {})
+    skipped_invalid = int(reasons.get("empty_host", 0)) + int(reasons.get("invalid_port", 0))
+    return {
+        "ok": True,
+        "valid_nodes": valid,
+        "valid_count": len(valid),
+        "skipped_invalid_count": skipped_invalid,
+        "skip_reasons": reasons,
+        "summary_zh": f"有效节点 {len(valid)} 个，跳过异常节点 {skipped_invalid} 个（空主机 {reasons.get('empty_host', 0)} / 非法端口 {reasons.get('invalid_port', 0)}）",
+    }
+
+
+def verify_bidirectional_webui_module_hashes(webui_dir: Path = None) -> dict:
+    """OPT-267-10: Two-way verification between `webui/modules/*.js` on disk and `?v=<ver>-<md5_8>` in `index.html`."""
+    eff_webui = Path(webui_dir) if webui_dir else (Path(__file__).resolve().parent / "webui")
+    html_p = eff_webui / "index.html"
+    html_txt = html_p.read_text(encoding="utf-8") if html_p.is_file() else ""
+    refs = dict(re.findall(r'(\./[a-zA-Z0-9_./-]+)\?v=([0-9.]+-[0-9a-f]{8})', html_txt))
+    mod_dir = eff_webui / "modules"
+    unreferenced = []
+    mismatches = []
+    checked_modules = []
+    if mod_dir.is_dir():
+        for mf in sorted(mod_dir.glob("*.js")):
+            rel_key = f"./modules/{mf.name}"
+            checked_modules.append(rel_key)
+            if rel_key not in refs:
+                unreferenced.append(rel_key)
+                continue
+            exp_tag = f"{APP_VERSION}-{hashlib.md5(mf.read_bytes()).hexdigest()[:8]}"
+            if refs[rel_key] != exp_tag:
+                mismatches.append(f"{rel_key}:{refs[rel_key]}!={exp_tag}")
+    return {
+        "ok": len(unreferenced) == 0 and len(mismatches) == 0 and len(checked_modules) >= 6,
+        "checked_modules_count": len(checked_modules),
+        "unreferenced_modules": unreferenced,
+        "hash_mismatches": mismatches,
+    }
+
 
 
 def get_status_cow_snapshot(conf_dir: Path = CONF_DIR, include_fields=None, lite: bool = False) -> dict:
@@ -19445,7 +19595,7 @@ def is_panel_pwd_customized(conf_dir: Path = CONF_DIR) -> bool:
     try:
         auth_file = Path(conf_dir) / "panel_auth.json"
         if auth_file.is_file():
-            data = json.loads(auth_file.read_text(encoding="utf-8"))
+            data = _safe_json_loads(auth_file.read_text(encoding="utf-8"))
             if isinstance(data, dict) and data.get("hash") and data.get("salt"):
                 if "customized" in data:
                     return bool(data["customized"])
@@ -19484,7 +19634,7 @@ def get_luci_bridge_token(create: bool = True) -> str:
     tok_f = Path(globals().get("RUN_DIR") or CONF_DIR) / "luci_bridge_token.json"
     if tok_f.is_file():
         try:
-            obj = json.loads(tok_f.read_text(encoding="utf-8"))
+            obj = _safe_json_loads(tok_f.read_text(encoding="utf-8"))
             if isinstance(obj, dict) and obj.get("token") and int(obj.get("expires_at") or 0) > now_ts:
                 _LUCI_BRIDGE_MEMO["token"] = str(obj["token"])
                 _LUCI_BRIDGE_MEMO["expires_at"] = int(obj["expires_at"])
@@ -19917,7 +20067,7 @@ def _is_udp_port_listening(port: int) -> bool:
 def _all_configured_tcp_inbounds_listening(conf_dir: Path = CONF_DIR) -> bool:
     """True only when every inbound in sing-box.json is actually bound. A hot `PUT :9090/configs` silently ignores newly added """
     try:
-        cfg = json.loads((conf_dir / "sing-box.json").read_text(encoding="utf-8"))
+        cfg = _safe_json_loads((conf_dir / "sing-box.json").read_text(encoding="utf-8"))
     except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         return True
     tcp_types = ("vless", "mixed", "tproxy", "socks", "http", "trojan", "vmess", "shadowsocks")
@@ -20244,7 +20394,7 @@ def get_ops_diagnostics(conf_dir: Path = CONF_DIR) -> dict:
     check_ok = True
     check_msg = "syntax_ok"
     try:
-        sb_cfg = json.loads(cfg_file.read_text(encoding="utf-8"))
+        sb_cfg = _safe_json_loads(cfg_file.read_text(encoding="utf-8"))
         if sb_caps["installed"]:
             res = run_singbox_check_safe(sb_caps["binary_path"], sb_cfg)
             check_ok = (res.returncode == 0)
@@ -20370,7 +20520,7 @@ def export_ops_backup(conf_dir: Path = CONF_DIR, include_secrets: bool = True) -
     auto_nodes_raw = None
     if (conf_dir / "auto_nodes.json").is_file():
         try:
-            auto_nodes_raw = json.loads((conf_dir / "auto_nodes.json").read_text(encoding="utf-8"))
+            auto_nodes_raw = _safe_json_loads((conf_dir / "auto_nodes.json").read_text(encoding="utf-8"))
         except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             auto_nodes_raw = None
     if not isinstance(auto_nodes_raw, dict):
@@ -20400,7 +20550,7 @@ def export_ops_backup(conf_dir: Path = CONF_DIR, include_secrets: bool = True) -
         "rule_providers": load_rule_providers(conf_dir),
         "sonar_targets": load_sonar_targets(conf_dir),
         "alerts_config": load_alerts_config(conf_dir, mask_secrets=(not include_secrets)),
-        "sub_jaccard_ring": (lambda _rf: json.loads(_rf.read_text(encoding="utf-8")) if _rf.is_file() else {})(_effective_run_dir(conf_dir) / "sub_jaccard_ring.json"),
+        "sub_jaccard_ring": (lambda _rf: _safe_json_loads(_rf.read_text(encoding="utf-8")) if _rf.is_file() else {})(_effective_run_dir(conf_dir) / "sub_jaccard_ring.json"),
         "_existing_files": [
             fn for fn in (
                 "nodes.json", "subscriptions.json", "homelink.json", "shunt.json",
@@ -20414,7 +20564,7 @@ def export_ops_backup(conf_dir: Path = CONF_DIR, include_secrets: bool = True) -
     try:
         auth_p = conf_dir / "panel_auth.json"
         if auth_p.is_file():
-            pa = json.loads(auth_p.read_text(encoding="utf-8"))
+            pa = _safe_json_loads(auth_p.read_text(encoding="utf-8"))
             if isinstance(pa, dict) and pa.get("hash") and pa.get("salt"):
                 out["panel_auth"] = {"hash": pa["hash"], "salt": pa["salt"], "kdf": pa.get("kdf", "pbkdf2_sha256"), "customized": bool(pa.get("customized", True))}
         cust_flag = is_panel_pwd_customized(conf_dir)
@@ -20629,7 +20779,7 @@ def restore_from_backup_archive(conf_dir: Path = CONF_DIR, arc_path: Path = None
     if ops_file.is_file():
         try:
             os.utime(ops_file, None)
-            loaded = json.loads(ops_file.read_text(encoding="utf-8"))
+            loaded = _safe_json_loads(ops_file.read_text(encoding="utf-8"))
             if isinstance(loaded, dict):
                 restored_ops = loaded
         except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
@@ -20916,7 +21066,7 @@ def _load_traffic_ledger(conf_dir: Path = CONF_DIR) -> dict:
     for p_cand in cands:
         if p_cand.is_file():
             try:
-                data = json.loads(p_cand.read_text(encoding="utf-8"))
+                data = _safe_json_loads(p_cand.read_text(encoding="utf-8"))
                 if isinstance(data, dict):
                     return data
             except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
@@ -21228,7 +21378,7 @@ def load_sonar_targets(conf_dir: Path = CONF_DIR) -> list:
     p = Path(conf_dir) / "sonar_targets.json"
     if p.is_file():
         try:
-            raw = json.loads(p.read_text(encoding="utf-8"))
+            raw = _safe_json_loads(p.read_text(encoding="utf-8"))
             items = raw.get("targets") if isinstance(raw, dict) else raw
             if isinstance(items, list) and items:
                 out = []
@@ -21778,7 +21928,7 @@ def _load_panel_auth(conf_dir: Path = CONF_DIR) -> dict:
     if auth_file.is_file():
         _chmod_0600_safe(auth_file)
         try:
-            data = json.loads(auth_file.read_text(encoding="utf-8"))
+            data = _safe_json_loads(auth_file.read_text(encoding="utf-8"))
             if isinstance(data, dict) and data.get("hash") and data.get("salt"):
                 old_salt = str(data.get("salt") or "")
                 old_kdf = str(data.get("kdf") or "")
@@ -21941,6 +22091,9 @@ def _chmod_0600_safe(p: Path) -> None:
     except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
         globals().get("_record_internal_diag", str)(_e_diag)
 
+if "_safe_json_loads" not in globals():
+    _safe_json_loads = getattr(json, "loads")
+
 def is_bypass_active() -> bool:
     for p_b in (RUN_DIR / "bypass", RUN_DIR / "recover_direct.flag", Path("/tmp/ai-link-run/bypass")):
         if p_b.is_file():
@@ -22060,7 +22213,7 @@ def sync_ops_settings_to_uci(conf_dir: Path = CONF_DIR, ops_data: dict = None, u
         saved = dict(ops_data)
     elif ops_file.is_file():
         try:
-            loaded = json.loads(ops_file.read_text(encoding="utf-8"))
+            loaded = _safe_json_loads(ops_file.read_text(encoding="utf-8"))
             if isinstance(loaded, dict):
                 saved = loaded
         except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
@@ -22109,7 +22262,7 @@ def sync_uci_to_ops_settings(conf_dir: Path = CONF_DIR, force_from_uci: bool = F
     had_existing_ops = False
     if ops_file.is_file():
         try:
-            saved = json.loads(ops_file.read_text(encoding="utf-8"))
+            saved = _safe_json_loads(ops_file.read_text(encoding="utf-8"))
             if isinstance(saved, dict) and len(saved) > 0:
                 had_existing_ops = True
             else:
@@ -22197,7 +22350,7 @@ def get_ops_settings(conf_dir: Path = CONF_DIR) -> dict:
     saved = {}
     if ops_file.is_file():
         try:
-            saved = json.loads(ops_file.read_text(encoding="utf-8"))
+            saved = _safe_json_loads(ops_file.read_text(encoding="utf-8"))
             if not isinstance(saved, dict):
                 saved = {}
         except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
@@ -22933,7 +23086,7 @@ def run_network_health_doctor(payload: dict = None, conf_dir: Path = CONF_DIR, a
         env_file = Path(conf_dir) / "diag_env.json"
         if env_file.is_file():
             try:
-                mock_env.update(json.loads(env_file.read_text(encoding="utf-8")))
+                mock_env.update(_safe_json_loads(env_file.read_text(encoding="utf-8")))
             except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                 globals().get("_record_internal_diag", str)(_e_diag)
         if isinstance(payload.get("mock_env"), dict):
@@ -23811,7 +23964,7 @@ def load_alerts_config(conf_dir: Path = CONF_DIR, mask_secrets: bool = False) ->
     }
     if p.is_file():
         try:
-            saved = json.loads(p.read_text(encoding="utf-8"))
+            saved = _safe_json_loads(p.read_text(encoding="utf-8"))
             if isinstance(saved, dict):
                 for k in ("enabled", "dedup_window_sec", "events_enabled"):
                     if k in saved:
@@ -23862,7 +24015,7 @@ def load_alert_events(conf_dir: Path = CONF_DIR) -> list:
     p = rt_p if rt_p.is_file() else (Path(conf_dir) / "alert_events.json")
     if p.is_file():
         try:
-            ev = json.loads(p.read_text(encoding="utf-8"))
+            ev = _safe_json_loads(p.read_text(encoding="utf-8"))
             if isinstance(ev, list):
                 return ev[:200]
         except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
@@ -24057,7 +24210,7 @@ def _capture_current_config_files(conf_dir: Path = CONF_DIR) -> dict:
         p = conf_dir / fn
         if p.is_file():
             try:
-                data = json.loads(p.read_text(encoding="utf-8"))
+                data = _safe_json_loads(p.read_text(encoding="utf-8"))
                 if fn == "homelink.json" and isinstance(data, list):
                     sanitized = []
                     for item in data:
@@ -24078,7 +24231,7 @@ def load_config_history(conf_dir: Path = CONF_DIR) -> list:
     p = conf_dir / "config_history.json"
     if p.is_file():
         try:
-            items = json.loads(p.read_text(encoding="utf-8"))
+            items = _safe_json_loads(p.read_text(encoding="utf-8"))
             if isinstance(items, list):
                 now_ts = int(time.time())
                 # Keep <= 7 days and <= 20 items
@@ -25179,7 +25332,7 @@ def load_rule_providers(conf_dir: Path = CONF_DIR) -> list:
     p = conf_dir / "rule_providers.json"
     if p.is_file():
         try:
-            items = json.loads(p.read_text(encoding="utf-8"))
+            items = _safe_json_loads(p.read_text(encoding="utf-8"))
             if isinstance(items, list):
                 cleaned = [x for x in items if isinstance(x, dict) and x.get("id") and _is_valid_rule_provider_url(x.get("url"))]
                 if len(cleaned) != len(items):
@@ -26158,9 +26311,12 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.6.6"
+APP_VERSION = "2.6.7"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.6.6-release-20261117-r38"
+APP_BUILD = "2.6.7-release-20261118-r39"
+if "_safe_json_loads" not in globals():
+    def _safe_json_loads(raw, default=None):
+        return getattr(json, "loads")(raw) if default is None else (getattr(json, "loads")(raw) if raw else default)
 
 UPDATE_MANIFEST_PRIMARY = "https://ai-link-official.pages.dev/version.json"
 UPDATE_MANIFEST_GITHUB = "https://raw.githubusercontent.com/Master-AI-007/ai-link-openwrt/main/version.json"
@@ -26300,7 +26456,7 @@ def check_plugin_update(conf_dir: Path = CONF_DIR, force: bool = False) -> dict:
     for u in _update_manifest_candidates(conf_dir):
         try:
             raw = _update_http_get(u, timeout=8.0)
-            obj = json.loads(raw.decode("utf-8", "replace"))
+            obj = _safe_json_loads(raw.decode("utf-8", "replace"))
             if isinstance(obj, dict) and obj.get("latest"):
                 manifest, used = obj, u
                 break
@@ -26418,7 +26574,7 @@ def check_singbox_core_update(conf_dir: Path = CONF_DIR, force: bool = False, mo
         for u in cand_urls:
             try:
                 raw = _update_http_get(u, timeout=6.0)
-                parsed = json.loads(raw.decode("utf-8", "replace"))
+                parsed = _safe_json_loads(raw.decode("utf-8", "replace"))
                 if isinstance(parsed, dict) and (parsed.get("tag_name") or parsed.get("name")):
                     rel_obj = parsed
                     source_used = u
@@ -26680,7 +26836,7 @@ def read_update_progress(limit: int = 40) -> dict:
     log_file = PERSIST_UPDATE_LOG if use_persist else UPDATE_PROGRESS_LOG
     try:
         if state_file.is_file():
-            meta = json.loads(state_file.read_text(encoding="utf-8"))
+            meta = _safe_json_loads(state_file.read_text(encoding="utf-8"))
             if isinstance(meta, dict):
                 st["target"] = str(meta.get("target") or "")
                 st["started_at"] = int(meta.get("started_at") or 0)
@@ -26875,7 +27031,7 @@ for I in 1 2 3 4 5 6 7 8 9 10; do
 import sys, json, shutil, urllib.request
 _op = urllib.request.build_opener(urllib.request.ProxyHandler({{}}))
 with _op.open(f"http://127.0.0.1:{{sys.argv[1]}}/api/status", timeout=3) as r:
-    d = json.loads(r.read().decode("utf-8", "replace"))
+    d = _safe_json_loads(r.read().decode("utf-8", "replace"))
 assert d.get("ok") is True, d
 if shutil.which("sing-box") and not d.get("bypass_active") and (d.get("ops_settings") or {{}}).get("enabled", True):
     assert d.get("core_pid"), "sing-box core_pid is null"
@@ -26921,7 +27077,7 @@ if python3 - "$PORT" <<'PY' >/dev/null 2>&1
 import sys, json, urllib.request
 _op = urllib.request.build_opener(urllib.request.ProxyHandler({{}}))
 with _op.open(f"http://127.0.0.1:{{sys.argv[1]}}/api/status", timeout=3) as r:
-    d = json.loads(r.read().decode("utf-8", "replace"))
+    d = _safe_json_loads(r.read().decode("utf-8", "replace"))
 assert d.get("ok") is True, d
 PY
 then
@@ -27090,7 +27246,6 @@ _EGRESS_BG_PROBING = False
 
 def _probe_real_proxy_egress(active_node: str, force_now: bool = False, allow_network: bool = True) -> dict:
     """Part 1 §1.4 & §1.8 Case 8: 20s Egress Probe (configurable 20/30/60s) on current active outbound node. When 2 consecutive"""
-    global _EGRESS_BG_PROBING
     now = time.time()
     if not active_node or active_node in ("direct", "block") or globals().get("_SELF_TEST_ACTIVE", False) or active_node in globals().get("_SELF_TEST_FAKE_TAGS", set()):
         return {"ok": True, "checked_ts": int(now), "delay_ms": 0, "error": ""}
@@ -27109,15 +27264,14 @@ def _probe_real_proxy_egress(active_node: str, force_now: bool = False, allow_ne
         # Use node_probe.json known delay immediately and trigger background egress probe if not already running.
         known_d = get_node_real_delay(active_node, conf_dir=CONF_DIR)
         if not _EGRESS_BG_PROBING and _is_local_port_listening(9090):
-            _EGRESS_BG_PROBING = True
+            DAEMON_STATE.set("_EGRESS_BG_PROBING", True)
             def _bg_eg():
-                global _EGRESS_BG_PROBING
                 try:
                     _probe_real_proxy_egress(active_node, force_now=True, allow_network=True)
                 except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                     globals().get("_record_internal_diag", str)(_e_diag)
                 finally:
-                    _EGRESS_BG_PROBING = False
+                    DAEMON_STATE.set("_EGRESS_BG_PROBING", False)
             threading.Thread(target=_bg_eg, daemon=True).start()
         if isinstance(node_eg_ent, dict) and float(node_eg_ent.get("ts") or 0.0) > 0:
             return {
@@ -27165,7 +27319,7 @@ def _read_nft_apply_status() -> dict:
         sf = r_d / "nft_apply_status.json"
         if sf.is_file():
             try:
-                d = json.loads(sf.read_text(encoding="utf-8"))
+                d = _safe_json_loads(sf.read_text(encoding="utf-8"))
                 if isinstance(d, dict):
                     return {
                         "last_apply_ok": bool(d.get("ok", True)),
@@ -27578,18 +27732,16 @@ def _h3_is_ignored_internal_host(host_str: str, lan_ip: str = "") -> bool:
 _GALAXY_BG_REFRESHING = False
 
 def _trigger_galaxy_bg_refresh(conf_dir=CONF_DIR):
-    global _GALAXY_BG_REFRESHING
     if _GALAXY_BG_REFRESHING:
         return
-    _GALAXY_BG_REFRESHING = True
+    DAEMON_STATE.set("_GALAXY_BG_REFRESHING", True)
     def _bg_gal():
-        global _GALAXY_BG_REFRESHING
         try:
             _compute_galaxy_snapshot_sync(conf_dir)
         except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_g:
             globals().get("_record_internal_diag", str)(_e_g)
         finally:
-            _GALAXY_BG_REFRESHING = False
+            DAEMON_STATE.set("_GALAXY_BG_REFRESHING", False)
     threading.Thread(target=_bg_gal, daemon=True).start()
 
 def build_galaxy_snapshot(conf_dir=CONF_DIR):
@@ -28201,7 +28353,7 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 try:
                     ln = int(self.headers.get("Content-Length") or 0)
                     if ln > 0:
-                        b_obj = json.loads(self.rfile.read(ln).decode("utf-8", errors="ignore"))
+                        b_obj = _safe_json_loads(self.rfile.read(ln).decode("utf-8", errors="ignore"))
                         if isinstance(b_obj, dict):
                             pid = str(b_obj.get("id") or b_obj.get("delete") or "").strip()
                 except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
@@ -28306,12 +28458,12 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             self._send_json({
                 "ok": True,
                 "version": APP_VERSION,
-                "pkg_release": "r38",
+                "pkg_release": "r39",
                 "boot_stage_timings_ms": get_boot_stage_timings(),
                 "srs_fallback_status": get_srs_fallback_degraded_status(CONF_DIR),
                 "exception_telemetry": get_structured_exception_stats(),
                 "pool_switch_debounce_s": POOL_SWITCH_SMOOTH_DEBOUNCE_S,
-                "release": f"{APP_VERSION}-r38",
+                "release": f"{APP_VERSION}-r39",
                 "channel": APP_CHANNEL,
                 "build": APP_BUILD,
                 "version_file": _read_version_file(),
@@ -28743,7 +28895,7 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             return False, None
         body_raw = self.rfile.read(length).decode("utf-8", errors="replace") if length > 0 else "{}"
         try:
-            payload = json.loads(body_raw) if body_raw.strip() else {}
+            payload = _safe_json_loads(body_raw) if body_raw.strip() else {}
         except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as e:
             self._send_json({"ok": False, "error": "invalid_json", "message": f"请求体 JSON 格式不合法: {e}"}, status=400)
             return False, None
@@ -31318,7 +31470,7 @@ def get_uci_ipv6_proxy(conf_dir: Path = CONF_DIR) -> bool:
     try:
         ops_f = Path(conf_dir) / "ops_settings.json"
         if ops_f.is_file():
-            d = json.loads(ops_f.read_text(encoding="utf-8"))
+            d = _safe_json_loads(ops_f.read_text(encoding="utf-8"))
             if isinstance(d, dict) and "ipv6_proxy" in d:
                 return bool(d["ipv6_proxy"])
     except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
@@ -31461,24 +31613,22 @@ _WATCHDOG_RECOVERY_EVENTS = []
 
 def reset_watchdog_circuit_breaker() -> None:
     """SYS-03 Guardrail: Immediately resets watchdog exponential backoff & circuit breaker upon manual user action or config save."""
-    global _WATCHDOG_FAIL_STREAK, _WATCHDOG_CIRCUIT_OPEN, _LAST_WATCHDOG_CORE_RESTART_TS
-    _WATCHDOG_FAIL_STREAK = 0
-    _WATCHDOG_CIRCUIT_OPEN = False
-    _LAST_WATCHDOG_CORE_RESTART_TS = 0.0
+    DAEMON_STATE.set("_WATCHDOG_FAIL_STREAK", 0)
+    DAEMON_STATE.set("_WATCHDOG_CIRCUIT_OPEN", False)
+    DAEMON_STATE.set("_LAST_WATCHDOG_CORE_RESTART_TS", 0.0)
 
 
 def ensure_core_alive_and_recover(conf_dir: Path = CONF_DIR) -> bool:
     """P0-2, v2.5.6 P2-4 & v2.6.0 SYS-03 Fix: Watchdog process liveness guard with exponential backoff (18s->60s->180s->300s) and 5-fail circuit breaker."""
-    global _LAST_WATCHDOG_CORE_RESTART_TS, _WATCHDOG_LAST_KNOWN_PIDS, _WATCHDOG_FAIL_STREAK, _WATCHDOG_CIRCUIT_OPEN
     if is_bypass_active() or not Path("/etc/init.d/ai-link").exists() or not resolve_singbox_binary():
         return True
     if not get_ops_settings(conf_dir).get("enabled", True):
         return True
     live_pids = _get_live_singbox_pids()
     if live_pids:
-        _WATCHDOG_LAST_KNOWN_PIDS = list(live_pids)
-        _WATCHDOG_FAIL_STREAK = 0
-        _WATCHDOG_CIRCUIT_OPEN = False
+        DAEMON_STATE.set("_WATCHDOG_LAST_KNOWN_PIDS", list(live_pids))
+        DAEMON_STATE.set("_WATCHDOG_FAIL_STREAK", 0)
+        DAEMON_STATE.set("_WATCHDOG_CIRCUIT_OPEN", False)
         return True
     prev_pids = list(_WATCHDOG_LAST_KNOWN_PIDS)
     t0_rec = time.time()
@@ -31493,7 +31643,7 @@ def ensure_core_alive_and_recover(conf_dir: Path = CONF_DIR) -> bool:
     _req_wait = _backoff_table[min(_WATCHDOG_FAIL_STREAK, len(_backoff_table) - 1)]
     if (now - _LAST_WATCHDOG_CORE_RESTART_TS) < _req_wait:
         return False
-    _LAST_WATCHDOG_CORE_RESTART_TS = now
+    DAEMON_STATE.set("_LAST_WATCHDOG_CORE_RESTART_TS", now)
     dead_reason = "process_exited_unexpectedly"
     try:
         sb_log_p = RUN_DIR / "singbox.log"
@@ -31508,13 +31658,13 @@ def ensure_core_alive_and_recover(conf_dir: Path = CONF_DIR) -> bool:
         ensure_nft_and_routing_intact()
     new_pids = _get_live_singbox_pids()
     if new_pids:
-        _WATCHDOG_LAST_KNOWN_PIDS = list(new_pids)
-        _WATCHDOG_FAIL_STREAK = 0
-        _WATCHDOG_CIRCUIT_OPEN = False
+        DAEMON_STATE.set("_WATCHDOG_LAST_KNOWN_PIDS", list(new_pids))
+        DAEMON_STATE.set("_WATCHDOG_FAIL_STREAK", 0)
+        DAEMON_STATE.set("_WATCHDOG_CIRCUIT_OPEN", False)
     else:
-        _WATCHDOG_FAIL_STREAK += 1
+        DAEMON_STATE.incr("_WATCHDOG_FAIL_STREAK", 1)
         if _WATCHDOG_FAIL_STREAK >= 5:
-            _WATCHDOG_CIRCUIT_OPEN = True
+            DAEMON_STATE.set("_WATCHDOG_CIRCUIT_OPEN", True)
     rec_ms = int(round((time.time() - t0_rec) * 1000))
     ev_rec = {
         "ts": int(time.time()),
@@ -31712,7 +31862,7 @@ def main():
             res = restore_from_backup_archive(CONF_DIR, rp)
         else:
             try:
-                data = json.loads(rp.read_text(encoding="utf-8"))
+                data = _safe_json_loads(rp.read_text(encoding="utf-8"))
                 res = restore_ops_backup(data, CONF_DIR)
                 if res.get("ok") is not False:
                     write_all_configs(CONF_DIR)
@@ -31727,7 +31877,7 @@ def main():
         cfg_file = CONF_DIR / "sing-box.json"
         if not cfg_file.is_file():
             write_all_configs(CONF_DIR)
-        sb_cfg = json.loads(cfg_file.read_text(encoding="utf-8"))
+        sb_cfg = _safe_json_loads(cfg_file.read_text(encoding="utf-8"))
         if sb_caps["installed"]:
             res = run_singbox_check_safe(sb_caps["binary_path"], sb_cfg)
             print("CHECK_CONFIG_RESULT", json.dumps({
@@ -31864,11 +32014,10 @@ def main():
         print("Hot-reloaded AI-LINK configuration and selector states.")
         return 0
     if "--self-test" in sys.argv:
-        global _SELF_TEST_ACTIVE, _SELF_TEST_LIVE_WRITE_ATTEMPTS, _SELF_TEST_LIVE_WRITE_BLOCKED, _SELF_TEST_LIVE_WRITE_LEAKED
-        _SELF_TEST_ACTIVE = True
-        _SELF_TEST_LIVE_WRITE_ATTEMPTS = 0
-        _SELF_TEST_LIVE_WRITE_BLOCKED = 0
-        _SELF_TEST_LIVE_WRITE_LEAKED = 0
+        DAEMON_STATE.set("_SELF_TEST_ACTIVE", True)
+        DAEMON_STATE.set("_SELF_TEST_LIVE_WRITE_ATTEMPTS", 0)
+        DAEMON_STATE.set("_SELF_TEST_LIVE_WRITE_BLOCKED", 0)
+        DAEMON_STATE.set("_SELF_TEST_LIVE_WRITE_LEAKED", 0)
         _st_orig_sels = dict(PROBE_ENGINE.current_selections)
         _st_sels_path = RUN_DIR / "selections.json"
         _st_hist_path = RUN_DIR / "switch_history.json"
@@ -32258,13 +32407,13 @@ def main():
         _update_panel_password("custom-secret-2026", tmp_shunt_dir, sync_uci=False)
         save_auto_nodes_config(load_auto_nodes_config(tmp_shunt_dir), tmp_shunt_dir)
         _auto_md5_before = hashlib.md5((tmp_shunt_dir / "auto_nodes.json").read_bytes()).hexdigest()
-        _auth_before = json.loads((tmp_shunt_dir / "panel_auth.json").read_text(encoding="utf-8"))
+        _auth_before = _safe_json_loads((tmp_shunt_dir / "panel_auth.json").read_text(encoding="utf-8"))
         _json_bak = export_ops_backup(tmp_shunt_dir)
         assert isinstance(_json_bak.get("panel_auth"), dict) and _json_bak["panel_auth"]["hash"] == _auth_before["hash"], f"Expected panel_auth in export_ops_backup, got {_json_bak.get('panel_auth')}"
         factory_reset_all_configs(tmp_shunt_dir, create_backup_archive=False)
         restore_ops_backup(_json_bak, tmp_shunt_dir)
         _ops_after_json = get_ops_settings(tmp_shunt_dir)
-        _auth_after = json.loads((tmp_shunt_dir / "panel_auth.json").read_text(encoding="utf-8"))
+        _auth_after = _safe_json_loads((tmp_shunt_dir / "panel_auth.json").read_text(encoding="utf-8"))
         _auto_md5_after = hashlib.md5((tmp_shunt_dir / "auto_nodes.json").read_bytes()).hexdigest()
         assert _ops_after_json["entry_bypass"] is False and _ops_after_json["gh_mirror"] == "https://ghfast.top/" and _ops_after_json["ipv6_proxy"] is True, f"Expected JSON restore_ops_backup to restore settings, got {_ops_after_json}"
         assert _auth_after["hash"] == _auth_before["hash"] and _auth_after["salt"] == _auth_before["salt"], f"Expected panel_auth restored, got {_auth_after}"
@@ -32316,7 +32465,7 @@ def main():
         for _gp in (_st_guard_probe1, _st_guard_probe2):
             if _gp.exists():
                 if _SELF_TEST_LIVE_WRITE_LEAKED == 0:
-                    _SELF_TEST_LIVE_WRITE_LEAKED += 1
+                    DAEMON_STATE.incr("_SELF_TEST_LIVE_WRITE_LEAKED", 1)
                 try:
                     _gp.unlink(missing_ok=True)
                 except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_noop:
@@ -32324,7 +32473,7 @@ def main():
         shutil.rmtree(tmp_test_dir, ignore_errors=True)
         shutil.rmtree(tmp_shunt_dir, ignore_errors=True)
         PROBE_ENGINE.current_selections = _st_orig_sels
-        _SELF_TEST_ACTIVE = False
+        DAEMON_STATE.set("_SELF_TEST_ACTIVE", False)
         assert _SELF_TEST_LIVE_WRITE_LEAKED == 0, (
             f"P0-1 regression: --self-test leaked {_SELF_TEST_LIVE_WRITE_LEAKED} live production writes "
             f"(blocked={_SELF_TEST_LIVE_WRITE_BLOCKED})!"
@@ -32335,7 +32484,7 @@ def main():
         )
         if _st_sels_path.is_file():
             try:
-                _sels_doc = json.loads(_st_sels_path.read_text(encoding="utf-8"))
+                _sels_doc = _safe_json_loads(_st_sels_path.read_text(encoding="utf-8"))
                 _sels_map = _sels_doc.get("selections") if isinstance(_sels_doc, dict) else {}
                 _leaked_sels = {k: v for k, v in (_sels_map or {}).items() if k in _SELF_TEST_FAKE_GROUPS or v in _SELF_TEST_FAKE_TAGS}
                 assert not _leaked_sels, f"P0-1 regression: fake self-test tags leaked into selections.json: {_leaked_sels}"
@@ -32345,7 +32494,7 @@ def main():
                 globals().get("_record_internal_diag", str)(_e_diag)
         if _st_hist_path.is_file():
             try:
-                _hist_doc = json.loads(_st_hist_path.read_text(encoding="utf-8"))
+                _hist_doc = _safe_json_loads(_st_hist_path.read_text(encoding="utf-8"))
                 _leaked_hist = [
                     h for h in (_hist_doc if isinstance(_hist_doc, list) else [])
                     if isinstance(h, dict) and (

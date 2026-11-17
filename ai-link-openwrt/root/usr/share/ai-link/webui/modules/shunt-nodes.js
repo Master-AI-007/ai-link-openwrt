@@ -24,3 +24,26 @@
   });
   window.formatSrsDegradedBannerHtml = formatSrsDegradedBannerHtml;
 
+  // OPT-267-07: Sunk Node Table & Shunt Matrix Independent Renderers
+  function renderNodeTableFragment(rowsHtmlArray) {
+    const frag = document.createDocumentFragment();
+    const temp = document.createElement('tbody');
+    temp.innerHTML = Array.isArray(rowsHtmlArray) ? rowsHtmlArray.join('') : String(rowsHtmlArray || '');
+    while (temp.firstChild) {
+      frag.appendChild(temp.firstChild);
+    }
+    return frag;
+  }
+  function renderShuntMatrixSummaryBadge(groups) {
+    const list = Array.isArray(groups) ? groups : [];
+    const activeCnt = list.filter(g => g && g.mode && g.mode !== 'direct').length;
+    return { totalGroups: list.length, activeProxyGroups: activeCnt, labelZh: '共 ' + list.length + ' 个分流组 · 代理接管 ' + activeCnt + ' 组' };
+  }
+  window.NexusModules = window.NexusModules || {};
+  window.NexusModules.shuntNodes = Object.assign(window.NexusModules.shuntNodes || {}, {
+    renderNodeTableFragment: renderNodeTableFragment,
+    renderShuntMatrixSummaryBadge: renderShuntMatrixSummaryBadge
+  });
+  window.renderNodeTableFragment = renderNodeTableFragment;
+  window.renderShuntMatrixSummaryBadge = renderShuntMatrixSummaryBadge;
+

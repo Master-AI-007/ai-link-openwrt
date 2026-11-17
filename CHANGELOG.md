@@ -1,3 +1,18 @@
+## [v2.6.7] - 2026-11-18
+### 10 项全栈打磨优化、异步退避与架构解耦加固（PKG_RELEASE 39）
+- **正常升版**：升至 `v2.6.7`（`PKG_RELEASE:=39` / `r39`），增量基准为已上线的 `v2.6.6`（Release #448952330 / `83abe5a` / 部署 `874f0142`）；现网设备可正常接收 OTA 升级提示。
+- **OPT-267-01 Toast 容器显式补齐 aria-live="polite"**：`stack.setAttribute('aria-live', 'polite')`，完善无障碍朗读契约。
+- **OPT-267-02 overview.js LuCI 轮询指数退避**：连续超时自动按 `3s → 6s → 15s` 指数退避，恢复后立即重置为 3s。
+- **OPT-267-03 收拢 22 处 global 声明**：构建 `DaemonState` 单例容器，全文件 `global` 声明降为 `0` 处。
+- **OPT-267-04 统一 82 处 json.loads() 安全包装**：抽离 `_safe_json_loads`，全文件裸 `json.loads` 降为 `0` 处。
+- **OPT-267-05 审查 25 处 time.sleep() 与持锁作用域**：确保持锁区间内 `sleep` 降为 `0` 处，无阻塞风险。
+- **OPT-267-06 ai-link-daemon.py 四子模块边界拆分映射**：建立清晰子模块架构映射，条目零偏移。
+- **OPT-267-07 nexus.js 视图下沉**：节点表与分流矩阵片段下沉至 `webui/modules/shunt-nodes.js`。
+- **OPT-267-08 nexus.css 冗余规则清理**：精简至 4,174 行 / 151,438 B，design-lint 18/18 零违规。
+- **OPT-267-09 订阅解析前置非法端口/空 host 过滤告警**：返回 `empty_host` / `invalid_port` 精确计数。
+- **OPT-267-10 构建脚本双向校验 webui/modules/*.js 与 ?v= 哈希**：双向核验防漏防缓存污染。
+- 验收：`INSTALL_RC=0`、服务全 1、`nft ok:true`、重启自愈、自检 10/10 + 负向、零补发 `run_all 15/15 / RC=0`、混沌 **103/103 PASS**（新增 Stage 7.40）、门禁双布局 17/17、design-lint 18/18、11 行指纹 11/11、UI 六页三视口零溢出、设备侧出网 200/200/204。
+
 ## [v2.6.6] - 2026-11-17
 ### 10 项全栈打磨优化、子模块架构封装与安全韧性加固（PKG_RELEASE 38）
 - **正常升版**：升至 `v2.6.6`（`PKG_RELEASE:=38` / `r38`），增量基准为已上线的 `v2.6.5`（Release #448402348 / `d6d15e7` / 部署 `a6952ae4`）；现网设备可正常接收 OTA 升级提示。

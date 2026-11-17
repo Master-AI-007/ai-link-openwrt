@@ -1,3 +1,17 @@
+## v2.6.7 (2026-11-18 · PKG_RELEASE:=39 / r39 · 全栈 10 项架构与稳定性深度打磨：DaemonState 单例清零 22 处 global、_safe_json_loads 统一 82 处 JSON 解析、零持锁 sleep 保证、LuCI 指数退避、订阅异常节点前置过滤与模块双向指纹门禁版)
+
+- **基线与升版说明**：基于本地 `.77` 真机 12 步全绿验收并全量发布上线的 **`v2.6.6` (`r38`)**（GitHub `Release #448952330`、主干/Tag `83abe5abfc14bae9659ed6482e49d383ec9d874e` (`83abe5a`)、Cloudflare 部署 `874f0142`、`local_qa_build_md5 = "40589d4a2e50ef8456439f7799575496"`），严格按 SOP v2.2 决策树分支 A（`QA_PASSED_RELEASED` 唯一合法升版分支）递增版本号至 **`v2.6.7`（`PKG_RELEASE:=39` / `r39` / `APP_BUILD = "2.6.7-release-20261118-r39"`）**，全量落地云端审计报告 `AUDIT-Hydrogen-v2.6.6.md · r38` 第二节提出的 **10 项全新优化建议（`OPT-267-01 ~ OPT-267-10`）**：
+  - **OPT-267-01 (Toast 容器显式补齐 `aria-live="polite"`)**: 在 `index.html` 与 `nexus.js` 的 `toast()` 中显式声明 `aria-live="polite"` 与 `aria-atomic="false"`，完善无障碍屏幕阅读器实时播报。
+  - **OPT-267-02 (`overview.js` LuCI 轮询失败指数退避)**: 新增 `computeLuciPollBackoffSec` 与 `[3, 6, 15]` 指数退避调度，在连续超时或未就绪时自动拉长轮询间隔（`3s → 6s → 15s`），恢复正常后立即切回 `3s`。
+  - **OPT-267-03 (收敛 22 处 `global` 声明至单例 `DaemonState` 容器)**: 构建 `DaemonState` 单例状态容器（`DAEMON_STATE`），将 `ai-link-daemon.py` 中 22 处分散 `global` 声明全部收拢清零（`22 -> 0`）。
+  - **OPT-267-04 (统一 82 处 `json.loads()` 安全包装)**: 抽离 `_safe_json_loads(raw, default)`，统一捕获 `JSONDecodeError` 并记录结构化诊断计数，全文件裸 `json.loads(` 调用从 82 处降为 `0` 处。
+  - **OPT-267-05 (审查 25 处 `time.sleep()` 与锁作用域)**: 重构 `_RELOAD_LOCK` 与 `_EPHEMERAL_PROBE_LOCK` 作用域并引入 `audit_lock_free_sleep_safety()` AST 审计，确保全文件 `0` 处 `sleep()` 发生在持锁区间内。
+  - **OPT-267-06 (`ai-link-daemon.py` 四子模块架构映射)**: 在 `get_daemon_module_architecture()` 中建立 `config_gen.py`、`net_probe.py`、`http_api.py` 与 `nft_rules.py` 四大核心子模块映射。
+  - **OPT-267-07 (`nexus.js` 节点表与分流矩阵渲染继续下沉至 `webui/modules/`)**: 将 `renderNodeTableFragment` 与 `renderShuntMatrixSummaryBadge` 下沉至 `webui/modules/shunt-nodes.js`。
+  - **OPT-267-08 (`nexus.css` 冗余规则清理)**: 清理跨版本合并遗留的重复选择器与冗余注释块，进一步缩减样式体积并保持 `18/18` Design Lint 零违规。
+  - **OPT-267-09 (订阅解析前置非法端口/空 host 过滤告警)**: 在 `NodeURIParser._post_filter_and_dedup_outbounds` 与 `validate_and_filter_sub_nodes()` 中前置拦截空 `server` 与越界端口（`<1` 或 `>65535`），返回精简跳过原因计数（`empty_host` / `invalid_port`）。
+  - **OPT-267-10 (构建脚本双向校验 `webui/modules/*.js` 与 `?v=` 哈希)**: 在 `gates_v101.py` 与 `verify_bidirectional_webui_module_hashes()` 中双向核验 `webui/modules/*.js` 与 `index.html` 的 `?v=` 缓存指纹，防止遗漏任何新增模块。
+
 ## v2.6.6 (2026-11-17 · PKG_RELEASE:=38 / r38 · 全栈 10 项架构与体验精细打磨：四域模块化封装、205 处宽泛异常清零、7 处 urlopen 统一重试、768px 媒体块彻底归一、500+ 节点测速内存水位保护与诊断导出正则脱敏自检版)
 
 - **基线与升版说明**：基于本地 `.77` 真机 12 步全绿验收并全量发布上线的 **`v2.6.5` (`r37`)**（GitHub `Release #448402348`、主干/Tag `d6d15e7ed7f9052052458753c4758b98121b5b05` (`d6d15e7`)、Cloudflare 部署 `a6952ae4`、`local_qa_build_md5 = "887ecb28bf791adeb4c3d4913c31b23a"`），严格按 SOP v2.2 决策树分支 A（`QA_PASSED_RELEASED` 唯一合法升版分支）递增版本号至 **`v2.6.6`（`PKG_RELEASE:=38` / `r38` / `APP_BUILD = "2.6.6-release-20261117-r38"`）**，全量落地云端审计报告 `AUDIT-Hydrogen-v2.6.5.md · r37` 第二节提出的 **10 项全新优化建议（`OPT-266-01 ~ OPT-266-10`）**：
