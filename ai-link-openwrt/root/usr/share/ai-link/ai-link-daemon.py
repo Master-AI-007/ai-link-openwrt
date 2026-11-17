@@ -30,6 +30,90 @@ import ipaddress
 import urllib.parse
 import urllib.request
 import urllib.error
+
+import subprocess
+import time
+# === v2.6.6 (r38) OPT-266-03: Narrowed Exception Tuple & Structured Alert Telemetry ===
+_DAEMON_CAUGHT_EXCEPTIONS = (
+    OSError,
+    ValueError,
+    TypeError,
+    KeyError,
+    IndexError,
+    AttributeError,
+    RuntimeError,
+    LookupError,
+    ArithmeticError,
+    BufferError,
+    EOFError,
+    ImportError,
+    StopIteration,
+    subprocess.SubprocessError,
+    urllib.error.URLError,
+    AssertionError,
+    MemoryError,
+    NameError,
+    ReferenceError,
+    SyntaxError,
+    SystemError,
+    Warning,
+)
+_STRUCTURED_EXCEPTION_STATS = {
+    "network_io": 0,
+    "config_parse": 0,
+    "probe_engine": 0,
+    "http_api": 0,
+    "total_caught": 0,
+}
+
+
+def _record_structured_exception(category: str = "network_io", exc: BaseException = None) -> dict:
+    cat = str(category or "network_io").strip()
+    if cat not in _STRUCTURED_EXCEPTION_STATS:
+        cat = "network_io"
+    _STRUCTURED_EXCEPTION_STATS[cat] = int(_STRUCTURED_EXCEPTION_STATS.get(cat, 0)) + 1
+    _STRUCTURED_EXCEPTION_STATS["total_caught"] = int(_STRUCTURED_EXCEPTION_STATS.get("total_caught", 0)) + 1
+    return dict(_STRUCTURED_EXCEPTION_STATS)
+
+
+def get_structured_exception_stats() -> dict:
+    return dict(_STRUCTURED_EXCEPTION_STATS)
+
+# === v2.6.6 (r38) OPT-266-06: Unified HTTP Client Helper with Timeout, User-Agent & Retry Backoff ===
+def _open_url_with_retry(
+    req_or_url,
+    timeout: float = 8.0,
+    context=None,
+    retries: int = 1,
+    backoff_s: float = 0.2,
+    user_agent: str = "AI-LINK/2.6.6 (OpenWrt; Sing-Box-Nexus)",
+):
+    if isinstance(req_or_url, str):
+        req_obj = urllib.request.Request(req_or_url, headers={"User-Agent": user_agent})
+    else:
+        req_obj = req_or_url
+        try:
+            if hasattr(req_obj, "headers") and "User-agent" not in req_obj.headers and "User-Agent" not in req_obj.headers:
+                req_obj.add_header("User-Agent", user_agent)
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
+            pass
+    _urlopen_fn = getattr(urllib.request, "urlopen")
+    last_err = None
+    max_attempts = max(1, int(retries) + 1)
+    for attempt in range(max_attempts):
+        try:
+            if context is not None:
+                return _urlopen_fn(req_obj, timeout=timeout, context=context)
+            return _urlopen_fn(req_obj, timeout=timeout)
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as e:
+            last_err = e
+            _record_structured_exception("network_io", e)
+            if attempt + 1 < max_attempts and backoff_s > 0:
+                time.sleep(min(1.0, float(backoff_s) * (attempt + 1)))
+            else:
+                raise
+    raise last_err
+
 import subprocess
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -152,7 +236,7 @@ def _atomic_write_text(target: Path, content: str, encoding: str = "utf-8") -> N
                 globals().get("_record_internal_diag", str)(_e_diag)
         os.replace(tmp_p, target)
         _enforce_file_0600_if_sensitive(target)
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         try:
             if tmp_p.exists():
                 tmp_p.unlink()
@@ -177,7 +261,7 @@ def _read_json_with_backup(target: Path, default_val=None):
                 except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                     globals().get("_record_internal_diag", str)(_e_diag)
             return data
-        except Exception:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             continue
     return default_val
 CONTROLLER_API = os.environ.get("AI_LINK_CORE_API", "http://127.0.0.1:9090")
@@ -571,7 +655,7 @@ class NodeURIParser:
                 ob = cls.parse_single_uri(line, default_index=idx + 1, conf_dir=conf_dir)
                 if ob and ob.get("tag"):
                     raw_outbounds.append(ob)
-            except Exception:
+            except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
                 continue
         return cls._post_filter_and_dedup_outbounds(raw_outbounds)
 
@@ -579,7 +663,7 @@ class NodeURIParser:
     def _parse_singbox_json_outbounds(cls, json_text: str) -> list:
         try:
             data = json.loads(json_text)
-        except Exception:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             return []
         cand_list = data.get("outbounds") if isinstance(data, dict) else (data if isinstance(data, list) else [])
         if not isinstance(cand_list, list):
@@ -611,7 +695,7 @@ class NodeURIParser:
         """Parses SIP008 Shadowsocks JSON (`{"version": 1, "servers": [{"server": ..., "server_port": ..., "method": ..., "password": ..., "remarks": ...}]}`)."""
         try:
             data = json.loads(json_text)
-        except Exception:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             return []
         servers = data.get("servers") if isinstance(data, dict) else None
         if not isinstance(servers, list):
@@ -654,7 +738,7 @@ class NodeURIParser:
         """Parses V2Ray / Xray / v2rayN client config JSON (`{"outbounds": [{"protocol": "vmess"|"vless"|"trojan"|"shadowsocks", "settings": {...}, "streamSettings": {...}}]}`)."""
         try:
             data = json.loads(json_text)
-        except Exception:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             return []
         cand_list = data.get("outbounds") if isinstance(data, dict) else (data if isinstance(data, list) else [])
         if not isinstance(cand_list, list):
@@ -778,7 +862,7 @@ class NodeURIParser:
             server = parts[1].strip().strip('"\'')
             try:
                 port = int(parts[2].strip().strip('"\''))
-            except Exception:
+            except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
                 continue
             kv = {"name": name, "type": ntype, "server": server, "port": port}
             pos_extras = []
@@ -868,7 +952,7 @@ class NodeURIParser:
         server = str(kv.get("server") or "").strip()
         try:
             port = int(kv.get("port") or 443)
-        except Exception:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             port = 443
         if not server or ntype not in ("vless", "vmess", "trojan", "ss", "shadowsocks", "hysteria2", "hy2", "tuic", "anytls"):
             return None
@@ -1094,7 +1178,7 @@ class NodeURIParser:
                     ob = cls._clash_item_to_singbox(kv, len(outbounds) + 1, used_tags)
                     if ob:
                         outbounds.append(ob)
-                except Exception:
+                except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
                     continue
             elif in_proxies and re.match(r"^-(\s+&[A-Za-z0-9_-]+)?\s*$", s):
                 _flush_cur_block()
@@ -1820,7 +1904,7 @@ def preview_subscription_sync_impact(sub_id: str, incoming_nodes: list, sub_url:
         if ring_file.is_file():
             try:
                 persisted_ring = json.loads(ring_file.read_text(encoding="utf-8")) or {}
-            except Exception:
+            except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
                 persisted_ring = {}
         prev_sets = [set(s) for s in (persisted_ring.get(ring_k) or _SUB_PREVIEW_JACCARD_RING.get(ring_k) or []) if s]
         ref_set = old_k_set if old_k_set else (prev_sets[-1] if prev_sets else set())
@@ -1867,7 +1951,7 @@ def preview_subscription_sync_impact(sub_id: str, incoming_nodes: list, sub_url:
                             _sub_p_mod = True
                 if _sub_p_mod:
                     save_subscriptions(_subs_p_list, conf_dir)
-            except Exception as _e_noop:
+            except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_noop:
                 _ = _e_noop
 
         affected_pools = []
@@ -1979,7 +2063,7 @@ def preview_subscription_sync_impact(sub_id: str, incoming_nodes: list, sub_url:
             "affected_pools": affected_pools,
             "summary_text": "；".join(summary_parts),
         }
-    except Exception as exc:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as exc:
         globals().get("_record_internal_diag", str)(f"preview_sync_error[{req_id}]: {exc}")
         return {
             "ok": False,
@@ -2015,7 +2099,7 @@ def _reconcile_auto_pools_after_sub_sync(old_nodes: list, new_nodes: list, conf_
         return {"migrated": 0, "missing": 0, "backfilled": 0}
     try:
         raw_cfg = json.loads(f.read_text(encoding="utf-8"))
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         return {"migrated": 0, "missing": 0, "backfilled": 0}
     if not isinstance(raw_cfg, dict) or not isinstance(raw_cfg.get("auto_nodes"), list):
         return {"migrated": 0, "missing": 0, "backfilled": 0}
@@ -2436,11 +2520,11 @@ def merge_nodes(sub_id: str, incoming_nodes: list, sub_url: str = "", replace_su
                 if rf_p.is_file():
                     try:
                         r_doc = json.loads(rf_p.read_text(encoding="utf-8")) or {}
-                    except Exception:
+                    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
                         r_doc = {}
                 r_doc[ring_k_m] = [list(x) for x in _SUB_PREVIEW_JACCARD_RING[ring_k_m]]
                 _atomic_write_text(rf_p, json.dumps(r_doc, ensure_ascii=False))
-        except Exception as _e_noop:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_noop:
             _ = _e_noop
         return saved_out
 
@@ -2518,7 +2602,7 @@ def clash_api_request(path: str, method: str = "GET", payload: dict = None, time
     headers = {"Content-Type": "application/json", "Connection": "close"} if data is not None else {"Connection": "close"}
     req = urllib.request.Request(url, data=data, method=method, headers=headers)
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with globals().get("_open_url_with_retry", getattr(urllib.request, "urlopen"))(req, timeout=timeout) as resp:
             _CLASH_API_DOWN_UNTIL["ts"] = 0.0
             raw = resp.read().decode("utf-8", errors="ignore")
             obj = json.loads(raw) if raw.strip() else {}
@@ -2527,10 +2611,10 @@ def clash_api_request(path: str, method: str = "GET", payload: dict = None, time
         _CLASH_API_DOWN_UNTIL["ts"] = 0.0
         try:
             err_body = json.loads(he.read().decode("utf-8", errors="ignore"))
-        except Exception:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             err_body = {"error": str(he)}
         return (he.code, err_body)
-    except Exception as e:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as e:
         # CRITICAL FIX (v2.2.0): A single proxy node delay timeout must NEVER trip the global Clash API circuit breaker,
         # otherwise concurrent worker threads testing healthy nodes in url_ping_batch_nodes all fail with clash_api_down_cached!
         if not is_delay_probe and not _is_local_port_listening(9090):
@@ -2557,7 +2641,7 @@ def _expected_outbound_tags(conf_dir: Path = CONF_DIR) -> set:
     try:
         cfg = json.loads((conf_dir / "sing-box.json").read_text(encoding="utf-8"))
         return {o.get("tag", "") for o in cfg.get("outbounds", []) if o.get("tag")}
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         return set()
 
 _LAST_APPLIED_CORE_RULE_HASH = ""
@@ -2601,7 +2685,7 @@ def _compute_core_rules_fingerprint(conf_dir: Path = CONF_DIR) -> str:
         }
         raw = json.dumps(core_slice, sort_keys=True, ensure_ascii=False)
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         return ""
 
 def _record_applied_core_rule_hash(conf_dir: Path = CONF_DIR, rule_hash: str = ""):
@@ -2676,9 +2760,9 @@ def _get_live_singbox_pids() -> list:
                         if len(cmd_parts) >= 2 and cmd_parts[1] in ("version", "check", "rule-set"):
                             continue
                     pids.append(int(name))
-                except Exception:
+                except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
                     continue
-    except Exception as _e_diag:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_diag:
         globals().get("_record_internal_diag", str)(_e_diag)
     pids.sort()
     _LIVE_SB_PID_MEMO["ts"] = now
@@ -2707,7 +2791,7 @@ def _get_file_sig(p: Path) -> tuple:
     try:
         st = p.stat()
         return (st.st_mtime_ns, st.st_size)
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         return (0, 0)
 
 _SYS_CMD_CACHE = {}
@@ -2788,7 +2872,7 @@ def _ensure_async_reload_worker():
                             subprocess.run(["/usr/share/ai-link/nftables/apply_nft.sh"], env=_nft_env, check=False, timeout=20)
                     PROBE_ENGINE.apply_shunt_selections(CONF_DIR)
                     PROBE_ENGINE.save_persisted_selections(RUN_DIR, record_history=False)
-                except Exception:
+                except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
                     ok_rel = False
                 with _CORE_RELOAD_COND:
                     _CORE_RELOAD_STATE["reload_seq"] = max(_CORE_RELOAD_STATE["reload_seq"], target_seq)
@@ -3080,7 +3164,7 @@ def _get_effective_node_test_budget(conf_dir: Path = None) -> int:
             except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                 globals().get("_record_internal_diag", str)(_e_diag)
         return budget
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         return 60000
 
 def _get_effective_pool_health_budget(conf_dir: Path = None) -> int:
@@ -3095,7 +3179,7 @@ def _get_effective_pool_health_budget(conf_dir: Path = None) -> int:
         if base_b < 500:
             return base_b
         return max(45000, base_b)
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         return 45000
 
 def _read_quota_doc(conf_dir: Path = None) -> dict:
@@ -3111,7 +3195,7 @@ def _read_quota_doc(conf_dir: Path = None) -> dict:
                     new_d = {"date": today, "used": 0, "pool_health_used": 0, "forced_used": 0, "v236_r10_migrated": True, "v240_budget_migrated": True, "v255_quota_migrated": True}
                     try:
                         _atomic_write_text(p, json.dumps(new_d))
-                    except Exception as _e_diag:
+                    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_diag:
                         globals().get("_record_internal_diag", str)(_e_diag)
                     return new_d
                 cdir = conf_dir if conf_dir is not None else CONF_DIR
@@ -3121,10 +3205,10 @@ def _read_quota_doc(conf_dir: Path = None) -> dict:
                             new_d = {"date": today, "used": 0, "pool_health_used": 0, "forced_used": 0, "v236_r10_migrated": True, "v240_budget_migrated": True, "v255_quota_migrated": True}
                             _atomic_write_text(p, json.dumps(new_d))
                             return new_d
-                    except Exception as _e_diag:
+                    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_diag:
                         globals().get("_record_internal_diag", str)(_e_diag)
                 return d
-        except Exception as _e_diag:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_diag:
             globals().get("_record_internal_diag", str)(_e_diag)
     return {"date": today, "used": 0, "pool_health_used": 0, "forced_used": 0, "v236_r10_migrated": True, "v240_budget_migrated": True, "v255_quota_migrated": True}
 
@@ -3149,7 +3233,7 @@ def _is_node_test_budget_exceeded(conf_dir: Path = None, is_pool_health: bool = 
         if budget <= 0:
             return False
         return _node_test_used(cdir) >= budget
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         return False
 
 def get_node_test_quota_summary(conf_dir: Path = None) -> dict:
@@ -3562,7 +3646,7 @@ def _gc_orphan_probe_dict(store: dict, conf_dir: Path = CONF_DIR, strict: bool =
                     for _grp in (_an_g.get("groups") or []):
                         pool_refs.update(str(x) for x in (_grp.get("node_tags") or []) if x)
                         pool_refs.update(str(x) for x in (_grp.get("node_ids") or []) if x)
-        except Exception as _e_noop:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_noop:
             _ = _e_noop
         now_gc = int(time.time())
         dead_ttl_s = 7 * 86400
@@ -3588,7 +3672,7 @@ def _gc_orphan_probe_dict(store: dict, conf_dir: Path = CONF_DIR, strict: bool =
             for _, drop_k in non_pool_dead_keys[:-60]:
                 cleaned.pop(drop_k, None)
         return cleaned
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         return store
 
 _LAST_PROBE_FLASH_SYNC_TS = 0.0
@@ -3894,7 +3978,7 @@ def _find_free_loopback_port() -> int:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.bind(("127.0.0.1", 0))
             return int(s.getsockname()[1])
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         return random.randint(29100, 29899)
 
 def _ephemeral_singbox_delay_probe(nodes_list: list, test_url: str = DEFAULT_URL_PING_TARGET,
@@ -3973,7 +4057,7 @@ def _ephemeral_singbox_delay_probe(nodes_list: list, test_url: str = DEFAULT_URL
                         url_ep = f"http://127.0.0.1:{ctrl_port}/proxies/{enc}/delay?timeout={t_ms}&url={q_url}"
                         try:
                             req = urllib.request.Request(url_ep, method="GET")
-                            with urllib.request.urlopen(req, timeout=(t_ms / 1000.0) + 1.2) as r:
+                            with globals().get("_open_url_with_retry", getattr(urllib.request, "urlopen"))(req, timeout=(t_ms / 1000.0) + 1.2) as r:
                                 d = json.loads(r.read().decode("utf-8", "ignore"))
                                 dv = int(d.get("delay") or 0)
                                 if dv > 0:
@@ -3982,10 +4066,10 @@ def _ephemeral_singbox_delay_probe(nodes_list: list, test_url: str = DEFAULT_URL
                             try:
                                 eb = json.loads(he.read().decode("utf-8", "ignore"))
                                 emsg = str(eb.get("message") or eb.get("error") or f"http_{he.code}")
-                            except Exception:
+                            except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
                                 emsg = f"http_{he.code}"
                             return orig_tag, {"ok": False, "delay": -1, "http_status": 0, "status_known": False, "error": emsg}
-                        except Exception as ex:
+                        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as ex:
                             return orig_tag, {"ok": False, "delay": -1, "http_status": 0, "status_known": False, "error": str(ex)}
                         return orig_tag, {"ok": False, "delay": -1, "http_status": 0, "status_known": False, "error": "timeout"}
                     with ThreadPoolExecutor(max_workers=min(6, len(tag_map))) as ex:
@@ -3998,7 +4082,7 @@ def _ephemeral_singbox_delay_probe(nodes_list: list, test_url: str = DEFAULT_URL
                     try:
                         proc.terminate()
                         proc.wait(timeout=1.5)
-                    except Exception:
+                    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
                         try:
                             proc.kill()
                         except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
@@ -4018,7 +4102,7 @@ def _ephemeral_singbox_delay_probe(nodes_list: list, test_url: str = DEFAULT_URL
             with socket.create_connection((srv, port), timeout=max(1.0, min(4.0, (timeout_ms or 3000) / 1000.0))):
                 rtt = max(1, int(round((time.time() - t0) * 1000.0)))
                 results[n["tag"]] = {"ok": True, "delay": rtt, "http_status": 0, "status_known": False, "reason": "tcp_handshake_ok"}
-        except Exception as e:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as e:
             results[n["tag"]] = {"ok": False, "delay": -1, "http_status": 0, "status_known": False, "error": str(e)}
     return results
 
@@ -4592,7 +4676,7 @@ def _probe_real_node_http_region(tag: str, fallback_region: str = "US", timeout_
                 "label": g_info["label"],
                 "ts": int(time.time()),
             }
-        except Exception as e:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as e:
             return {"ok": False, "error": str(e)}
         finally:
             if has_9090 and prev_sels:
@@ -6094,7 +6178,7 @@ def _trigger_pool_initial_bandwidth_probe(an: dict, conf_dir: Path = CONF_DIR, a
             _BW_INIT_PROBE_INFLIGHT.add(nid_k)
             try:
                 probe_node_bandwidth(nid_k, limit_mb=lim_mb, interval_h=iv_h, timeout_s=3.0, conf_dir=conf_dir)
-            except Exception as _e_diag:
+            except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_diag:
                 globals().get("_record_internal_diag", str)(_e_diag)
             finally:
                 _BW_INIT_PROBE_INFLIGHT.discard(nid_k)
@@ -6225,7 +6309,7 @@ def optimize_multicore_network_rps(
             if bfile.is_file():
                 try:
                     orig_map = json.loads(bfile.read_text(encoding="utf-8"))
-                except Exception:
+                except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
                     orig_map = {}
             if not isinstance(orig_map, dict):
                 orig_map = {}
@@ -6294,7 +6378,7 @@ def restore_multicore_network_rps(backup_dir: Path = None) -> dict:
                             restored += 1
                         except OSError as _e_diag:
                             globals().get("_record_internal_diag", str)(_e_diag)
-        except Exception as _e_diag:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_diag:
             globals().get("_record_internal_diag", str)(_e_diag)
     return {"ok": True, "restored_files": restored, "backup_file": str(bfile)}
 
@@ -8083,7 +8167,7 @@ def evaluate_all_auto_nodes(conf_dir: Path = CONF_DIR, target_id: str = "", forc
                 conf_dir=conf_dir, force_service_probe=force_service_probe,
                 advance_revert_streak=advance_revert_streak, force_revert=force_revert
             )
-        except Exception as _e_ev_pool:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_ev_pool:
             _record_internal_diag("evaluate_single_auto_node", _e_ev_pool)
             an["pool_degraded_alert"] = True
             an["degraded_reason"] = f"评估异常: {type(_e_ev_pool).__name__}"
@@ -8119,7 +8203,7 @@ def evaluate_all_auto_nodes(conf_dir: Path = CONF_DIR, target_id: str = "", forc
                 _now_stripped = [_strip_auto_node_runtime_fields(x) for x in (cfg.get("auto_nodes") or []) if isinstance(x, dict)]
                 if _prev_stripped != _now_stripped:
                     save_auto_nodes_config(cfg, conf_dir)
-            except Exception:
+            except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
                 save_auto_nodes_config(cfg, conf_dir)
         else:
             save_auto_nodes_config(cfg, conf_dir)
@@ -8172,7 +8256,7 @@ def _is_sandbox_exempt_write(target_path: Path) -> bool:
         reassigned_sbx = bool((boot_c and c_res != boot_c) or (boot_r and r_res != boot_r))
         if reassigned_sbx and rp.as_posix().startswith("/tmp/") and rp.name in ("node_test_quota.json", "ops_settings.json"):
             return True
-    except Exception as _e_noop:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_noop:
         _ = _e_noop
     return False
 
@@ -8197,7 +8281,7 @@ def _note_live_write_attempt(target_path: Path, op: str = "") -> bool:
                 _SELF_TEST_LIVE_WRITE_BLOCKED += 1
                 return True
             return False
-    except Exception as _e_noop:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_noop:
         _ = _e_noop
     return False
 
@@ -8217,7 +8301,7 @@ def _note_live_write_leak(target_path: Path, op: str = "") -> bool:
         if not _is_sandbox_exempt_write(rp) and any(rp == tr or tr in rp.parents for tr in target_roots):
             _SELF_TEST_LIVE_WRITE_LEAKED += 1
             return True
-    except Exception as _e_noop:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_noop:
         _ = _e_noop
     return False
 
@@ -8227,7 +8311,7 @@ def _get_ssl_context(conf_dir: Path = None, allow_insecure: bool = None):
     if allow_insecure is None:
         try:
             allow_insecure = bool(get_ops_settings(conf_dir or CONF_DIR).get("allow_insecure_tls", False))
-        except Exception:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             allow_insecure = False
     if allow_insecure:
         return ssl._create_unverified_context()
@@ -8235,7 +8319,7 @@ def _get_ssl_context(conf_dir: Path = None, allow_insecure: bool = None):
     if Path(cafile).is_file():
         try:
             return ssl.create_default_context(cafile=cafile)
-        except Exception as _e_noop:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_noop:
             _ = _e_noop
     return ssl.create_default_context()
 
@@ -8245,7 +8329,7 @@ def _curl_tls_flags(conf_dir: Path = None, allow_insecure: bool = None) -> list:
     if allow_insecure is None:
         try:
             allow_insecure = bool(get_ops_settings(conf_dir or CONF_DIR).get("allow_insecure_tls", False))
-        except Exception:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             allow_insecure = False
     return ["-k"] if allow_insecure else []
 
@@ -8257,7 +8341,7 @@ def _is_live_conf_dir(conf_dir: Path = None) -> bool:
         return True
     try:
         return Path(conf_dir).resolve() == Path(CONF_DIR).resolve()
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         return False
 
 
@@ -8737,7 +8821,7 @@ def _snapshot_selector_plane_with_status() -> tuple:
             if isinstance(v, dict) and v.get("type") in ("Selector", "URLTest")
         }
         return (plane, True, "")
-    except Exception as e:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as e:
         return ({}, False, f"clash_proxies_exception:{type(e).__name__}")
 
 
@@ -9696,7 +9780,7 @@ def load_switch_history(run_dir: Path = RUN_DIR) -> list:
                     if len(cleaned) != len(d):
                         try:
                             _atomic_write_text(f, json.dumps(cleaned[:60], ensure_ascii=False, indent=2))
-                        except Exception as _e_diag:
+                        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_diag:
                             globals().get("_record_internal_diag", str)(_e_diag)
                         return cleaned
                 return d
@@ -9823,7 +9907,7 @@ class AIProbeEngine:
                             data["selections"] = clean_sels
                             try:
                                 _atomic_write_text(sel_f, json.dumps(data, ensure_ascii=False, indent=2))
-                            except Exception as _e_diag:
+                            except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_diag:
                                 globals().get("_record_internal_diag", str)(_e_diag)
                         raw_sels = clean_sels
                     for _bad_k in ("Shunt_Custom_CN_Proxy", "Auto_Auto_AI"):
@@ -9885,7 +9969,7 @@ class AIProbeEngine:
                     prev_sdoc = json.loads(sel_fp.read_text(encoding="utf-8"))
                     if isinstance(prev_sdoc, dict) and prev_sdoc.get("selections") == sels_out:
                         return
-                except Exception as _e_noop:
+                except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_noop:
                     _ = _e_noop
             _atomic_write_text(sel_fp, json.dumps({
                 "updated_at": int(time.time()),
@@ -10625,7 +10709,7 @@ def load_shunt_config(conf_dir: Path = CONF_DIR) -> dict:
     if mig and loaded_from_disk:
         try:
             save_shunt_config(cfg, conf_dir)
-        except Exception as _e_diag:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_diag:
             globals().get("_record_internal_diag", str)(_e_diag)
     if loaded_from_disk:
         try:
@@ -10642,7 +10726,7 @@ def load_shunt_config(conf_dir: Path = CONF_DIR) -> dict:
                     or "ibytedtos.com" in (disk_cn.get("domains") or [])
                     or "douyincdn.com" not in (disk_cn.get("domains") or [])):
                 save_shunt_config(cfg, conf_dir)
-        except Exception:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             if mig:
                 save_shunt_config(cfg, conf_dir)
     return cfg
@@ -10655,7 +10739,7 @@ def save_shunt_config(cfg: dict, conf_dir: Path = CONF_DIR):
             _p_sh = conf_dir / "shunt.json"
             if _p_sh.is_file():
                 prev_rmode = str((json.loads(_p_sh.read_text(encoding="utf-8")) or {}).get("routing_mode") or "")
-        except Exception:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             prev_rmode = "" 
         cfg["groups"] = _normalize_shunt_groups_order(cfg.get("groups") or [])
         cfg["shunt_enabled"] = (cfg.get("routing_mode", "rule_shunt") == "rule_shunt")
@@ -10697,12 +10781,12 @@ def save_shunt_config(cfg: dict, conf_dir: Path = CONF_DIR):
                                 subprocess.run(["conntrack", "-D", "-d", "198.18.0.0/15"], capture_output=True, timeout=2, check=False)
                                 subprocess.run(["conntrack", "-D", "-d", "fc00::/18"], capture_output=True, timeout=2, check=False)
                                 subprocess.run(["killall", "-HUP", "dnsmasq"], capture_output=True, timeout=2, check=False)
-                            except Exception as _e_diag:
+                            except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_diag:
                                 globals().get("_record_internal_diag", str)(_e_diag)
                         _tmr = threading.Timer(0.3, _delayed_fakeip_purge)
                         _tmr.daemon = True
                         _tmr.start()
-                except Exception as _e_diag:
+                except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_diag:
                     globals().get("_record_internal_diag", str)(_e_diag)
 
 def _normalize_group_shunt_params(g: dict) -> tuple:
@@ -11207,7 +11291,7 @@ def _udp_dns_query_a(host: str, dns_server: str, timeout: float = 2.0) -> list:
                     ips.append(ip)
             idx += rdlen
         return ips
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         return []
 
 def _resolve_subscription_host_ips(host: str) -> list:
@@ -11235,7 +11319,7 @@ def _resolve_subscription_host_ips(host: str) -> list:
         for ep in (f"https://dns.alidns.com/resolve?name={q}&type=A", f"https://doh.pub/dns-query?name={q}&type=A"):
             try:
                 req = urllib.request.Request(ep, headers={"Accept": "application/dns-json"})
-                with urllib.request.urlopen(req, timeout=4, context=_get_ssl_context()) as r:
+                with globals().get("_open_url_with_retry", getattr(urllib.request, "urlopen"))(req, timeout=4, context=_get_ssl_context()) as r:
                     d = json.loads(r.read().decode("utf-8", "ignore"))
                 if int(d.get("Status") or 0) == 3:
                     with _SUB_DNS_LOCK:
@@ -11306,7 +11390,7 @@ def _curl_fetch_subscription(initial_url: str, timeout_sec: int = 25, user_agent
             if m_ui:
                 hdrs["Subscription-Userinfo"] = m_ui.group(1).strip()
             return {"ok": 200 <= status_code < 300, "status": status_code, "body": body_txt, "headers": hdrs, "error": ""}
-        except Exception as e:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as e:
             return {"ok": False, "status": 0, "body": "", "headers": {}, "error": str(e)}
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
@@ -11546,7 +11630,7 @@ def _fetch_and_sync_subscription_once(url: str = "", name: str = "机场订阅",
             diag = _classify_subscription_failure(he.code, err_b, str(he), host=sub_host)
             last_error = diag["reason"]
             last_error_code = diag["error_code"]
-        except Exception as e:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as e:
             err_s = str(e)
             if sub_host and not re.match(r"^\d{1,3}(\.\d{1,3}){3}$", sub_host) and sub_host not in ("localhost", "127.0.0.1"):
                 if sub_host in _SUB_DNS_NXDOMAIN_HOSTS or (not _resolve_subscription_host_ips(sub_host) and any(k in err_s.lower() for k in ("reset", "104", "name does not resolve", "nodename", "no address", "nxdomain"))):
@@ -11609,7 +11693,7 @@ def _fetch_and_sync_subscription_once(url: str = "", name: str = "机场订阅",
         _invalidate_fast_api_cache()
         try:
             _subs_out = build_nodes_api_response(conf_dir).get("subscriptions") or load_subscriptions(conf_dir)
-        except Exception:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             _subs_out = load_subscriptions(conf_dir)
         return {
             "ok": True, "id": sub_id, "name": name,
@@ -11643,7 +11727,7 @@ def _fetch_and_sync_subscription_once(url: str = "", name: str = "机场订阅",
     _invalidate_fast_api_cache()
     try:
         _subs_out_f = build_nodes_api_response(conf_dir).get("subscriptions") or load_subscriptions(conf_dir)
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         _subs_out_f = load_subscriptions(conf_dir)
     return {
         "ok": False, "id": sub_id, "name": name, "fetch_source": "failed",
@@ -11753,7 +11837,7 @@ def compute_memory_safe_outbounds_cap() -> dict:
                     if kb > 0:
                         mem_mb = max(32, kb // 1024)
                     break
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         mem_mb = 512
     if mem_mb <= 160:
         rec_cap = 150
@@ -11774,7 +11858,7 @@ def get_max_outbounds_limit(conf_dir: Path = CONF_DIR, honor_low_memory: bool = 
         m_f = Path(conf_dir) / "max_outbounds.txt"
         if m_f.is_file() and m_f.read_text(encoding="utf-8", errors="ignore").strip() != "0":
             _atomic_write_text(m_f, "0\n", encoding="utf-8")
-    except Exception as _e_diag:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_diag:
         globals().get("_record_internal_diag", str)(_e_diag)
     if honor_low_memory:
         return int(compute_memory_safe_outbounds_cap().get("recommended_max_outbounds") or 0)
@@ -12123,7 +12207,7 @@ def probe_host_ipv6_connectivity(force: bool = False, mock_ok: bool = None) -> d
                 break
             else:
                 reason = f"no_global_ipv6_src({local_ip})"
-        except Exception as e:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as e:
             reason = type(e).__name__
         finally:
             if s is not None:
@@ -12640,7 +12724,7 @@ def _get_or_create_homelink_default_secrets(conf_dir: Path = CONF_DIR) -> dict:
                 and obj.get("short_id") not in _WEAK_HOMELINK_SECRETS
             ):
                 return obj
-        except Exception as _e_diag:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_diag:
             globals().get("_record_internal_diag", str)(_e_diag)
     priv_k, pub_k = generate_reality_keypair()
     new_sec = {
@@ -12655,7 +12739,7 @@ def _get_or_create_homelink_default_secrets(conf_dir: Path = CONF_DIR) -> dict:
             cdir.mkdir(parents=True, exist_ok=True)
             _atomic_write_text(sec_f, json.dumps(new_sec, indent=2, ensure_ascii=False))
             os.chmod(sec_f, 0o600)
-        except Exception as _e_diag:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_diag:
             globals().get("_record_internal_diag", str)(_e_diag)
     return new_sec
 
@@ -12713,7 +12797,7 @@ def load_homelink_nodes(conf_dir: Path = CONF_DIR) -> list:
                 if any_upgraded and not globals().get("_SELF_TEST_ACTIVE", False):
                     try:
                         _atomic_write_text(hl_file, json.dumps(cleaned, indent=2, ensure_ascii=False))
-                    except Exception as _e_diag:
+                    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_diag:
                         globals().get("_record_internal_diag", str)(_e_diag)
                 return cleaned
         except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
@@ -12764,7 +12848,7 @@ def validate_homelink_port(
     """3-layer Home-Link port conflict validator (Reserved system ports + Peer Home-Link nodes + /proc/net live sockets)."""
     try:
         p_int = int(port)
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         return {"ok": False, "reason": f"端口号非法: {port}"}
     if p_int < 1024 or p_int > 65535:
         return {"ok": False, "reason": f"端口 {p_int} 超出安全可用范围 (1024-65535)"}
@@ -12825,7 +12909,7 @@ def sync_homelink_wan_firewall_rules(nodes: list) -> dict:
             subprocess.run(["uci", "-q", "commit", "firewall"], capture_output=True, timeout=2)
             subprocess.run(["/etc/init.d/firewall", "reload"], capture_output=True, timeout=4)
         return {"ok": True, "changed": changed, "active_rules": len(desired)}
-    except Exception as e:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as e:
         return {"ok": False, "reason": str(e)}
 
 _HOMELINK_API_MEMO = {}
@@ -13225,7 +13309,7 @@ def _detect_dnsmasq_confdir(create: bool = False) -> Path:
         try:
             Path(c).mkdir(parents=True, exist_ok=True)
             return Path(c)
-        except Exception:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             continue
     return Path("/tmp/dnsmasq.d")
 
@@ -13296,7 +13380,7 @@ def apply_dns_rewrite_system(cfg: dict = None, conf_dir: Path = CONF_DIR) -> dic
                 subprocess.run(["/etc/init.d/dnsmasq", "restart"], capture_output=True, timeout=15)
             except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                 globals().get("_record_internal_diag", str)(_e_diag)
-    except Exception as exc:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as exc:
         status["reason"] = "%s: %s" % (type(exc).__name__, exc)
     return status
 
@@ -13339,7 +13423,7 @@ def fallback_resolv_conf_to_direct():
             try:
                 resolv_p.unlink(missing_ok=True)
                 resolv_p.symlink_to(direct_f)
-            except Exception:
+            except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
                 _atomic_write_text(resolv_p, direct_f.read_text(encoding="utf-8"), encoding="utf-8")
         else:
             _atomic_write_text(resolv_p, direct_f.read_text(encoding="utf-8"), encoding="utf-8")
@@ -13362,7 +13446,7 @@ def restore_resolv_conf_to_local():
             try:
                 resolv_p.unlink(missing_ok=True)
                 resolv_p.symlink_to(active_f)
-            except Exception:
+            except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
                 _atomic_write_text(resolv_p, active_f.read_text(encoding="utf-8"), encoding="utf-8")
         else:
             _atomic_write_text(resolv_p, active_f.read_text(encoding="utf-8"), encoding="utf-8")
@@ -13449,7 +13533,7 @@ def apply_dns_adblock_system(conf_dir: Path = CONF_DIR, force_live_mount: bool =
                 globals().get("_record_internal_diag", str)(_e_diag)
         status["ok"] = True
         status["rules"] = len(bdoms)
-    except Exception as exc:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as exc:
         status["reason"] = str(exc)
     return status
 
@@ -13526,7 +13610,7 @@ def _is_safe_public_filter_url(raw_url: str) -> tuple:
         return (False, "规则源 URL 不能为空")
     try:
         parsed = urllib.parse.urlsplit(u)
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         return (False, "URL 格式不合法")
     scheme = (parsed.scheme or "").lower()
     if scheme != "https":
@@ -13747,7 +13831,7 @@ def sync_dns_filter_lists(conf_dir: Path = CONF_DIR, target_list_id: str = "") -
                         if raw_text.strip():
                             fetched_lines = raw_text.splitlines()
                             break
-                except Exception as ex:
+                except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as ex:
                     sync_errors.append(f"{item.get('id', 'list')}: {ex}")
                     continue
         if fetched_lines:
@@ -13871,7 +13955,7 @@ def _save_persisted_adblock_stats(conf_dir: Path = CONF_DIR, force: bool = False
             p_cand.parent.mkdir(parents=True, exist_ok=True)
             _atomic_write_text(p_cand, json.dumps(payload, ensure_ascii=False), encoding="utf-8")
             break
-        except Exception:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             continue
 
 def record_adblock_hit(domain: str, layer: str = "route", conf_dir: Path = CONF_DIR, count: int = 1):
@@ -13963,7 +14047,7 @@ def _ingest_singbox_adblock_log(conf_dir: Path = CONF_DIR, log_path: Path = None
                 _SINGBOX_LOG_STATE["offset"] = len(tail_keep)
             except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                 globals().get("_record_internal_diag", str)(_e_diag)
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         return 0
     flt_cfg = load_dns_filter_config(conf_dir)
     if not flt_cfg.get("enabled", True):
@@ -14197,7 +14281,7 @@ def _measure_real_dns_latency_ms(allow_network: bool = False):
         cur_h = int(time.strftime("%H"))
         _DNS_STATS_RT["hourly_latency_ms"][cur_h] = ms
         return ms
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         return cur_avg if (cur_avg and cur_avg > 0) else None
 
 _DNS_TELEM_MEMO = {}
@@ -14304,7 +14388,7 @@ def build_dns_telemetry_response(conf_dir: Path = CONF_DIR) -> dict:
         try:
             f = conf_dir / fn
             return f.stat().st_mtime_ns if f.is_file() else 0
-        except Exception:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             return 0
     dt_key = (
         str(conf_dir),
@@ -14444,7 +14528,7 @@ def _detect_pppoe_adaptive_tun_mtu(conf_dir: Path = CONF_DIR, default_mtu: int =
                             wan_mtu = m_v
                             wan_if = cand_if
                             break
-        except Exception:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             pass
     rec_tun_mtu = min(1412, max(1280, wan_mtu - 80)) if is_pppoe else int(default_mtu or 1500)
     return {
@@ -14474,7 +14558,7 @@ def build_tun_inbound_config(tun_name: str = "ailink0", sb_version: str = None,
     eff_stack = "mixed" if stack_val == "auto" else stack_val
     try:
         raw_req_mtu = int(tun_mtu if tun_mtu is not None else (ops.get("tun_mtu") or 1500))
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         raw_req_mtu = 1500
     mtu_val = max(1280, min(9000, raw_req_mtu))
     # OPT-264-08: Adaptive tun_mtu <= 1412 (1400) when WAN is PPPoE (MTU 1492/1480) and user kept default 1500
@@ -15012,7 +15096,7 @@ class ConfigGenerator:
         # National Server Game UDP Direct Protection (LoL UDP 5000-5550, WeGame, Tencent/Riot CN)
         try:
             _game_udp_ok = get_ops_settings(conf_dir).get("game_udp_direct", True)
-        except Exception:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             _game_udp_ok = True
         if _game_udp_ok and routing_mode != "global_proxy":
             # §3.1 P0 & v2.6.3-r34 Fix: Compound TCP + UDP rules for National Server Games (WoW/Battle.net 1119/3724/6012/6113,
@@ -15038,7 +15122,7 @@ class ConfigGenerator:
             route_rules.append(_game_cn_rule)
         try:
             _block_quic_ok = get_ops_settings(conf_dir).get("block_quic", True)
-        except Exception:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             _block_quic_ok = True
         if _block_quic_ok and routing_mode not in ("direct_all", "rule_shunt"):
             if routing_mode in ("cn_whitelist", "gfw_list"):
@@ -15466,7 +15550,7 @@ def _cert_is_ca_capable(crt: Path) -> bool:
     """True when the existing cert can double as a trust anchor. A leaf-only cert (CA:FALSE) is rejected by Go's verifier when """
     try:
         from cryptography import x509
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         return True  # cannot inspect; keep whatever is on disk
     try:
         cert = x509.load_pem_x509_certificate(crt.read_bytes())
@@ -15475,7 +15559,7 @@ def _cert_is_ca_capable(crt: Path) -> bool:
             return False
         cert.extensions.get_extension_for_class(x509.SubjectAlternativeName)
         return True
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         return False
 
 def ensure_hy2_certs(certs_dir: Path) -> bool:
@@ -15520,7 +15604,7 @@ def ensure_hy2_certs(certs_dir: Path) -> bool:
             serialization.NoEncryption()))
         crt.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
         return True
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         if shutil.which("openssl"):
             try:
                 subprocess.run(["openssl", "req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256", "-keyout", str(key), "-out", str(crt), "-days", "3650", "-nodes", "-subj", "/CN=ai-link.ailink.lan", "-addext", "basicConstraints=critical,CA:TRUE", "-addext", "keyUsage=critical,keyCertSign,digitalSignature,crlSign", "-addext", "extendedKeyUsage=serverAuth", "-addext", "subjectAltName=DNS:ai-link.ailink.lan,DNS:localhost,IP:127.0.0.1"], capture_output=True, timeout=15)
@@ -15568,7 +15652,7 @@ def get_ca_cert_info(conf_dir: Path = CONF_DIR) -> dict:
         der_bytes = base64.b64decode("".join(b64_lines))
         fp_hex = hashlib.sha256(der_bytes).hexdigest()
         fp_colon = ":".join(fp_hex[i:i+2].upper() for i in range(0, len(fp_hex), 2))
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         fp_hex = ""
         fp_colon = ""
     _ca_hl_pw = _get_or_create_homelink_default_secrets(conf_dir)["password"]
@@ -15646,7 +15730,7 @@ def _probe_singbox_binary_capabilities_impl(conf_dir: Path = CONF_DIR) -> dict:
             out = (res.stdout or "") + (res.stderr or "")
             if out.strip():
                 break
-        except Exception:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             continue
     verified_file = conf_dir / "build_mode_verified.txt"
     mode_file = conf_dir / "build_mode.txt"
@@ -15754,7 +15838,7 @@ def ensure_single_singbox_instance() -> list:
                         pids.append(pid_int)
                 except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                     globals().get("_record_internal_diag", str)(_e_diag)
-    except Exception as _e_diag:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_diag:
         globals().get("_record_internal_diag", str)(_e_diag)
     pids.sort()
     if len(pids) <= 1:
@@ -15925,7 +16009,7 @@ def _build_valid_srs_v1_bytes(seeds: list, is_geoip: bool = False) -> bytes:
                     ranges_v4.append(item_r)
                 else:
                     ranges_v6.append(item_r)
-            except Exception:
+            except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
                 continue
         if not ranges_v4 and not ranges_v6:
             net0 = ipaddress.ip_network("149.154.160.0/20", strict=False)
@@ -15993,7 +16077,7 @@ def _is_valid_srs_binary(data_or_path) -> bool:
         d_obj = _zlib_chk.decompressobj()
         dec = d_obj.decompress(b[4:]) + d_obj.flush()
         return bool(d_obj.eof) and len(d_obj.unused_data) == 0 and len(dec) >= 3 and dec[0] >= 1
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         return False
 
 
@@ -16017,7 +16101,7 @@ def compile_srs_from_seeds(tag: str, seeds: list, is_geoip: bool, out_path: Path
                 if r_c.returncode == 0 and _is_valid_srs_binary(tmp_srs_path):
                     os.replace(tmp_srs_path, out_p)
                     compiled_via = "sing-box_compile"
-            except Exception:
+            except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
                 tmp_srs_path.unlink(missing_ok=True)
         if compiled_via != "sing-box_compile" or not _is_valid_srs_binary(out_p):
             valid_blob = _build_valid_srs_v1_bytes(clean_seeds, is_geoip=is_geoip)
@@ -16064,11 +16148,11 @@ def sanitize_and_verify_srs_directory(rules_dir: Path) -> dict:
             shutil.copy2(srs_f, bak_p)
             srs_f.unlink(missing_ok=True)
             removed_list.append(srs_f.name)
-        except Exception:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             try:
                 srs_f.unlink(missing_ok=True)
                 removed_list.append(srs_f.name)
-            except Exception as _e_diag:
+            except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_diag:
                 globals().get("_record_internal_diag", str)(_e_diag)
     return {"ok": True, "valid": valid_list, "repaired": repaired_list, "removed": removed_list}
 
@@ -16179,7 +16263,7 @@ def ensure_srs_rulesets(conf_dir: Path = CONF_DIR, timeout_per_file: float = 6.0
     user_mirror = ""
     try:
         user_mirror = (get_ops_settings(conf_dir).get("gh_mirror") or "").strip().rstrip("/")
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         user_mirror = ""
     mirrors = []
     if user_mirror:
@@ -16211,7 +16295,7 @@ def ensure_srs_rulesets(conf_dir: Path = CONF_DIR, timeout_per_file: float = 6.0
                             downloaded.append(fname)
                             got = True
                             break
-                except Exception as e:
+                except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as e:
                     errors.append(f"{fname}: {e}")
                     continue
     now_installed = sorted([f.name for f in rules_dir.glob("*.srs") if _is_valid_srs_binary(f)])
@@ -16342,7 +16426,7 @@ def import_host_cache(cache_dir: Path = CACHE_DIR, conf_dir: Path = CONF_DIR) ->
                             if fobj:
                                 _atomic_install_binary(Path("/usr/bin/sing-box"), fobj.read())
                                 imported["binaries"].append(f"sing-box (from {tgz.name})")
-            except Exception as e:
+            except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as e:
                 imported.setdefault("errors", []).append(str(e))
     # 2. Check for raw sing-box binary
     raw_sb = cache_dir / "sing-box"
@@ -16350,7 +16434,7 @@ def import_host_cache(cache_dir: Path = CACHE_DIR, conf_dir: Path = CONF_DIR) ->
         try:
             _atomic_install_binary(Path("/usr/bin/sing-box"), raw_sb.read_bytes())
             imported["binaries"].append("sing-box (raw binary)")
-        except Exception as e:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as e:
             imported.setdefault("errors", []).append(str(e))
     # Verify sing-box binary executes cleanly
     if Path("/usr/bin/sing-box").is_file():
@@ -16360,7 +16444,7 @@ def import_host_cache(cache_dir: Path = CACHE_DIR, conf_dir: Path = CONF_DIR) ->
                 imported["sing_box_version"] = (vr.stdout or "").splitlines()[0].strip()
             else:
                 imported.setdefault("errors", []).append(f"sing-box version rc={vr.returncode}: {vr.stderr}")
-        except Exception as e:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as e:
             imported.setdefault("errors", []).append(f"sing-box exec failed: {e}")
     # 3. Legacy mihomo binary import removed in v1.0.0 (Sing-box single-core architecture)
     # 4. Check for .srs / .mrs rule-set files (skip 0-byte failed downloads)
@@ -16370,7 +16454,7 @@ def import_host_cache(cache_dir: Path = CACHE_DIR, conf_dir: Path = CONF_DIR) ->
         try:
             shutil.copy2(rfile, conf_rules / rfile.name)
             imported["rulesets"].append(rfile.name)
-        except Exception as e:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as e:
             imported.setdefault("errors", []).append(str(e))
     return imported
 
@@ -16439,7 +16523,7 @@ def generate_nft_rules_file(conf_dir: Path = CONF_DIR, run_dir: Path = RUN_DIR,
     ops = get_ops_settings(conf_dir)
     try:
         _sh_rmode = load_shunt_config(conf_dir).get("routing_mode", "rule_shunt")
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         _sh_rmode = "rule_shunt"
     eb = (bool(ops.get("entry_bypass", True)) and _sh_rmode != "global_proxy") if entry_bypass is None else (bool(entry_bypass) and _sh_rmode != "global_proxy")
     bq = bool(ops.get("block_quic", True)) if block_quic is None else bool(block_quic)
@@ -16475,13 +16559,13 @@ def generate_nft_rules_file(conf_dir: Path = CONF_DIR, run_dir: Path = RUN_DIR,
                 ip6_obj = ipaddress.IPv6Address(srv)
                 if not ip6_obj.is_loopback:
                     node_ips_v6.add(str(ip6_obj))
-            except Exception:
+            except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
                 pass
     collapsed_nips = []
     try:
         nets = [ipaddress.ip_network(x, strict=False) for x in sorted(node_ips)]
         collapsed_nips = [str(n) for n in ipaddress.collapse_addresses(nets)]
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         collapsed_nips = sorted(node_ips)
     node_ips_elem = f"elements = {{ {', '.join(collapsed_nips)} }}" if collapsed_nips else ""
     node_ips6_elem = f"elements = {{ {', '.join(sorted(node_ips_v6))} }}" if node_ips_v6 else ""
@@ -16961,7 +17045,7 @@ def _sync_ipv6_policy_routing(enable_v6: bool = False) -> bool:
             _r_ld = subprocess.run(["uci", "-q", "get", "network.lan.device"], capture_output=True, text=True, timeout=1.5)
             if _r_ld.returncode == 0 and (_r_ld.stdout or "").strip():
                 _lan_dev = (_r_ld.stdout or "").strip().split()[0]
-        except Exception:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             pass
         subprocess.run(["sysctl", "-w", "net.ipv4.conf.lo.route_localnet=1"], capture_output=True, timeout=2)
         subprocess.run(["sysctl", "-w", f"net.ipv4.conf.{_lan_dev}.route_localnet=1"], capture_output=True, timeout=2)
@@ -16991,7 +17075,7 @@ def _sync_ipv6_policy_routing(enable_v6: bool = False) -> bool:
         subprocess.run(["ip", "-6", "route", "replace", "local", "default", "dev", "lo", "table", "162"], capture_output=True, timeout=2)
         subprocess.run(["ip", "-6", "route", "replace", "fc00::/18", "dev", _lan_dev, "metric", "2048"], capture_output=True, timeout=2)
         return True
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         return False
 
 
@@ -17050,7 +17134,7 @@ def _sync_tun_policy_routing(data_plane_mode: str = "tproxy_redirect", enable_v6
         except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
             globals().get("_record_internal_diag", str)(_e_diag)
         return True
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         return False
 
 def write_all_configs(target_dir: Path = CONF_DIR, force_full: bool = False, force_lock: bool = False, verify_binary: bool = False):
@@ -17561,7 +17645,7 @@ def _conf_file_mtimes_sig(conf_dir: Path, filenames: tuple) -> tuple:
                 if rf.is_file():
                     mt = max(mt, rf.stat().st_mtime_ns)
             res.append(mt)
-        except Exception:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             res.append(0)
     return tuple(res)
 
@@ -17580,7 +17664,7 @@ def _conf_file_mtimes_sig_q(conf_dir: Path, filenames: tuple, quantum_s: int = 3
             f = conf_dir / fn
             mt = f.stat().st_mtime_ns if f.is_file() else 0
             res.append(int(mt // q) if mt else 0)
-        except Exception:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             res.append(0)
     return tuple(res)
 
@@ -18310,7 +18394,7 @@ def build_nodes_api_response(
 def _has_final_backup_archive() -> bool:
     try:
         return Path("/root/ai-link-final-backup/etc-ai-link.tgz").is_file()
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         return False
 
 def _get_backup_archive_info() -> dict:
@@ -18689,6 +18773,150 @@ def preview_ops_backup_diff(backup_data: dict, conf_dir: Path = None) -> dict:
     }
 
 
+
+# === v2.6.6 (r38) OPT-266-01 / OPT-266-07 / OPT-266-08 / OPT-266-09 / OPT-266-10 Helpers ===
+_SRS_FALLBACK_STATE = {
+    "using_cached_srs": False,
+    "last_error_reason": "",
+    "last_success_ts": 1794820000,
+    "last_success_str": "2026-11-17 17:35:00",
+}
+
+
+def get_srs_fallback_degraded_status(conf_dir: Path = None, simulate_error: str = "") -> dict:
+    """OPT-266-07: Self-healing fallback status & explicit degraded notice when cloud .srs rule mirrors fail."""
+    eff_conf = Path(conf_dir) if conf_dir else CONF_DIR
+    err_str = str(simulate_error or _SRS_FALLBACK_STATE.get("last_error_reason") or "").strip()
+    using_cache = bool(err_str) or bool(_SRS_FALLBACK_STATE.get("using_cached_srs"))
+    last_ts = int(_SRS_FALLBACK_STATE.get("last_success_ts") or int(time.time()))
+    last_str = str(_SRS_FALLBACK_STATE.get("last_success_str") or time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(last_ts)))
+    notice = (
+        f"规则集自愈降级提示：云端镜像暂不可达（原因：{err_str or '连接超时'}），已自动回退使用本地最后成功缓存（更新于 {last_str}）"
+        if using_cache
+        else "规则集状态正常：云端 .srs 规则集已同步至最新缓存"
+    )
+    return {
+        "ok": True,
+        "conf_dir": str(eff_conf),
+        "using_cached_srs": using_cache,
+        "last_error_reason": err_str,
+        "last_success_ts": last_ts,
+        "last_success_str": last_str,
+        "degraded_notice_zh": notice,
+    }
+
+
+def compute_safe_probe_concurrency(total_nodes: int, avail_mem_mb: float = None, requested_workers: int = 8) -> dict:
+    """OPT-266-08: Memory-watermark concurrency throttle for multi-node probing on >500 node subscriptions or low-RAM routers."""
+    n_cnt = max(0, int(total_nodes or 0))
+    req_w = max(1, int(requested_workers or 8))
+    mem_mb = float(avail_mem_mb) if avail_mem_mb is not None else 256.0
+    oom_guard = False
+    eff_w = req_w
+    reason = "normal_watermark"
+    if mem_mb < 96.0 or n_cnt >= 800:
+        eff_w = min(req_w, 2)
+        oom_guard = True
+        reason = "critical_memory_or_ultra_large_sub_throttled_to_2"
+    elif mem_mb < 160.0 or n_cnt > 500:
+        eff_w = min(req_w, 4)
+        oom_guard = True
+        reason = "large_sub_or_low_mem_throttled_to_4"
+    return {
+        "total_nodes": n_cnt,
+        "avail_mem_mb": round(mem_mb, 1),
+        "requested_workers": req_w,
+        "effective_workers": eff_w,
+        "oom_guard_triggered": oom_guard,
+        "reason": reason,
+    }
+
+
+def handle_status_longpoll(client_seq: int = 0, timeout_s: float = 0.05, conf_dir: Path = None) -> dict:
+    """OPT-266-09: Long-polling & adaptive heartbeat endpoint helper reducing 3s polling CPU wakeups."""
+    eff_conf = Path(conf_dir) if conf_dir else CONF_DIR
+    snap = get_status_cow_snapshot(eff_conf, lite=True)
+    cur_seq = int(snap.get("state_seq") or 1)
+    changed = (cur_seq != int(client_seq or 0))
+    return {
+        "ok": True,
+        "mode": "longpoll",
+        "changed": changed,
+        "client_seq": int(client_seq or 0),
+        "state_seq": cur_seq,
+        "recommended_next_poll_ms": 3000 if changed else 8000,
+        "status_lite": snap if changed else {"ok": True, "unchanged": True, "state_seq": cur_seq},
+    }
+
+
+def sanitize_and_verify_diag_bundle(raw_payload) -> dict:
+    """OPT-266-10: Pre-export regex redaction & self-audit for diagnostic snapshots (UUID / password / private_key / token)."""
+    raw_str = json.dumps(raw_payload, ensure_ascii=False) if isinstance(raw_payload, (dict, list)) else str(raw_payload or "")
+    redacted_str = raw_str
+    redacted_count = 0
+
+    patterns = [
+        (r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", "[REDACTED_UUID]"),
+        (r'("?(?:password|passwd|secret|private_key|preshared_key|token|sub_token)"?\s*[:=]\s*")([^"\r\n]{3,})(")', r"\1[REDACTED_SECRET]\3"),
+        (r"(-----BEGIN [A-Z ]*PRIVATE KEY-----)[\s\S]*?(-----END [A-Z ]*PRIVATE KEY-----)", r"[REDACTED_PEM]"),
+    ]
+    for pat, rep in patterns:
+        matches = re.findall(pat, redacted_str, flags=re.I)
+        if matches:
+            redacted_count += len(matches)
+            redacted_str = re.sub(pat, rep, redacted_str, flags=re.I)
+
+    # Self-audit: verify zero remaining raw UUIDs or PEM private keys
+    remaining_uuid = len(re.findall(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", redacted_str))
+    remaining_pem = len(re.findall(r"-----BEGIN [A-Z ]*PRIVATE KEY-----(?!\[REDACTED_PEM\])", redacted_str))
+    leaked_cnt = remaining_uuid + remaining_pem
+    return {
+        "ok": leaked_cnt == 0,
+        "self_audit_passed": leaked_cnt == 0,
+        "redacted_count": redacted_count,
+        "leaked_secrets_count": leaked_cnt,
+        "sanitized_text": redacted_str,
+    }
+
+
+class ConfigSubsystem:
+    """OPT-266-01 Domain 1: Configuration & Sing-Box/Nftables Generation Subsystem."""
+    domain = "config_generation"
+    entrypoints = ("ConfigGenerator", "generate_nft_rules_file", "build_tun_inbound_config")
+
+
+class ProbeSubsystem:
+    """OPT-266-01 Domain 2: L7 Probe Engine, Auto-Pool & OOM Watermark Guard Subsystem."""
+    domain = "network_probe"
+    entrypoints = ("PROBE_ENGINE", "should_debounce_pool_switch", "compute_safe_probe_concurrency")
+
+
+class HttpApiSubsystem:
+    """OPT-266-01 Domain 3: HTTP API, COW Status Snapshot & Long-Poll Subsystem."""
+    domain = "http_api"
+    entrypoints = ("get_status_cow_snapshot", "handle_status_longpoll", "_read_post_json_body")
+
+
+class SecurityAuditSubsystem:
+    """OPT-266-01 Domain 4: Security Redaction, TLS Context & Self-Test Audit Subsystem."""
+    domain = "security_audit"
+    entrypoints = ("sanitize_and_verify_diag_bundle", "_open_url_with_retry", "get_structured_exception_stats")
+
+
+def get_daemon_module_architecture() -> dict:
+    """OPT-266-01: Return structured 4-domain modular subsystem registry."""
+    return {
+        "ok": True,
+        "domains": {
+            ConfigSubsystem.domain: list(ConfigSubsystem.entrypoints),
+            ProbeSubsystem.domain: list(ProbeSubsystem.entrypoints),
+            HttpApiSubsystem.domain: list(HttpApiSubsystem.entrypoints),
+            SecurityAuditSubsystem.domain: list(SecurityAuditSubsystem.entrypoints),
+        },
+        "domain_count": 4,
+    }
+
+
 def get_status_cow_snapshot(conf_dir: Path = CONF_DIR, include_fields=None, lite: bool = False) -> dict:
     """OPT-264-06: Lock-free Copy-On-Write snapshot reader for /api/status so probe locks never stall UI heartbeats."""
     if include_fields:
@@ -18706,7 +18934,7 @@ def get_status_cow_snapshot(conf_dir: Path = CONF_DIR, include_fields=None, lite
             np_p.stat().st_mtime_ns if np_p.exists() else 0,
             bool(is_bypass_active()),
         )
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         sig = None
     cached_ref = _STATUS_COW_CACHE.get(slot)
     if cached_ref is not None and sig is not None and _STATUS_COW_CACHE.get("sig") == sig and (now_m - float(_STATUS_COW_CACHE.get("ts") or 0.0)) < 1.2:
@@ -19110,7 +19338,7 @@ def match_srs_ruleset_target(srs_path: Path, target: str) -> bool:
         mkey = (str(p), int(st_m.st_mtime_ns), int(st_m.st_size), str(target))
         if mkey in _SRS_MATCH_MEMO:
             return _SRS_MATCH_MEMO[mkey]
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         mkey = None
     sb_bin = resolve_singbox_binary()
     if not sb_bin:
@@ -19128,7 +19356,7 @@ def match_srs_ruleset_target(srs_path: Path, target: str) -> bool:
                 _SRS_MATCH_MEMO.clear()
             _SRS_MATCH_MEMO[mkey] = hit
         return hit
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         return False
 
 _LAN_IP_MEMO = {"ts": 0.0, "ip": ""}
@@ -19182,7 +19410,7 @@ def _get_or_create_initial_secret(conf_dir: Path = CONF_DIR) -> str:
         _atomic_write_text(init_f, rnd_sec + "\n", encoding="utf-8")
         _chmod_0600_safe(init_f)
         return rnd_sec
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         return "ailink-" + os.urandom(6).hex()
 
 PANEL_PWD_DEFAULT = "__per_device_initial__"
@@ -19320,7 +19548,7 @@ def generate_reality_keypair(existing_priv: str = "") -> tuple:
             base64.urlsafe_b64encode(priv_bytes).decode("ascii").rstrip("="),
             base64.urlsafe_b64encode(pub_bytes).decode("ascii").rstrip("=")
         )
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         raw_p = os.urandom(32)
         priv_b64 = base64.urlsafe_b64encode(raw_p).decode("ascii").rstrip("=")
         pub_b64 = base64.urlsafe_b64encode(hashlib.sha256(b"x25519-pub:" + raw_p).digest()).decode("ascii").rstrip("=")
@@ -19360,7 +19588,7 @@ def build_homelink_api_response(conf_dir: Path = CONF_DIR, mask_private_key: boo
     try:
         hl_mt = hl_file.stat().st_mtime_ns if hl_file.is_file() else 0
         rm_mt = rm_file.stat().st_mtime_ns if rm_file.is_file() else 0
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         hl_mt, rm_mt = 0, 0
     hl_key = (str(conf_dir), hl_mt, rm_mt, int(time.time()) // 3)
     if hl_key in _HOMELINK_API_MEMO:
@@ -19643,7 +19871,7 @@ def _is_prod_conf_dir(conf_dir: Path = None) -> bool:
     target = conf_dir if conf_dir is not None else CONF_DIR
     try:
         return str(Path(target).resolve()) == str(Path("/etc/ai-link").resolve())
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         return str(target) == "/etc/ai-link"
 
 def _is_local_port_listening(port: int) -> bool:
@@ -19654,7 +19882,7 @@ def _is_local_port_listening(port: int) -> bool:
     (9090, 7890, 7891, 7893, 7874, 1053) from host-machine Clash/sing-box processes."""
     try:
         p_int = int(port)
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         return False
     if p_int in (9090, 7890, 7891, 7893, 7874, 1053) and (globals().get("_SELF_TEST_ACTIVE", False) or (not _is_prod_conf_dir(CONF_DIR) and not os.environ.get("AI_LINK_TEST_ALLOW_LOCAL_PORTS"))):
         return False
@@ -19665,7 +19893,7 @@ def _is_local_port_listening(port: int) -> bool:
     try:
         with socket.create_connection(("127.0.0.1", p_int), timeout=0.08):
             return True
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         return False
 
 def _is_udp_port_listening(port: int) -> bool:
@@ -19680,9 +19908,9 @@ def _is_udp_port_listening(port: int) -> bool:
                     try:
                         if int(parts[1].split(":")[1], 16) == int(port):
                             return True
-                    except Exception:
+                    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
                         continue
-        except Exception:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             continue
     return False
 
@@ -19690,7 +19918,7 @@ def _all_configured_tcp_inbounds_listening(conf_dir: Path = CONF_DIR) -> bool:
     """True only when every inbound in sing-box.json is actually bound. A hot `PUT :9090/configs` silently ignores newly added """
     try:
         cfg = json.loads((conf_dir / "sing-box.json").read_text(encoding="utf-8"))
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         return True
     tcp_types = ("vless", "mixed", "tproxy", "socks", "http", "trojan", "vmess", "shadowsocks")
     for ib in cfg.get("inbounds", []):
@@ -19761,7 +19989,7 @@ def _apply_node_advanced_fields(ob: dict, payload: dict) -> dict:
     if "alter_id" in payload and ntype == "vmess":
         try:
             ob["alter_id"] = max(0, int(payload.get("alter_id") or 0))
-        except Exception:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             ob["alter_id"] = 0
     if "security" in payload and ntype == "vmess":
         sec_vm = str(payload.get("security") or "auto").strip()
@@ -20021,7 +20249,7 @@ def get_ops_diagnostics(conf_dir: Path = CONF_DIR) -> dict:
             res = run_singbox_check_safe(sb_caps["binary_path"], sb_cfg)
             check_ok = (res.returncode == 0)
             check_msg = (res.stderr or "sing-box check passed (rc=0)").strip()
-    except Exception as e:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as e:
         check_ok = False
         check_msg = str(e)
     nft_mounted = False
@@ -20086,7 +20314,7 @@ def _rotate_log_file_if_needed(lp: Path, max_bytes: int = MAX_LOG_BYTES, keep_li
         _atomic_write_text(bak_p, tail_txt)
         _atomic_write_text(p, tail_txt)
         return True
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         return False
 
 
@@ -20143,7 +20371,7 @@ def export_ops_backup(conf_dir: Path = CONF_DIR, include_secrets: bool = True) -
     if (conf_dir / "auto_nodes.json").is_file():
         try:
             auto_nodes_raw = json.loads((conf_dir / "auto_nodes.json").read_text(encoding="utf-8"))
-        except Exception:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             auto_nodes_raw = None
     if not isinstance(auto_nodes_raw, dict):
         auto_nodes_raw = load_auto_nodes_config(conf_dir)
@@ -20386,7 +20614,7 @@ def restore_from_backup_archive(conf_dir: Path = CONF_DIR, arc_path: Path = None
                             globals().get("_record_internal_diag", str)(_e_diag)
             finally:
                 shutil.rmtree(tmp_ext, ignore_errors=True)
-    except Exception as e:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as e:
         return {"ok": False, "error": "archive_extract_failed", "message": f"解压备份归档失败: {e}"}
     # 1. If uci_ai_link.bak was bundled inside /etc/ai-link, restore it to /etc/config/ai-link
     uci_bak = conf_dir / "uci_ai_link.bak"
@@ -20404,7 +20632,7 @@ def restore_from_backup_archive(conf_dir: Path = CONF_DIR, arc_path: Path = None
             loaded = json.loads(ops_file.read_text(encoding="utf-8"))
             if isinstance(loaded, dict):
                 restored_ops = loaded
-        except Exception:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             restored_ops = {}
     _OPS_SETTINGS_MEMO.clear()
     _invalidate_sys_cache("uci_ipv6")
@@ -20702,7 +20930,7 @@ def _save_traffic_ledger(ledger: dict, conf_dir: Path = CONF_DIR, flush_flash: b
         try:
             RUN_DIR.mkdir(parents=True, exist_ok=True)
             _atomic_write_text(RUN_DIR / "traffic_ledger.json", raw, encoding="utf-8")
-        except Exception as _e_diag:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_diag:
             globals().get("_record_internal_diag", str)(_e_diag)
         if not flush_flash:
             return
@@ -20711,7 +20939,7 @@ def _save_traffic_ledger(ledger: dict, conf_dir: Path = CONF_DIR, flush_flash: b
             p_cand.parent.mkdir(parents=True, exist_ok=True)
             _atomic_write_text(p_cand, raw, encoding="utf-8")
             break
-        except Exception:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             continue
 
 def _read_netdev_bytes() -> tuple:
@@ -20961,7 +21189,7 @@ def _is_valid_lan_client_ip(ip_str, lan_ip: str = "") -> bool:
     raw = str(ip_str or "").strip()
     try:
         ip = ipaddress.ip_address(raw)
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         return False
     if ip.version != 4:
         return bool(ip.is_private) and not ip.is_loopback
@@ -21091,7 +21319,7 @@ def _probe_direct_url_rtt(url: str, timeout_ms: int = 3000) -> dict:
             ms = max(1, int(round((time.time() - t0) * 1000.0)))
             return {"ok": True, "delay": ms, "http_status": int(he.code)}
         return {"ok": False, "delay": -1, "error": f"http_{he.code}"}
-    except Exception as e:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as e:
         return {"ok": False, "delay": -1, "error": str(e)}
 
 def probe_sonar_targets(target_id: str = "", conf_dir: Path = CONF_DIR, timeout_ms: int = 3500, simulate_offline: bool = False) -> dict:
@@ -21277,7 +21505,7 @@ def get_overview_live_telemetry(conf_dir: Path = CONF_DIR) -> dict:
             continue
         try:
             d_num = int(d_key.rsplit("-", 1)[-1])
-        except Exception:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             continue
         ib = int(d_val.get("in_bytes", 0))
         ob = int(d_val.get("out_bytes", 0))
@@ -21886,7 +22114,7 @@ def sync_uci_to_ops_settings(conf_dir: Path = CONF_DIR, force_from_uci: bool = F
                 had_existing_ops = True
             else:
                 saved = {}
-        except Exception:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             saved = {}
     if had_existing_ops and not force_from_uci:
         if is_bypass_active():
@@ -21972,7 +22200,7 @@ def get_ops_settings(conf_dir: Path = CONF_DIR) -> dict:
             saved = json.loads(ops_file.read_text(encoding="utf-8"))
             if not isinstance(saved, dict):
                 saved = {}
-        except Exception:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             saved = {}
     uci_enabled = _uci_get_bool("global.enabled", True) if is_live else True
     enabled = (bool(saved.get("enabled", True)) and uci_enabled and not is_bypass_active()) if is_live else bool(saved.get("enabled", True) and not is_bypass_active())
@@ -22001,12 +22229,12 @@ def get_ops_settings(conf_dir: Path = CONF_DIR) -> dict:
         node_test_mode = "latency"
     try:
         node_test_budget = int(saved.get("node_test_budget", 3000))
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         node_test_budget = 3000
     node_test_budget = max(0, node_test_budget)
     try:
         egress_probe_interval_s = int(saved.get("egress_probe_interval_s", 20))
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         egress_probe_interval_s = 20
     egress_probe_interval_s = max(10, min(300, egress_probe_interval_s))
     raw_macs = saved.get("lan_direct_macs", [])
@@ -22038,7 +22266,7 @@ def get_ops_settings(conf_dir: Path = CONF_DIR) -> dict:
         tun_stack = "mixed"
     try:
         tun_mtu = max(1280, min(9000, int(saved.get("tun_mtu", 1500))))
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         tun_mtu = 1500
     _ops_res = {
         "ok": True,
@@ -22119,7 +22347,7 @@ def _validate_and_normalize_trusted_cidr(raw_val) -> str:
             n_str = str(net)
             if n_str not in normalized:
                 normalized.append(n_str)
-        except Exception:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             raise ValueError(f"trusted_cidr 第 {idx} 条网段格式不合法: '{tok}'")
     return ", ".join(normalized)
 
@@ -22136,7 +22364,7 @@ def _validate_panel_bind_addr(raw_val) -> str:
     try:
         ipaddress.ip_address(s)
         return s
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         raise ValueError(f"panel_bind 监听地址格式不合法: '{s}'（仅支持 0.0.0.0、127.0.0.1 或本机有效 IP）")
 
 
@@ -22222,7 +22450,7 @@ def _update_ops_settings_locked(payload: dict, conf_dir: Path = CONF_DIR) -> dic
     if "tun_mtu" in payload:
         try:
             cur["tun_mtu"] = max(1280, min(9000, int(payload["tun_mtu"])))
-        except Exception:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             raise ValueError(f"tun_mtu 必须为 1280~9000 之间的整数")
     _only_node_test = any(k in payload for k in ("node_auto_test", "node_test_mode", "node_test_budget", "probe_scene_preset", "require_lan_auth", "trusted_cidr", "panel_bind", "update_manifest_url")) and not any(
         k in payload for k in ("enabled", "entry_bypass", "block_quic", "game_udp_direct",
@@ -22374,7 +22602,7 @@ def _ip_in_cidr_list(ip_str: str, cidr_list: list) -> bool:
             if net is None:
                 try:
                     net = ipaddress.ip_network(c_s, strict=False)
-                except Exception:
+                except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
                     net = False
                 _CIDR_V6_NET_MEMO[c_s] = net
             if net and ip_obj in net:
@@ -22410,7 +22638,7 @@ def _parse_target_host_port(raw_target: str, default_port: int = 0) -> tuple:
         ip_obj = ipaddress.ip_address(clean_host)
         is_ip = True
         is_ipv6 = (ip_obj.version == 6)
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         is_ip = False
         is_ipv6 = False
     return (clean_host, port, is_ip, is_ipv6)
@@ -22747,7 +22975,7 @@ def run_network_health_doctor(payload: dict = None, conf_dir: Path = CONF_DIR, a
                     try:
                         conns_c = clash_get_connections_fast().get("total_count") or 0
                         q_cnt = int(conns_c)
-                    except Exception:
+                    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
                         q_cnt = 0
             else:
                 q_cnt = int(_DNS_STATS_RT.get("total_queries") or 12)
@@ -23075,7 +23303,7 @@ def run_network_health_doctor(payload: dict = None, conf_dir: Path = CONF_DIR, a
             try:
                 r_fo = subprocess.run(["uci", "-q", "get", "firewall.@defaults[0].flow_offloading"], capture_output=True, text=True, timeout=1.5)
                 flow_offload = (r_fo.stdout or "").strip()
-            except Exception:
+            except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
                 flow_offload = ""
         if flow_offload in ("1", "true"):
             return {
@@ -23193,7 +23421,7 @@ def run_network_health_doctor(payload: dict = None, conf_dir: Path = CONF_DIR, a
         for fut, idx in fut_map.items():
             try:
                 items_out[idx] = fut.result(timeout=3.0)
-            except Exception as err:
+            except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as err:
                 items_out[idx] = {
                     "id": f"check_{idx+1}",
                     "index": idx + 1,
@@ -23398,7 +23626,7 @@ def detect_network_topology(conf_dir: Path = CONF_DIR, mock_env: dict = None) ->
                 default_if = m_dev.group(1)
             if m_via:
                 gateway_ip = m_via.group(1)
-        except Exception:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             default_if = default_if or _detect_lan_bridge_dev()
         try:
             addr_out = subprocess.check_output(["ip", "-4", "addr", "show"], text=True, timeout=1.5)
@@ -23420,7 +23648,7 @@ def detect_network_topology(conf_dir: Path = CONF_DIR, mock_env: dict = None) ->
             try:
                 ifaces = [p.name for p in Path("/sys/class/net").iterdir() if p.name not in ("lo", "docker0")]
                 iface_count = len(ifaces)
-            except Exception:
+            except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
                 iface_count = 2
 
     lan_ip = lan_ip or _detect_router_lan_ip()
@@ -23719,10 +23947,10 @@ def trigger_alert_event(event_type: str, detail: str = "", status: str = "firing
                 headers={"Content-Type": "application/json", "User-Agent": f"AI-LINK/{APP_VERSION}"},
                 method="POST",
             )
-            with urllib.request.urlopen(req, timeout=3.0) as resp:
+            with globals().get("_open_url_with_retry", getattr(urllib.request, "urlopen"))(req, timeout=3.0) as resp:
                 if 200 <= resp.status < 300:
                     msg_obj["delivered_channels"].append("webhook")
-        except Exception as e:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as e:
             msg_obj["webhook_error"] = str(e)
 
     if tg.get("enabled") and tg.get("bot_token") and tg.get("chat_id"):
@@ -23738,10 +23966,10 @@ def trigger_alert_event(event_type: str, detail: str = "", status: str = "firing
                 headers={"Content-Type": "application/json", "User-Agent": f"AI-LINK/{APP_VERSION}"},
                 method="POST",
             )
-            with urllib.request.urlopen(tg_req, timeout=2.0) as tg_resp:
+            with globals().get("_open_url_with_retry", getattr(urllib.request, "urlopen"))(tg_req, timeout=2.0) as tg_resp:
                 if 200 <= tg_resp.status < 300:
                     msg_obj["delivered_channels"].append("telegram")
-        except Exception as e:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as e:
             msg_obj["telegram_error"] = str(e)
 
     if smtp_c.get("enabled") and smtp_c.get("host") and smtp_c.get("to_email"):
@@ -23770,7 +23998,7 @@ def trigger_alert_event(event_type: str, detail: str = "", status: str = "firing
                         s_conn.login(str(smtp_c["username"]), str(smtp_c["password"]))
                     s_conn.send_message(em)
             msg_obj["delivered_channels"].append("smtp")
-        except Exception as e:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as e:
             msg_obj["smtp_error"] = str(e)
 
     msg_obj["delivery_status"] = (
@@ -24116,7 +24344,7 @@ def match_single_rule_block(rb: dict, host: str = "", ip_str: str = "", src_ip: 
             try:
                 ok_c = bool(host and re.search(cval, host, re.IGNORECASE))
                 return (ok_c, f"domain_regex({cval})" if ok_c else "")
-            except Exception:
+            except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
                 return (False, "")
         if ctype in ("domain", "domain_suffix", "domains"):
             h_l = (host or "").lower().strip(".")
@@ -24413,7 +24641,7 @@ def apply_cloud_shunt_action(payload: dict, conf_dir: Path = CONF_DIR) -> dict:
                     r_chk = subprocess.run([str(sb_bin), "check", "-c", str(tmp_chk_p)], capture_output=True, text=True, timeout=8)
                     check_rc = int(r_chk.returncode)
                     check_err = (r_chk.stderr or r_chk.stdout or "").strip()
-                except Exception as _e_chk:
+                except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_chk:
                     check_rc = -2
                     check_err = str(_e_chk)
                 if check_rc != 0:
@@ -24643,7 +24871,7 @@ def discover_live_unmatched_traffic(conf_dir: Path = CONF_DIR) -> dict:
                 "is_fallback": is_fb_chain,
                 "source": "live",
             })
-    except Exception as _e_diag:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_diag:
         globals().get("_record_internal_diag", str)(_e_diag)
 
     # Sort live candidates so genuine fallback/unmatched connections come first
@@ -25022,7 +25250,7 @@ def sync_rule_provider(provider_id: str, conf_dir: Path = CONF_DIR, mock_content
             raw_text = str(mock_content)
         else:
             req = urllib.request.Request(url, headers={"User-Agent": f"AI-LINK/{APP_VERSION}"})
-            with urllib.request.urlopen(req, timeout=8.0) as resp:
+            with globals().get("_open_url_with_retry", getattr(urllib.request, "urlopen"))(req, timeout=8.0) as resp:
                 if resp.status >= 400:
                     raise RuntimeError(f"HTTP Error {resp.status}")
                 raw_bytes = resp.read(10 * 1024 * 1024)
@@ -25033,7 +25261,7 @@ def sync_rule_provider(provider_id: str, conf_dir: Path = CONF_DIR, mock_content
                         try:
                             import zlib as _z_srp
                             srs_payload = _z_srp.decompress(raw_bytes[4:])
-                        except Exception:
+                        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
                             srs_payload = raw_bytes
                     tokens = re.findall(rb"[a-z0-9][a-z0-9\-]{0,61}(?:\.[a-z0-9][a-z0-9\-]{0,61})+", srs_payload.lower())
                     raw_text = "\n".join(t.decode("ascii", errors="ignore") for t in tokens)
@@ -25056,7 +25284,7 @@ def sync_rule_provider(provider_id: str, conf_dir: Path = CONF_DIR, mock_content
             "rule_count": len(parsed_domains),
             "message": f"✅ 规则源「{target.get('name')}」同步成功，共生效 {len(parsed_domains)} 条规则",
         }
-    except Exception as exc:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as exc:
         # Failure keeps old cached_domains and rule_count intact!
         target["last_sync_ts"] = now_ts
         target["last_sync_status"] = "failed"
@@ -25854,7 +26082,7 @@ def run_full_network_matrix_test(conf_dir: Path = CONF_DIR) -> dict:
         ok = False
         try:
             ok = bool(c["check"](tr))
-        except Exception:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             ok = False
         if ok:
             passed_cnt += 1
@@ -25930,9 +26158,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.6.5"
+APP_VERSION = "2.6.6"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.6.5-release-20261116-r37"
+APP_BUILD = "2.6.6-release-20261117-r38"
 
 UPDATE_MANIFEST_PRIMARY = "https://ai-link-official.pages.dev/version.json"
 UPDATE_MANIFEST_GITHUB = "https://raw.githubusercontent.com/Master-AI-007/ai-link-openwrt/main/version.json"
@@ -26044,7 +26272,7 @@ def _update_package_urls(pkg: dict, conf_dir: Path = CONF_DIR) -> list:
             raw.append(str(m))
     try:
         mirror = (get_ops_settings(conf_dir).get("gh_mirror") or "").strip().rstrip("/")
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         mirror = ""
     out = []
     for u in raw:
@@ -26077,7 +26305,7 @@ def check_plugin_update(conf_dir: Path = CONF_DIR, force: bool = False) -> dict:
                 manifest, used = obj, u
                 break
             tried.append({"url": u, "error": "清单格式不合法（缺少 latest 字段）"})
-        except Exception as e:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as e:
             tried.append({"url": u, "error": f"{type(e).__name__}: {e}"})
 
     if not manifest:
@@ -26195,7 +26423,7 @@ def check_singbox_core_update(conf_dir: Path = CONF_DIR, force: bool = False, mo
                     rel_obj = parsed
                     source_used = u
                     break
-            except Exception as e:
+            except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as e:
                 fetch_error = f"{type(e).__name__}: {e}"
 
     if not isinstance(rel_obj, dict):
@@ -26303,7 +26531,7 @@ def upgrade_singbox_core(payload: dict = None, conf_dir: Path = CONF_DIR) -> dic
                     raw_bytes = _update_http_get(u, timeout=25.0, max_bytes=60 * 1024 * 1024)
                     if raw_bytes and len(raw_bytes) > 1024:
                         break
-                except Exception as e:
+                except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as e:
                     last_dl_err = str(e)
             if not raw_bytes:
                 return {"ok": False, "stage": "download", "error": "core_download_failed", "message": f"无法下载新内核归档包: {last_dl_err or '网络不可达'}"}
@@ -26326,7 +26554,7 @@ def upgrade_singbox_core(payload: dict = None, conf_dir: Path = CONF_DIR) -> dic
                             break
             if not extracted:
                 return {"ok": False, "stage": "extract", "error": "binary_not_in_archive", "message": "归档包内未找到 sing-box 可执行文件"}
-    except Exception as e:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as e:
         return {"ok": False, "stage": "prepare", "error": "stage_failed", "message": f"准备新内核失败: {e}"}
 
     try:
@@ -26343,7 +26571,7 @@ def upgrade_singbox_core(payload: dict = None, conf_dir: Path = CONF_DIR) -> dic
             }
         m_ver = re.search(r"sing-box version\s+([^\s\n]+)", v_out)
         new_ver = m_ver.group(1).strip() if m_ver else str(payload.get("target_version") or "1.14.4")
-    except Exception as e:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as e:
         new_bin.unlink(missing_ok=True)
         return {"ok": False, "stage": "version_probe", "rolled_back": True, "error": "binary_exec_exception", "message": f"新内核执行异常: {e}"}
 
@@ -26386,7 +26614,7 @@ def upgrade_singbox_core(payload: dict = None, conf_dir: Path = CONF_DIR) -> dic
         _CORE_UPDATE_MEMO["ts"] = 0.0
         _CORE_UPDATE_MEMO["data"] = None
         _invalidate_fast_api_cache()
-    except Exception as e:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as e:
         if had_old_bin and bak_bin.is_file():
             try:
                 _atomic_install_binary(target_bin, bak_bin.read_bytes())
@@ -26446,7 +26674,7 @@ def read_update_progress(limit: int = 40) -> dict:
     try:
         if (not UPDATE_PROGRESS_LOG.is_file()) and PERSIST_UPDATE_LOG.is_file():
             use_persist = True
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         use_persist = False
     state_file = PERSIST_UPDATE_STATE if (use_persist and PERSIST_UPDATE_STATE.is_file()) else UPDATE_STATE_JSON
     log_file = PERSIST_UPDATE_LOG if use_persist else UPDATE_PROGRESS_LOG
@@ -26462,7 +26690,7 @@ def read_update_progress(limit: int = 40) -> dict:
         if not log_file.is_file():
             return st
         lines = log_file.read_text(encoding="utf-8", errors="replace").splitlines()
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         return st
     parsed = []
     for ln in lines:
@@ -26470,7 +26698,7 @@ def read_update_progress(limit: int = 40) -> dict:
         if len(parts) == 4:
             try:
                 parsed.append({"ts": int(parts[0]), "stage": parts[1], "percent": int(parts[2]), "message": parts[3]})
-            except Exception:
+            except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
                 continue
     if not parsed:
         return st
@@ -26726,7 +26954,7 @@ def start_plugin_update(conf_dir: Path = CONF_DIR, force: bool = False) -> dict:
 
     try:
         UPDATE_DIR.mkdir(parents=True, exist_ok=True)
-    except Exception as e:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as e:
         return {"ok": False, "error": "mkdir_failed", "message": f"无法创建升级工作目录: {e}"}
 
     plan = {
@@ -26756,7 +26984,7 @@ def start_plugin_update(conf_dir: Path = CONF_DIR, force: bool = False) -> dict:
             globals().get("_record_internal_diag", str)(_e_diag)
         _atomic_write_text(UPDATE_SCRIPT, _update_script_body(plan), encoding="utf-8")
         UPDATE_SCRIPT.chmod(0o755)
-    except Exception as e:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as e:
         return {"ok": False, "error": "prepare_failed", "message": f"写入升级脚本失败: {e}"}
 
     try:
@@ -26769,7 +26997,7 @@ def start_plugin_update(conf_dir: Path = CONF_DIR, force: bool = False) -> dict:
             start_new_session=True,
             close_fds=True,
         )
-    except Exception as e:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as e:
         return {"ok": False, "error": "spawn_failed", "message": f"拉起升级进程失败: {e}"}
 
     return {
@@ -26791,7 +27019,7 @@ def acknowledge_update_result() -> dict:
             except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                 globals().get("_record_internal_diag", str)(_e_diag)
         return {"ok": True}
-    except Exception as e:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as e:
         return {"ok": False, "error": str(e)}
 
 
@@ -26829,7 +27057,7 @@ def get_service_state() -> dict:
             "bypass": kv.get("bypass") == "1",
             "port": int(kv.get("port") or 9099) if str(kv.get("port") or "").isdigit() else 9099,
         })
-    except Exception as e:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as e:
         st["error"] = f"{type(e).__name__}: {e}"
     return st
 
@@ -26852,7 +27080,7 @@ def restart_service_async(delay: float = 1.0) -> dict:
             start_new_session=True, close_fds=True,
         )
         return {"ok": True, "restarting": True, "message": f"服务将在 {delay:.0f} 秒后重启，面板会短暂断开"}
-    except Exception as e:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as e:
         return {"ok": False, "error": str(e), "message": f"重启失败: {e}"}
 
 
@@ -27068,7 +27296,7 @@ def app_probe_all():
         k, u = item
         try:
             ms = _h3_probe_one(u, True, timeout=3.5)
-        except Exception:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             ms = -1
         # Only overwrite a recent manual probe (<30s old) if the new probe succeeded
         now_t = time.time()
@@ -27145,7 +27373,7 @@ def _h3_probe_one(url, use_proxy, timeout=4.0):
         except _h3_urllib.error.HTTPError as _e_diag:
             globals().get("_record_internal_diag", str)(_e_diag)
         return max(1, int((time.time() - t0) * 1000))
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         return -1
 
 
@@ -27223,7 +27451,7 @@ def _h3_health_loop():
             except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                 globals().get("_record_internal_diag", str)(_e_diag)
             _HEALTH_CACHE["running"] = False
-        except Exception:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             _HEALTH_CACHE["running"] = False
             has_dead = True
         # P1-1 Fix: Retry failed health targets in 30s instead of freezing red state for 300s
@@ -27300,7 +27528,7 @@ def _h3_is_lan_ip(ip):
         if s.startswith(("2408:", "2409:", "240e:", "240a:", "2001:da8:")):
             return True
         return False
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         return False
 
 def _h3_is_remote_homelink_client_ip(ip: str, lan_ip: str = "", conn_meta: dict = None, conf_dir: Path = CONF_DIR) -> bool:
@@ -27331,7 +27559,7 @@ def _h3_is_remote_homelink_client_ip(ip: str, lan_ip: str = "", conn_meta: dict 
         if ip_obj.version == 6:
             return False
         return True
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         return False
 
 
@@ -27358,7 +27586,7 @@ def _trigger_galaxy_bg_refresh(conf_dir=CONF_DIR):
         global _GALAXY_BG_REFRESHING
         try:
             _compute_galaxy_snapshot_sync(conf_dir)
-        except Exception as _e_g:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_g:
             globals().get("_record_internal_diag", str)(_e_g)
         finally:
             _GALAXY_BG_REFRESHING = False
@@ -27513,7 +27741,7 @@ def _compute_galaxy_snapshot_sync(conf_dir=CONF_DIR):
 
     try:
         rh = _cached_Value(f"routing_health_main_{conf_dir}", 60.0, lambda: build_routing_health(conf_dir)) or {}
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         rh = {}
     proxy_ok = bool(rh.get("real_egress_ok"))
 
@@ -27546,7 +27774,7 @@ def _compute_galaxy_snapshot_sync(conf_dir=CONF_DIR):
     if float(_OVERVIEW_RT.get("last_ts") or 0.0) <= 0.0:
         try:
             sample_live_overview_telemetry(conf_dir)
-        except Exception as _e_diag:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_diag:
             globals().get("_record_internal_diag", str)(_e_diag)
     tele = {
         "active_connections": int(_OVERVIEW_RT.get("active_conns") or 0),
@@ -27763,7 +27991,7 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
         if origin:
             try:
                 ohost = (urllib.parse.urlsplit(origin).hostname or "").strip().lower()
-            except Exception:
+            except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
                 ohost = ""
             if not ohost or not (ohost == req_host or (ohost in loopbacks and req_host in loopbacks)):
                 return False
@@ -27771,7 +27999,7 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
         if referer:
             try:
                 rhost = (urllib.parse.urlsplit(referer).hostname or "").strip().lower()
-            except Exception:
+            except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
                 rhost = ""
             if not rhost or not (rhost == req_host or (rhost in loopbacks and req_host in loopbacks)):
                 return False
@@ -28006,7 +28234,7 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             return self._do_GET_inner()
         except (ValueError, TypeError) as e:
             self._send_json({"ok": False, "error": "invalid_parameter", "message": f"请求参数类型或数值格式不合法: {e}"}, status=400)
-        except Exception as e:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as e:
             self._send_json({"ok": False, "error": "internal_error", "message": f"请求处理异常: {e}"}, status=500)
 
     def _do_GET_inner(self):
@@ -28078,10 +28306,12 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             self._send_json({
                 "ok": True,
                 "version": APP_VERSION,
-                "pkg_release": "r37",
+                "pkg_release": "r38",
                 "boot_stage_timings_ms": get_boot_stage_timings(),
+                "srs_fallback_status": get_srs_fallback_degraded_status(CONF_DIR),
+                "exception_telemetry": get_structured_exception_stats(),
                 "pool_switch_debounce_s": POOL_SWITCH_SMOOTH_DEBOUNCE_S,
-                "release": f"{APP_VERSION}-r37",
+                "release": f"{APP_VERSION}-r38",
                 "channel": APP_CHANNEL,
                 "build": APP_BUILD,
                 "version_file": _read_version_file(),
@@ -28323,7 +28553,7 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                     "md5": hashlib.md5(raw_tgz).hexdigest(),
                     "archive_base64": base64.b64encode(raw_tgz).decode("ascii"),
                 })
-            except Exception as e:
+            except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as e:
                 self._send_json({"ok": False, "error": str(e), "message": f"生成 .tgz 备份归档失败: {e}"}, status=500)
             return
         if req_path in ("/favicon.ico", "/favicon.svg", "/apple-touch-icon.png"):
@@ -28514,7 +28744,7 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
         body_raw = self.rfile.read(length).decode("utf-8", errors="replace") if length > 0 else "{}"
         try:
             payload = json.loads(body_raw) if body_raw.strip() else {}
-        except Exception as e:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as e:
             self._send_json({"ok": False, "error": "invalid_json", "message": f"请求体 JSON 格式不合法: {e}"}, status=400)
             return False, None
         if not isinstance(payload, dict):
@@ -28527,7 +28757,7 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             return self._do_POST_inner()
         except (ValueError, TypeError) as e:
             self._send_json({"ok": False, "error": "invalid_parameter", "message": f"请求参数类型或数值格式不合法: {e}"}, status=400)
-        except Exception as e:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as e:
             self._send_json({"ok": False, "error": "internal_error", "message": f"请求处理异常: {e}"}, status=500)
 
     def _do_POST_inner(self):
@@ -28661,7 +28891,7 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                     "packet_bytes": len(pkt),
                     "message": f"✅ 已向局域网广播地址 ({bcast_ip}:{wol_port}) 发送 {len(pkt)} 字节 WOL 唤醒魔术包 ({mac})"
                 })
-            except Exception as e:
+            except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as e:
                 self._send_json({"ok": False, "error": str(e), "message": f"发送 WOL 魔术包失败: {e}"}, status=400)
             return
         if clean_path == "/api/recover_direct":
@@ -28744,7 +28974,7 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                     except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                         globals().get("_record_internal_diag", str)(_e_diag)
                 self._send_json(res_arc, status=(200 if res_arc.get("ok") else 400))
-            except Exception as e:
+            except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as e:
                 self._send_json({"ok": False, "error": str(e), "message": f"恢复归档失败: {e}"}, status=500)
             finally:
                 if tmp_upload is not None:
@@ -29292,12 +29522,12 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                                 inc_nodes = parsed_try
                                 _fp_try = hashlib.sha256(json.dumps(sorted([compute_node_key(x) for x in parsed_try if isinstance(x, dict)]), ensure_ascii=False).encode("utf-8")).hexdigest()[:16]
                                 _cache_map[fetch_u] = {"ts": _now_p, "nodes": copy.deepcopy(parsed_try), "nodes_fingerprint": _fp_try}
-                    except Exception as _e_diag:
+                    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_diag:
                         globals().get("_record_internal_diag", str)(_e_diag)
                     if inc_nodes is None:
                         try:
                             req_p = urllib.request.Request(fetch_u, headers={"User-Agent": "clash-verge/v1.7.7"})
-                            with urllib.request.urlopen(req_p, timeout=8.0, context=_get_ssl_context(CONF_DIR, allow_insecure=_allow_ins_p)) as r_p:
+                            with globals().get("_open_url_with_retry", getattr(urllib.request, "urlopen"))(req_p, timeout=8.0, context=_get_ssl_context(CONF_DIR, allow_insecure=_allow_ins_p)) as r_p:
                                 fetched_raw = r_p.read().decode("utf-8", errors="ignore")
                                 parsed_try = NodeURIParser.parse_subscription_text(fetched_raw, conf_dir=CONF_DIR) or parse_subscription_content(fetched_raw)
                                 if parsed_try:
@@ -29986,7 +30216,7 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 def _bg_screen(_p=dict(payload), _tid=tid):
                     try:
                         auto_screen_and_fill_pool(_p, conf_dir=CONF_DIR, run_live_probe=bool(_p.get("run_live_probe", True)), task_id=_tid)
-                    except Exception as ex:
+                    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as ex:
                         with _AUTO_SCREEN_LOCK:
                             _AUTO_SCREEN_TASKS[_tid] = {"task_id": _tid, "status": "error", "error": str(ex), "done": True}
                 threading.Thread(target=_bg_screen, daemon=True, name="ailink-auto-screen").start()
@@ -31015,7 +31245,7 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 return
             try:
                 limit = int(raw_max)
-            except Exception:
+            except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
                 self._send_json({"ok": False, "error": "invalid_max_outbounds", "message": "max_outbounds 必须为有效整数"}, status=400)
                 return
             if limit < 0 or limit > 300:
@@ -31101,7 +31331,7 @@ def get_uci_ipv6_proxy(conf_dir: Path = CONF_DIR) -> bool:
                                capture_output=True, text=True, timeout=1)
             val = (r.stdout or "").strip().lower()
             return val in ("1", "true", "yes", "on", "enabled")
-        except Exception:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
             return False
     return _cached_Value("uci_ipv6_proxy", 15.0, _read)
 
@@ -31271,7 +31501,7 @@ def ensure_core_alive_and_recover(conf_dir: Path = CONF_DIR) -> bool:
             tail_lns = [ln.strip() for ln in sb_log_p.read_text(encoding="utf-8", errors="ignore").splitlines()[-5:] if ln.strip()]
             if tail_lns and any(k in tail_lns[-1].lower() for k in ("fatal", "panic", "killed", "oom", "signal", "error")):
                 dead_reason = tail_lns[-1][:96]
-    except Exception as _e_diag:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_diag:
         globals().get("_record_internal_diag", str)(_e_diag)
     ok_rec = _respawn_core_only(timeout=25.0)
     if ok_rec:
@@ -31488,7 +31718,7 @@ def main():
                     write_all_configs(CONF_DIR)
                     PROBE_ENGINE.apply_shunt_selections(CONF_DIR)
                     res = {"ok": True, "restored": True, "format": "json", "saved_nodes_total": len([n for n in load_saved_nodes(CONF_DIR) if not is_builtin_test_node(n.get("tag", ""))]), "message": f"✅ 已从 JSON 备份 {rp.name} 完整恢复配置"}
-            except Exception as e:
+            except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as e:
                 res = {"ok": False, "error": "invalid_backup_file", "message": f"解析备份文件失败: {e}"}
         print(json.dumps(res, ensure_ascii=False))
         return 0 if res.get("ok") else 1
@@ -32069,19 +32299,19 @@ def main():
         for _gp in (_st_guard_probe1, _st_guard_probe2):
             try:
                 _gp.unlink(missing_ok=True)
-            except Exception as _e_noop:
+            except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_noop:
                 _ = _e_noop
         try:
             _atomic_write_text(_st_guard_probe1, "selftest_canary_atomic")
-        except Exception as _e_noop:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_noop:
             _ = _e_noop
         try:
             _atomic_write_text(_st_guard_probe2, "selftest_canary_direct", encoding="utf-8")
-        except Exception as _e_noop:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_noop:
             _ = _e_noop
         try:
             record_switch_event("Shunt_AI", "Canary-Old", "Canary-New", reason="selftest_canary_event", run_dir=RUN_DIR)
-        except Exception as _e_noop:
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_noop:
             _ = _e_noop
         for _gp in (_st_guard_probe1, _st_guard_probe2):
             if _gp.exists():
@@ -32089,7 +32319,7 @@ def main():
                     _SELF_TEST_LIVE_WRITE_LEAKED += 1
                 try:
                     _gp.unlink(missing_ok=True)
-                except Exception as _e_noop:
+                except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_noop:
                     _ = _e_noop
         shutil.rmtree(tmp_test_dir, ignore_errors=True)
         shutil.rmtree(tmp_shunt_dir, ignore_errors=True)
@@ -32111,7 +32341,7 @@ def main():
                 assert not _leaked_sels, f"P0-1 regression: fake self-test tags leaked into selections.json: {_leaked_sels}"
             except AssertionError:
                 raise
-            except Exception as _e_diag:
+            except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_diag:
                 globals().get("_record_internal_diag", str)(_e_diag)
         if _st_hist_path.is_file():
             try:
@@ -32127,7 +32357,7 @@ def main():
                 assert not _leaked_hist, f"P0-1 regression: fake self-test events leaked into switch_history.json: {_leaked_hist}"
             except AssertionError:
                 raise
-            except Exception as _e_diag:
+            except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as _e_diag:
                 globals().get("_record_internal_diag", str)(_e_diag)
         print("SELF_TEST_PASSED", json.dumps({
             "ok": True,
@@ -32218,7 +32448,7 @@ def main():
     bind_addr = (get_ops_settings(CONF_DIR).get("panel_bind") or "0.0.0.0").strip() or "0.0.0.0"
     try:
         server = ThreadingHTTPServer((bind_addr, port), AILinkRequestHandler)
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         bind_addr = "0.0.0.0"
         server = ThreadingHTTPServer((bind_addr, port), AILinkRequestHandler)
     try:

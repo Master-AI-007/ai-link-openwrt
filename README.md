@@ -4,7 +4,7 @@
 
 **NEXUS 全域 3D 智能网关 · 运行在 OpenWrt 上的智能分流系统**
 
-[![version](https://img.shields.io/badge/version-2.6.5-6ee7f5?style=flat-square)](https://github.com/Master-AI-007/ai-link-openwrt/releases/tag/v2.6.5)
+[![version](https://img.shields.io/badge/version-2.6.6-6ee7f5?style=flat-square)](https://github.com/Master-AI-007/ai-link-openwrt/releases/tag/v2.6.6)
 [![platform](https://img.shields.io/badge/OpenWrt-23.05%20%7C%2024.10%20%7C%20ImmortalWrt-a994ff?style=flat-square)](#环境要求)
 [![core](https://img.shields.io/badge/sing--box-1.14.1-54e6b5?style=flat-square)](#技术架构)
 [![license](https://img.shields.io/badge/license-MIT-f9a8d4?style=flat-square)](#许可与免责)
@@ -30,9 +30,9 @@ AI-LINK 是一套面向 OpenWrt 的**智能分流网关**：用 sing-box 单内�
 
 ---
 
-## 核心能力总览（v2.6.5）
+## 核心能力总览（v2.6.6）
 
-> **v2.6.5 增量**：闭环 10 项全栈打磨优化（OPT-265-01 ~ OPT-265-10）——合并 `nexus.css` 分散的 6 处 768px 响应式块为单一末尾块（保持 18/18 design-lint 全绿）、订阅同步并发锁去重防抖、自动节点池 15s 平滑防抖窗口抑制频繁重载、连接跟踪清理精准化、底层状态标签全中文映射、HomeLink 凭据安全说明与网络切换重连提示、LuCI 离线一键排障命令、3D 拓扑自适应粒子预算、配置恢复前差异明细预览、冷启动分阶段耗时监控。真机 `run_all 15/15`、混沌 **101/101 PASS**（新增 `Stage 7.38`）。
+> **v2.6.6 增量**：闭环 10 项全栈打磨优化（OPT-266-01 ~ OPT-266-10）——守护进程四域子模块架构封装（Config / Probe / HttpApi / SecurityAudit）、前端视图渲染与辅助逻辑下沉至 `webui/modules/`、全文件裸 `except Exception` 降为 0 处并暴露异常遥测、`nexus.css` 768px 响应式单一块与普通选择器 `!important` 零覆盖债务锁定、封装 `_open_url_with_retry()` 统一 HTTP 客户端、规则集 `.srs` 自愈降级横幅、500+ 节点并发测速防 OOM 内存水位动态保护、长轮询自适应心跳、一键诊断包导出正则脱敏自检。真机 `run_all 15/15`、混沌 **102/102 PASS**（新增 `Stage 7.39`）。
 
 
 | | 能力 | 说明 |
@@ -185,7 +185,8 @@ sing-box 1.14.1（单内核）
 
 | 版本 | 日期 | 主题 |
 |---|---|---|
-| **2.6.5** | 2026-11-16 | 10 项全栈打磨优化、响应式样式收敛与系统韧性加固（r37） |
+| **2.6.6** | 2026-11-17 | 10 项全栈打磨优化、子模块架构封装与安全韧性加固（r38） |
+| 2.6.5 | 2026-11-16 | 10 项全栈打磨优化、响应式样式收敛与系统韧性加固（r37） |
 | 2.6.4 | 2026-11-16 | 3D 与稳定性深度优化、审计 Blocker/Major 全量闭环（r36） |
 | 2.6.3 | 2026-11-16 | 全栈优化、3D 切换闭环与国服游戏直连（r34） |
 | 2.6.2 | 2026-11-15 | 用户前端 UX 审计全量整改与升级入口恢复（r31） |
@@ -239,10 +240,10 @@ sing-box 1.14.1（单内核）
 ## 包指纹
 
 ```
-AI-LINK-v2.6.5.tar.gz
-size   1,171,964 B
-md5    887ecb28bf791adeb4c3d4913c31b23a
-sha256 2db8938819533654a66ca012fe06c38916e7eb18ad41893735b41619f9a7caf0
+AI-LINK-v2.6.6.tar.gz
+size   1,181,845 B
+md5    40589d4a2e50ef8456439f7799575496
+sha256 429d2eb8c59a6408bfcfcb0c38afde507617e1b68aad10edd758c1a2812fb36c
 ```
 
 在线清单：<https://ai-link-official.pages.dev/version.json>

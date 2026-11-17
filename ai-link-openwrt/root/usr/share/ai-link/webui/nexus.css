@@ -709,7 +709,7 @@ select { appearance: none; padding-right: 30px; background-image: linear-gradien
 .sonar-blip.blip-left:after { left: auto; right: 10px; text-align: right; }
 .sonar-blip.warn { background: var(--amber); box-shadow: var(--elev-2); }
 .sonar-foot-hint { text-align: center; color: var(--muted); font-size: 12px; margin-top: 2px; }
-/* [OPT-265-01] Consolidated into unified @media (max-width: 768px) block at EOF */
+/* [OPT-265-01/OPT-266-04] Consolidated into unified mobile responsive block at EOF */
 .service-list { display: grid; gap: var(--sp-2); }
 .service-row { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: var(--sp-3); font-size: 12px; }
 .service-row span { color: var(--surface-tone-51); }
@@ -971,7 +971,7 @@ td small { display: block; margin-top: 4px; color: var(--dim); font-size: 12px; 
   .node-toolbar { align-items: flex-start; flex-direction: column; }
   .search-box { width: 100%; }
 }
-/* [OPT-265-01] Consolidated into unified @media (max-width: 768px) block at EOF */
+/* [OPT-265-01/OPT-266-04] Consolidated into unified mobile responsive block at EOF */
 @media (prefers-reduced-motion: reduce) {
   *, *:before, *:after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
@@ -1603,7 +1603,7 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
   .shunt-group-main { grid-template-columns: 45px 1.2fr 1fr auto; }
   .shunt-group-main > *:nth-child(4), .shunt-group-main > *:nth-child(5) { display: none; }
 }
-/* [OPT-265-01] Consolidated into unified @media (max-width: 768px) block at EOF */
+/* [OPT-265-01/OPT-266-04] Consolidated into unified mobile responsive block at EOF */
 
 /* Selectable Subscription Cards & Active Filter State */
 .subscription-card.selectable {
@@ -2370,7 +2370,7 @@ textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 
 
 /* C-P1-16 & C-P2-07: Mobile <768px responsive node actions & settings row wrapping */
-/* [OPT-265-01] Consolidated into unified @media (max-width: 768px) block at EOF */
+/* [OPT-265-01/OPT-266-04] Consolidated into unified mobile responsive block at EOF */
 
 
 /* === ROUND 5: APPLE HIG & WALLPAPER 3D GALAXY POLISH === */
@@ -3725,7 +3725,7 @@ small {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
-/* [OPT-265-01] Consolidated into unified @media (max-width: 768px) block at EOF */
+/* [OPT-265-01/OPT-266-04] Consolidated into unified mobile responsive block at EOF */
 .auto-pool.hud-pool-card {
   position: relative;
   display: flex;
@@ -3884,7 +3884,7 @@ small {
   .topbar { flex-wrap: wrap; height: auto; min-height: var(--topbar); padding-top: var(--sp-2); padding-bottom: var(--sp-2); gap: var(--sp-2); }
   .top-telemetry { flex-wrap: wrap; gap: var(--sp-3); }
 }
-/* [OPT-265-01] Consolidated into unified @media (max-width: 768px) block at EOF */
+/* [OPT-265-01/OPT-266-04] Consolidated into unified mobile responsive block at EOF */
 
 /* v2.6.2 (r31) Aster Design Language Remediation: 3 Core Chrome Blur Surfaces, Drawer & Danger Zone */
 .topbar {
@@ -4058,6 +4058,17 @@ small {
 .restore-diff-preview {
   margin-top: var(--sp-3);
   padding: var(--sp-3);
+  border-radius: var(--r-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-tone-20);
+  color: var(--text-secondary);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-base);
+}
+
+.srs-degraded-banner {
+  margin-top: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
   border-radius: var(--r-md);
   border: 1px solid var(--border-subtle);
   background: var(--surface-tone-20);

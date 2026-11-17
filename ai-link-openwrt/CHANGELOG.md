@@ -1,3 +1,17 @@
+## v2.6.6 (2026-11-17 · PKG_RELEASE:=38 / r38 · 全栈 10 项架构与体验精细打磨：四域模块化封装、205 处宽泛异常清零、7 处 urlopen 统一重试、768px 媒体块彻底归一、500+ 节点测速内存水位保护与诊断导出正则脱敏自检版)
+
+- **基线与升版说明**：基于本地 `.77` 真机 12 步全绿验收并全量发布上线的 **`v2.6.5` (`r37`)**（GitHub `Release #448402348`、主干/Tag `d6d15e7ed7f9052052458753c4758b98121b5b05` (`d6d15e7`)、Cloudflare 部署 `a6952ae4`、`local_qa_build_md5 = "887ecb28bf791adeb4c3d4913c31b23a"`），严格按 SOP v2.2 决策树分支 A（`QA_PASSED_RELEASED` 唯一合法升版分支）递增版本号至 **`v2.6.6`（`PKG_RELEASE:=38` / `r38` / `APP_BUILD = "2.6.6-release-20261117-r38"`）**，全量落地云端审计报告 `AUDIT-Hydrogen-v2.6.5.md · r37` 第二节提出的 **10 项全新优化建议（`OPT-266-01 ~ OPT-266-10`）**：
+  - **OPT-266-01 (`ai-link-daemon.py` 四域子模块架构封装)**: 按「配置生成 (`ConfigSubsystem`) / 网络探针 (`ProbeSubsystem`) / HTTP API (`HttpApiSubsystem`) / 安全审计 (`SecurityAuditSubsystem`)」构建四域模块化注册表 `get_daemon_module_architecture()`。
+  - **OPT-266-02 (`nexus.js` 视图渲染渐进式下沉至 `webui/modules/*`)**: 将自适应轮询计算、`.srs` 降级横幅渲染与诊断脱敏徽标渲染下沉至 `modules/api.js`、`modules/shunt-nodes.js` 与 `modules/settings-panel.js`。
+  - **OPT-266-03 (收窄 205 处宽泛 `except Exception` 并补充结构化告警计数)**: 引入 `_DAEMON_CAUGHT_EXCEPTIONS` 与 `_record_structured_exception()`，将 `ai-link-daemon.py` 中 205 处宽泛 `except Exception` 收窄清零（`205 -> 0`），并在 `/api/status` 暴露 `exception_telemetry`。
+  - **OPT-266-04 (`nexus.css` 剩余 `@media (max-width: 768px)` 字面量彻底合并)**: 清理历史注释中残留的 6 处 `@media (max-width: 768px)` 字面量，使全文件无论正则或纯文本检索均严格仅 `1` 处。
+  - **OPT-266-05 (`nexus.css` `!important` 零普通选择器覆盖债务)**: 严格保证全文件 4 处 `!important` 100% 位于 `@media (prefers-reduced-motion: reduce)` 无障碍块内，普通选择器 `!important` 债务为 `0`。
+  - **OPT-266-06 (统一 7 处 `urllib.request.urlopen()` 封装)**: 新增 `_open_url_with_retry()` 公共 HTTP 客户端 helper，统一超时、标准 `User-Agent` 与重试退避，将 7 处裸 `urllib.request.urlopen(` 调用收拢至 `0` 处。
+  - **OPT-266-07 (规则集 `.srs` 编译/下载失败自愈降级提示)**: 新增 `get_srs_fallback_degraded_status()` 与前端 `.srs-degraded-banner`，云端镜像不可达时清晰展示错误原因与最后成功缓存时间。
+  - **OPT-266-08 (多节点并发测速内存水位保护)**: 新增 `compute_safe_probe_concurrency()`，在大订阅（`>500` 节点）或低内存水位（`<160MB`）下动态限制并发探测协程数（`<=4` / `<=2`），防止低内存路由器 OOM。
+  - **OPT-266-09 (长轮询与自适应心跳替代高频固定 3s 拉取)**: 新增 `handle_status_longpoll()` 与前端 `computeAdaptivePollIntervalMs()`，空闲或后台标签页自动拉长轮询周期至 `8s~15s`。
+  - **OPT-266-10 (一键诊断包导出脱敏自检)**: 新增 `sanitize_and_verify_diag_bundle()`，导出诊断快照前自动执行正则脱敏与零明文泄漏自检（UUID / 密码 / 私钥 / 订阅 Token）。
+
 ## v2.6.5 (2026-11-16 · PKG_RELEASE:=37 / r37 · 全栈 10 项架构与体验精细打磨：768px 响应式 6 合 1、订阅同步并发锁去重、节点池 15s 平滑防抖、Conntrack 精准清理与备份差异预览版)
 ### Added & Optimized (AUDIT-Hydrogen r36 10-Point Polish `OPT-265-01 ~ OPT-265-10`)
 - **OPT-265-01 (`nexus.css` 768px 响应式块统一收敛)**: 将 `nexus.css` 中分散的 6 处 `@media (max-width: 768px)` 块合并为单块（`1` 处），提升样式级联确定性并完整保留 `1280px` 与 `768px` 响应式断点优先级。

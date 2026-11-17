@@ -10762,3 +10762,10 @@ function renderBackupDiffPreviewSummary(backupObj) {
 window.renderBackupDiffPreviewSummary = renderBackupDiffPreviewSummary;
 window.HOMELINK_QR_SECURITY_TIP_CLASS = 'homelink-qr-security-tip';
 
+// === v2.6.6 (r38) OPT-266-02 / OPT-266-07 / OPT-266-09 / OPT-266-10 Module Delegation ===
+window.NexusViewRenderers = {
+  computeAdaptivePollIntervalMs: (...args) => (window.computeAdaptivePollIntervalMs ? window.computeAdaptivePollIntervalMs(...args) : 3000),
+  formatSrsDegradedBannerHtml: (...args) => (window.formatSrsDegradedBannerHtml ? window.formatSrsDegradedBannerHtml(...args) : ''),
+  renderDiagRedactionBadge: (...args) => (window.renderDiagRedactionBadge ? window.renderDiagRedactionBadge(...args) : '')
+};
+

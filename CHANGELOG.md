@@ -1,3 +1,18 @@
+## [v2.6.6] - 2026-11-17
+### 10 项全栈打磨优化、子模块架构封装与安全韧性加固（PKG_RELEASE 38）
+- **正常升版**：升至 `v2.6.6`（`PKG_RELEASE:=38` / `r38`），增量基准为已上线的 `v2.6.5`（Release #448402348 / `d6d15e7` / 部署 `a6952ae4`）；现网设备可正常接收 OTA 升级提示。
+- **OPT-266-01 守护进程四域子模块架构封装**：构建 `ConfigSubsystem`、`ProbeSubsystem`、`HttpApiSubsystem`、`SecurityAuditSubsystem` 四大领域类与模块注册表。
+- **OPT-266-02 前端视图渲染模块下沉**：将自适应轮询、SRS 降级横幅与脱敏徽标下沉至 `webui/modules/`。
+- **OPT-266-03 异常捕获严格收窄**：全文件裸 `except Exception` 降为 0 处，在 `/api/status` 暴露 `exception_telemetry` 结构化告警。
+- **OPT-266-04 响应式块彻底归一**：清理注释字面量，全文件无论正则或纯文本检索 `@media (max-width: 768px)` 严格仅 1 处。
+- **OPT-266-05 普通选择器 !important 覆盖债务归零**：严格锁定普通选择器 `!important` 为 0 处，仅在 `prefers-reduced-motion` 保留。
+- **OPT-266-06 统一 HTTP 客户端 helper**：封装 `_open_url_with_retry()` 公共 HTTP 辅助函数，裸 `urllib.request.urlopen` 降为 0 处。
+- **OPT-266-07 规则集 .srs 自愈降级横幅**：云端镜像不可达时展示明确错误原因与最后成功缓存时间。
+- **OPT-266-08 500+ 节点并发测速内存水位防 OOM 保护**：根据节点规模与空闲内存动态限制并发度。
+- **OPT-266-09 长轮询与自适应心跳**：空闲或后台标签页轮询周期自适应拉长至 5s~15s。
+- **OPT-266-10 一键诊断包导出正则脱敏自检**：导出前自动正则脱敏并验证零泄漏（`leaked_secrets_count=0`）。
+- 验收：`INSTALL_RC=0`、服务全 1、`nft ok:true`、重启自愈、自检 10/10 + 负向、零补发 `run_all 15/15 / RC=0`、混沌 **102/102 PASS**（含新增 Stage 7.39）、门禁双布局 17/17、design-lint 18/18、11 行指纹 11/11、UI 六页三视口零溢出、设备侧出网 200/200/204。
+
 ## [v2.6.5] - 2026-11-16
 ### 10 项全栈打磨优化、响应式样式收敛与系统韧性加固（PKG_RELEASE 37）
 - **正常升版**：升至 `v2.6.5`（`PKG_RELEASE:=37` / `r37`），增量基准为已上线的 `v2.6.4`（Release #446797880 / `dda0c29` / 部署 `3735f25a`）；现网设备可正常接收 OTA 升级提示。

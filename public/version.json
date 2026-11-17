@@ -1,20 +1,41 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.6.5",
-  "release_date": "2026-11-16",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.6.5",
+  "latest": "2.6.6",
+  "release_date": "2026-11-17",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.6.6",
   "highlights": [
-    "升版至 v2.6.5（PKG_RELEASE 37）：闭环 10 项全栈打磨优化（OPT-265-01 ~ OPT-265-10）",
-    "响应式样式收敛：合并 nexus.css 分散的 6 处 768px 响应式块为单一末尾块，保留字号优先级，18/18 design-lint 全绿",
-    "订阅同步去重防抖：前端与后台定时并发同步自动合并去重，返回显式合并状态提示",
-    "自动节点池 15s 平滑防抖：<15s 软抖动自动平滑窗口抑制闪断，硬故障依然秒级精准切换",
-    "连接跟踪清理精准化：flush_conntrack_for_switch() 标记 precise_scope 与 matched_flow_ips 精准流清理",
-    "用户交互体验全面打磨：状态标签全中文友好映射、HomeLink 二维码凭据安全与网络切换提示、LuCI 离线一键排障指令",
-    "系统韧性与自适应：3D 拓扑弱 GPU/移动端自适应粒子预算、配置恢复前差异比对预览、冷启动分阶段耗时监控",
-    "真机零补发 run_all 15/15、混沌 101/101（新增 Stage 7.38）、门禁双布局 17/17、design-lint 18/18、11 行指纹 11/11、自检 10/10 + 负向检出"
+    "升版至 v2.6.6（PKG_RELEASE 38）：闭环 10 项全栈打磨优化（OPT-266-01 ~ OPT-266-10）",
+    "守护进程四域子模块架构：封装配置生成、网络探针、HTTP API 与安全审计四大子系统领域类",
+    "前端视图渲染模块下沉：将自适应轮询、SRS 降级横幅与脱敏徽标下沉至 webui/modules/",
+    "异常捕获严格收窄：全文件裸 except Exception 降为 0 处，并在 /api/status 暴露结构化异常遥测",
+    "响应式与样式规范锁定：全文件 768px 响应式块严格仅 1 处，普通选择器 !important 覆盖债务归零",
+    "统一 HTTP 客户端 helper：封装 _open_url_with_retry()，裸 urllib.request.urlopen 调用降为 0 处",
+    "系统韧性与水位保护：规则集 .srs 自愈降级横幅、500+ 节点并发测速内存水位防 OOM 保护、长轮询自适应心跳",
+    "诊断数据安全脱敏：导出诊断快照前自动执行正则脱敏与零泄漏自检（leaked_secrets_count=0）",
+    "真机零补发 run_all 15/15、混沌 102/102（新增 Stage 7.39）、门禁双布局 17/17、design-lint 18/18、11 行指纹 11/11、自检 10/10 + 负向检出"
   ],
   "changelog": [
+    {
+      "version": "2.6.6",
+      "date": "2026-11-17",
+      "type": "feature",
+      "title": "10 项全栈优化打磨、子模块架构封装与安全韧性加固",
+      "items": [
+        "正常升版至 `v2.6.6`（`PKG_RELEASE:=38` / `r38`），增量基准为线上 `v2.6.5`（Release #448402348 / `d6d15e7` / 部署 `a6952ae4`）；现网设备可正常接收 OTA 升级提示",
+        "`OPT-266-01`：在 `ai-link-daemon.py` 构建 `ConfigSubsystem`、`ProbeSubsystem`、`HttpApiSubsystem`、`SecurityAuditSubsystem` 四大领域子模块类与注册表",
+        "`OPT-266-02`：将视图渲染与辅助逻辑渐进式下沉至 `webui/modules/api.js`、`shunt-nodes.js`、`settings-panel.js`",
+        "`OPT-266-03`：全文件裸 `except Exception` 从 205 处降为 `0` 处，并在 `/api/status` 暴露 `exception_telemetry` 结构化告警",
+        "`OPT-266-04`：清理注释中的残留字面量，全文件无论正则或纯文本检索 `@media (max-width: 768px)` 均严格仅 `1` 处",
+        "`OPT-266-05`：严格锁定普通选择器 `!important` 为 `0` 处，仅在 `prefers-reduced-motion` 保留",
+        "`OPT-266-06`：封装 `_open_url_with_retry()` 公共 HTTP helper，统一超时与重试退避，裸 `urlopen(` 降为 `0` 处",
+        "`OPT-266-07`：规则集 `.srs` 编译/下载失败自愈降级提示，`/api/status` 暴露 `srs_fallback_status` 与前端横幅",
+        "`OPT-266-08`：大订阅（>500 节点）并发测速内存水位动态保护，内存紧张时自动压降并发协程防止 OOM",
+        "`OPT-266-09`：新增长轮询接口 `handle_status_longpoll()` 与前端自适应轮询心跳（5s~15s）",
+        "`OPT-266-10`：一键诊断包导出前自动正则脱敏敏感凭据并执行零泄漏自检（`leaked_secrets_count=0`）",
+        "真机验收：`INSTALL_RC=0`、自检 10/10 零写盘泄漏（blocked=7/leaked=0）+ 负向检出有效、重启自愈、零补发 `run_all 15/15 RC=0`、混沌 **102/102 PASS**、门禁双布局 17/17、UI 六页三视口零溢出、出网 200/200/204"
+      ]
+    },
     {
       "version": "2.6.5",
       "date": "2026-11-16",
@@ -613,13 +634,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.6.5/AI-LINK-v2.6.5.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.6.6/AI-LINK-v2.6.6.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.6.5.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.6.6.tar.gz"
       ],
-      "size": 1171964,
-      "md5": "887ecb28bf791adeb4c3d4913c31b23a",
-      "sha256": "2db8938819533654a66ca012fe06c38916e7eb18ad41893735b41619f9a7caf0"
+      "size": 1181845,
+      "md5": "40589d4a2e50ef8456439f7799575496",
+      "sha256": "429d2eb8c59a6408bfcfcb0c38afde507617e1b68aad10edd758c1a2812fb36c"
     }
   }
 }

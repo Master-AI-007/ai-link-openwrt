@@ -17,3 +17,18 @@
     fetchWithAbort: fetchWithAbort
   };
 })();
+
+  // OPT-266-02 / OPT-266-09: Adaptive Heartbeat & Long-Poll Helper
+  function computeAdaptivePollIntervalMs(isHidden, consecutiveIdleTicks) {
+    if (isHidden) return 15000;
+    const ticks = Math.max(0, Number(consecutiveIdleTicks) || 0);
+    if (ticks >= 10) return 8000;
+    if (ticks >= 4) return 5000;
+    return 3000;
+  }
+  window.NexusModules = window.NexusModules || {};
+  window.NexusModules.api = Object.assign(window.NexusModules.api || {}, {
+    computeAdaptivePollIntervalMs: computeAdaptivePollIntervalMs
+  });
+  window.computeAdaptivePollIntervalMs = computeAdaptivePollIntervalMs;
+
