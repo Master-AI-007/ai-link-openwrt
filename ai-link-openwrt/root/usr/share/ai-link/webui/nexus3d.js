@@ -1975,3 +1975,20 @@
     }
   };
 })();
+
+  // === v2.6.5 (r37) OPT-265-08: Low-Power Device Frame-Rate Adaptive Particle Budget ===
+  let frameTimeEwmaMs = 16.6;
+  function computeAdaptiveParticleBudget(baseCount) {
+    const base = Math.max(8, Number(baseCount) || 64);
+    const isSmallViewport = (typeof window !== 'undefined' && window.innerWidth <= 768);
+    const lowConcurrency = (typeof navigator !== 'undefined' && Number(navigator.hardwareConcurrency || 8) <= 4);
+    if (frameTimeEwmaMs > 28.0 || (isSmallViewport && lowConcurrency)) {
+      return Math.max(8, Math.round(base * 0.5));
+    }
+    if (isSmallViewport || frameTimeEwmaMs > 22.0) {
+      return Math.max(12, Math.round(base * 0.75));
+    }
+    return base;
+  }
+  window.__AILINK_3D_ADAPTIVE_BUDGET__ = computeAdaptiveParticleBudget;
+

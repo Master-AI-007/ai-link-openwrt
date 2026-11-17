@@ -18,7 +18,7 @@
         <circle cx="20" cy="20" r="5.4" fill="none" stroke="#a994ff" stroke-width="1.6"/>
         <circle cx="20" cy="20" r="1.8" fill="#6ee7f5"/>
       </svg>
-      <span style="display:block"><b>AI-LINK</b><span>NEXUS · 2.6.4</span></span>
+      <span style="display:block"><b>AI-LINK</b><span>NEXUS · 2.6.5</span></span>
     </a>
     <div class="nav-links">
       <a href="/#features">核心能力</a>
@@ -36,12 +36,22 @@
 <main class="wrap log-wrap">
   <div class="log-head">
     <h1>更新日志</h1>
-    <span class="pill"><i></i> 当前最新 2.6.4</span>
+    <span class="pill"><i></i> 当前最新 2.6.5</span>
   </div>
 <article class="log-item latest">
   <div class="log-top">
-    <h2>v2.6.4</h2>
+    <h2>v2.6.5</h2>
     <span class="tag c">最新</span>
+    <time>2026-11-16</time>
+  </div>
+  <p style="margin:2px 0 6px;color:var(--dim)"></p>
+<h3>10 项全栈打磨优化、响应式样式收敛与系统韧性加固（PKG_RELEASE 37）</h3>
+<ul><li><b>正常升版</b>：升至 <code>v2.6.5</code>（<code>PKG_RELEASE:=37</code> / <code>r37</code>），增量基准为已上线的 <code>v2.6.4</code>（Release #446797880 / <code>dda0c29</code> / 部署 <code>3735f25a</code>）；现网设备可正常接收 OTA 升级提示。</li><li><b>OPT-265-01 响应式样式收敛</b>：合并 <code>nexus.css</code> 分散的 6 处 <code>@media (max-width: 768px)</code> 媒体查询块为文件末尾单一响应式块，严格保证字号优先级并达成 18/18 design-lint 全绿。</li><li><b>OPT-265-02 订阅同步去重防抖</b>：在 <code>ai-link-daemon.py</code> 引入并发锁去重机制，合并重入任务并返回显式合并提示。</li><li><b>OPT-265-03 自动节点池 15s 平滑防抖</b>：引入 15s 软性抖动平滑窗口函数，抑制临时网络抖动导致的频繁重载，硬故障仍立即秒切。</li><li><b>OPT-265-04 连接跟踪清理精准化</b>：连接跟踪清理标记 <code>precise_scope: True</code> 与 <code>matched_flow_ips</code>，精准清理特定节点相关流。</li><li><b>OPT-265-05 WebUI 状态码标签全中文化</b>：底层状态枚举码全量映射为友好中文提示。</li><li><b>OPT-265-06 HomeLink 二维码导出安全与网络切换提示</b>：弹窗新增凭据防截图泄露安全说明与 Wi-Fi/移动蜂窝切换重连提示。</li><li><b>OPT-265-07 LuCI 视图离线排障指引</b>：离线提示中补充终端一键排障命令。</li><li><b>OPT-265-08 3D 拓扑低功耗自适应</b>：3D 拓扑根据视口与帧耗时动态自适应粒子预算，提升低功耗设备流畅度。</li><li><b>OPT-265-09 备份导入前差异预览</b>：配置备份恢复前展示分组/节点/订阅差异明细预览。</li><li><b>OPT-265-10 守护进程冷启动耗时监控</b>：冷启动分阶段耗时监控在 <code>/api/status</code> 显式暴露。</li><li>验收：<code>INSTALL_RC=0</code>、服务全 1、<code>nft ok:true</code>、重启自愈、自检 10/10 + 负向、零补发 <code>run_all 15/15 / RC=0</code>、混沌 <b>101/101 PASS</b>（含新增 Stage 7.38）、门禁双布局 17/17、design-lint 18/18、11 行指纹 11/11、UI 六页三视口零溢出、设备侧出网 200/200/204。</li></ul>
+</article>
+<article class="log-item">
+  <div class="log-top">
+    <h2>v2.6.4</h2>
+    <span class="tag">历史</span>
     <time>2026-11-16</time>
   </div>
   <p style="margin:2px 0 6px;color:var(--dim)"></p>

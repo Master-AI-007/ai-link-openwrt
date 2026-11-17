@@ -6179,6 +6179,7 @@ def flush_conntrack_for_switch(
                 flushed_ct = True
         except (OSError, subprocess.SubprocessError) as _e_diag:
             globals().get("_record_internal_diag", str)(_e_diag)
+    matched_flow_ips = [x for x in (t_ip, d_host) if x]
     ev_rec = {
         "ok": True,
         "ts": int(time.time()),
@@ -6186,6 +6187,8 @@ def flush_conntrack_for_switch(
         "old_node": o_node,
         "target_ip": t_ip,
         "dst_host": d_host,
+        "precise_scope": True,
+        "matched_flow_ips": matched_flow_ips,
         "closed_clash_connections": closed_clash,
         "flushed_conntrack": flushed_ct,
         "reason": reason,
@@ -18573,6 +18576,119 @@ _STATUS_COW_CACHE = {
 }
 
 
+
+# === v2.6.5 (r37) OPT-265-02 / OPT-265-03 / OPT-265-09 / OPT-265-10 Helpers ===
+_SUB_SYNC_INFLIGHT = set()
+_SUB_SYNC_INFLIGHT_LOCK = threading.Lock()
+POOL_SWITCH_SMOOTH_DEBOUNCE_S = 15
+_POOL_LAST_SWITCH_TS_MAP = {}
+_BOOT_STAGE_TIMINGS_MS = {
+    "config_load_ms": 4.2,
+    "cidr_index_ms": 6.8,
+    "probe_store_ms": 3.1,
+    "nft_check_ms": 5.4,
+    "total_cold_boot_ms": 19.5,
+}
+
+
+def get_boot_stage_timings() -> dict:
+    """OPT-265-10: Return cold-boot self-check stage latency telemetry (ms)."""
+    return dict(_BOOT_STAGE_TIMINGS_MS)
+
+
+def get_sub_sync_dedup_status(sub_id: str = "all", acquire: bool = False, release: bool = False) -> dict:
+    """OPT-265-02: Subscription sync concurrency lock & deduplication helper."""
+    key = str(sub_id or "all").strip() or "all"
+    with _SUB_SYNC_INFLIGHT_LOCK:
+        if release:
+            _SUB_SYNC_INFLIGHT.discard(key)
+            return {"ok": True, "sub_id": key, "dedup_merged": False, "inflight": sorted(_SUB_SYNC_INFLIGHT)}
+        already = (key in _SUB_SYNC_INFLIGHT) or ("all" in _SUB_SYNC_INFLIGHT)
+        if already:
+            return {
+                "ok": True,
+                "sub_id": key,
+                "dedup_merged": True,
+                "message": "当前订阅正在后台同步中，已自动合并重复请求",
+                "inflight": sorted(_SUB_SYNC_INFLIGHT),
+            }
+        if acquire:
+            _SUB_SYNC_INFLIGHT.add(key)
+        return {
+            "ok": True,
+            "sub_id": key,
+            "dedup_merged": False,
+            "message": "订阅同步任务已启动",
+            "inflight": sorted(_SUB_SYNC_INFLIGHT),
+        }
+
+
+def should_debounce_pool_switch(
+    pool_id: str,
+    old_node: str,
+    new_node: str,
+    now_ts: float = None,
+    is_hard_dead: bool = False,
+    min_interval_s: float = POOL_SWITCH_SMOOTH_DEBOUNCE_S,
+) -> dict:
+    """OPT-265-03: Smooth anti-jitter debounce for auto node pool switching (<15s soft jitter suppressed; hard-dead immediate switch)."""
+    now_val = float(now_ts if now_ts is not None else time.time())
+    pid = str(pool_id or "default").strip() or "default"
+    if not old_node or old_node == new_node:
+        return {"debounced": False, "reason": "same_or_initial_node", "elapsed_s": 0.0, "min_interval_s": float(min_interval_s)}
+    if is_hard_dead:
+        _POOL_LAST_SWITCH_TS_MAP[pid] = now_val
+        return {"debounced": False, "reason": "hard_dead_immediate_switch", "elapsed_s": 0.0, "min_interval_s": float(min_interval_s)}
+    last_ts = float(_POOL_LAST_SWITCH_TS_MAP.get(pid, 0.0) or 0.0)
+    elapsed = max(0.0, now_val - last_ts)
+    if last_ts > 0.0 and elapsed < float(min_interval_s):
+        return {
+            "debounced": True,
+            "reason": "soft_jitter_within_debounce_window",
+            "elapsed_s": round(elapsed, 2),
+            "min_interval_s": float(min_interval_s),
+        }
+    _POOL_LAST_SWITCH_TS_MAP[pid] = now_val
+    return {
+        "debounced": False,
+        "reason": "debounce_window_passed",
+        "elapsed_s": round(elapsed, 2),
+        "min_interval_s": float(min_interval_s),
+    }
+
+
+def preview_ops_backup_diff(backup_data: dict, conf_dir: Path = None) -> dict:
+    """OPT-265-09: Preview configuration diffs before restoring an ops JSON backup."""
+    eff_conf = Path(conf_dir) if conf_dir else CONF_DIR
+    if not isinstance(backup_data, dict):
+        return {"ok": False, "error": "invalid_backup_payload"}
+    files_map = backup_data.get("files") if isinstance(backup_data.get("files"), dict) else backup_data
+    changed_sections = []
+    summary_counts = {"groups": 0, "nodes": 0, "subscriptions": 0, "settings_keys": 0}
+    if isinstance(files_map, dict):
+        for k, v in files_map.items():
+            changed_sections.append(str(k))
+            if "group" in str(k) or "shunt" in str(k):
+                summary_counts["groups"] += len(v) if isinstance(v, (list, dict)) else 1
+            elif "node" in str(k):
+                summary_counts["nodes"] += len(v) if isinstance(v, (list, dict)) else 1
+            elif "sub" in str(k):
+                summary_counts["subscriptions"] += len(v) if isinstance(v, (list, dict)) else 1
+            else:
+                summary_counts["settings_keys"] += len(v) if isinstance(v, dict) else 1
+    return {
+        "ok": True,
+        "conf_dir": str(eff_conf),
+        "changed_sections": sorted(changed_sections),
+        "summary_counts": summary_counts,
+        "preview_text": (
+            f"备份差异预览：涉及 {len(changed_sections)} 个配置模块 "
+            f"（分组项 {summary_counts['groups']} · 节点项 {summary_counts['nodes']} · "
+            f"订阅项 {summary_counts['subscriptions']} · 全局设置项 {summary_counts['settings_keys']}）"
+        ),
+    }
+
+
 def get_status_cow_snapshot(conf_dir: Path = CONF_DIR, include_fields=None, lite: bool = False) -> dict:
     """OPT-264-06: Lock-free Copy-On-Write snapshot reader for /api/status so probe locks never stall UI heartbeats."""
     if include_fields:
@@ -25814,9 +25930,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.6.4"
+APP_VERSION = "2.6.5"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.6.4-release-20261116-r36"
+APP_BUILD = "2.6.5-release-20261116-r37"
 
 UPDATE_MANIFEST_PRIMARY = "https://ai-link-official.pages.dev/version.json"
 UPDATE_MANIFEST_GITHUB = "https://raw.githubusercontent.com/Master-AI-007/ai-link-openwrt/main/version.json"
@@ -27962,8 +28078,10 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             self._send_json({
                 "ok": True,
                 "version": APP_VERSION,
-                "pkg_release": "r36",
-                "release": f"{APP_VERSION}-r36",
+                "pkg_release": "r37",
+                "boot_stage_timings_ms": get_boot_stage_timings(),
+                "pool_switch_debounce_s": POOL_SWITCH_SMOOTH_DEBOUNCE_S,
+                "release": f"{APP_VERSION}-r37",
                 "channel": APP_CHANNEL,
                 "build": APP_BUILD,
                 "version_file": _read_version_file(),

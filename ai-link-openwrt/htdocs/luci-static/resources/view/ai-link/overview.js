@@ -44,7 +44,7 @@ return view.extend({
 				}).catch(function() { return ''; });
 			}).catch(function() { return ''; });
 		}
-		var currentVer = String(uci.get('ai-link', 'global', 'app_version') || '2.6.4');
+		var currentVer = String(uci.get('ai-link', 'global', 'app_version') || '2.6.5');
 		var unlockBtnHtml = ' <button type="button" id="luci-btn-unlock-panel" style="padding:2px 8px; border-radius:5px; border:1px solid rgba(56,189,248,0.35); background:rgba(14,116,144,0.25); color:#7dd3fc; font-size:11px; cursor:pointer;">🔓 解锁状态</button>';
 		var pwdFieldHtml = pwdIsCustom
 			? '<span style="font-size:12px; color:#94a3b8; display:inline-flex; align-items:center; gap:6px;">面板密码: <code id="luci-panel-pwd-mask" style="background:#0f172a; padding:2px 7px; border-radius:5px; color:#e2e8f0; border:1px solid rgba(148,163,184,0.2);">已自定义 · 不回显</code>' + unlockBtnHtml + ' <span style="font-size:11px; color:#64748b;">（忘记可执行 ai-link password 重置）</span></span>'
@@ -395,7 +395,7 @@ return view.extend({
 				if (hint) {
 					if (!running) {
 						hint.innerHTML = '⚠️ <b style="color:#fca5a5;">守护进程未运行</b>，面板 :' + escapeHtml(st.port || '9099') +
-							' 当前不可访问。点「▶ 启动服务」即可恢复（无需 SSH）。';
+							' 当前不可访问。点「▶ 启动服务」即可恢复（无需 SSH，或终端执行 /etc/init.d/ai-link restart 与 ai-link status 排查）。';
 						hint.style.color = '#fca5a5';
 					} else if (!coreUp && enabled) {
 						hint.innerHTML = '🚨 <b style="color:#fca5a5;">Sing-box 内核未运行</b>：防黑洞看门狗已自动撤除 nftables 重定向并回退直连以保障不断网，请点上方「🔄 重启服务」或「🔄 重载内核」恢复。';

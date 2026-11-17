@@ -1,3 +1,16 @@
+## v2.6.5 (2026-11-16 · PKG_RELEASE:=37 / r37 · 全栈 10 项架构与体验精细打磨：768px 响应式 6 合 1、订阅同步并发锁去重、节点池 15s 平滑防抖、Conntrack 精准清理与备份差异预览版)
+### Added & Optimized (AUDIT-Hydrogen r36 10-Point Polish `OPT-265-01 ~ OPT-265-10`)
+- **OPT-265-01 (`nexus.css` 768px 响应式块统一收敛)**: 将 `nexus.css` 中分散的 6 处 `@media (max-width: 768px)` 块合并为单块（`1` 处），提升样式级联确定性并完整保留 `1280px` 与 `768px` 响应式断点优先级。
+- **OPT-265-02 (订阅同步并发锁去重)**: 新增 `get_sub_sync_dedup_status()` 与 `_SUB_SYNC_INFLIGHT` 并发锁防抖，当前端与后台定时同步并发触发时自动合并重复任务并返回中文友好提示。
+- **OPT-265-03 (自动节点池切换 15s 平滑防抖)**: 新增 `should_debounce_pool_switch()` 与 `POOL_SWITCH_SMOOTH_DEBOUNCE_S = 15`，抑制 `<15s` 的软性延迟抖动引起的频繁重载，同时保留节点硬故障（`is_hard_dead=True`）秒切能力。
+- **OPT-265-04 (Conntrack 精准范围清理)**: 在 `flush_conntrack_for_switch()` 中引入 `precise_scope: True` 与 `matched_flow_ips` 精准过滤，仅清理变更节点关联连接。
+- **OPT-265-05 (WebUI 状态标签全面中文化)**: 新增 `formatStatusLabelZh()` 统一映射 `idle`/`untested`/`degraded`/`rate_limited`/`quarantine`/`timeout` 等状态码。
+- **OPT-265-06 (HomeLink 二维码安全与切换提示)**: 在分享回家二维码弹窗中补充 `.homelink-qr-security-tip` 密钥安全提示与局域网/蜂窝网络 DDNS 自动重连说明。
+- **OPT-265-07 (LuCI 视图错误降级排障指引)**: 在 `overview.js` 中补充守护进程未启动时的 `/etc/init.d/ai-link restart` 与 `ai-link status` 恢复指引。
+- **OPT-265-08 (3D 拓扑低功耗设备帧率自适应)**: 在 `nexus3d.js` 中新增 `computeAdaptiveParticleBudget()` 与 `frameTimeEwmaMs` 帧耗时监控，移动端/弱 GPU 自动缩放粒子预算至 `0.5x~0.75x`。
+- **OPT-265-09 (备份导入前差异预览)**: 新增 `preview_ops_backup_diff()` 与 `#mdl-restore-diff-preview`，恢复 JSON 备份前实时展示分组、节点、订阅与设置变更摘要。
+- **OPT-265-10 (冷启动自检阶段耗时监控)**: 新增 `get_boot_stage_timings()` 并在 `/api/status` 暴露 `boot_stage_timings_ms` 阶段耗时指标。
+
 ## v2.6.4 (2026-11-16 · PKG_RELEASE:=36 / r36 · 全栈 10 项架构与体验精细打磨：SSL 校验收敛、HTML 零内联样式、定时器配对回收、3D 全量显存释放、/api/status 无锁快照与 PPPoE TUN MTU 自适应版)
 
 - **基线与升版说明**：基于本地 `.77` 真机 12 步全绿验收并全量发布上线的 **`v2.6.3` (`r34`)**（GitHub `Release #446563163`、主干/Tag `243e19bab2eb9bed71bff35df497d0951d08757f` (`243e19b`)、Cloudflare 部署 `5faca0d2`、`local_qa_build_md5 = "2edb06e886cec1750343a85f1d7c1264"`），严格按 SOP v2.2 决策树分支 A（`QA_PASSED_RELEASED` 唯一合法升版分支）递增版本号至 **`v2.6.4`（`PKG_RELEASE:=35` / `r35` / `APP_BUILD = "2.6.4-release-20261116-r35"`）**，全量落地云端审计报告 `AUDIT-Hydrogen-v2.6.3.md · r34` 第二节提出的 **10 项全新代码级与架构级打磨建议（`OPT-264-01 ~ OPT-264-10`）**。

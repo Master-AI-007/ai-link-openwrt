@@ -1,19 +1,40 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.6.4",
+  "latest": "2.6.5",
   "release_date": "2026-11-16",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.6.4",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.6.5",
   "highlights": [
-    "升版至 v2.6.4（PKG_RELEASE 36）：闭环 Hydrogen v2.6.4 审计 2 项 Blocker + 4 项 Major + 10 项穿透优化",
-    "Blocker B-264-01/M-264-04：解除 .glass-card/.metric-card overflow:hidden，下拉菜单 z-index 提升至 300，新增 closeShuntMoreMenu() 外部点击/Escape 关闭",
-    "Blocker B-264-02：27 处交互向导/编辑表单恢复居中 openModal()（.modal-panel.wide min(880px,100%)，centerDeltaX=0px），13 处只读详情保留 openDrawer() 并零内边距右贴边",
-    "响应式补齐：768px 下 modal/drawer 满宽底部抽屉与 shunt-more-menu 零溢出，1280px 顶栏优雅折行（375/430px 零横向溢出）",
-    "代码质量：清理未定义 --z-dropdown/--z-popover 令牌（0 残留）、消除 index.html 6 处 title=/data-tip= 双重 Tooltip",
-    "设置页低频排障入口折入折叠面板（静态按钮压降至 22 个，完整保留内核升级与 OTA 入口）；Modal 栈保存恢复 scrollTop；3D 多指触控防抖",
-    "真机零补发 run_all 15/15、混沌 100/100（新增 Stage 7.36/7.37）、门禁双布局 17/17、design-lint 18/18、11 行指纹 11/11、自检 10/10 + 负向检出"
+    "升版至 v2.6.5（PKG_RELEASE 37）：闭环 10 项全栈打磨优化（OPT-265-01 ~ OPT-265-10）",
+    "响应式样式收敛：合并 nexus.css 分散的 6 处 768px 响应式块为单一末尾块，保留字号优先级，18/18 design-lint 全绿",
+    "订阅同步去重防抖：前端与后台定时并发同步自动合并去重，返回显式合并状态提示",
+    "自动节点池 15s 平滑防抖：<15s 软抖动自动平滑窗口抑制闪断，硬故障依然秒级精准切换",
+    "连接跟踪清理精准化：flush_conntrack_for_switch() 标记 precise_scope 与 matched_flow_ips 精准流清理",
+    "用户交互体验全面打磨：状态标签全中文友好映射、HomeLink 二维码凭据安全与网络切换提示、LuCI 离线一键排障指令",
+    "系统韧性与自适应：3D 拓扑弱 GPU/移动端自适应粒子预算、配置恢复前差异比对预览、冷启动分阶段耗时监控",
+    "真机零补发 run_all 15/15、混沌 101/101（新增 Stage 7.38）、门禁双布局 17/17、design-lint 18/18、11 行指纹 11/11、自检 10/10 + 负向检出"
   ],
   "changelog": [
+    {
+      "version": "2.6.5",
+      "date": "2026-11-16",
+      "type": "feature",
+      "title": "10 项全栈优化打磨、响应式样式收敛与系统韧性加固",
+      "items": [
+        "正常升版至 `v2.6.5`（`PKG_RELEASE:=37` / `r37`），增量基准为线上 `v2.6.4`（Release #446797880 / `dda0c29` / 部署 `3735f25a`）；现网设备可正常接收 OTA 升级提示",
+        "`OPT-265-01`：合并 `nexus.css` 分散的 6 处 `@media (max-width: 768px)` 媒体查询块为文件末尾单一响应式块，严格保证字号优先级并达成 18/18 design-lint 全绿",
+        "`OPT-265-02`：在 `ai-link-daemon.py` 引入并发锁去重机制，合并重入任务并返回显式合并提示",
+        "`OPT-265-03`：引入 15s 软性抖动平滑窗口函数，抑制临时网络抖动导致的频繁重载，硬故障仍立即秒切",
+        "`OPT-265-04`：连接跟踪清理标记 `precise_scope: True` 与 `matched_flow_ips`，精准清理特定节点相关流",
+        "`OPT-265-05`：底层状态枚举码全量中文化映射展示",
+        "`OPT-265-06`：HomeLink 二维码弹窗新增凭据安全说明与 Wi-Fi/移动蜂窝切换重连提示",
+        "`OPT-265-07`：LuCI 视图离线提示中补充终端一键排障指令",
+        "`OPT-265-08`：3D 拓扑根据视口与帧耗时动态自适应粒子预算，提升低功耗设备流畅度",
+        "`OPT-265-09`：配置备份恢复前展示分组/节点/订阅差异预览",
+        "`OPT-265-10`：冷启动分阶段耗时监控在 `/api/status` 显式暴露",
+        "真机验收：`INSTALL_RC=0`、自检 10/10 零写盘泄漏（blocked=7/leaked=0）+ 负向检出有效、重启自愈、零补发 `run_all 15/15 RC=0`、混沌 **101/101 PASS**、门禁双布局 17/17、UI 六页三视口零溢出、出网 200/200/204"
+      ]
+    },
     {
       "version": "2.6.4",
       "date": "2026-11-16",
@@ -592,13 +613,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.6.4/AI-LINK-v2.6.4.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.6.5/AI-LINK-v2.6.5.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.6.4.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.6.5.tar.gz"
       ],
-      "size": 1166184,
-      "md5": "978986b91fa755c774137e3b8b3b834e",
-      "sha256": "52cc132c357695542516f9260e5f0849bb0587e2a08c908f0df684a544cc157a"
+      "size": 1171964,
+      "md5": "887ecb28bf791adeb4c3d4913c31b23a",
+      "sha256": "2db8938819533654a66ca012fe06c38916e7eb18ad41893735b41619f9a7caf0"
     }
   }
 }

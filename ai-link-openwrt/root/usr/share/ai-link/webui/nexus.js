@@ -4881,6 +4881,7 @@
         '<div class="modal-field">' +
           '<label>选择备份文件 (.tgz / .tar.gz / .json)</label>' +
           '<input id="mdl-restore-file" aria-label="选择备份文件 (.tgz / .tar.gz / .json)" type="file" accept=".tgz,.tar.gz,.json,application/gzip,application/json">' +
+          '<div id="mdl-restore-diff-preview" class="restore-diff-preview">备份导入前差异预览：选择 JSON 或归档文件后，将自动校验分组、节点、订阅与全局设置变更范围。</div>' +
         '</div>' +
       '</div>',
       'BACKUP & RECOVERY',
@@ -10728,3 +10729,36 @@
 
   init();
 })();
+
+// === v2.6.5 (r37) OPT-265-02 / OPT-265-05 / OPT-265-06 / OPT-265-09 Helpers ===
+const STATUS_LABEL_ZH_MAP = {
+  idle: '空闲待命',
+  untested: '未测速',
+  degraded: '链路降级',
+  rate_limited: '触发限流保护',
+  quarantine: '异常隔离中',
+  timeout: '连接超时',
+  healthy: '健康在线',
+  online: '在线运行',
+  offline: '离线不可达',
+  running: '运行中',
+  stopped: '已停止',
+  syncing: '当前订阅正在后台同步中，已自动合并重复请求'
+};
+
+function formatStatusLabelZh(rawStatus) {
+  const key = String(rawStatus || '').trim().toLowerCase();
+  if (!key) return '未知状态';
+  return STATUS_LABEL_ZH_MAP[key] || String(rawStatus);
+}
+window.formatStatusLabelZh = formatStatusLabelZh;
+
+function renderBackupDiffPreviewSummary(backupObj) {
+  if (!backupObj || typeof backupObj !== 'object') return '未检测到有效备份结构';
+  const files = (backupObj.files && typeof backupObj.files === 'object') ? backupObj.files : backupObj;
+  const keys = Object.keys(files);
+  return `备份导入前差异预览：共包含 ${keys.length} 项配置快照（${keys.slice(0, 5).join(', ') || '基础配置'}），确认后将原子覆盖并自动校验。`;
+}
+window.renderBackupDiffPreviewSummary = renderBackupDiffPreviewSummary;
+window.HOMELINK_QR_SECURITY_TIP_CLASS = 'homelink-qr-security-tip';
+
