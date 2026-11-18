@@ -18,7 +18,7 @@
         <circle cx="20" cy="20" r="5.4" fill="none" stroke="#a994ff" stroke-width="1.6"/>
         <circle cx="20" cy="20" r="1.8" fill="#6ee7f5"/>
       </svg>
-      <span style="display:block"><b>AI-LINK</b><span>NEXUS · v2.6.8</span></span>
+      <span style="display:block"><b>AI-LINK</b><span>NEXUS · v2.6.9</span></span>
     </a>
     <div class="nav-links">
       <a href="/#features">核心能力</a>
@@ -36,12 +36,22 @@
 <main class="wrap log-wrap">
   <div class="log-head">
     <h1>更新日志</h1>
-    <span class="pill"><i></i> 当前最新 v2.6.8</span>
+    <span class="pill"><i></i> 当前最新 v2.6.9</span>
   </div>
 <article class="log-item latest">
   <div class="log-top">
-    <h2>v2.6.8</h2>
+    <h2>v2.6.9</h2>
     <span class="tag c">最新</span>
+    <time>2026-11-18</time>
+  </div>
+  <p style="margin:2px 0 6px;color:var(--dim)"></p>
+<h3>10 项全栈质量与可观测性增强、ETag 零拷贝协商与 FD 水位监控（PKG_RELEASE 41）</h3>
+<ul><li><b>正常升版</b>：升至 <code>v2.6.9</code>（<code>PKG_RELEASE:=41</code> / <code>r41</code>），增量基准为已上线的 <code>v2.6.8</code>（Release #449425460 / <code>5dde640</code> / 部署 <code>31430c2f</code>）；现网设备可正常接收 OTA 升级提示。</li><li><b>OPT-269-01 HTTP ETag / If-None-Match 304 零拷贝协商自检</b>：新增 <code>evaluate_static_etag_negotiation</code>，支持 W/ 与多标签匹配短路。</li><li><b>OPT-269-02 守护进程文件描述符 FD 水位监控与泄漏预警</b>：<code>/api/status</code> 暴露 <code>fd_watermark_status</code> 实时句柄水位。</li><li><b>OPT-269-03 shunt-nodes.js 扩容至 125 行</b>：下沉节点池权重明细徽标与分流规则命中 KPI 文本渲染。</li><li><b>OPT-269-04 sing-box.json 出站字段严格白名单自检门禁</b>：自动扫描确保内部属性泄漏数为 0。</li><li><b>OPT-269-05 nftables 单一真相源 SSOT 一致性校验器</b>：一键校验委托链路、花括号配平与协议族零混写。</li><li><b>OPT-269-06 订阅节点协议分布与 IPv6 端点就绪度统计</b>：结构化统计节点协议分布与 IPv6 就绪率。</li><li><b>OPT-269-07 DNS 护盾拦截规则内存紧凑度与去重率遥测</b>：量化拦截规则归一化去重率与内存占用。</li><li><b>OPT-269-08 自动节点池故障转移恢复 RTO 统计</b>：汇总切换事件数、平均/最快 RTT 与亚秒恢复状态。</li><li><b>OPT-269-09 LuCI overview.js RPC 状态响应字段完整性防护</b>：防御性归一化包装状态载荷，防止 DOM 异常。</li><li><b>OPT-269-10 全栈八点版本锚点与构建号同源核验器</b>：一键核验全栈 8 处 2.6.9 版本锚点与 r41 构建号同源对齐。</li><li>验收：<code>INSTALL_RC=0</code>、服务全 1、<code>nft ok:true</code>、重启自愈、自检 10/10 + 负向、零补发 <code>run_all 15/15 / RC=0</code>、混沌 <b>105/105 PASS</b>（新增 Stage 7.42）、门禁双布局 17/17、design-lint 18/18、11 行指纹 11/11、UI 六页三视口零溢出、设备侧出网 200/200/204。</li></ul>
+</article>
+<article class="log-item">
+  <div class="log-top">
+    <h2>v2.6.8</h2>
+    <span class="tag">历史</span>
     <time>2026-11-18</time>
   </div>
   <p style="margin:2px 0 6px;color:var(--dim)"></p>

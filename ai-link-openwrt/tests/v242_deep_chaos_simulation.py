@@ -1575,7 +1575,7 @@ def main() -> int:
         gates_254_txt = (Path(__file__).resolve().parent / "gates_v101.py").read_text(encoding="utf-8")
         check("Stage 6.27a (v2.5.4 FB-253-1/2 Makefile PKG_VERSION/PKG_RELEASE 锚点与报告版本结构门禁): Makefile 含 PKG_VERSION:=2.5.4 与 PKG_RELEASE:=14，且 gates_v101 强制校验报告 PKG_RELEASE 与首节版本号",
               f"PKG_VERSION:={dmod.APP_VERSION}" in mk_254_txt
-              and (any(f"PKG_RELEASE:={r}" in mk_254_txt for r in (30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40)))
+              and (any(f"PKG_RELEASE:={r}" in mk_254_txt for r in (30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41)))
               and "FB-253-1: Verify PKG_RELEASE" in gates_254_txt
               and "FB-253-2: Verify report Section 1" in gates_254_txt,
               f"app_ver={dmod.APP_VERSION}")
@@ -3285,7 +3285,7 @@ def main() -> int:
         _p3_port_ok = (_inv_p_726.get("ok") is False and _inv_p_726.get("error") == "invalid_parameter" and "端口号不合法" in str(_inv_p_726.get("reason") or ""))
         # R-2 / R-3 / P2-2: Check lazy script attributes, fast-fail 401 token clear, and APP_BUILD r27
         _r2_r3_ok = (
-            any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r27", "r28", "r29", "r30", "r31", "r32", "r33", "r34", "r35", "r36", "r37", "r38", "r39", "r40"))
+            any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r27", "r28", "r29", "r30", "r31", "r32", "r33", "r34", "r35", "r36", "r37", "r38", "r39", "r40", "r41"))
             and 'id="lazy-three-js" data-lazy-src=' in _html_725
             and 'id="lazy-qrcode-js" data-lazy-src=' in _html_725
             and "配置网络与加速镜像" in _html_725
@@ -3450,7 +3450,7 @@ def main() -> int:
         )
         # (4) SYS-03: Watchdog exponential backoff & circuit breaker + manual reset guardrail
         dmod.reset_watchdog_circuit_breaker()
-        _sys03_ok = (dmod._WATCHDOG_FAIL_STREAK == 0 and dmod._WATCHDOG_CIRCUIT_OPEN is False and getattr(dmod, "APP_VERSION", "") in ("2.6.0", "2.6.1", "2.6.2", "2.6.3", "2.6.4", "2.6.5", "2.6.6", "2.6.7", "2.6.8"))
+        _sys03_ok = (dmod._WATCHDOG_FAIL_STREAK == 0 and dmod._WATCHDOG_CIRCUIT_OPEN is False and getattr(dmod, "APP_VERSION", "") in ("2.6.0", "2.6.1", "2.6.2", "2.6.3", "2.6.4", "2.6.5", "2.6.6", "2.6.7", "2.6.8", "2.6.9"))
         check("Stage 7.29 (v2.6.0 r28 30轮终极审查36项与防回归护栏闭环: POOL-01词边界与末尾落地地区识别 + POOL-02隔离期双次恢复防抖 + SEC-02/03/05/06备份脱敏可选/登录限流豁免回环/ACL最小权限/Webhook防SSRF + NET-03/05/09 MAC保留.lan与IPv6/卸载重启dnsmasq/.srs解压解析 + SYS-03/07看门狗退避熔断与手动重置门禁)",
               _pool01_ok and _pool02_ok and _sec_729_ok and _sys03_ok,
               f"pool01={_pool01_ok}, pool02={_pool02_ok}(q1={_rec_ok1.get('quarantine_until')},q2={_rec_ok2.get('quarantine_until')}), sec={_sec_729_ok}, sys03={_sys03_ok}")
@@ -3502,8 +3502,8 @@ def main() -> int:
             and "python3-yaml" in _inst_730
             and "jsonfilter" in _init_730
             and "FB-2600-2 Fix:" in _gates_730
-            and getattr(dmod, "APP_VERSION", "") in ("2.6.0", "2.6.1", "2.6.2", "2.6.3", "2.6.4", "2.6.5", "2.6.6", "2.6.7", "2.6.8")
-            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r29", "r30", "r31", "r32", "r33", "r34", "r35", "r36", "r37", "r38", "r39", "r40"))
+            and getattr(dmod, "APP_VERSION", "") in ("2.6.0", "2.6.1", "2.6.2", "2.6.3", "2.6.4", "2.6.5", "2.6.6", "2.6.7", "2.6.8", "2.6.9")
+            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r29", "r30", "r31", "r32", "r33", "r34", "r35", "r36", "r37", "r38", "r39", "r40", "r41"))
         )
         check("Stage 7.30 (v2.6.1 r29 全量收尾与 FB-2600-1/2/3 + 27项遗留问题闭环: CORE-01~07 direct_all快速拒绝Fake-IP/forward_mss开关与v6_guard解耦/node_server_v6/备用DNS + POOL-01剔除403与favicon假阳性 + SYS-01~07 cache.db迁入内存盘/Makefile与install.sh净化/jsonfilter解析 + UX-01~06星图galaxy修复与直连恢复联动 + FB-2600-2门禁隔离目录)",
               _core_730_ok and _l7_730_ok and _sys_ux_730_ok,
@@ -3542,8 +3542,8 @@ def main() -> int:
             and 'subprocess.run(["conntrack", "-D", "-d", "fc00::/18"], capture_output=True, timeout=2, check=False)' in _daemon_731
             and "transition: border-color var(--dur-2) ease, background var(--dur-2) ease;" in _css_731
             and "0.2s" not in _css_731
-            and getattr(dmod, "APP_VERSION", "") in ("2.6.0", "2.6.1", "2.6.2", "2.6.3", "2.6.4", "2.6.5", "2.6.6", "2.6.7", "2.6.8")
-            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r30", "r31", "r32", "r33", "r34", "r35", "r36", "r37", "r38", "r39", "r40"))
+            and getattr(dmod, "APP_VERSION", "") in ("2.6.0", "2.6.1", "2.6.2", "2.6.3", "2.6.4", "2.6.5", "2.6.6", "2.6.7", "2.6.8", "2.6.9")
+            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r30", "r31", "r32", "r33", "r34", "r35", "r36", "r37", "r38", "r39", "r40", "r41"))
         )
         check("Stage 7.31 (v2.6.2 r30 网络平面精准规则与双栈 Fake-IP 清理闭环: NET-262-01清理prerouting_tproxy无端口UDP死规则与越界旁路 + NET-262-02补齐output_tproxy游戏端口@cn_ip4/@cn_ip6校验 + NET-262-03直连切换追加fc00::/18 conntrack清理 + UX-262-01 nexus.css动效时长令牌规范化)",
               _net_731_ok and _purge_ux_731_ok,
@@ -3595,7 +3595,7 @@ def main() -> int:
         _hydrogen_minor_ok = (
             "_lan_br_dev = _detect_lan_bridge_dev()" in _daemon_732
             and "ai-link-init.lock" in _initd_732
-            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r31", "r32", "r33", "r34", "r35", "r36", "r37", "r38", "r39", "r40"))
+            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r31", "r32", "r33", "r34", "r35", "r36", "r37", "r38", "r39", "r40", "r41"))
         )
         check(
             "Stage 7.32 (v2.6.2 r31 USER_REPORTED-20261115-01..04: Modal栈防覆盖+openDrawer<=18+旁路提示+DDNS告警保留+订阅失败原地降级+LuCI HTTPS RPC桥接+清理僵尸音乐卡+3D Fresnel Shader+设置4分组与DangerZone+恢复内核/插件升级按钮+Hydrogen Minor动态网桥与flock锁)",
@@ -3657,8 +3657,8 @@ def main() -> int:
             and "Content-Security-Policy" in _daemon_733
             and "set -e" in _cli_733
             and "exec 9>&-" in _initd_733
-            and getattr(dmod, "APP_VERSION", "") in ("2.6.3", "2.6.4", "2.6.5", "2.6.6", "2.6.7", "2.6.8")
-            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r32", "r33", "r34", "r35", "r36", "r37", "r38", "r39", "r40"))
+            and getattr(dmod, "APP_VERSION", "") in ("2.6.3", "2.6.4", "2.6.5", "2.6.6", "2.6.7", "2.6.8", "2.6.9")
+            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r32", "r33", "r34", "r35", "r36", "r37", "r38", "r39", "r40", "r41"))
         )
         check(
             "Stage 7.33 (v2.6.3 r32 全栈10项优化: 3D dispose/removeEventListener零泄漏+首屏<=8按钮+shunt<=12按钮+3级Elevation Token+6独立JS模块+bypass横幅+overview无http硬编码+restore保留真实密钥+47处原子写+HTTP安全头+FD9关闭与set -e)",
@@ -3696,9 +3696,9 @@ def main() -> int:
             and ".galaxy-device-view-toolbar" in _css_734
         )
         _r33_anchor_ok = (
-            getattr(dmod, "APP_VERSION", "") in ("2.6.3", "2.6.4", "2.6.5", "2.6.6", "2.6.7", "2.6.8")
-            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r33", "r34", "r35", "r36", "r37", "r38", "r39", "r40"))
-            and any(f"PKG_RELEASE:={r}" in _mk_734 for r in (33, 34, 35, 36, 37, 38, 39, 40))
+            getattr(dmod, "APP_VERSION", "") in ("2.6.3", "2.6.4", "2.6.5", "2.6.6", "2.6.7", "2.6.8", "2.6.9")
+            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r33", "r34", "r35", "r36", "r37", "r38", "r39", "r40", "r41"))
+            and any(f"PKG_RELEASE:={r}" in _mk_734 for r in (33, 34, 35, 36, 37, 38, 39, 40, 41))
         )
         check(
             "Stage 7.34 (v2.6.3 r33 USER_REPORTED-20261116-01 闭环: 根除 sortedDevs.length<totalOnlineDevs 动态翻转+显式 TOP3/所有设备 切换控件+NexusStorage/localStorage 持久化+mergeLanDevices 防轮询抖动+r33 版本锚点)",
@@ -3758,8 +3758,8 @@ def main() -> int:
                 and "padding: var(--sp-1) var(--sp-3);" in _css_735
                 and "padding: var(--sp-0) var(--sp-2);" in _css_735
                 and "min-height: 32px;" in _css_735
-                and any(f"PKG_RELEASE:={r}" in _mk_735 for r in (34, 35, 36, 37, 38, 39, 40))
-                and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r34", "r35", "r36", "r37", "r38", "r39", "r40"))
+                and any(f"PKG_RELEASE:={r}" in _mk_735 for r in (34, 35, 36, 37, 38, 39, 40, 41))
+                and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r34", "r35", "r36", "r37", "r38", "r39", "r40", "r41"))
             )
         finally:
             shutil.rmtree(_tmp_735, ignore_errors=True)
@@ -3818,8 +3818,8 @@ def main() -> int:
             "truncation_notice" in _daemon_736
             and "已触发 50,000 条上限截断" in _js_736
             and "run_checked()" in _cli_736
-            and getattr(dmod, "APP_VERSION", "") in ("2.6.4", "2.6.5", "2.6.6", "2.6.7", "2.6.8")
-            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r35", "r36", "r37", "r38", "r39", "r40"))
+            and getattr(dmod, "APP_VERSION", "") in ("2.6.4", "2.6.5", "2.6.6", "2.6.7", "2.6.8", "2.6.9")
+            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r35", "r36", "r37", "r38", "r39", "r40", "r41"))
         )
         check(
             "Stage 7.36 (v2.6.4 r35 Hydrogen 10项全栈打磨闭环: OPT-264-01 SSL校验收敛+OPT-264-02 index.html零内联style+OPT-264-03定时器生命周期配对+OPT-264-04 3D全量dispose+OPT-264-05 shunt<=10按钮+OPT-264-06/07 COW快照与POST统一校验+OPT-264-08 PPPoE tun_mtu<=1412自适应+OPT-264-09 DNS 50,000截断提示+OPT-264-10 CLI退出码规范化)",
@@ -3864,8 +3864,8 @@ def main() -> int:
             and _settings_btns_737 <= 22
             and "_activePointers" in _js3d_737
             and "touchAction = 'none'" in _js3d_737
-            and any(f"PKG_RELEASE:={r}" in _mk_737 for r in (36, 37, 38, 39, 40))
-            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r36", "r37", "r38", "r39", "r40"))
+            and any(f"PKG_RELEASE:={r}" in _mk_737 for r in (36, 37, 38, 39, 40, 41))
+            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r36", "r37", "r38", "r39", "r40", "r41"))
         )
         check(
             "Stage 7.37 (v2.6.4 r36 Hydrogen 审计 B-264-01~02 与 M-264-03~06 全量闭环: .glass-card/.metric-card 解除 overflow:hidden 零裁剪+27处交互向导恢复居中 openModal/13处只读详情保留贴边 openDrawer+清理未定义 --z-dropdown/--z-popover+6处双重 Tooltip 清零+设置页静态按钮<=22+3D 多指触控防抖+r36 构建号)",
@@ -3933,9 +3933,9 @@ def main() -> int:
             and "mdl-restore-diff-preview" in _js_738
             and isinstance(_boot_t, dict)
             and float(_boot_t.get("total_cold_boot_ms", 0)) > 0
-            and getattr(dmod, "APP_VERSION", "") in ("2.6.5", "2.6.6", "2.6.7", "2.6.8")
-            and any(f"PKG_RELEASE:={r}" in _mk_738 for r in (37, 38, 39, 40))
-            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r37", "r38", "r39", "r40"))
+            and getattr(dmod, "APP_VERSION", "") in ("2.6.5", "2.6.6", "2.6.7", "2.6.8", "2.6.9")
+            and any(f"PKG_RELEASE:={r}" in _mk_738 for r in (37, 38, 39, 40, 41))
+            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r37", "r38", "r39", "r40", "r41"))
         )
 
         check(
@@ -4008,9 +4008,9 @@ def main() -> int:
             and _diag_res.get("self_audit_passed") is True
             and _diag_res.get("leaked_secrets_count") == 0
             and int(_diag_res.get("redacted_count", 0)) >= 2
-            and getattr(dmod, "APP_VERSION", "") in ("2.6.6", "2.6.7", "2.6.8")
-            and any(f"PKG_RELEASE:={r}" in _mk_739 for r in (38, 39, 40))
-            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r38", "r39", "r40"))
+            and getattr(dmod, "APP_VERSION", "") in ("2.6.6", "2.6.7", "2.6.8", "2.6.9")
+            and any(f"PKG_RELEASE:={r}" in _mk_739 for r in (38, 39, 40, 41))
+            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r38", "r39", "r40", "r41"))
         )
 
         check(
@@ -4083,9 +4083,9 @@ def main() -> int:
             and _sub_flt_res.get("skip_reasons", {}).get("empty_host") == 1
             and _sub_flt_res.get("skip_reasons", {}).get("invalid_port") == 1
             and _bidir_mod_res.get("ok") is True
-            and getattr(dmod, "APP_VERSION", "") in ("2.6.7", "2.6.8")
-            and any(f"PKG_RELEASE:={r}" in _mk_740 for r in (39, 40))
-            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r39", "r40"))
+            and getattr(dmod, "APP_VERSION", "") in ("2.6.7", "2.6.8", "2.6.9")
+            and any(f"PKG_RELEASE:={r}" in _mk_740 for r in (39, 40, 41))
+            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r39", "r40", "r41"))
         )
 
         check(
@@ -4154,17 +4154,100 @@ def main() -> int:
             _ntp_unsynced.get("ntp_deferred") is True
             and _ntp_unsynced.get("due_count") == 0
             and _cm_741.get("compatible") is True
-            and _cm_741.get("target_version") == "2.6.8"
+            and _cm_741.get("target_version") in ("2.6.8", "2.6.9")
             and _cm_741.get("auto_migration_applied") is True
-            and getattr(dmod, "APP_VERSION", "") == "2.6.8"
-            and "PKG_RELEASE:=40" in _mk_741
-            and "r40" in str(getattr(dmod, "APP_BUILD", ""))
+            and getattr(dmod, "APP_VERSION", "") in ("2.6.8", "2.6.9")
+            and any(f"PKG_RELEASE:={r}" in _mk_741 for r in (40, 41))
+            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r40", "r41"))
         )
 
         check(
             "Stage 7.41 (v2.6.8 r40 Hydrogen r39 10项全栈打磨闭环: OPT-268-01 Popen子进程回收守卫+OPT-268-02 22处模块级正则预编译+OPT-268-03 shunt-nodes.js扩容96行+OPT-268-04四子模块O(1)分发+OPT-268-05 SVG雪碧图51处引用核对+OPT-268-06健康度40/30/30加权透明化+OPT-268-07 IPv6防漏实时自检+OPT-268-08混沌快慢分级标签+OPT-268-09定时测速NTP未同步容错+OPT-268-10跨版本备份兼容矩阵)",
             _opt268_01_02_ok and _opt268_03_04_ok and _opt268_05_06_ok and _opt268_07_08_ok and _opt268_09_10_ok,
             f"c1={_opt268_01_02_ok}, c2={_opt268_03_04_ok}, c3={_opt268_05_06_ok}, c4={_opt268_07_08_ok}, c5={_opt268_09_10_ok}, popen={_popen_audit.get('total_popen_sites')}, rx={_regex_stats.get('top_level_re_compile_count')}, shunt_ln={_shunt_741_lines}, svg={_svg_741.get('html_use_count')}",
+        )
+
+
+        # ------------------------------------------------------------------
+        # Stage 7.42: v2.6.9 (r41) 10 项全栈质量与可观测性增强门禁 (OPT-269-01 ~ OPT-269-10)
+        # ------------------------------------------------------------------
+        _shunt_js_742 = (_repo_728 / "root/usr/share/ai-link/webui/modules/shunt-nodes.js").read_text(encoding="utf-8")
+        _ov_742 = (_repo_728 / "htdocs/luci-static/resources/view/ai-link/overview.js").read_text(encoding="utf-8")
+        _mk_742 = (_repo_728 / "Makefile").read_text(encoding="utf-8")
+
+        # 1. OPT-269-01 & OPT-269-02: ETag 304 zero-copy negotiation + Daemon FD watermark telemetry in /api/status
+        _etag_hit = dmod.evaluate_static_etag_negotiation('W/"2.6.9-a1b2c3d4"', "2.6.9-a1b2c3d4")
+        _etag_miss = dmod.evaluate_static_etag_negotiation('"2.6.8-old"', "2.6.9-a1b2c3d4")
+        _fd_wm = dmod.get_daemon_fd_watermark_status(warn_threshold=512)
+        _st_742 = dmod.build_status_api_response(tmp_v252)
+        _opt269_01_02_ok = (
+            _etag_hit.get("hit_304") is True
+            and _etag_hit.get("status_code") == 304
+            and _etag_miss.get("hit_304") is False
+            and _etag_miss.get("status_code") == 200
+            and _fd_wm.get("ok") is True
+            and _fd_wm.get("open_fd_count", 0) > 0
+            and isinstance(_st_742.get("fd_watermark_status"), dict)
+        )
+
+        # 2. OPT-269-03 & OPT-269-04: shunt-nodes.js >=115 lines with weight badge & KPI formatter + sing-box outbound allowlist compliance (0 leaked internal keys)
+        _shunt_742_lines = len(_shunt_js_742.splitlines())
+        _ob_audit = dmod.audit_singbox_outbound_allowlist_compliance(conf_dir=tmp_v252)
+        _opt269_03_04_ok = (
+            _shunt_742_lines >= 115
+            and "renderPoolWeightBreakdownBadge" in _shunt_js_742
+            and "formatShuntRuleHitKpiText" in _shunt_js_742
+            and _ob_audit.get("ok") is True
+            and _ob_audit.get("leaked_outbounds_count") == 0
+        )
+
+        # 3. OPT-269-05 & OPT-269-06: nftables SSOT consistency + node protocol & IPv6 endpoint readiness summary
+        _nft_ssot = dmod.verify_nft_ssot_consistency(tmp_v252)
+        _proto_v6 = dmod.summarize_node_protocol_and_ipv6_readiness([
+            {"tag": "JP-VLESS-01", "type": "vless", "server": "2001:db8::1", "server_port": 443},
+            {"tag": "US-Hy2-01", "type": "hysteria2", "server": "198.51.100.10", "server_port": 8443},
+        ])
+        _opt269_05_06_ok = (
+            _nft_ssot.get("ok") is True
+            and _nft_ssot.get("delegates_to_daemon") is True
+            and _nft_ssot.get("no_legacy_skgid_65533") is True
+            and _proto_v6.get("ok") is True
+            and _proto_v6.get("total_nodes") == 2
+            and _proto_v6.get("ipv6_endpoint_count") == 1
+        )
+
+        # 4. OPT-269-07 & OPT-269-08: DNS shield blocklist deduplication efficiency + pool failover RTO summary
+        _dns_dedup = dmod.get_dns_filter_dedup_efficiency(["||ads.example.com^", "||ads.example.com^", "tracker.example.net"])
+        _rto_sum = dmod.compute_pool_failover_rto_summary(history_override=[
+            {"to_node": "SubA-JP-01", "rtt_ms": 28.0},
+            {"to_node": "SubA-JP-03", "rtt_ms": 42.0},
+        ])
+        _opt269_07_08_ok = (
+            _dns_dedup.get("ok") is True
+            and _dns_dedup.get("raw_rule_count") == 3
+            and _dns_dedup.get("unique_domain_count") == 2
+            and _dns_dedup.get("duplicates_removed") == 1
+            and _rto_sum.get("ok") is True
+            and _rto_sum.get("switch_event_count") == 2
+            and _rto_sum.get("fastest_post_switch_rtt_ms") == 28.0
+        )
+
+        # 5. OPT-269-09 & OPT-269-10: LuCI overview.js normalizeLuciStatusPayload + 8-point version anchor verifier (2.6.9 / r41)
+        _ver_8pt = dmod.verify_eight_point_version_anchors(_repo_728)
+        _opt269_09_10_ok = (
+            "normalizeLuciStatusPayload" in _ov_742
+            and _ver_8pt.get("ok") is True
+            and _ver_8pt.get("version") == "2.6.9"
+            and _ver_8pt.get("release") == "r41"
+            and getattr(dmod, "APP_VERSION", "") == "2.6.9"
+            and "PKG_RELEASE:=41" in _mk_742
+            and "r41" in str(getattr(dmod, "APP_BUILD", ""))
+        )
+
+        check(
+            "Stage 7.42 (v2.6.9 r41 10项全栈质量与可观测性增强闭环: OPT-269-01 ETag 304零拷贝协商+OPT-269-02 FD句柄水位监控+OPT-269-03 shunt-nodes.js扩容125行+OPT-269-04 sing-box出站字段白名单自检+OPT-269-05 nftables单一真相源SSOT校验+OPT-269-06节点协议与IPv6就绪度统计+OPT-269-07 DNS护盾规则去重率遥测+OPT-269-08故障转移RTO统计+OPT-269-09 LuCI状态载荷归一化防护+OPT-269-10八处版本与构建号同源核验)",
+            _opt269_01_02_ok and _opt269_03_04_ok and _opt269_05_06_ok and _opt269_07_08_ok and _opt269_09_10_ok,
+            f"c1={_opt269_01_02_ok}, c2={_opt269_03_04_ok}, c3={_opt269_05_06_ok}, c4={_opt269_07_08_ok}, c5={_opt269_09_10_ok}, fd={_fd_wm.get('open_fd_count')}, shunt_ln={_shunt_742_lines}, v8={_ver_8pt.get('ok')}",
         )
 
     finally:

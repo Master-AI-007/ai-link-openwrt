@@ -10772,6 +10772,8 @@ window.NexusViewRenderers = {
   renderNodeTableFragment: (...args) => (window.renderNodeTableFragment ? window.renderNodeTableFragment(...args) : null),
   renderShuntMatrixSummaryBadge: (...args) => (window.renderShuntMatrixSummaryBadge ? window.renderShuntMatrixSummaryBadge(...args) : null),
   buildBatchProbeControlState: (...args) => (window.buildBatchProbeControlState ? window.buildBatchProbeControlState(...args) : null),
-  renderSubscriptionCardMetaHtml: (...args) => (window.renderSubscriptionCardMetaHtml ? window.renderSubscriptionCardMetaHtml(...args) : '')
+  renderSubscriptionCardMetaHtml: (...args) => (window.renderSubscriptionCardMetaHtml ? window.renderSubscriptionCardMetaHtml(...args) : ''),
+  renderPoolWeightBreakdownBadge: (...args) => (window.renderPoolWeightBreakdownBadge ? window.renderPoolWeightBreakdownBadge(...args) : ''),
+  formatShuntRuleHitKpiText: (...args) => (window.formatShuntRuleHitKpiText ? window.formatShuntRuleHitKpiText(...args) : '')
 };
 

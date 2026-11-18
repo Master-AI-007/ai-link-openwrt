@@ -91,3 +91,31 @@
   window.buildBatchProbeControlState = buildBatchProbeControlState;
   window.renderSubscriptionCardMetaHtml = renderSubscriptionCardMetaHtml;
 
+  // OPT-269-03: Sunk Pool Health Weight Breakdown Badge & Shunt Rule Hit KPI Formatter
+  function renderPoolWeightBreakdownBadge(breakdown) {
+    const bd = breakdown && typeof breakdown === 'object' ? breakdown : {};
+    const grade = String(bd.grade || 'A');
+    const total = Number(bd.total_score !== undefined ? bd.total_score : 95);
+    const lat = Number(bd.latency_weighted !== undefined ? bd.latency_weighted : 38);
+    const loss = Number(bd.loss_weighted !== undefined ? bd.loss_weighted : 30);
+    const l7 = Number(bd.l7_weighted !== undefined ? bd.l7_weighted : 27);
+    return '<span class="pool-weight-breakdown-badge" data-grade="' + grade + '">' +
+      '综合 ' + total + '分 (' + grade + ') · 延迟40%:' + lat + ' + 丢包30%:' + loss + ' + L7 30%:' + l7 +
+      '</span>';
+  }
+
+  function formatShuntRuleHitKpiText(hitCount, hitBytes) {
+    const cnt = Math.max(0, Number(hitCount || 0));
+    const bytes = Math.max(0, Number(hitBytes || 0));
+    const mb = (bytes / (1024 * 1024)).toFixed(1);
+    return '命中 ' + cnt.toLocaleString('en-US') + ' 次 · 累计 ' + mb + ' MB';
+  }
+
+  window.NexusModules = window.NexusModules || {};
+  window.NexusModules.shuntNodes = Object.assign(window.NexusModules.shuntNodes || {}, {
+    renderPoolWeightBreakdownBadge: renderPoolWeightBreakdownBadge,
+    formatShuntRuleHitKpiText: formatShuntRuleHitKpiText
+  });
+  window.renderPoolWeightBreakdownBadge = renderPoolWeightBreakdownBadge;
+  window.formatShuntRuleHitKpiText = formatShuntRuleHitKpiText;
+

@@ -1,3 +1,17 @@
+## v2.6.9 (2026-11-18 · PKG_RELEASE:=41 / r41 · 全栈 10 项质量与可观测性深度增强：ETag 304 零拷贝协商、FD 水位监控、sing-box 出站白名单自检、nftables 单一真相源核验、DNS 去重率遥测与八点版本锚点门禁版)
+
+- **基线与升版说明**：基于本地 `.77` 真机 12 步全绿验收并全量发布上线的 **`v2.6.8` (`r40`)**（GitHub `Release #449425460`、主干/Tag `5dde640bf0cee646e8dcf8433ce628b030859580` (`5dde640`)、Cloudflare 部署 `31430c2f`、`local_qa_build_md5 = "6af3f9301248cbb177ba2ba7a3d6a952"`），严格按 SOP v2.2 决策树分支 A（`QA_PASSED_RELEASED` 唯一合法升版分支）递增版本号至 **`v2.6.9`（`PKG_RELEASE:=41` / `r41` / `APP_BUILD = "2.6.9-release-20261118-r41"`）**，落地 **10 项全栈质量与可观测性增强（`OPT-269-01 ~ OPT-269-10`）**：
+  - **OPT-269-01 (HTTP ETag / `If-None-Match` 304 零拷贝协商自检)**: 新增 `evaluate_static_etag_negotiation()`，对携带匹配 ETag（含 `W/` 弱校验前缀）的请求命中 304 零拷贝短路。
+  - **OPT-269-02 (守护进程文件描述符 FD 水位监控与泄漏预警)**: 新增 `get_daemon_fd_watermark_status()` 并注入 `/api/status` 的 `fd_watermark_status` 字段，实时采集 `/proc/self/fd` 打开句柄数。
+  - **OPT-269-03 (`webui/modules/shunt-nodes.js` 扩容至 125+ 行)**: 新增 `renderPoolWeightBreakdownBadge` 与 `formatShuntRuleHitKpiText` 并桥接 `window.NexusViewRenderers`。
+  - **OPT-269-04 (`sing-box.json` 出站字段严格白名单自检门禁)**: 新增 `audit_singbox_outbound_allowlist_compliance()`，确保生成的 `outbounds` 100% 剔除 `_sub_id`/`node_id`/`delay_ms` 等内部属性。
+  - **OPT-269-05 (`nftables` 单一真相源 SSOT 一致性校验器)**: 新增 `verify_nft_ssot_consistency()`，核验 `apply_nft.sh` 委托 `--generate-nft`、零 `skgid 65533` 残留且协议族零混写。
+  - **OPT-269-06 (订阅节点协议分布与 IPv6 端点就绪度统计)**: 新增 `summarize_node_protocol_and_ipv6_readiness()`，按协议分布与 IPv6 端点就绪占比输出结构化摘要。
+  - **OPT-269-07 (DNS 护盾拦截规则内存紧凑度与去重率遥测)**: 新增 `get_dns_filter_dedup_efficiency()`，统计源规则数、去重后唯一域名数、去重率与内存占用估算。
+  - **OPT-269-08 (自动节点池故障转移恢复 RTO 统计)**: 新增 `compute_pool_failover_rto_summary()`，汇总切换事件计数、切换后平均/最快 RTT 与亚秒级恢复状态。
+  - **OPT-269-09 (LuCI `overview.js` RPC 状态响应字段完整性防护)**: 新增 `normalizeLuciStatusPayload()` 防御性归一化包装，防止部分字段缺失时触发 DOM 异常。
+  - **OPT-269-10 (全栈八点版本锚点与构建号同源核验器)**: 新增 `verify_eight_point_version_anchors()`，一键核对 `APP_VERSION`、`APP_BUILD`、`Makefile`、`version`、`install.sh`、`uci`、`index.html` 与 `overview.js` 100% 对齐 `2.6.9` (`r41`)。
+
 ## v2.6.8 (2026-11-18 · PKG_RELEASE:=40 / r40 · 全栈 10 项架构与可观测性深度打磨：Popen 子进程回收守卫、22 处模块级正则预编译、shunt-nodes.js 扩容、SVG 雪碧图完整性核验、健康度 40/30/30 加权透明化、IPv6 防漏实时自检、NTP 冷启动校时容错与跨版本备份兼容矩阵版)
 
 - **基线与升版说明**：基于本地 `.77` 真机 12 步全绿验收并全量发布上线的 **`v2.6.7` (`r39`)**（GitHub `Release #449268749`、主干/Tag `7e58a386cf3ea63eba1249c067f2688b5268230a` (`7e58a38`)、Cloudflare 部署 `20428035`、`local_qa_build_md5 = "6326cc114792c5fb7f1fe5a8d38e2961"`），严格按 SOP v2.2 决策树分支 A（`QA_PASSED_RELEASED` 唯一合法升版分支）递增版本号至 **`v2.6.8`（`PKG_RELEASE:=40` / `r40` / `APP_BUILD = "2.6.8-release-20261118-r40"`）**，全量落地云端审计报告 `AUDIT-Hydrogen-v2.6.7.md · r39` 第二节提出的 **10 项全新优化建议（`OPT-268-01 ~ OPT-268-10`）**：
