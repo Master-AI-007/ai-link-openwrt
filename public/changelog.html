@@ -18,7 +18,7 @@
         <circle cx="20" cy="20" r="5.4" fill="none" stroke="#a994ff" stroke-width="1.6"/>
         <circle cx="20" cy="20" r="1.8" fill="#6ee7f5"/>
       </svg>
-      <span style="display:block"><b>AI-LINK</b><span>NEXUS · v2.7.0</span></span>
+      <span style="display:block"><b>AI-LINK</b><span>NEXUS · v2.7.1</span></span>
     </a>
     <div class="nav-links">
       <a href="/#features">核心能力</a>
@@ -36,12 +36,22 @@
 <main class="wrap log-wrap">
   <div class="log-head">
     <h1>更新日志</h1>
-    <span class="pill"><i></i> 当前最新 v2.7.0</span>
+    <span class="pill"><i></i> 当前最新 v2.7.1</span>
   </div>
 <article class="log-item latest">
   <div class="log-top">
-    <h2>v2.7.0</h2>
+    <h2>v2.7.1</h2>
     <span class="tag c">最新</span>
+    <time>2026-11-18</time>
+  </div>
+  <p style="margin:2px 0 6px;color:var(--dim)"></p>
+<h3>10 项全栈生产集成、自愈与可观测性增强、线程超时自愈与内存超限降载（PKG_RELEASE 43）</h3>
+<ul><li><b>正常升版</b>：升至 <code>v2.7.1</code>（<code>PKG_RELEASE:=43</code> / <code>r43</code>），增量基准为已上线的 <code>v2.7.0</code>（Release #449932633 / <code>1f474d7</code> / 部署 <code>80799745</code>）；现网设备可正常接收 OTA 升级提示。</li><li><b>OPT-271-01 6项诊断函数接入生产状态与诊断快照接口</b>：全量接入 <code>build_status_api_response()</code> 与 <code>export_health_audit_snapshot_json()</code>。</li><li><b>OPT-271-02 sing-box.json 配置生成前强制执行 rule_set 引用完整性门禁</b>：新增 <code>enforce_singbox_prewrite_ruleset_gate()</code> 杜绝悬空引用。</li><li><b>OPT-271-03 HomeLink 安全审计结果与面板红点联动</b>：新增 <code>build_homelink_card_security_guidance()</code> 与 <code>renderHomeLinkSecurityBannerHtml()</code>。</li><li><b>OPT-271-04 区域延迟 P50 / P95 分位数可视化</b>：<code>shunt-nodes.js</code> 扩容至 194 行，新增 <code>renderRegionLatencyPercentilePillsHtml()</code>。</li><li><b>OPT-271-05 后台工作线程心跳超时（&gt;60s）自愈机制</b>：新增 <code>check_and_heal_stalled_background_workers</code> 自动识别并自愈停滞线程。</li><li><b>OPT-271-06 RSS 物理内存水位超限（&gt;128MB）降载</b>：新增 <code>apply_rss_memory_load_shedding</code> 超限降载保护。</li><li><b>OPT-271-07 HTTP 滑动窗口限流持久化防重启绕过</b>：新增 <code>persist_and_reload_auth_rate_limit_state</code> 防重启绕过。</li><li><b>OPT-271-08 打包脚本 UTC 时间戳校准</b>：校准 <code>FIXED_MTIME</code> 消除解包未来时间戳告警。</li><li><b>OPT-271-09 shunt-nodes.js 独立 Node.js 边界单测覆盖</b>：新增 <code>run_webui_modules_node_unit_tests</code> 空数据边界安全验证。</li><li><b>OPT-271-10 一键导出「健康审计快照」与全栈八处版本同源核验</b>：新增 <code>export_health_audit_snapshot_json</code> 并纳入 Stage 7.44。</li><li>验收：<code>INSTALL_RC=0</code>、服务全 1、<code>nft ok:true</code>、重启自愈、自检 10/10 + 负向、零补发 <code>run_all 15/15 / RC=0</code>、混沌 <b>107/107 PASS</b>（新增 Stage 7.44）、门禁双布局 17/17、design-lint 18/18、11 行指纹 11/11、UI 六页三视口零溢出、设备侧出网 200/200/204/200 全通。</li></ul>
+</article>
+<article class="log-item">
+  <div class="log-top">
+    <h2>v2.7.0</h2>
+    <span class="tag">历史</span>
     <time>2026-11-18</time>
   </div>
   <p style="margin:2px 0 6px;color:var(--dim)"></p>

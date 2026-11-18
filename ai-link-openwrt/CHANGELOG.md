@@ -1,3 +1,17 @@
+## v2.7.1 (2026-11-18 · PKG_RELEASE:=43 / r43 · 全栈 10 项生产诊断闭环、线程超时自愈与内存超限降载：诊断 API 全量接入、sing-box 写入前 rule_set 门禁、HomeLink 红点修复引导、区域 P50/P95 分位数徽标、限流持久化与健康审计快照版)
+
+- **基线与升版说明**：基于本地 `.77` 真机 12 步全绿验收并全量发布上线的 **`v2.7.0` (`r42`)**（GitHub `Release #449932633`、主干/Tag `1f474d7133ef4b4753e5eed535726eee55c72584` (`1f474d7`)、Cloudflare 部署 `80799745`、`local_qa_build_md5 = "c7d77b789481f20223a6d24da96f73e3"`），严格按 SOP v2.2 决策树分支 A（`QA_PASSED_RELEASED` 唯一合法升版分支）、`FEEDBACK-Local-v2.7.0.md` 第五节指令与 `AUDIT-Hydrogen-v2.7.0.md` 第二节 10 项穿透优化建议，递增版本号至 **`v2.7.1`（`PKG_RELEASE:=43` / `r43` / `APP_BUILD = "2.7.1-release-20261118-r43"`）**，全量落地 **10 项全栈生产集成、自愈与可观测性增强（`OPT-271-01 ~ OPT-271-10`）**：
+  - **OPT-271-01 (6 项诊断函数全量接入生产 `/api/status` 与健康快照)**: 将 `get_auth_rate_limit_telemetry`、`audit_singbox_ruleset_reference_integrity`、`verify_dataplane_fwmark_consistency`、`compute_region_latency_percentiles`、`audit_homelink_security_posture` 与 `get_background_worker_health_registry` 全量接入生产 `/api/status` 与诊断快照接口。
+  - **OPT-271-02 (`sing-box.json` 配置生成前置强制执行 `rule_set` 引用完整性门禁)**: 新增 `enforce_singbox_prewrite_ruleset_gate()` 并挂载至 `ConfigGenerator.generate_singbox_config`，在落盘前自动拦截并清理任何悬空 `rule_set` 引用。
+  - **OPT-271-03 (HomeLink 安全审计结果与面板红点及修复引导联动)**: 新增 `build_homelink_card_security_guidance()` 与 `webui/modules/shunt-nodes.js` 的 `renderHomeLinkSecurityBannerHtml()`，在发现弱凭据或端口冲突时直接渲染红点告警与中文修复步骤。
+  - **OPT-271-04 (区域 P50 / P95 延迟分位数可视化徽标下沉)**: 在 `webui/modules/shunt-nodes.js` 新增 `renderRegionLatencyPercentilePillsHtml()` 并桥接 `NexusViewRenderers`，使 `shunt-nodes.js` 扩容至 193 行。
+  - **OPT-271-05 (后台工作线程心跳超时 `>60s` 自动自愈)**: 新增 `check_and_heal_stalled_background_workers()`，实时检测核心工作线程心跳停滞并执行自愈恢复。
+  - **OPT-271-06 (RSS 物理内存水位超限 `>128 MB` 自动降载)**: 新增 `apply_rss_memory_load_shedding()`，当守护进程 RSS 超过阈值时自动收缩环形缓冲上限并触发垃圾回收。
+  - **OPT-271-07 (HTTP 滑动窗口限流状态持久化防重启绕过)**: 新增 `persist_and_reload_auth_rate_limit_state()`，通过 `_atomic_write_text` 在运行目录持久化未过期封禁记录。
+  - **OPT-271-08 (打包脚本 UTC 时间戳校准与单调性门禁)**: 打包脚本统一校准 `FIXED_MTIME` 对齐当前容器 UTC 时间戳（消除解包 `time stamp in the future` 告警），并新增 `verify_archive_timestamp_monotonicity()`。
+  - **OPT-271-09 (前端 `webui/modules/shunt-nodes.js` 独立 Node.js 边界单元测试)**: 新增 `run_webui_modules_node_unit_tests()`，对子模块全部 6 个导出渲染函数执行 `null` / `{}` 空数据边界测试，确保零异常。
+  - **OPT-271-10 (一键导出「健康审计快照」与全栈 `v2.7.1 (r43)` 八点版本同源核验)**: 新增 `export_health_audit_snapshot_json()`，`verify_eight_point_version_anchors()` 全量对齐 `2.7.1` (`r43`)，并纳入混沌测试 `Stage 7.44`（`107/107 PASS`）。
+
 ## v2.7.0 (2026-11-18 · PKG_RELEASE:=42 / r42 · 全栈 10 项架构、安全与可观测性深度跃升：登录限流遥测、RSS 内存水位监控、rule_set 引用完整性自检、数据面 fwmark 核验、区域 P50/P95 分位数统计与 HomeLink 安全预检版)
 
 - **基线与升版说明**：基于本地 `.77` 真机 12 步全绿验收并全量发布上线的 **`v2.6.9` (`r41`)**（GitHub `Release #449557262`、主干/Tag `8d7d680c30c13f9fb369333d23896ecd77ed0532` (`8d7d680`)、Cloudflare 部署 `c7292f78`、`local_qa_build_md5 = "2954b4838c936cce2fd364abb3ac7742"`），严格按 SOP v2.2 决策树分支 A（`QA_PASSED_RELEASED` 唯一合法升版分支）与 `FEEDBACK-Local-v2.6.9.md` 第五节指令递增版本号至 **`v2.7.0`（`PKG_RELEASE:=42` / `r42` / `APP_BUILD = "2.7.0-release-20261118-r42"`）**，全量落地 **10 项全栈架构、安全与可观测性增强（`OPT-270-01 ~ OPT-270-10`）**：

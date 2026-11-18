@@ -149,3 +149,46 @@
   window.renderNodeProtocolDistributionHtml = renderNodeProtocolDistributionHtml;
   window.formatPoolFailoverRtoBadgeText = formatPoolFailoverRtoBadgeText;
 
+  // OPT-271-03: HomeLink Security Audit Red-Dot & Remediation Guidance Banner Renderer
+  function renderHomeLinkSecurityBannerHtml(postureObj) {
+    const po = postureObj && typeof postureObj === 'object' ? postureObj : {};
+    const ok = po.ok !== false && !(Array.isArray(po.port_conflicts) && po.port_conflicts.length) && !(Array.isArray(po.weak_credentials) && po.weak_credentials.length);
+    if (ok) {
+      return '<div class="homelink-sec-banner is-healthy" data-sec-ok="1"><span class="sec-dot is-ok"></span><span>回家隧道安全预检通过（端口无冲突 · 凭据强度合规）</span></div>';
+    }
+    const pCnt = Array.isArray(po.port_conflicts) ? po.port_conflicts.length : 0;
+    const wCnt = Array.isArray(po.weak_credentials) ? po.weak_credentials.length : 0;
+    return '<div class="homelink-sec-banner is-warning" data-sec-ok="0">' +
+      '<span class="sec-dot is-red-dot" aria-label="安全告警红点"></span>' +
+      '<span>发现安全隐患：端口冲突 ' + pCnt + ' 处 / 弱凭据 ' + wCnt + ' 处，建议更换为 >1024 独立端口并重新生成 16 位随机密钥</span>' +
+      '</div>';
+  }
+
+  // OPT-271-04: Regional P50 / P95 Latency Percentile Visualization Pills Renderer
+  function renderRegionLatencyPercentilePillsHtml(percentilesObj) {
+    const po = percentilesObj && typeof percentilesObj === 'object' ? percentilesObj : {};
+    const regs = po.regions && typeof po.regions === 'object' ? po.regions : {};
+    const keys = Object.keys(regs).sort();
+    if (!keys.length) {
+      return '<div class="region-p50-p95-empty">暂无区域延迟分位数样本</div>';
+    }
+    const pills = keys.map(reg => {
+      const item = regs[reg] || {};
+      const cnt = Number(item.count || 0);
+      const p50 = Number(item.p50_ms || 0);
+      const p95 = Number(item.p95_ms || 0);
+      return '<span class="region-lat-pill" data-region="' + reg + '">' +
+        '<strong>' + reg + '</strong> (' + cnt + ') · P50 ' + p50 + 'ms / P95 ' + p95 + 'ms' +
+        '</span>';
+    });
+    return '<div class="region-p50-p95-strip">' + pills.join(' ') + '</div>';
+  }
+
+  window.NexusModules = window.NexusModules || {};
+  window.NexusModules.shuntNodes = Object.assign(window.NexusModules.shuntNodes || {}, {
+    renderHomeLinkSecurityBannerHtml: renderHomeLinkSecurityBannerHtml,
+    renderRegionLatencyPercentilePillsHtml: renderRegionLatencyPercentilePillsHtml
+  });
+  window.renderHomeLinkSecurityBannerHtml = renderHomeLinkSecurityBannerHtml;
+  window.renderRegionLatencyPercentilePillsHtml = renderRegionLatencyPercentilePillsHtml;
+

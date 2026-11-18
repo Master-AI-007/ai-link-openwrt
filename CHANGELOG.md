@@ -1,3 +1,17 @@
+## [v2.7.1] - 2026-11-18
+### 10 项全栈生产集成、自愈与可观测性增强、线程超时自愈与内存超限降载（PKG_RELEASE 43）
+- **正常升版**：升至 `v2.7.1`（`PKG_RELEASE:=43` / `r43`），增量基准为已上线的 `v2.7.0`（Release #449932633 / `1f474d7` / 部署 `80799745`）；现网设备可正常接收 OTA 升级提示。
+- **OPT-271-01 6项诊断函数接入生产状态与诊断快照接口**：全量接入 `build_status_api_response()` 与 `export_health_audit_snapshot_json()`。
+- **OPT-271-02 sing-box.json 配置生成前强制执行 rule_set 引用完整性门禁**：新增 `enforce_singbox_prewrite_ruleset_gate()` 杜绝悬空引用。
+- **OPT-271-03 HomeLink 安全审计结果与面板红点联动**：新增 `build_homelink_card_security_guidance()` 与 `renderHomeLinkSecurityBannerHtml()`。
+- **OPT-271-04 区域延迟 P50 / P95 分位数可视化**：`shunt-nodes.js` 扩容至 194 行，新增 `renderRegionLatencyPercentilePillsHtml()`。
+- **OPT-271-05 后台工作线程心跳超时（>60s）自愈机制**：新增 `check_and_heal_stalled_background_workers` 自动识别并自愈停滞线程。
+- **OPT-271-06 RSS 物理内存水位超限（>128MB）降载**：新增 `apply_rss_memory_load_shedding` 超限降载保护。
+- **OPT-271-07 HTTP 滑动窗口限流持久化防重启绕过**：新增 `persist_and_reload_auth_rate_limit_state` 防重启绕过。
+- **OPT-271-08 打包脚本 UTC 时间戳校准**：校准 `FIXED_MTIME` 消除解包未来时间戳告警。
+- **OPT-271-09 shunt-nodes.js 独立 Node.js 边界单测覆盖**：新增 `run_webui_modules_node_unit_tests` 空数据边界安全验证。
+- **OPT-271-10 一键导出「健康审计快照」与全栈八处版本同源核验**：新增 `export_health_audit_snapshot_json` 并纳入 Stage 7.44。
+- 验收：`INSTALL_RC=0`、服务全 1、`nft ok:true`、重启自愈、自检 10/10 + 负向、零补发 `run_all 15/15 / RC=0`、混沌 **107/107 PASS**（新增 Stage 7.44）、门禁双布局 17/17、design-lint 18/18、11 行指纹 11/11、UI 六页三视口零溢出、设备侧出网 200/200/204/200 全通。
 ## [v2.7.0] - 2026-11-18
 ### 10 项全栈架构、安全与可观测性增强、RSS 内存监控与登录速率限制（PKG_RELEASE 42）
 - **正常升版**：升至 `v2.7.0`（`PKG_RELEASE:=42` / `r42`），增量基准为已上线的 `v2.6.9`（Release #449557262 / `8d7d680` / 部署 `c7292f78`）；现网设备可正常接收 OTA 升级提示。

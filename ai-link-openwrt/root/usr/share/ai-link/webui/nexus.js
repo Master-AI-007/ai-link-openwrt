@@ -10776,6 +10776,8 @@ window.NexusViewRenderers = {
   renderPoolWeightBreakdownBadge: (...args) => (window.renderPoolWeightBreakdownBadge ? window.renderPoolWeightBreakdownBadge(...args) : ''),
   formatShuntRuleHitKpiText: (...args) => (window.formatShuntRuleHitKpiText ? window.formatShuntRuleHitKpiText(...args) : ''),
   renderNodeProtocolDistributionHtml: (...args) => (window.renderNodeProtocolDistributionHtml ? window.renderNodeProtocolDistributionHtml(...args) : ''),
-  formatPoolFailoverRtoBadgeText: (...args) => (window.formatPoolFailoverRtoBadgeText ? window.formatPoolFailoverRtoBadgeText(...args) : '')
+  formatPoolFailoverRtoBadgeText: (...args) => (window.formatPoolFailoverRtoBadgeText ? window.formatPoolFailoverRtoBadgeText(...args) : ''),
+  renderHomeLinkSecurityBannerHtml: (...args) => (window.renderHomeLinkSecurityBannerHtml ? window.renderHomeLinkSecurityBannerHtml(...args) : ''),
+  renderRegionLatencyPercentilePillsHtml: (...args) => (window.renderRegionLatencyPercentilePillsHtml ? window.renderRegionLatencyPercentilePillsHtml(...args) : '')
 };
 

@@ -424,7 +424,7 @@ def fb250_packaging_and_luci_gate():
                 if actual_cn != cn_nums[:len(actual_cn)] or len(actual_cn) < 5:
                     fp_mismatches.append(f"{doc_name}:non_consecutive_h2={actual_cn}")
                 # FB-257-2: Verify report contains post-injected run_all summary and environment note
-                for _req_tok in ("验证环境", "本轮增量说明", "（构建容器）", "合计 15 套，通过 15，失败 0", "115/115", "154/154", "106/106", "Stage 7.28", "Stage 7.29", "Stage 7.30", "Stage 7.31", "Stage 7.32", "Stage 7.33", "Stage 7.34", "Stage 7.35", "Stage 7.36", "Stage 7.37", "Stage 7.38", "Stage 7.39", "Stage 7.40", "Stage 7.41", "Stage 7.42", "Stage 7.43", "#449557262", "8d7d680", "live_write_leaked"):
+                for _req_tok in ("验证环境", "本轮增量说明", "（构建容器）", "合计 15 套，通过 15，失败 0", "115/115", "154/154", "107/107", "Stage 7.28", "Stage 7.29", "Stage 7.30", "Stage 7.31", "Stage 7.32", "Stage 7.33", "Stage 7.34", "Stage 7.35", "Stage 7.36", "Stage 7.37", "Stage 7.38", "Stage 7.39", "Stage 7.40", "Stage 7.41", "Stage 7.42", "Stage 7.43", "Stage 7.44", "#449932633", "1f474d7", "live_write_leaked"):
                     if _req_tok not in doc_txt:
                         fp_mismatches.append(f"{doc_name}:missing_fb257_2_token({_req_tok})")
             rows = re.findall(r"^\|\s*`([^`]+)`\s*\|\s*[^|]*?`(\d+)`[^|]*\|\s*`([0-9a-f]{32})`\s*\|\s*`([0-9a-f]{64})`\s*\|", doc_txt, re.M)
