@@ -10774,6 +10774,8 @@ window.NexusViewRenderers = {
   buildBatchProbeControlState: (...args) => (window.buildBatchProbeControlState ? window.buildBatchProbeControlState(...args) : null),
   renderSubscriptionCardMetaHtml: (...args) => (window.renderSubscriptionCardMetaHtml ? window.renderSubscriptionCardMetaHtml(...args) : ''),
   renderPoolWeightBreakdownBadge: (...args) => (window.renderPoolWeightBreakdownBadge ? window.renderPoolWeightBreakdownBadge(...args) : ''),
-  formatShuntRuleHitKpiText: (...args) => (window.formatShuntRuleHitKpiText ? window.formatShuntRuleHitKpiText(...args) : '')
+  formatShuntRuleHitKpiText: (...args) => (window.formatShuntRuleHitKpiText ? window.formatShuntRuleHitKpiText(...args) : ''),
+  renderNodeProtocolDistributionHtml: (...args) => (window.renderNodeProtocolDistributionHtml ? window.renderNodeProtocolDistributionHtml(...args) : ''),
+  formatPoolFailoverRtoBadgeText: (...args) => (window.formatPoolFailoverRtoBadgeText ? window.formatPoolFailoverRtoBadgeText(...args) : '')
 };
 

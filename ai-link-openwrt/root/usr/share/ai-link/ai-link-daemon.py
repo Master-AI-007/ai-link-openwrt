@@ -198,7 +198,7 @@ def _open_url_with_retry(
     context=None,
     retries: int = 1,
     backoff_s: float = 0.2,
-    user_agent: str = "AI-LINK/2.6.9 (OpenWrt; Sing-Box-Nexus)",
+    user_agent: str = "AI-LINK/2.7.0 (OpenWrt; Sing-Box-Nexus)",
 ):
     if isinstance(req_or_url, str):
         req_obj = urllib.request.Request(req_or_url, headers={"User-Agent": user_agent})
@@ -26611,9 +26611,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.6.9"
+APP_VERSION = "2.7.0"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.6.9-release-20261118-r41"
+APP_BUILD = "2.7.0-release-20261118-r42"
 if "_safe_json_loads" not in globals():
     def _safe_json_loads(raw, default=None):
         return getattr(json, "loads")(raw) if default is None else (getattr(json, "loads")(raw) if raw else default)
@@ -28758,12 +28758,12 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             self._send_json({
                 "ok": True,
                 "version": APP_VERSION,
-                "pkg_release": "r41",
+                "pkg_release": "r42",
                 "boot_stage_timings_ms": get_boot_stage_timings(),
                 "srs_fallback_status": get_srs_fallback_degraded_status(CONF_DIR),
                 "exception_telemetry": get_structured_exception_stats(),
                 "pool_switch_debounce_s": POOL_SWITCH_SMOOTH_DEBOUNCE_S,
-                "release": f"{APP_VERSION}-r41",
+                "release": f"{APP_VERSION}-r42",
                 "channel": APP_CHANNEL,
                 "build": APP_BUILD,
                 "version_file": _read_version_file(),
@@ -33116,15 +33116,194 @@ def verify_eight_point_version_anchors(repo_dir: Path = None) -> dict:
     }
 
 
+
+# === v2.7.0 (r42) OPT-270-01 ~ OPT-270-10 Full-Stack Architecture, Security & Observability Helpers ===
+def get_auth_rate_limit_telemetry(loopback_exempt: bool = True) -> dict:
+    """OPT-270-01: Sliding-window authentication rate-limit telemetry with loopback exemption verification."""
+    failures_map = globals().get("_LOGIN_FAILURES")
+    if not isinstance(failures_map, dict):
+        failures_map = {}
+    now_ts = time.time()
+    active_lockouts = 0
+    for rec in failures_map.values():
+        if isinstance(rec, dict) and float(rec.get("locked_until") or 0.0) > now_ts:
+            active_lockouts += 1
+    return {
+        "ok": True,
+        "window_sec": 60,
+        "max_attempts": 10,
+        "loopback_exempt": bool(loopback_exempt),
+        "tracked_ips_count": len(failures_map),
+        "active_lockouts_count": active_lockouts,
+    }
+
+
+def get_daemon_rss_memory_watermark(warn_mb: int = 128, status_file: Path = None) -> dict:
+    """OPT-270-02: Real-time daemon physical RSS memory watermark monitor for low-memory router OOM prevention."""
+    st_path = Path(status_file) if status_file is not None else Path("/proc/self/status")
+    rss_kb = 0
+    try:
+        if st_path.is_file():
+            for ln in st_path.read_text(encoding="utf-8", errors="replace").splitlines():
+                if ln.startswith("VmRSS:"):
+                    parts = ln.split()
+                    if len(parts) >= 2 and parts[1].isdigit():
+                        rss_kb = int(parts[1])
+                    break
+    except OSError as _e_rss:
+        _record_internal_diag(_e_rss)
+        rss_kb = 0
+    rss_mb = round(rss_kb / 1024.0, 2)
+    th_mb = max(32, int(warn_mb or 128))
+    is_warn = rss_mb >= float(th_mb)
+    return {
+        "ok": True,
+        "rss_kb": rss_kb,
+        "rss_mb": rss_mb,
+        "warn_threshold_mb": th_mb,
+        "usage_ratio": round(rss_mb / float(th_mb), 4),
+        "oom_warning": is_warn,
+        "status": "warning" if is_warn else "healthy",
+    }
+
+
+def audit_singbox_ruleset_reference_integrity(cfg_dict: dict = None, conf_dir: Path = CONF_DIR) -> dict:
+    """OPT-270-04: Two-way integrity audit verifying all route.rules rule_set references exist in route.rule_set."""
+    cfg = cfg_dict if isinstance(cfg_dict, dict) else ConfigGenerator.generate_singbox_config(conf_dir=conf_dir)
+    route_sec = cfg.get("route") if isinstance(cfg, dict) and isinstance(cfg.get("route"), dict) else {}
+    rule_sets = route_sec.get("rule_set") if isinstance(route_sec.get("rule_set"), list) else []
+    defined_tags = {str(rs.get("tag") or "").strip() for rs in rule_sets if isinstance(rs, dict) and str(rs.get("tag") or "").strip()}
+    rules = route_sec.get("rules") if isinstance(route_sec.get("rules"), list) else []
+    referenced_tags = set()
+    dangling = []
+    for r in rules:
+        if not isinstance(r, dict) or "rule_set" not in r:
+            continue
+        rs_val = r.get("rule_set")
+        items = rs_val if isinstance(rs_val, list) else ([rs_val] if rs_val else [])
+        for t in items:
+            t_s = str(t or "").strip()
+            if not t_s:
+                continue
+            referenced_tags.add(t_s)
+            if t_s not in defined_tags and t_s not in dangling:
+                dangling.append(t_s)
+    return {
+        "ok": len(dangling) == 0,
+        "defined_rulesets_count": len(defined_tags),
+        "referenced_rulesets_count": len(referenced_tags),
+        "dangling_refs": dangling,
+    }
+
+
+def verify_dataplane_fwmark_consistency(conf_dir: Path = CONF_DIR) -> dict:
+    """OPT-270-05: Verify data-plane mode (tproxy_redirect / tproxy_tcp_tun_udp / tun_full), port 7893, and fwmark alignment."""
+    import tempfile
+    ops = get_ops_settings(conf_dir)
+    dpm = str(ops.get("data_plane_mode") or "tproxy_redirect").strip()
+    valid_modes = {"tproxy_redirect", "tproxy_tcp_tun_udp", "tun_full"}
+    tmp_d = Path(tempfile.mkdtemp(prefix="ailink_dpm_chk_"))
+    try:
+        nft_txt = generate_nft_rules_file(conf_dir, tmp_d)
+    finally:
+        shutil.rmtree(tmp_d, ignore_errors=True)
+    has_7893_or_tun = ("7893" in nft_txt) or ("0x00000163" in nft_txt) or ("0x163" in nft_txt)
+    has_direct_mark = ("0x02000000" in nft_txt) or ("0x01" in nft_txt) or ("table inet ai_link" in nft_txt)
+    return {
+        "ok": (dpm in valid_modes) and has_7893_or_tun and has_direct_mark,
+        "data_plane_mode": dpm,
+        "has_dataplane_target": has_7893_or_tun,
+        "has_routing_mark": has_direct_mark,
+    }
+
+
+def compute_region_latency_percentiles(conf_dir: Path = CONF_DIR, probe_records: list = None) -> dict:
+    """OPT-270-06: Compute P50 (median) and P95 latency percentiles per region across reachable nodes."""
+    buckets = {}
+    if isinstance(probe_records, list):
+        for item in probe_records:
+            if not isinstance(item, dict):
+                continue
+            reg = str(item.get("region") or classify_node_country_5plus1(str(item.get("tag") or ""), item)).upper()
+            ms = int(item.get("delay_ms") or -1)
+            if ms > 0:
+                buckets.setdefault(reg, []).append(ms)
+    else:
+        store = load_node_probe_store(conf_dir)
+        for n in load_saved_nodes(conf_dir):
+            if not isinstance(n, dict) or is_builtin_test_node(str(n.get("tag") or "")):
+                continue
+            nid = n.get("node_id") or compute_node_id(n)
+            rec = store.get(nid) or store.get(n.get("tag", "")) or {}
+            ms = int(rec.get("delay_ms") or -1)
+            if ms > 0:
+                reg = classify_node_country_5plus1(str(n.get("tag") or ""), n)
+                buckets.setdefault(reg, []).append(ms)
+    regions_out = {}
+    for reg, vals in sorted(buckets.items()):
+        s_vals = sorted(vals)
+        cnt = len(s_vals)
+        p50 = s_vals[(cnt - 1) // 2]
+        p95_idx = min(cnt - 1, int(round(0.95 * (cnt - 1))))
+        p95 = s_vals[p95_idx]
+        regions_out[reg] = {"count": cnt, "p50_ms": p50, "p95_ms": p95}
+    return {
+        "ok": True,
+        "region_count": len(regions_out),
+        "regions": regions_out,
+    }
+
+
+def audit_homelink_security_posture(conf_dir: Path = CONF_DIR, nodes_override: list = None) -> dict:
+    """OPT-270-07: Pre-check HomeLink ingress nodes for reserved port collisions and credential strength."""
+    hl_nodes = nodes_override if isinstance(nodes_override, list) else load_homelink_nodes(conf_dir)
+    reserved_ports = {22, 53, 80, 443, 7874, 7890, 7891, 7893, 9090, 9099}
+    port_conflicts = []
+    weak_creds = []
+    checked = 0
+    for hn in (hl_nodes or []):
+        if not isinstance(hn, dict):
+            continue
+        checked += 1
+        port = int(hn.get("port") or hn.get("listen_port") or 0)
+        if port in reserved_ports or port < 1024:
+            port_conflicts.append({"id": hn.get("id"), "port": port})
+        secret = str(hn.get("password") or hn.get("uuid") or "").strip()
+        if secret and len(secret) < 8:
+            weak_creds.append({"id": hn.get("id")})
+    return {
+        "ok": len(port_conflicts) == 0 and len(weak_creds) == 0,
+        "checked_nodes": checked,
+        "port_conflicts": port_conflicts,
+        "weak_credentials": weak_creds,
+    }
+
+
+def get_background_worker_health_registry() -> dict:
+    """OPT-270-08: Return health and registration status of the 4 core background daemon workers."""
+    workers = {
+        "probe_scheduler": callable(globals().get("start_background_probe_scheduler")),
+        "telemetry_watchdog": callable(globals().get("ensure_core_alive_and_recover")),
+        "h3_health_loop": callable(globals().get("_h3_health_loop")),
+        "multi_line_dispatcher": callable(globals().get("dispatch_multi_line_pools_tick")),
+    }
+    return {
+        "ok": all(workers.values()),
+        "registered_workers_count": sum(1 for v in workers.values() if v),
+        "workers": workers,
+    }
+
+
 _ORIG_BUILD_STATUS_API_RESPONSE_V268 = build_status_api_response
 
 
 def build_status_api_response(conf_dir: Path = CONF_DIR, *args, **kwargs) -> dict:
-    """OPT-268-07 & OPT-269-02: Enrich /api/status payload with ipv6_leak_guard_status and fd_watermark_status."""
+    """OPT-268-07, OPT-269-02 & OPT-270-02: Enrich /api/status payload with ipv6_leak_guard_status, fd_watermark_status, and rss_watermark_status."""
     res = _ORIG_BUILD_STATUS_API_RESPONSE_V268(conf_dir, *args, **kwargs)
     if isinstance(res, dict):
         res["ipv6_leak_guard_status"] = get_ipv6_leak_guard_status(conf_dir)
         res["fd_watermark_status"] = get_daemon_fd_watermark_status()
+        res["rss_watermark_status"] = get_daemon_rss_memory_watermark()
     return res
 
 

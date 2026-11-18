@@ -119,3 +119,33 @@
   window.renderPoolWeightBreakdownBadge = renderPoolWeightBreakdownBadge;
   window.formatShuntRuleHitKpiText = formatShuntRuleHitKpiText;
 
+  // OPT-270-03: Sunk Node Protocol Distribution Badge & Pool Failover RTO Summary Formatter
+  function renderNodeProtocolDistributionHtml(protoSummary) {
+    const ps = protoSummary && typeof protoSummary === 'object' ? protoSummary : {};
+    const counts = ps.protocol_counts && typeof ps.protocol_counts === 'object' ? ps.protocol_counts : {};
+    const total = Number(ps.total_nodes || 0);
+    const v6Pct = Number(ps.ipv6_readiness_pct || 0).toFixed(1);
+    const parts = Object.keys(counts).sort().map(k => k.toUpperCase() + ':' + counts[k]);
+    const distTxt = parts.length ? parts.join(' / ') : '暂无节点';
+    return '<div class="node-proto-dist-strip" data-total-nodes="' + total + '">' +
+      '<span class="proto-dist-main">协议分布 (' + total + ')：' + distTxt + '</span>' +
+      '<span class="proto-dist-v6">IPv6 就绪率 ' + v6Pct + '%</span>' +
+      '</div>';
+  }
+
+  function formatPoolFailoverRtoBadgeText(rtoSummary) {
+    const rs = rtoSummary && typeof rtoSummary === 'object' ? rtoSummary : {};
+    const cnt = Number(rs.switch_event_count || 0);
+    const avgRtt = Number(rs.avg_post_switch_rtt_ms || 0).toFixed(1);
+    const minRtt = Number(rs.fastest_post_switch_rtt_ms || 0).toFixed(1);
+    return '累计自愈切换 ' + cnt + ' 次 · 切换后最快 ' + minRtt + ' ms / 均值 ' + avgRtt + ' ms';
+  }
+
+  window.NexusModules = window.NexusModules || {};
+  window.NexusModules.shuntNodes = Object.assign(window.NexusModules.shuntNodes || {}, {
+    renderNodeProtocolDistributionHtml: renderNodeProtocolDistributionHtml,
+    formatPoolFailoverRtoBadgeText: formatPoolFailoverRtoBadgeText
+  });
+  window.renderNodeProtocolDistributionHtml = renderNodeProtocolDistributionHtml;
+  window.formatPoolFailoverRtoBadgeText = formatPoolFailoverRtoBadgeText;
+

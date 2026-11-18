@@ -1,3 +1,17 @@
+## v2.7.0 (2026-11-18 · PKG_RELEASE:=42 / r42 · 全栈 10 项架构、安全与可观测性深度跃升：登录限流遥测、RSS 内存水位监控、rule_set 引用完整性自检、数据面 fwmark 核验、区域 P50/P95 分位数统计与 HomeLink 安全预检版)
+
+- **基线与升版说明**：基于本地 `.77` 真机 12 步全绿验收并全量发布上线的 **`v2.6.9` (`r41`)**（GitHub `Release #449557262`、主干/Tag `8d7d680c30c13f9fb369333d23896ecd77ed0532` (`8d7d680`)、Cloudflare 部署 `c7292f78`、`local_qa_build_md5 = "2954b4838c936cce2fd364abb3ac7742"`），严格按 SOP v2.2 决策树分支 A（`QA_PASSED_RELEASED` 唯一合法升版分支）与 `FEEDBACK-Local-v2.6.9.md` 第五节指令递增版本号至 **`v2.7.0`（`PKG_RELEASE:=42` / `r42` / `APP_BUILD = "2.7.0-release-20261118-r42"`）**，全量落地 **10 项全栈架构、安全与可观测性增强（`OPT-270-01 ~ OPT-270-10`）**：
+  - **OPT-270-01 (面板登录与敏感 API 滑动窗口速率限制遥测)**: 新增 `get_auth_rate_limit_telemetry()`，实时暴露登录限流窗口状态、回环地址豁免与活跃锁定计数。
+  - **OPT-270-02 (守护进程物理内存 RSS 水位监控与低内存路由器 OOM 预警)**: 新增 `get_daemon_rss_memory_watermark()` 并注入 `/api/status` 的 `rss_watermark_status` 字段，实时采集 `/proc/self/status` `VmRSS` 内存占用。
+  - **OPT-270-03 (`webui/modules/shunt-nodes.js` 扩容至 150+ 行)**: 新增 `renderNodeProtocolDistributionHtml` 与 `formatPoolFailoverRtoBadgeText` 并桥接 `window.NexusViewRenderers`。
+  - **OPT-270-04 (`sing-box.json` 路由规则集 `rule_set` 引用完整性双向自检门禁)**: 新增 `audit_singbox_ruleset_reference_integrity()`，核验 `route.rules` 引用的 `rule_set` 标签 100% 在 `route.rule_set` 中定义且零悬空引用。
+  - **OPT-270-05 (透明代理 TProxy / TUN 数据面端口与 `fwmark` 一致性核验器)**: 新增 `verify_dataplane_fwmark_consistency()`，一键核验数据面模式与 `nftables` `:7893` 端口及 `fwmark` 标记对齐。
+  - **OPT-270-06 (节点池区域延迟 P50 / P95 分位数统计遥测)**: 新增 `compute_region_latency_percentiles()`，按区域统计可达节点的 P50（中位数）与 P95 长尾延迟（ms）。
+  - **OPT-270-07 (HomeLink 回家隧道端口冲突与强凭据安全预检器)**: 新增 `audit_homelink_security_posture()`，前置拦截核心保留端口冲突与弱凭据配置。
+  - **OPT-270-08 (后台守护线程健康心跳注册表)**: 新增 `get_background_worker_health_registry()`，统一暴露探针调度器、看门狗循环、H3 健康循环与多线调度器注册状态。
+  - **OPT-270-09 (LuCI `overview.js` OTA 升级进度状态防御性归一化包装)**: 新增 `normalizeLuciOtaProgressPayload()`，对升级进度百分比、阶段文本与日志数组做边界钳制与防御性归一化。
+  - **OPT-270-10 (全栈跨版本 `v2.6.9` → `v2.7.0` 八点版本与 `r42` 构建号同源核验)**: `verify_eight_point_version_anchors()` 全量对齐 `2.7.0` (`r42`)，并纳入混沌测试 `Stage 7.43`（`106/106 PASS`）。
+
 ## v2.6.9 (2026-11-18 · PKG_RELEASE:=41 / r41 · 全栈 10 项质量与可观测性深度增强：ETag 304 零拷贝协商、FD 水位监控、sing-box 出站白名单自检、nftables 单一真相源核验、DNS 去重率遥测与八点版本锚点门禁版)
 
 - **基线与升版说明**：基于本地 `.77` 真机 12 步全绿验收并全量发布上线的 **`v2.6.8` (`r40`)**（GitHub `Release #449425460`、主干/Tag `5dde640bf0cee646e8dcf8433ce628b030859580` (`5dde640`)、Cloudflare 部署 `31430c2f`、`local_qa_build_md5 = "6af3f9301248cbb177ba2ba7a3d6a952"`），严格按 SOP v2.2 决策树分支 A（`QA_PASSED_RELEASED` 唯一合法升版分支）递增版本号至 **`v2.6.9`（`PKG_RELEASE:=41` / `r41` / `APP_BUILD = "2.6.9-release-20261118-r41"`）**，落地 **10 项全栈质量与可观测性增强（`OPT-269-01 ~ OPT-269-10`）**：

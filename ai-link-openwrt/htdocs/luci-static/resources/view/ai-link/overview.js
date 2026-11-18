@@ -44,7 +44,7 @@ return view.extend({
 				}).catch(function() { return ''; });
 			}).catch(function() { return ''; });
 		}
-		var currentVer = String(uci.get('ai-link', 'global', 'app_version') || '2.6.9');
+		var currentVer = String(uci.get('ai-link', 'global', 'app_version') || '2.7.0');
 		var unlockBtnHtml = ' <button type="button" id="luci-btn-unlock-panel" style="padding:2px 8px; border-radius:5px; border:1px solid rgba(56,189,248,0.35); background:rgba(14,116,144,0.25); color:#7dd3fc; font-size:11px; cursor:pointer;">🔓 解锁状态</button>';
 		var pwdFieldHtml = pwdIsCustom
 			? '<span style="font-size:12px; color:#94a3b8; display:inline-flex; align-items:center; gap:6px;">面板密码: <code id="luci-panel-pwd-mask" style="background:#0f172a; padding:2px 7px; border-radius:5px; color:#e2e8f0; border:1px solid rgba(148,163,184,0.2);">已自定义 · 不回显</code>' + unlockBtnHtml + ' <span style="font-size:11px; color:#64748b;">（忘记可执行 ai-link password 重置）</span></span>'
@@ -528,7 +528,22 @@ return view.extend({
 			// ================= OTA 在线更新模块 =================
 			var otaTimer = null;
 
-			var otaRenderProgress = function(p) {
+			var normalizeLuciOtaProgressPayload = function(rawProg) {
+				var p = (rawProg && typeof rawProg === 'object') ? rawProg : {};
+				var pct = Math.max(0, Math.min(100, parseInt(p.percent, 10) || 0));
+				var logs = Array.isArray(p.log) ? p.log : [];
+				return Object.assign({}, p, {
+					stage: String(p.stage || ''),
+					stage_text: String(p.stage_text || ''),
+					percent: pct,
+					log: logs,
+					finished: Boolean(p.finished),
+					running: Boolean(p.running)
+				});
+			};
+
+			var otaRenderProgress = function(rawP) {
+				var p = normalizeLuciOtaProgressPayload(rawP);
 				var wrap = mapEl.querySelector('#luci-ota-progress-wrap');
 				var bar = mapEl.querySelector('#luci-ota-bar');
 				var stage = mapEl.querySelector('#luci-ota-stage');

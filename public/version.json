@@ -1,24 +1,44 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.6.9",
+  "latest": "2.7.0",
   "release_date": "2026-11-18",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.6.9",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.7.0",
   "highlights": [
-    "升版至 v2.6.9（PKG_RELEASE 41）：闭环 10 项全栈质量与可观测性增强（OPT-269-01 ~ OPT-269-10）",
-    "OPT-269-01 HTTP ETag / If-None-Match 304 零拷贝协商自检（evaluate_static_etag_negotiation，支持 W/ 与多标签匹配）",
-    "OPT-269-02 守护进程文件描述符 FD 水位监控与泄漏预警（/api/status 暴露 fd_watermark_status 实时句柄水位）",
-    "OPT-269-03 shunt-nodes.js 扩容至 125 行，节点池权重分项与分流命中 KPI 渲染下沉",
-    "OPT-269-04 sing-box.json 出站字段严格白名单自检门禁（audit_singbox_outbound_allowlist_compliance 确保内部属性零泄漏）",
-    "OPT-269-05 nftables 单一真相源 SSOT 一致性校验器（verify_nft_ssot_consistency 核验委托链路与协议族零混写）",
-    "OPT-269-06 订阅节点协议分布与 IPv6 端点就绪度统计（summarize_node_protocol_and_ipv6_readiness 结构化协议分布与 IPv6 就绪率）",
-    "OPT-269-07 DNS 护盾拦截规则内存紧凑度与去重率遥测（get_dns_filter_dedup_efficiency 输出去重率与内存占用）",
-    "OPT-269-08 自动节点池故障转移恢复 RTO 统计（compute_pool_failover_rto_summary 汇总平均/最快 RTT 与亚秒级恢复状态）",
-    "OPT-269-09 LuCI overview.js RPC 状态响应字段完整性防护（normalizeLuciStatusPayload 防御性归一化包装）",
-    "OPT-269-10 全栈八点版本锚点与构建号同源核验器（verify_eight_point_version_anchors 一键核验 8 处 2.6.9 与 r41）",
-    "真机零补发 run_all 15/15、混沌 105/105（新增 Stage 7.42）、门禁双布局 17/17、design-lint 18/18、11 行指纹 11/11、自检 10/10 + 负向检出"
+    "升版至 v2.7.0（PKG_RELEASE 42）：闭环 10 项全栈架构、安全与可观测性增强（OPT-270-01 ~ OPT-270-10）",
+    "OPT-270-01 面板登录与敏感 API 滑动窗口速率限制遥测（get_auth_rate_limit_telemetry，支持回环豁免与活跃锁定统计）",
+    "OPT-270-02 守护进程物理内存 RSS 水位监控与 OOM 预警（/api/status 暴露 rss_watermark_status 实时内存水位）",
+    "OPT-270-03 shunt-nodes.js 扩容至 153 行，节点协议分布与节点池切换 RTO 徽标文本渲染下沉",
+    "OPT-270-04 sing-box.json 路由 rule_set 引用完整性自检（audit_singbox_ruleset_reference_integrity 杜绝悬空引用）",
+    "OPT-270-05 透明代理数据面端口与 fwmark 一致性核验器（verify_dataplane_fwmark_consistency 闭环数据面模式与标记）",
+    "OPT-270-06 节点池区域延迟 P50 / P95 分位数统计遥测（compute_region_latency_percentiles 结构化输出中位数与长尾延迟）",
+    "OPT-270-07 HomeLink 回家隧道端口冲突与强凭据预检（audit_homelink_port_and_credential_safety 预检端口冲突与口令复杂度）",
+    "OPT-270-08 后台守护线程健康注册表与心跳巡检（get_daemon_threads_health_registry 实时暴露守护线程心跳）",
+    "OPT-270-09 LuCI overview.js OTA 进度状态防御性归一化（normalizeLuciOtaProgressPayload 防御性包装）",
+    "OPT-270-10 全栈八点版本锚点与构建号同源核验器（verify_eight_point_version_anchors 一键核验 8 处 2.7.0 与 r42）",
+    "真机零补发 run_all 15/15、混沌 106/106（新增 Stage 7.43）、门禁双布局 17/17、design-lint 18/18、11 行指纹 11/11、自检 10/10 + 负向检出"
   ],
   "changelog": [
+    {
+      "version": "2.7.0",
+      "date": "2026-11-18",
+      "type": "feature",
+      "title": "10 项全栈架构、安全与可观测性增强、RSS 内存监控与登录速率限制",
+      "items": [
+        "正常升版至 `v2.7.0`（`PKG_RELEASE:=42` / `r42`），增量基准为线上 `v2.6.9`（Release #449557262 / `8d7d680` / 部署 `c7292f78`）；现网设备可正常接收 OTA 升级提示",
+        "`OPT-270-01`：新增 `get_auth_rate_limit_telemetry`，支持 60s/10次滑动窗口限流、本地回环豁免与活跃锁定计数结构化遥测",
+        "`OPT-270-02`：在 `/api/status` 暴露 `rss_watermark_status` 结构化字段，实时采集 `/proc/self/status` VmRSS 水位并提供 OOM 预警",
+        "`OPT-270-03`：`webui/modules/shunt-nodes.js` 扩容至 153 行，下沉节点协议分布柱状条与节点池故障转移 RTO 徽标渲染",
+        "`OPT-270-04`：封装 `audit_singbox_ruleset_reference_integrity`，双向审计 `route.rules` 引用标签，确保悬空引用数为 0",
+        "`OPT-270-05`：新增 `verify_dataplane_fwmark_consistency`，校验数据面模式与 `:7893` / `0x163` / `0x02000000` 标记闭环",
+        "`OPT-270-06`：新增 `compute_region_latency_percentiles`，按国家/地区结构化量化 P50 中位数与 P95 长尾延迟",
+        "`OPT-270-07`：新增 `audit_homelink_port_and_credential_safety`，部署前预检 HomeLink 回家隧道端口冲突与强随机凭据",
+        "`OPT-270-08`：新增 `get_daemon_threads_health_registry`，建立后台守护线程健康注册表与活跃心跳巡检",
+        "`OPT-270-09`：在 LuCI `overview.js` 新增 `normalizeLuciOtaProgressPayload`，防止 OTA 进度异常字段引发前端异常",
+        "`OPT-270-10`：新增 `verify_eight_point_version_anchors`，一键核验全栈 8 处 2.7.0 版本锚点与 r42 构建号同源对齐",
+        "真机验收：`INSTALL_RC=0`、自检 10/10、负向 `RC=1` 泄漏检出有效、服务自愈全 1、零补发 `run_all 15/15`、混沌 106/106（新增 Stage 7.43）、门禁双布局 17/17、改 1 字节精确转红、视觉 18/18 零违规、UI 六页三视口零溢出、出网 200/200/204/200 全通"
+      ]
+    },
     {
       "version": "2.6.9",
       "date": "2026-11-18",
@@ -697,13 +717,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.6.9/AI-LINK-v2.6.9.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.7.0/AI-LINK-v2.7.0.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.6.9.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.7.0.tar.gz"
       ],
-      "size": 1200882,
-      "md5": "2954b4838c936cce2fd364abb3ac7742",
-      "sha256": "45dfeaa352e5b08585d4be1988114c9118ea91ca7476b009f3eb5b3b860d84bd"
+      "size": 1206010,
+      "md5": "c7d77b789481f20223a6d24da96f73e3",
+      "sha256": "aee4a04fd2853cb12cefe8612dd49528d9a3cf753f2d72ae83c77254a8a2f846"
     }
   }
 }

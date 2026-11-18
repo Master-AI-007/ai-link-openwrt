@@ -18,7 +18,7 @@
         <circle cx="20" cy="20" r="5.4" fill="none" stroke="#a994ff" stroke-width="1.6"/>
         <circle cx="20" cy="20" r="1.8" fill="#6ee7f5"/>
       </svg>
-      <span style="display:block"><b>AI-LINK</b><span>NEXUS · v2.6.9</span></span>
+      <span style="display:block"><b>AI-LINK</b><span>NEXUS · v2.7.0</span></span>
     </a>
     <div class="nav-links">
       <a href="/#features">核心能力</a>
@@ -36,12 +36,22 @@
 <main class="wrap log-wrap">
   <div class="log-head">
     <h1>更新日志</h1>
-    <span class="pill"><i></i> 当前最新 v2.6.9</span>
+    <span class="pill"><i></i> 当前最新 v2.7.0</span>
   </div>
 <article class="log-item latest">
   <div class="log-top">
-    <h2>v2.6.9</h2>
+    <h2>v2.7.0</h2>
     <span class="tag c">最新</span>
+    <time>2026-11-18</time>
+  </div>
+  <p style="margin:2px 0 6px;color:var(--dim)"></p>
+<h3>10 项全栈架构、安全与可观测性增强、RSS 内存监控与登录速率限制（PKG_RELEASE 42）</h3>
+<ul><li><b>正常升版</b>：升至 <code>v2.7.0</code>（<code>PKG_RELEASE:=42</code> / <code>r42</code>），增量基准为已上线的 <code>v2.6.9</code>（Release #449557262 / <code>8d7d680</code> / 部署 <code>c7292f78</code>）；现网设备可正常接收 OTA 升级提示。</li><li><b>OPT-270-01 面板登录与敏感 API 滑动窗口速率限制遥测</b>：新增 <code>get_auth_rate_limit_telemetry</code>，支持回环豁免与活跃锁定统计。</li><li><b>OPT-270-02 守护进程物理内存 RSS 水位监控与 OOM 预警</b>：<code>/api/status</code> 暴露 <code>rss_watermark_status</code> 实时物理内存水位。</li><li><b>OPT-270-03 shunt-nodes.js 扩容至 153 行</b>：下沉节点协议分布柱状条与节点池故障转移 RTO 徽标渲染。</li><li><b>OPT-270-04 sing-box.json 路由 rule_set 引用完整性自检</b>：双向审计规则集标签，确保悬空引用数为 0。</li><li><b>OPT-270-05 透明代理数据面端口与 fwmark 一致性核验器</b>：校验数据面模式与 <code>:7893</code> / <code>0x163</code> / <code>0x02000000</code> 标记闭环。</li><li><b>OPT-270-06 节点池区域延迟 P50 / P95 分位数统计遥测</b>：结构化输出各国家/区域中位数与长尾延迟。</li><li><b>OPT-270-07 HomeLink 回家隧道端口冲突与强凭据预检</b>：启动前自动扫描监听端口冲突与弱口令风险。</li><li><b>OPT-270-08 后台守护线程健康注册表与心跳巡检</b>：实时暴露关键守护线程活跃心跳时间戳。</li><li><b>OPT-270-09 LuCI overview.js OTA 进度状态防御性归一化</b>：防御性封装进度字段，防止 DOM 渲染异常。</li><li><b>OPT-270-10 全栈八点版本锚点与构建号同源核验器</b>：一键核验全栈 8 处 2.7.0 版本锚点与 r42 构建号同源对齐。</li><li>验收：<code>INSTALL_RC=0</code>、服务全 1、<code>nft ok:true</code>、重启自愈、自检 10/10 + 负向、零补发 <code>run_all 15/15 / RC=0</code>、混沌 <b>106/106 PASS</b>（新增 Stage 7.43）、门禁双布局 17/17、design-lint 18/18、11 行指纹 11/11、UI 六页三视口零溢出、设备侧出网 200/200/204。</li></ul>
+</article>
+<article class="log-item">
+  <div class="log-top">
+    <h2>v2.6.9</h2>
+    <span class="tag">历史</span>
     <time>2026-11-18</time>
   </div>
   <p style="margin:2px 0 6px;color:var(--dim)"></p>
