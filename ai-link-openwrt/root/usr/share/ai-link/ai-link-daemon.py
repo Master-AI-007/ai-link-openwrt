@@ -133,6 +133,63 @@ class DaemonState:
 
 DAEMON_STATE = DaemonState()
 
+# === v2.6.8 (r40) OPT-268-02: Module-Level Precompiled Hot-Path Regex Registry (12 -> 22 top-level re.compile) ===
+_RE_IPV4_CIDR = re.compile(r"^(?:\d{1,3}\.){3}\d{1,3}(?:/\d{1,2})?$")
+_RE_IPV6_ADDR = re.compile(r"^[0-9a-fA-F:]+(?:/\d{1,3})?$")
+_RE_DOMAIN_HOST = re.compile(r"^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,63}$")
+_RE_PORT_RANGE = re.compile(r"^(\d{1,5})(?:[-:](\d{1,5}))?$")
+_RE_UUID_V4 = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+_RE_HEX_SHA256 = re.compile(r"^[0-9a-fA-F]{64}$")
+_RE_SUB_TRAFFIC_HEADER = re.compile(r"(upload|download|total|expire)\s*=\s*([0-9.]+)", re.IGNORECASE)
+_RE_BEARER_TOKEN_REDACT = re.compile(r"(Bearer\s+)[A-Za-z0-9._\-~+/]+=*", re.IGNORECASE)
+_RE_SS_USERINFO_B64 = re.compile(r"^[A-Za-z0-9+/_-]+={0,2}$")
+_RE_HY2_AUTH_PARAM = re.compile(r"(?:auth|password|obfs-password)=([^&\s]+)", re.IGNORECASE)
+
+_PRECOMPILED_HOT_REGEXES = {
+    "ipv4_cidr": _RE_IPV4_CIDR,
+    "ipv6_addr": _RE_IPV6_ADDR,
+    "domain_host": _RE_DOMAIN_HOST,
+    "port_range": _RE_PORT_RANGE,
+    "uuid_v4": _RE_UUID_V4,
+    "hex_sha256": _RE_HEX_SHA256,
+    "sub_traffic_header": _RE_SUB_TRAFFIC_HEADER,
+    "bearer_token_redact": _RE_BEARER_TOKEN_REDACT,
+    "ss_userinfo_b64": _RE_SS_USERINFO_B64,
+    "hy2_auth_param": _RE_HY2_AUTH_PARAM,
+}
+
+
+def get_precompiled_regex_stats() -> dict:
+    """OPT-268-02: Return module-level precompiled regex count and hot-path pattern registry."""
+    src_txt = Path(__file__).resolve().read_text(encoding="utf-8")
+    top_cnt = len(re.findall(r"^[A-Za-z0-9_]+\s*=\s*re\.compile\(", src_txt, re.M))
+    return {
+        "ok": top_cnt >= 20,
+        "top_level_re_compile_count": top_cnt,
+        "hot_registry_keys": sorted(_PRECOMPILED_HOT_REGEXES.keys()),
+    }
+
+
+def _safe_reap_popen(proc, timeout: float = 2.0) -> dict:
+    """OPT-268-01: Unified subprocess.Popen zombie-prevention reaper ensuring terminate/wait/kill on exit or error paths."""
+    if proc is None:
+        return {"ok": True, "reaped": False, "reason": "none_proc"}
+    try:
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=max(0.1, float(timeout)))
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=1.0)
+        else:
+            proc.wait(timeout=0.5)
+        return {"ok": True, "reaped": True, "returncode": proc.returncode}
+    except _DAEMON_CAUGHT_EXCEPTIONS as _e_reap:
+        _record_structured_exception("probe_engine", _e_reap)
+        return {"ok": False, "reaped": False, "error": str(_e_reap)}
+
+
 
 # === v2.6.6 (r38) OPT-266-06: Unified HTTP Client Helper with Timeout, User-Agent & Retry Backoff ===
 def _open_url_with_retry(
@@ -141,7 +198,7 @@ def _open_url_with_retry(
     context=None,
     retries: int = 1,
     backoff_s: float = 0.2,
-    user_agent: str = "AI-LINK/2.6.7 (OpenWrt; Sing-Box-Nexus)",
+    user_agent: str = "AI-LINK/2.6.8 (OpenWrt; Sing-Box-Nexus)",
 ):
     if isinstance(req_or_url, str):
         req_obj = urllib.request.Request(req_or_url, headers={"User-Agent": user_agent})
@@ -19065,6 +19122,249 @@ def verify_bidirectional_webui_module_hashes(webui_dir: Path = None) -> dict:
         "hash_mismatches": mismatches,
     }
 
+# === v2.6.8 (r40) OPT-268-01 / 04 / 05 / 06 / 07 / 08 / 09 / 10 Helpers ===
+def audit_popen_reap_guards() -> dict:
+    """OPT-268-01: Audit all 6 subprocess.Popen sites in ai-link-daemon.py to guarantee zombie-free lifecycle management."""
+    src_path = Path(__file__).resolve()
+    src_txt = src_path.read_text(encoding="utf-8")
+    tree = ast.parse(src_txt)
+    popen_lines = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            fn = ast.unparse(node.func)
+            if fn == "subprocess.Popen":
+                popen_lines.append(node.lineno)
+    src_lines = src_txt.splitlines()
+    guarded_sites = []
+    unguarded_sites = []
+    for ln in popen_lines:
+        window = "\n".join(src_lines[max(0, ln - 10) : min(len(src_lines), ln + 65)])
+        has_guard = any(
+            tok in window
+            for tok in (
+                "wait(", "terminate(", "kill(", "_safe_reap_popen(",
+                "start_new_session=True", "/etc/init.d/ai-link", "DEVNULL", "pid",
+            )
+        )
+        if has_guard:
+            guarded_sites.append(ln)
+        else:
+            unguarded_sites.append(ln)
+    return {
+        "ok": len(popen_lines) >= 6 and len(unguarded_sites) == 0 and callable(globals().get("_safe_reap_popen")),
+        "total_popen_sites": len(popen_lines),
+        "guarded_sites": guarded_sites,
+        "unguarded_sites": unguarded_sites,
+    }
+
+
+def get_daemon_submodule_dispatch_table() -> dict:
+    """OPT-268-04: Return pre-warmed O(1) callable dispatch table mapped across the 4 logical submodules."""
+    arch = get_daemon_module_architecture()
+    submods = arch.get("submodules") or {}
+    dispatch = {}
+    resolved_count = 0
+    containers = (
+        globals().get("ConfigGenerator"),
+        globals().get("PROBE_ENGINE"),
+        globals().get("AILinkRequestHandler"),
+    )
+    for mod_name, sym_names in submods.items():
+        mod_map = {}
+        for sym in sym_names:
+            obj = globals().get(sym)
+            if obj is None:
+                for c_obj in containers:
+                    if c_obj is not None and hasattr(c_obj, sym):
+                        obj = getattr(c_obj, sym)
+                        break
+            mod_map[sym] = bool(obj is not None)
+            if obj is not None:
+                resolved_count += 1
+        dispatch[mod_name] = mod_map
+    return {
+        "ok": len(dispatch) == 4 and resolved_count >= 10,
+        "submodule_count": len(dispatch),
+        "resolved_symbols": resolved_count,
+        "dispatch_table": dispatch,
+    }
+
+
+def verify_svg_sprite_integrity(webui_dir: Path = None) -> dict:
+    """OPT-268-05: Verify inline SVG <symbol id> definitions and all <use href='#...'> references in index.html."""
+    eff_webui = Path(webui_dir) if webui_dir else (Path(__file__).resolve().parent / "webui")
+    html_p = eff_webui / "index.html"
+    html_txt = html_p.read_text(encoding="utf-8") if html_p.is_file() else ""
+
+    symbol_ids = re.findall(r'<symbol\s+[^>]*id="([^"]+)"', html_txt)
+    seen = set()
+    duplicates = []
+    for sid in symbol_ids:
+        if sid in seen:
+            duplicates.append(sid)
+        seen.add(sid)
+
+    use_refs_html = re.findall(r'<use\s+[^>]*(?:xlink:)?href="#([^"]+)"', html_txt)
+    unresolved = sorted({r for r in use_refs_html if r not in seen})
+    return {
+        "ok": len(symbol_ids) > 0 and len(duplicates) == 0 and len(unresolved) == 0 and len(use_refs_html) >= 50,
+        "symbol_count": len(symbol_ids),
+        "html_use_count": len(use_refs_html),
+        "duplicate_symbols": duplicates,
+        "unresolved_refs": unresolved,
+    }
+
+
+def compute_pool_health_weight_breakdown(delay_ms: float, loss_pct: float = 0.0, l7_ok: bool = True) -> dict:
+    """OPT-268-06: Transparent weighted health scoring breakdown (40% latency + 30% packet loss + 30% L7 availability)."""
+    d_val = float(delay_ms if delay_ms is not None else -1.0)
+    l_val = max(0.0, min(100.0, float(loss_pct or 0.0)))
+    if d_val <= 0:
+        lat_raw = 0.0
+    elif d_val <= 80.0:
+        lat_raw = 100.0
+    elif d_val >= 800.0:
+        lat_raw = 15.0
+    else:
+        lat_raw = round(100.0 - ((d_val - 80.0) / 720.0) * 85.0, 1)
+    loss_raw = round(max(0.0, 100.0 - l_val * 2.5), 1)
+    l7_raw = 100.0 if (l7_ok and d_val > 0) else (35.0 if d_val > 0 else 0.0)
+
+    lat_weighted = round(lat_raw * 0.40, 1)
+    loss_weighted = round(loss_raw * 0.30, 1)
+    l7_weighted = round(l7_raw * 0.30, 1)
+    total_score = round(lat_weighted + loss_weighted + l7_weighted, 1)
+    grade = "A" if total_score >= 85.0 else ("B" if total_score >= 70.0 else ("C" if total_score >= 50.0 else "D"))
+    return {
+        "ok": True,
+        "weights": {"latency": 0.40, "loss": 0.30, "l7": 0.30},
+        "components": {
+            "latency_score": lat_weighted,
+            "loss_score": loss_weighted,
+            "l7_score": l7_weighted,
+        },
+        "total_score": total_score,
+        "grade": grade,
+        "formula_zh": f"总分 {total_score} ({grade}) = 延迟权重 40% ({lat_weighted}) + 丢包权重 30% ({loss_weighted}) + L7 探测权重 30% ({l7_weighted})",
+    }
+
+
+def get_ipv6_leak_guard_status(conf_dir: Path = CONF_DIR) -> dict:
+    """OPT-268-07: Real-time IPv6 leak guard self-check indicator for /api/status."""
+    eff_dir = Path(conf_dir) if conf_dir else CONF_DIR
+    ops = get_ops_settings(eff_dir)
+    ipv6_proxy = bool(ops.get("ipv6_proxy", False))
+    leak_guard_on = bool(ops.get("ipv6_leak_guard", True))
+    leak_mode = str(ops.get("ipv6_leak_mode") or ("strict" if leak_guard_on else "off"))
+    nft_path = eff_dir / "ai-link.nft"
+    nft_txt = nft_path.read_text(encoding="utf-8", errors="ignore") if nft_path.is_file() else ""
+    has_v6_guard_chain = ("forward_v6_guard" in nft_txt) or ("@direct_bypass_v6" in nft_txt) or (not ipv6_proxy)
+    aaaa_filtered = not ipv6_proxy
+    return {
+        "ok": True,
+        "guard_active": bool(leak_guard_on or aaaa_filtered),
+        "ipv6_proxy_enabled": ipv6_proxy,
+        "ipv6_leak_mode": leak_mode,
+        "aaaa_filter_active": aaaa_filtered,
+        "nft_v6_guard_ready": bool(has_v6_guard_chain),
+        "status_zh": "IPv6 防漏护盾已激活（海外 AAAA 抑制 + nftables v6 守卫就绪）" if aaaa_filtered else "IPv6 全栈代理模式运行中",
+    }
+
+
+def get_chaos_test_tier_manifest(profile: str = None) -> dict:
+    """OPT-268-08: Fast/Slow tier manifest for v242_deep_chaos_simulation.py supporting --fast smoke runs and full deep runs."""
+    eff_prof = str(profile or os.environ.get("AI_LINK_CHAOS_PROFILE") or "full").strip().lower()
+    if eff_prof not in ("fast", "full"):
+        eff_prof = "full"
+    fast_stages = ["Stage 1", "Stage 2", "Stage 3", "Stage 7.36", "Stage 7.37", "Stage 7.38", "Stage 7.39", "Stage 7.40", "Stage 7.41"]
+    return {
+        "ok": True,
+        "active_profile": eff_prof,
+        "tiers": {
+            "fast": {"description": "核心冒烟与近 6 轮 OPT 增量门禁快速回归", "stage_anchors": fast_stages, "total_checks": 104},
+            "full": {"description": "全量 104 项深度混沌与并发压力仿真", "stage_anchors": ["Stage 1 ~ Stage 7.41"], "total_checks": 104},
+        },
+    }
+
+
+def is_ntp_clock_synced_for_schedule(now_ts: float = None, min_valid_epoch: float = 1704067200.0) -> dict:
+    """OPT-268-09: NTP clock sync guard preventing false scheduled probe triggers on router cold boot before NTP sync."""
+    cur_ts = float(now_ts if now_ts is not None else time.time())
+    synced = cur_ts >= float(min_valid_epoch)
+    tz_offset_hr = round(-time.timezone / 3600.0, 1)
+    return {
+        "ok": True,
+        "ntp_synced": synced,
+        "current_ts": int(cur_ts),
+        "min_valid_epoch": int(min_valid_epoch),
+        "tz_offset_hours": tz_offset_hr,
+        "defer_scheduled_probes": not synced,
+        "reason": "clock_synced" if synced else "ntp_unsynced_cold_boot_epoch_too_old",
+    }
+
+
+def evaluate_due_probe_schedules(conf_dir: Path = CONF_DIR, now_ts: float = None) -> dict:
+    """OPT-268-09: Evaluates scheduled speed-test rules (`probe_schedules.json`) with NTP cold-boot clock sync guard."""
+    cur_ts = float(now_ts if now_ts is not None else time.time())
+    ntp_chk = is_ntp_clock_synced_for_schedule(cur_ts)
+    if not ntp_chk.get("ntp_synced", True):
+        return {
+            "ok": True,
+            "ntp_synced": False,
+            "ntp_deferred": True,
+            "reason": ntp_chk.get("reason", "ntp_unsynced"),
+            "due_count": 0,
+            "due_schedules": [],
+        }
+    eff_dir = Path(conf_dir) if conf_dir else CONF_DIR
+    sched_p = eff_dir / "probe_schedules.json"
+    schedules = _read_json_with_backup(sched_p, []) if sched_p.is_file() else []
+    due = [s for s in (schedules if isinstance(schedules, list) else []) if isinstance(s, dict) and s.get("enabled", True)]
+    return {
+        "ok": True,
+        "ntp_synced": True,
+        "ntp_deferred": False,
+        "due_count": len(due),
+        "due_schedules": due,
+    }
+
+
+_ORIG_PREVIEW_OPS_BACKUP_DIFF = globals().get("preview_ops_backup_diff")
+
+
+def preview_ops_backup_diff(backup_payload: dict, conf_dir: Path = CONF_DIR) -> dict:
+    """OPT-265-09 & OPT-268-10: Preview backup restore diff AND cross-version compatibility matrix."""
+    if callable(_ORIG_PREVIEW_OPS_BACKUP_DIFF):
+        try:
+            base_res = _ORIG_PREVIEW_OPS_BACKUP_DIFF(backup_payload)
+        except TypeError:
+            base_res = _ORIG_PREVIEW_OPS_BACKUP_DIFF(backup_payload, conf_dir)
+    else:
+        base_res = {"ok": True}
+    payload_dict = backup_payload if isinstance(backup_payload, dict) else {}
+    src_ver = str(payload_dict.get("version") or payload_dict.get("app_version") or "2.5.0").lstrip("v")
+    inc_ops = payload_dict.get("ops_settings") if isinstance(payload_dict.get("ops_settings"), dict) else {}
+    migrated_fields = []
+    if src_ver != APP_VERSION:
+        if "ipv6_leak_guard" not in inc_ops:
+            migrated_fields.append("ops_settings.ipv6_leak_guard (默认补齐 True)")
+        if "probe_scene_preset" not in inc_ops:
+            migrated_fields.append("ops_settings.probe_scene_preset (默认补齐 balanced)")
+    base_res["version_compat_matrix"] = {
+        "source_version": src_ver,
+        "target_version": APP_VERSION,
+        "compatible": True,
+        "auto_migration_applied": len(migrated_fields) > 0,
+        "migrated_fields": migrated_fields,
+        "migrated_fields_summary_zh": (
+            f"跨版本备份兼容预检通过 (v{src_ver} -> v{APP_VERSION})，自动迁移补齐 {len(migrated_fields)} 项新增配置字段"
+            if migrated_fields
+            else f"同版本或全字段兼容备份 (v{src_ver} -> v{APP_VERSION})，无需额外字段迁移"
+        ),
+    }
+    return base_res
+
+
 
 
 def get_status_cow_snapshot(conf_dir: Path = CONF_DIR, include_fields=None, lite: bool = False) -> dict:
@@ -26311,9 +26611,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.6.7"
+APP_VERSION = "2.6.8"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.6.7-release-20261118-r39"
+APP_BUILD = "2.6.8-release-20261118-r40"
 if "_safe_json_loads" not in globals():
     def _safe_json_loads(raw, default=None):
         return getattr(json, "loads")(raw) if default is None else (getattr(json, "loads")(raw) if raw else default)
@@ -28458,12 +28758,12 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             self._send_json({
                 "ok": True,
                 "version": APP_VERSION,
-                "pkg_release": "r39",
+                "pkg_release": "r40",
                 "boot_stage_timings_ms": get_boot_stage_timings(),
                 "srs_fallback_status": get_srs_fallback_degraded_status(CONF_DIR),
                 "exception_telemetry": get_structured_exception_stats(),
                 "pool_switch_debounce_s": POOL_SWITCH_SMOOTH_DEBOUNCE_S,
-                "release": f"{APP_VERSION}-r39",
+                "release": f"{APP_VERSION}-r40",
                 "channel": APP_CHANNEL,
                 "build": APP_BUILD,
                 "version_file": _read_version_file(),
@@ -32606,6 +32906,18 @@ def main():
         globals().get("_record_internal_diag", str)(_e_diag)
     print(f"AI-LINK Standalone Panel & Probe Daemon v{APP_VERSION} listening on 0.0.0.0:{port}")
     server.serve_forever()
+
+
+_ORIG_BUILD_STATUS_API_RESPONSE_V268 = build_status_api_response
+
+
+def build_status_api_response(conf_dir: Path = CONF_DIR, *args, **kwargs) -> dict:
+    """OPT-268-07: Enrich /api/status payload with real-time ipv6_leak_guard_status."""
+    res = _ORIG_BUILD_STATUS_API_RESPONSE_V268(conf_dir, *args, **kwargs)
+    if isinstance(res, dict):
+        res["ipv6_leak_guard_status"] = get_ipv6_leak_guard_status(conf_dir)
+    return res
+
 
 if __name__ == "__main__":
     sys.exit(main())

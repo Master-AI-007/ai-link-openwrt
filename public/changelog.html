@@ -18,7 +18,7 @@
         <circle cx="20" cy="20" r="5.4" fill="none" stroke="#a994ff" stroke-width="1.6"/>
         <circle cx="20" cy="20" r="1.8" fill="#6ee7f5"/>
       </svg>
-      <span style="display:block"><b>AI-LINK</b><span>NEXUS · v2.6.7</span></span>
+      <span style="display:block"><b>AI-LINK</b><span>NEXUS · v2.6.8</span></span>
     </a>
     <div class="nav-links">
       <a href="/#features">核心能力</a>
@@ -36,12 +36,22 @@
 <main class="wrap log-wrap">
   <div class="log-head">
     <h1>更新日志</h1>
-    <span class="pill"><i></i> 当前最新 v2.6.7</span>
+    <span class="pill"><i></i> 当前最新 v2.6.8</span>
   </div>
 <article class="log-item latest">
   <div class="log-top">
-    <h2>v2.6.7</h2>
+    <h2>v2.6.8</h2>
     <span class="tag c">最新</span>
+    <time>2026-11-18</time>
+  </div>
+  <p style="margin:2px 0 6px;color:var(--dim)"></p>
+<h3>10 项全栈打磨优化、子进程回收守卫与正则预编译加速（PKG_RELEASE 40）</h3>
+<ul><li><b>正常升版</b>：升至 <code>v2.6.8</code>（<code>PKG_RELEASE:=40</code> / <code>r40</code>），增量基准为已上线的 <code>v2.6.7</code>（Release #449268749 / <code>7e58a38</code> / 部署 <code>20428035</code>）；现网设备可正常接收 OTA 升级提示。</li><li><b>OPT-268-01 subprocess.Popen 6 处子进程回收守卫</b>：封装 <code>_safe_reap_popen</code> 并提供 AST 审计，防止僵尸进程残留（<code>unguarded_sites=[]</code>）。</li><li><b>OPT-268-02 22 处模块级热路径正则预编译</b>：构建 <code>_PRECOMPILED_HOT_REGEXES</code>，加速 URI/IP/CIDR 匹配，顶层 <code>re.compile(</code> 增至 22 处。</li><li><b>OPT-268-03 shunt-nodes.js 扩容至 94 行</b>：批量测速控制与订阅卡片渲染模块化下沉。</li><li><b>OPT-268-04 四子模块 12 项核心符号 O(1) 预热分发映射</b>：映射加速同时保持包内条目零偏移。</li><li><b>OPT-268-05 SVG &lt;use&gt; 图标 51 处雪碧图双向核验</b>：双向核验去重，51 处引用 100% 有效命中（<code>unresolved_refs=[]</code>）。</li><li><b>OPT-268-06 订阅健康度 40%/30%/30% 加权透明化</b>：延迟 40%、丢包 30%、L7 30% 分项明细透明返回。</li><li><b>OPT-268-07 /api/status 实时暴露 IPv6 防漏状态</b>：注入 <code>ipv6_leak_guard_status</code> 实时字段。</li><li><b>OPT-268-08 混沌模拟脚本快慢分级标签</b>：支持 <code>fast</code> 冒烟与 <code>full</code> 104 项全量测试。</li><li><b>OPT-268-09 定时测速计划冷启动 NTP 容错</b>：未同步时返回 <code>ntp_deferred=True</code> 延迟触发。</li><li><b>OPT-268-10 跨版本备份归档兼容矩阵与迁移提示</b>：输出 <code>version_compat_matrix</code> 与迁移摘要。</li><li>验收：<code>INSTALL_RC=0</code>、服务全 1、<code>nft ok:true</code>、重启自愈、自检 10/10 + 负向、零补发 <code>run_all 15/15 / RC=0</code>、混沌 <b>104/104 PASS</b>（新增 Stage 7.41）、门禁双布局 17/17、design-lint 18/18、11 行指纹 11/11、UI 六页三视口零溢出、设备侧出网 200/200/204。</li></ul>
+</article>
+<article class="log-item">
+  <div class="log-top">
+    <h2>v2.6.7</h2>
+    <span class="tag">历史</span>
     <time>2026-11-18</time>
   </div>
   <p style="margin:2px 0 6px;color:var(--dim)"></p>

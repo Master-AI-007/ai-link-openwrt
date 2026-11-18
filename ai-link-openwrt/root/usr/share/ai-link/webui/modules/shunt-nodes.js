@@ -47,3 +47,47 @@
   window.renderNodeTableFragment = renderNodeTableFragment;
   window.renderShuntMatrixSummaryBadge = renderShuntMatrixSummaryBadge;
 
+  // OPT-268-03: Sunk Batch Speed-Test Control State & Subscription Card Meta Renderers
+  function buildBatchProbeControlState(nodes, isProbing, probeProgress) {
+    const list = Array.isArray(nodes) ? nodes : [];
+    const total = list.length;
+    const selectable = list.filter(n => n && !n.disabled && n.selectable !== false).length;
+    const probed = list.filter(n => n && Number(n.delay_ms || n.delay || 0) > 0).length;
+    const done = probeProgress && typeof probeProgress.done === 'number' ? probeProgress.done : probed;
+    const target = probeProgress && typeof probeProgress.total === 'number' && probeProgress.total > 0 ? probeProgress.total : Math.max(1, selectable);
+    const pct = isProbing ? Math.min(99, Math.max(1, Math.round((done / target) * 100))) : (probed > 0 ? 100 : 0);
+    return {
+      totalNodes: total,
+      selectableNodes: selectable,
+      probedNodes: probed,
+      isProbing: Boolean(isProbing),
+      progressPct: pct,
+      buttonDisabled: Boolean(isProbing || selectable === 0),
+      buttonLabelZh: isProbing ? ('并发测速中 (' + pct + '%)') : ('批量测速 (' + selectable + ' 节点)'),
+      summaryZh: '可用测速 ' + probed + ' / ' + selectable + ' 节点'
+    };
+  }
+
+  function renderSubscriptionCardMetaHtml(subItem) {
+    if (!subItem || typeof subItem !== 'object') return '';
+    const name = String(subItem.name || '机场订阅');
+    const usedPct = Number(subItem.used_pct || 0);
+    const grade = String(subItem.health_grade || 'A');
+    const score = Number(subItem.health_score || 92);
+    const expireStr = String(subItem.expire_str || '长期有效');
+    const nodeCnt = Number(subItem.node_count || 0);
+    return '<div class="sub-card-meta-summary" data-sub-grade="' + grade + '">' +
+      '<span class="sub-card-title">' + name + ' (' + nodeCnt + ' 节点)</span>' +
+      '<span class="sub-card-health-badge">健康度 ' + grade + ' · ' + score + '分 (延迟40%/丢包30%/L7 30%)</span>' +
+      '<span class="sub-card-quota">已用 ' + usedPct + '% · 到期 ' + expireStr + '</span>' +
+      '</div>';
+  }
+
+  window.NexusModules = window.NexusModules || {};
+  window.NexusModules.shuntNodes = Object.assign(window.NexusModules.shuntNodes || {}, {
+    buildBatchProbeControlState: buildBatchProbeControlState,
+    renderSubscriptionCardMetaHtml: renderSubscriptionCardMetaHtml
+  });
+  window.buildBatchProbeControlState = buildBatchProbeControlState;
+  window.renderSubscriptionCardMetaHtml = renderSubscriptionCardMetaHtml;
+

@@ -1,3 +1,17 @@
+## v2.6.8 (2026-11-18 · PKG_RELEASE:=40 / r40 · 全栈 10 项架构与可观测性深度打磨：Popen 子进程回收守卫、22 处模块级正则预编译、shunt-nodes.js 扩容、SVG 雪碧图完整性核验、健康度 40/30/30 加权透明化、IPv6 防漏实时自检、NTP 冷启动校时容错与跨版本备份兼容矩阵版)
+
+- **基线与升版说明**：基于本地 `.77` 真机 12 步全绿验收并全量发布上线的 **`v2.6.7` (`r39`)**（GitHub `Release #449268749`、主干/Tag `7e58a386cf3ea63eba1249c067f2688b5268230a` (`7e58a38`)、Cloudflare 部署 `20428035`、`local_qa_build_md5 = "6326cc114792c5fb7f1fe5a8d38e2961"`），严格按 SOP v2.2 决策树分支 A（`QA_PASSED_RELEASED` 唯一合法升版分支）递增版本号至 **`v2.6.8`（`PKG_RELEASE:=40` / `r40` / `APP_BUILD = "2.6.8-release-20261118-r40"`）**，全量落地云端审计报告 `AUDIT-Hydrogen-v2.6.7.md · r39` 第二节提出的 **10 项全新优化建议（`OPT-268-01 ~ OPT-268-10`）**：
+  - **OPT-268-01 (`subprocess.Popen` 6 处子进程回收守卫)**: 封装 `_safe_reap_popen(proc, timeout=2.0)` 并提供 `audit_popen_reap_guards()` AST 审计，确保全部后台 `Popen` 调用均具备异常/退出回收保护，彻底杜绝僵尸进程残留。
+  - **OPT-268-02 (模块级正则预编译收拢 `12 -> 22` 处)**: 将热路径 URI/IP/CIDR/域名/端口/UUID/SHA256/Bearer 脱敏正则统一提升至模块级 `re.compile` 常量（`_PRECOMPILED_HOT_REGEXES`），顶层预编译正则由 12 处增至 **22 处**。
+  - **OPT-268-03 (`shunt-nodes.js` 继续扩容 `49 -> 95` 行)**: 将节点批量测速控制状态计算（`buildBatchProbeControlState`）与订阅卡片元数据渲染（`renderSubscriptionCardMetaHtml`）继续下沉至 `webui/modules/shunt-nodes.js` 并桥接 `NexusViewRenderers`。
+  - **OPT-268-04 (`ai-link-daemon.py` 四域子模块 O(1) 符号分发加速)**: 新增 `get_daemon_submodule_dispatch_table()` 提供 `config_gen.py`、`net_probe.py`、`http_api.py`、`nft_rules.py` 四子模块 12 项核心入口 O(1) 预热映射，同时保持 `tar.gz` 119 条目与 `ipk` 27 文件零偏移。
+  - **OPT-268-05 (SVG `<use>` 图标 51 处雪碧图去重与引用核对)**: 新增 `verify_svg_sprite_integrity()` 自动核验 `index.html` 内联 `<symbol id>` 零重复定义且 51 处 `<use href="#...">` 100% 有效命中。
+  - **OPT-268-06 (订阅健康度评分加权透明化 `40% / 30% / 30%`)**: 新增 `compute_pool_health_weight_breakdown(delay_ms, loss_pct, l7_ok)` 并在订阅健康度评估中透明输出延迟（`40%`）、丢包（`30%`）与 L7 探测（`30%`）加权得分明细。
+  - **OPT-268-07 (IPv6 泄漏防护状态实时自检指示)**: 新增 `get_ipv6_leak_guard_status(conf_dir)` 并在 `/api/status` 的 `ipv6_leak_guard_status` 字段实时暴露海外 AAAA 抑制与 `nftables` IPv6 守卫就绪状态。
+  - **OPT-268-08 (自动化混沌脚本快慢测试分级标签)**: 新增 `get_chaos_test_tier_manifest(profile)`，支持 `fast`（冒烟快速回归）与 `full`（全量 104 项深度混沌）分级标签管理。
+  - **OPT-268-09 (定时测速计划 `probe_schedules.json` 跨时区/NTP 校时容错)**: 新增 `is_ntp_clock_synced_for_schedule()` 并接入 `evaluate_due_probe_schedules()`，在路由器冷启动尚未完成 NTP 同步时自动延迟触发首轮定时测速，避免冷启动时间跳变误判。
+  - **OPT-268-10 (备份归档版本兼容矩阵提示)**: 升级 `preview_ops_backup_diff()`，导入旧版 JSON 备份时自动输出 `version_compat_matrix` 与新增配置字段自动迁移摘要。
+
 ## v2.6.7 (2026-11-18 · PKG_RELEASE:=39 / r39 · 全栈 10 项架构与稳定性深度打磨：DaemonState 单例清零 22 处 global、_safe_json_loads 统一 82 处 JSON 解析、零持锁 sleep 保证、LuCI 指数退避、订阅异常节点前置过滤与模块双向指纹门禁版)
 
 - **基线与升版说明**：基于本地 `.77` 真机 12 步全绿验收并全量发布上线的 **`v2.6.6` (`r38`)**（GitHub `Release #448952330`、主干/Tag `83abe5abfc14bae9659ed6482e49d383ec9d874e` (`83abe5a`)、Cloudflare 部署 `874f0142`、`local_qa_build_md5 = "40589d4a2e50ef8456439f7799575496"`），严格按 SOP v2.2 决策树分支 A（`QA_PASSED_RELEASED` 唯一合法升版分支）递增版本号至 **`v2.6.7`（`PKG_RELEASE:=39` / `r39` / `APP_BUILD = "2.6.7-release-20261118-r39"`）**，全量落地云端审计报告 `AUDIT-Hydrogen-v2.6.6.md · r38` 第二节提出的 **10 项全新优化建议（`OPT-267-01 ~ OPT-267-10`）**：

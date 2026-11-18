@@ -1,24 +1,44 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.6.7",
+  "latest": "2.6.8",
   "release_date": "2026-11-18",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.6.7",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.6.8",
   "highlights": [
-    "升版至 v2.6.7（PKG_RELEASE 39）：闭环 10 项全栈打磨优化（OPT-267-01 ~ OPT-267-10）",
-    "OPT-267-01 Toast 容器显式补齐 aria-live=\"polite\" 与 aria-atomic=\"false\"，强化无障碍播报契约",
-    "OPT-267-02 overview.js LuCI 轮询失败指数退避状态机（3s → 6s → 15s），恢复后即时复位 3s",
-    "OPT-267-03 ai-link-daemon.py 22 处 global 声明全量收拢至 DaemonState 单例容器（清零）",
-    "OPT-267-04 82 处裸 json.loads() 统一收拢至 _safe_json_loads() 安全包装与异常诊断（清零）",
-    "OPT-267-05 25 处 time.sleep() 持锁安全性审计，持锁阻塞区间清零（0 处）",
-    "OPT-267-06 四子模块边界拆分映射（config_gen / net_probe / http_api / nft_rules）",
-    "OPT-267-07 nexus.js 视图下沉：节点表与分流矩阵片段迁入 webui/modules/shunt-nodes.js",
-    "OPT-267-08 nexus.css 冗余规则清理，精简至 4,174 行 / 151,438 B，design-lint 18/18 零违规",
-    "OPT-267-09 订阅解析前置非法端口/空 host 过滤告警，返回 empty_host / invalid_port 精确计数",
-    "OPT-267-10 构建脚本双向校验 webui/modules/*.js 与 ?v= 哈希（unreferenced_modules=[]）",
-    "真机零补发 run_all 15/15、混沌 103/103（新增 Stage 7.40）、门禁双布局 17/17、design-lint 18/18、11 行指纹 11/11、自检 10/10 + 负向检出"
+    "升版至 v2.6.8（PKG_RELEASE 40）：闭环 10 项全栈打磨优化（OPT-268-01 ~ OPT-268-10）",
+    "OPT-268-01 subprocess.Popen 6 处子进程回收守卫与 AST 静态回收审计（unguarded_sites=[]）",
+    "OPT-268-02 22 处模块级热路径正则预编译（_PRECOMPILED_HOT_REGEXES）加速 URI/IP/CIDR 匹配",
+    "OPT-268-03 shunt-nodes.js 扩容至 94 行，批量测速控制与订阅卡片渲染模块化下沉",
+    "OPT-268-04 四子模块 12 项核心符号 O(1) 预热分发映射（config_gen/net_probe/http_api/nft_rules）",
+    "OPT-268-05 SVG <use> 图标 51 处雪碧图双向核验与去重（unresolved_refs=[] 零悬挂）",
+    "OPT-268-06 订阅健康度 40%/30%/30%（延迟/丢包/L7）加权明细透明化暴露",
+    "OPT-268-07 /api/status 实时暴露 IPv6 防漏链与海外 AAAA 抑制状态（ipv6_leak_guard_status）",
+    "OPT-268-08 混沌模拟脚本快慢分级标签（fast 冒烟快速回归 / full 104 项深度混沌）",
+    "OPT-268-09 定时测速计划冷启动 NTP 未同步容错保护（ntp_deferred=True 延迟安全触发）",
+    "OPT-268-10 跨版本备份归档导入兼容矩阵与配置字段自动迁移提示摘要（migrated_fields_summary_zh）",
+    "真机零补发 run_all 15/15、混沌 104/104（新增 Stage 7.41）、门禁双布局 17/17、design-lint 18/18、11 行指纹 11/11、自检 10/10 + 负向检出"
   ],
   "changelog": [
+    {
+      "version": "2.6.8",
+      "date": "2026-11-18",
+      "type": "feature",
+      "title": "10 项全栈打磨优化、子进程回收守卫与正则预编译加速",
+      "items": [
+        "正常升版至 `v2.6.8`（`PKG_RELEASE:=40` / `r40`），增量基准为线上 `v2.6.7`（Release #449268749 / `7e58a38` / 部署 `20428035`）；现网设备可正常接收 OTA 升级提示",
+        "`OPT-268-01`：封装 `_safe_reap_popen(proc, timeout=2.0)` 并提供 AST 审计，6 处 `Popen` 全部收拢受保护，杜绝僵尸进程残留（`unguarded_sites=[]`）",
+        "`OPT-268-02`：模块级预编译热路径 URI/IP/CIDR/域名/端口/UUID/SHA256 正则（`_PRECOMPILED_HOT_REGEXES`），顶层 `re.compile(` 增至 22 处",
+        "`OPT-268-03`：`webui/modules/shunt-nodes.js` 扩容至 94 行，接入批量测速状态与订阅卡片渲染",
+        "`OPT-268-04`：`ai-link-daemon.py` 提供四域子模块 12 项核心符号 O(1) 预热分发映射，同时保持包内条目零偏移",
+        "`OPT-268-05`：`index.html` 51 处 SVG `<use href=\"#...\">` 雪碧图引用 100% 校验命中，无未解析符号或重复定义",
+        "`OPT-268-06`：订阅健康度评估透明化返回 40% 延迟 + 30% 丢包 + 30% L7 探测加权分项明细",
+        "`OPT-268-07`：在 `/api/status` 新增 `ipv6_leak_guard_status`，实时暴露 IPv6 防漏链与海外 AAAA 抑制状态",
+        "`OPT-268-08`：混沌模拟脚本新增 `fast`（快速冒烟）与 `full`（104 项全量深度混沌）分级标签清单",
+        "`OPT-268-09`：定时测速计划加入冷启动 NTP 校时容错（`is_ntp_clock_synced_for_schedule`），系统时间未对齐前安全延后",
+        "`OPT-268-10`：跨版本导入旧版 JSON 备份时自动输出 `version_compat_matrix` 与迁移摘要（`migrated_fields_summary_zh`）",
+        "真机验收：`INSTALL_RC=0`、自检 10/10 零写盘泄漏（blocked=7/leaked=0）+ 负向检出有效、重启自愈、零补发 `run_all 15/15 RC=0`、混沌 **104/104 PASS**（新增 `Stage 7.41`）、门禁双布局 17/17、UI 六页三视口零溢出、出网 200/200/204"
+      ]
+    },
     {
       "version": "2.6.7",
       "date": "2026-11-18",
@@ -657,13 +677,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.6.7/AI-LINK-v2.6.7.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.6.8/AI-LINK-v2.6.8.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.6.7.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.6.8.tar.gz"
       ],
-      "size": 1187794,
-      "md5": "6326cc114792c5fb7f1fe5a8d38e2961",
-      "sha256": "ac4bdfa5d749a68e370afa5c7d99a6a227060ca021b437f7e79bda85739ffb58"
+      "size": 1194894,
+      "md5": "6af3f9301248cbb177ba2ba7a3d6a952",
+      "sha256": "9850fc60a21c63d146cc2417abe12c1e65d0d78d0debf2fccc5b4b91dc7ac70b"
     }
   }
 }
