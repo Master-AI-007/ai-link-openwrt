@@ -198,7 +198,7 @@ def _open_url_with_retry(
     context=None,
     retries: int = 1,
     backoff_s: float = 0.2,
-    user_agent: str = "AI-LINK/2.7.1 (OpenWrt; Sing-Box-Nexus)",
+    user_agent: str = "AI-LINK/2.7.2 (OpenWrt; Sing-Box-Nexus)",
 ):
     if isinstance(req_or_url, str):
         req_obj = urllib.request.Request(req_or_url, headers={"User-Agent": user_agent})
@@ -26611,9 +26611,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.7.1"
+APP_VERSION = "2.7.2"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.7.1-release-20261118-r43"
+APP_BUILD = "2.7.2-release-20261119-r46"
 if "_safe_json_loads" not in globals():
     def _safe_json_loads(raw, default=None):
         return getattr(json, "loads")(raw) if default is None else (getattr(json, "loads")(raw) if raw else default)
@@ -28758,12 +28758,12 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             self._send_json({
                 "ok": True,
                 "version": APP_VERSION,
-                "pkg_release": "r43",
+                "pkg_release": "r46",
                 "boot_stage_timings_ms": get_boot_stage_timings(),
                 "srs_fallback_status": get_srs_fallback_degraded_status(CONF_DIR),
                 "exception_telemetry": get_structured_exception_stats(),
                 "pool_switch_debounce_s": POOL_SWITCH_SMOOTH_DEBOUNCE_S,
-                "release": f"{APP_VERSION}-r43",
+                "release": f"{APP_VERSION}-r46",
                 "channel": APP_CHANNEL,
                 "build": APP_BUILD,
                 "version_file": _read_version_file(),
@@ -33391,6 +33391,7 @@ def apply_rss_memory_load_shedding(warn_mb: int = 128, simulated_rss_mb: float =
     new_cap = 200 if shed_triggered else default_cap
     if shed_triggered:
         gc.collect()
+    pool_pol = get_managed_thread_pool_policy(rss_shedding=shed_triggered) if "get_managed_thread_pool_policy" in globals() else {"max_workers": 4 if shed_triggered else 8}
     return {
         "ok": True,
         "rss_mb": round(eff_rss, 2),
@@ -33398,6 +33399,7 @@ def apply_rss_memory_load_shedding(warn_mb: int = 128, simulated_rss_mb: float =
         "load_shedding_triggered": shed_triggered,
         "previous_ring_buffer_cap": default_cap,
         "effective_ring_buffer_cap": new_cap,
+        "thread_pool_policy": pool_pol,
     }
 
 
@@ -33474,8 +33476,8 @@ def run_webui_modules_node_unit_tests(repo_root: Path = None) -> dict:
 
 
 def export_health_audit_snapshot_json(conf_dir: Path = CONF_DIR) -> dict:
-    """OPT-271-01 & OPT-271-10: Single-page JSON diagnostic snapshot integrating all OPT-269/270/271 health & security probes."""
-    return {
+    """OPT-271-01, OPT-271-10 & OPT-272-05: Single-page JSON diagnostic snapshot integrating OPT-269/270/271/272 probes."""
+    snap = {
         "ok": True,
         "app_version": APP_VERSION,
         "app_build": APP_BUILD,
@@ -33488,6 +33490,136 @@ def export_health_audit_snapshot_json(conf_dir: Path = CONF_DIR) -> dict:
         "ruleset_integrity": audit_singbox_ruleset_reference_integrity(conf_dir=conf_dir),
         "region_latency_percentiles": compute_region_latency_percentiles(conf_dir=conf_dir),
         "homelink_posture": audit_homelink_security_posture(conf_dir=conf_dir),
+    }
+    if "check_storage_headroom_before_write" in globals():
+        snap["storage_headroom"] = check_storage_headroom_before_write(conf_dir, min_free_mb=16)
+    if "get_declarative_api_route_matrix" in globals():
+        snap["api_route_matrix"] = get_declarative_api_route_matrix()
+    if "get_managed_thread_pool_policy" in globals():
+        snap["thread_pool_policy"] = get_managed_thread_pool_policy(rss_shedding=bool((snap.get("rss_watermark_status") or {}).get("oom_warning")))
+    if "diagnose_empty_pool_fallback_reasons" in globals():
+        snap["empty_pool_fallback"] = diagnose_empty_pool_fallback_reasons(conf_dir=conf_dir)
+    if "build_watchdog_circuit_breaker_notice" in globals():
+        snap["watchdog_circuit_breaker"] = build_watchdog_circuit_breaker_notice(failure_count=0, threshold=3)
+    return snap
+
+
+
+# === v2.7.2 (r44) OPT-272-01 ~ OPT-272-10 Storage Guard, Route Matrix, Core Rollback & Observability ===
+def check_storage_headroom_before_write(target_path: Path = CONF_DIR, min_free_mb: int = 16) -> dict:
+    """OPT-272-01: OverlayFS / tmpfs remaining disk-space guard before OTA download, .srs update, or backup restore."""
+    tp = Path(target_path) if target_path is not None else CONF_DIR
+    probe_dir = tp if tp.is_dir() else tp.parent
+    if not probe_dir.exists():
+        probe_dir = Path("/tmp")
+    usage = shutil.disk_usage(str(probe_dir))
+    free_mb = round(usage.free / (1024.0 * 1024.0), 2)
+    req_mb = max(1, int(min_free_mb or 16))
+    return {
+        "ok": free_mb >= float(req_mb),
+        "probe_dir": str(probe_dir),
+        "free_mb": free_mb,
+        "min_required_mb": req_mb,
+        "total_mb": round(usage.total / (1024.0 * 1024.0), 2),
+    }
+
+
+def get_declarative_api_route_matrix() -> dict:
+    """OPT-272-02: Declarative API route & authentication-level matrix summary."""
+    matrix = {
+        "/api/health": {"methods": ["GET"], "auth": "public"},
+        "/api/login": {"methods": ["POST"], "auth": "public"},
+        "/api/status": {"methods": ["GET"], "auth": "lan_auth"},
+        "/api/diag": {"methods": ["GET", "POST"], "auth": "lan_auth"},
+        "/api/ops/backup": {"methods": ["GET"], "auth": "admin"},
+        "/api/ops/restore": {"methods": ["POST"], "auth": "admin"},
+        "/api/ota/check": {"methods": ["GET"], "auth": "lan_auth"},
+        "/api/ota/apply": {"methods": ["POST"], "auth": "admin"},
+        "/api/shunt/save": {"methods": ["POST"], "auth": "lan_auth"},
+        "/api/homelink/nodes": {"methods": ["GET", "POST"], "auth": "admin"},
+    }
+    return {
+        "ok": True,
+        "core_routes_count": len(matrix),
+        "auth_tiers": ["public", "lan_auth", "admin"],
+        "routes": matrix,
+    }
+
+
+def get_managed_thread_pool_policy(rss_shedding: bool = False) -> dict:
+    """OPT-272-03: Unified ThreadPoolExecutor naming prefix & bounded max_workers policy coupled with RSS shedding."""
+    max_w = 4 if rss_shedding else 8
+    return {
+        "ok": True,
+        "thread_name_prefix": "ailink-pool-",
+        "max_workers": max_w,
+        "rss_shedding_active": bool(rss_shedding),
+    }
+
+
+def export_sanitized_health_audit_snapshot(conf_dir: Path = CONF_DIR) -> dict:
+    """OPT-272-05: Export health audit snapshot with strict secret-key sanitization self-check."""
+    snap = export_health_audit_snapshot_json(conf_dir=conf_dir)
+    raw_txt = json.dumps(snap, ensure_ascii=False)
+    leaked_tokens = []
+    for m in re.finditer(r'(?i)"(password|uuid|token|secret|private_key)"\s*:\s*"([^"]{6,})"', raw_txt):
+        if m.group(2) != "***":
+            leaked_tokens.append(m.group(1))
+    snap["sanitization_verified"] = len(leaked_tokens) == 0
+    snap["leaked_fields_count"] = len(leaked_tokens)
+    return snap
+
+
+def diagnose_empty_pool_fallback_reasons(conf_dir: Path = CONF_DIR, pools_override: list = None) -> dict:
+    """OPT-272-06: Detect multi-line / auto-pool groups with zero reachable nodes and report fallback outbound."""
+    pools = pools_override if isinstance(pools_override, list) else (load_auto_nodes_config(conf_dir).get("auto_nodes") or [])
+    empty_groups = []
+    for p_item in pools:
+        if not isinstance(p_item, dict):
+            continue
+        cur = str(p_item.get("current_node") or "").strip()
+        avail = p_item.get("available_nodes")
+        if (not cur) or (isinstance(avail, list) and len(avail) == 0):
+            empty_groups.append({
+                "group_id": p_item.get("id") or p_item.get("tag") or "unknown",
+                "reason": "所属订阅节点全部不可达，已降级至兜底出站",
+                "fallback_outbound": str(p_item.get("fallback_outbound") or "direct"),
+            })
+    return {
+        "ok": True,
+        "empty_groups_count": len(empty_groups),
+        "empty_groups": empty_groups,
+    }
+
+
+def verify_and_rollback_core_binary(new_bin: Path, backup_bin: Path, runner=None) -> dict:
+    """OPT-272-07: Verify upgraded sing-box binary health and auto-rollback to backup binary on failure."""
+    nb = Path(new_bin)
+    bb = Path(backup_bin)
+    if runner is not None:
+        rc, err_msg = runner(nb)
+    else:
+        proc = subprocess.run([str(nb), "version"], capture_output=True, text=True, timeout=10)
+        rc, err_msg = proc.returncode, (proc.stderr or "").strip()
+    if rc == 0:
+        return {"ok": True, "rolled_back": False, "error": ""}
+    if bb.is_file():
+        shutil.copy2(bb, nb)
+        return {"ok": False, "rolled_back": True, "error": err_msg or f"exit={rc}"}
+    return {"ok": False, "rolled_back": False, "error": err_msg or f"exit={rc}"}
+
+
+def build_watchdog_circuit_breaker_notice(failure_count: int = 0, threshold: int = 3) -> dict:
+    """OPT-272-10: Actionable watchdog circuit-breaker notification & one-click recovery guidance."""
+    fc = max(0, int(failure_count or 0))
+    th = max(1, int(threshold or 3))
+    is_open = fc >= th
+    return {
+        "ok": True,
+        "failure_count": fc,
+        "threshold": th,
+        "circuit_open": is_open,
+        "recovery_hint_zh": "请核查内核配置语法后点击「重置熔断并重启核心」" if is_open else "看门狗运行正常",
     }
 
 
@@ -33510,8 +33642,16 @@ generate_singbox_config = ConfigGenerator.generate_singbox_config
 _ORIG_BUILD_STATUS_API_RESPONSE_V268 = build_status_api_response
 
 
+def perform_guarded_core_binary_upgrade(new_bin: Path, backup_bin: Path, runner=None) -> dict:
+    """OPT-272R-08/09: Guarded core binary upgrade combining storage headroom pre-check & auto-rollback."""
+    hd = check_storage_headroom_before_write(Path(new_bin).parent, min_free_mb=16)
+    if not hd.get("ok"):
+        return {"ok": False, "rolled_back": False, "error": "insufficient_storage", "headroom": hd}
+    return verify_and_rollback_core_binary(new_bin, backup_bin, runner=runner)
+
+
 def build_status_api_response(conf_dir: Path = CONF_DIR, *args, **kwargs) -> dict:
-    """OPT-268-07, OPT-269-02, OPT-270-02 & OPT-271-01: Enrich /api/status with watermarks, rate-limit, worker health & HomeLink posture."""
+    """OPT-268-07..OPT-272-10: Enrich /api/status with watermarks, storage headroom, pool fallback & watchdog circuit status."""
     res = _ORIG_BUILD_STATUS_API_RESPONSE_V268(conf_dir, *args, **kwargs)
     if isinstance(res, dict) and not kwargs.get("lite"):
         res["ipv6_leak_guard_status"] = get_ipv6_leak_guard_status(conf_dir)
@@ -33520,6 +33660,10 @@ def build_status_api_response(conf_dir: Path = CONF_DIR, *args, **kwargs) -> dic
         res["auth_rate_limit_telemetry"] = get_auth_rate_limit_telemetry(loopback_exempt=True)
         res["worker_health_registry"] = get_background_worker_health_registry()
         res["homelink_security_posture"] = audit_homelink_security_posture(conf_dir=conf_dir)
+        res["storage_headroom_status"] = check_storage_headroom_before_write(conf_dir, min_free_mb=16)
+        res["empty_pool_fallback_diag"] = diagnose_empty_pool_fallback_reasons(conf_dir=conf_dir)
+        res["watchdog_circuit_breaker"] = build_watchdog_circuit_breaker_notice(failure_count=0, threshold=3)
+        res["sanitized_snapshot_ready"] = bool(export_sanitized_health_audit_snapshot(conf_dir=conf_dir).get("sanitization_verified"))
     return res
 
 

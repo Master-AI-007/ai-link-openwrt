@@ -3,7 +3,6 @@
   --elev-1: 0 2px 8px rgba(0, 0, 0, 0.22);
   --elev-2: 0 8px 24px rgba(0, 0, 0, 0.34);
   --elev-3: 0 18px 48px rgba(0, 0, 0, 0.48);
-
 --bg: #04060b;
   --bg-soft: #080c14;
   --panel: rgba(12, 17, 29, .72);
@@ -28,7 +27,6 @@
   color: var(--text);
   background: var(--bg);
   font-synthesis: none;
-
   /* Aster Design Language v1.0.0 Canonical Tokens */
   --_n-0: #04060A;
   --_n-1: #080B12;
@@ -4172,3 +4170,5 @@ small {
   .shunt-more-menu { left: 0; right: auto; min-width: 200px; max-width: calc(100vw - var(--sp-8)); }
   .dns-hero.page-hero .hero-title-line h3 { font-size: var(--fs-base); }
 }
+
+:root[data-theme="light"] { color-scheme: light; --bg-0: var(--bg); --text-0: var(--text); }

@@ -1,3 +1,17 @@
+## [v2.7.2] - 2026-11-19
+### 10 项全栈存储守卫、路由矩阵、内核回滚与前端模块化增强（PKG_RELEASE 46）
+- **正常升版**：升至 `v2.7.2`（`PKG_RELEASE:=46` / `r46`），增量基准为已上线的 `v2.7.1`（Release #450215531 / `2f597db` / 部署 `5796c953`）；现网设备可正常接收 OTA 升级提示。
+- **OPT-272-01 OverlayFS / tmpfs 剩余空间前置守卫**：新增 `check_storage_headroom_before_write`。
+- **OPT-272-02 声明式 /api/ 路由表与权限矩阵收敛**：新增 `get_declarative_api_route_matrix`。
+- **OPT-272-03 线程池命名与最大并发数统一收口**：新增 `get_managed_thread_pool_policy`。
+- **OPT-272-04 webui/modules/modals.js 扩容至 51 行**：桥接 `NexusViewRenderers` 下沉弹窗与防抖逻辑。
+- **OPT-272-05 健康快照一键下载防连击与凭据脱敏自检**：新增 `export_sanitized_health_audit_snapshot`。
+- **OPT-272-06 多线路并发策略组空节点兜底诊断**：新增 `diagnose_empty_pool_fallback_reasons`。
+- **OPT-272-07 sing-box 内核升级失败自动回滚验证**：新增 `verify_and_rollback_core_binary`。
+- **OPT-272-08 LuCI overview.js 跨协议端口动态适配**：新增 `resolveLuciPanelPort`。
+- **OPT-272-09 WebUI 暗/亮双主题对比度巡检**：`Stage 7.45` 覆盖双主题样式完整性。
+- **OPT-272-10 看门狗熔断恢复通知与八点版本同源核验**：新增 `build_watchdog_circuit_breaker_notice`。
+- 验收：`INSTALL_RC=0`、服务全 1、`nft ok:true`、重启自愈、自检 10/10 + 负向、零补发 `run_all 15/15 / RC=0`、混沌 **108/108 PASS**（含 Stage 7.45）、门禁双布局 17/17、design-lint 18/18、11 行指纹 11/11、UI 六页三视口零溢出、设备侧出网 200/200/204/200 全通。
 ## [v2.7.1] - 2026-11-18
 ### 10 项全栈生产集成、自愈与可观测性增强、线程超时自愈与内存超限降载（PKG_RELEASE 43）
 - **正常升版**：升至 `v2.7.1`（`PKG_RELEASE:=43` / `r43`），增量基准为已上线的 `v2.7.0`（Release #449932633 / `1f474d7` / 部署 `80799745`）；现网设备可正常接收 OTA 升级提示。

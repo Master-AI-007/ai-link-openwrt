@@ -17,7 +17,11 @@ return view.extend({
 	render: function() {
 		var m, s, o;
 		var host = window.location.hostname || '10.10.10.77';
-		var port = uci.get('ai-link', 'global', 'panel_port') || '9099';
+		var resolveLuciPanelPort = function(uciPort) {
+			var p = parseInt(uciPort, 10);
+			return (p >= 1024 && p <= 65535) ? p : 9099;
+		};
+		var port = String(resolveLuciPanelPort(uci.get('ai-link', 'global', 'panel_port')));
 		var pwdCustFlag = String(uci.get('ai-link', 'global', 'panel_pwd_customized') || '');
 		var uciSecretRaw = String(uci.get('ai-link', 'global', 'panel_secret') || '');
 		var pwdIsCustom = (pwdCustFlag === '1') || (uciSecretRaw !== '' && (uciSecretRaw === '__custom__' || /^sha256:/i.test(uciSecretRaw) || uciSecretRaw !== 'ai-link-2026'));
@@ -44,7 +48,7 @@ return view.extend({
 				}).catch(function() { return ''; });
 			}).catch(function() { return ''; });
 		}
-		var currentVer = String(uci.get('ai-link', 'global', 'app_version') || '2.7.1');
+		var currentVer = String(uci.get('ai-link', 'global', 'app_version') || '2.7.2');
 		var unlockBtnHtml = ' <button type="button" id="luci-btn-unlock-panel" style="padding:2px 8px; border-radius:5px; border:1px solid rgba(56,189,248,0.35); background:rgba(14,116,144,0.25); color:#7dd3fc; font-size:11px; cursor:pointer;">🔓 解锁状态</button>';
 		var pwdFieldHtml = pwdIsCustom
 			? '<span style="font-size:12px; color:#94a3b8; display:inline-flex; align-items:center; gap:6px;">面板密码: <code id="luci-panel-pwd-mask" style="background:#0f172a; padding:2px 7px; border-radius:5px; color:#e2e8f0; border:1px solid rgba(148,163,184,0.2);">已自定义 · 不回显</code>' + unlockBtnHtml + ' <span style="font-size:11px; color:#64748b;">（忘记可执行 ai-link password 重置）</span></span>'
@@ -93,7 +97,7 @@ return view.extend({
 					'</div>' +
 				'</div>' +
 				'<div id="luci-svc-hint" style="margin-top:9px; font-size:12px; color:#94a3b8; line-height:1.6;">' +
-					'LuCI 面板仅保留基础服务启停、透明代理接管开关与 OTA 在线升级；所有节点池、精细分流、DNS 护盾、回家网关与高级设置请在 :9099 独立控制台中操作。' +
+					'LuCI 面板仅保留基础服务启停、透明代理接管开关与 OTA 在线升级；所有节点池、精细分流、DNS 护盾、回家网关与高级设置请在 :' + resolveLuciPanelPort(port) + ' 独立控制台中操作。' +
 				'</div>' +
 			'</div>';
 		};
@@ -412,19 +416,19 @@ return view.extend({
 						'开机自启: <b style="color:' + (bootOn ? '#34d399' : '#f87171') + ';">' + (bootOn ? '已启用' : '已禁用') + '</b>' +
 						' · 透明代理接管: <b style="color:' + (enabled ? '#34d399' : '#94a3b8') + ';">' + (enabled ? '开启' : '暂停') + '</b>' +
 						' · nftables: <b style="color:' + (nftUp ? '#34d399' : '#94a3b8') + ';">' + (nftUp ? '已挂载' : '未挂载') + '</b>' +
-						' · 面板端口: <b style="color:#bae6fd;">:' + escapeHtml(st.port || '9099') + '</b>';
+						' · 面板端口: <b style="color:#bae6fd;">:' + escapeHtml(String(resolveLuciPanelPort(st.port || port))) + '</b>';
 				}
 
 				if (hint) {
 					if (!running) {
-						hint.innerHTML = '⚠️ <b style="color:#fca5a5;">守护进程未运行</b>，面板 :' + escapeHtml(st.port || '9099') +
+						hint.innerHTML = '⚠️ <b style="color:#fca5a5;">守护进程未运行</b>，面板 :' + escapeHtml(String(resolveLuciPanelPort(st.port || port))) +
 							' 当前不可访问。点「▶ 启动服务」即可恢复（无需 SSH，或终端执行 /etc/init.d/ai-link restart 与 ai-link status 排查）。';
 						hint.style.color = '#fca5a5';
 					} else if (!coreUp && enabled) {
 						hint.innerHTML = '🚨 <b style="color:#fca5a5;">Sing-box 内核未运行</b>：防黑洞看门狗已自动撤除 nftables 重定向并回退直连以保障不断网，请点上方「🔄 重启服务」或「🔄 重载内核」恢复。';
 						hint.style.color = '#fca5a5';
 					} else {
-						hint.innerHTML = 'LuCI 面板仅保留基础服务启停、透明代理接管开关与 OTA 在线升级；所有节点池、精细分流、DNS 护盾、回家网关与高级设置请在 :' + escapeHtml(st.port || '9099') + ' 独立控制台中操作。';
+						hint.innerHTML = 'LuCI 面板仅保留基础服务启停、透明代理接管开关与 OTA 在线升级；所有节点池、精细分流、DNS 护盾、回家网关与高级设置请在 :' + escapeHtml(String(resolveLuciPanelPort(st.port || port))) + ' 独立控制台中操作。';
 						hint.style.color = '#94a3b8';
 					}
 				}
@@ -485,7 +489,7 @@ return view.extend({
 
 			bindBtn('#luci-btn-svc-start', function() { svcRun('start', '启动服务'); });
 			bindBtn('#luci-btn-svc-stop', function() {
-				if (!window.confirm('确认停止 AI-LINK 服务？\n\n· 守护进程与 sing-box 内核都会结束\n· 面板 :9099 将无法访问\n· 网络会恢复为纯直连（不影响正常上网）\n\n停止后可在本页「▶ 启动服务」随时恢复。')) return;
+				if (!window.confirm('确认停止 AI-LINK 服务？\n\n· 守护进程与 sing-box 内核都会结束\n· 面板 :' + resolveLuciPanelPort(port) + ' 将无法访问\n· 网络会恢复为纯直连（不影响正常上网）\n\n停止后可在本页「▶ 启动服务」随时恢复。')) return;
 				svcRun('stop', '停止服务');
 			});
 			bindBtn('#luci-btn-svc-restart', function() { svcRun('restart', '重启服务'); });
@@ -638,7 +642,7 @@ return view.extend({
 					btn.textContent = '🔍 检查更新';
 					if (!r || !r.ok) {
 						var unauth = Boolean(r && r.error === 'unauthorized');
-						showMsg('❌ ' + (unauth ? '未授权：请先点击上方「🔓 解锁状态」或登录 :9099 面板' : ((r && r.message) || '版本检查失败，请检查网络后重试')), true);
+						showMsg('❌ ' + (unauth ? '未授权：请先点击上方「🔓 解锁状态」或登录 :' + resolveLuciPanelPort(port) + ' 面板' : ((r && r.message) || '版本检查失败，请检查网络后重试')), true);
 						if (sub) sub.textContent = unauth
 							? ('当前 v' + currentVer + ' · 未授权，无法检查更新')
 							: ('当前 v' + currentVer + ' · 版本检查失败（清单不可达）');

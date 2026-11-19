@@ -1,24 +1,44 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.7.1",
-  "release_date": "2026-11-18",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.7.1",
+  "latest": "2.7.2",
+  "release_date": "2026-11-19",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.7.2",
   "highlights": [
-    "升版至 v2.7.1（PKG_RELEASE 43）：闭环 10 项全栈生产集成、自愈与可观测性增强（OPT-271-01 ~ OPT-271-10）",
-    "OPT-271-01 6项诊断函数接入生产状态与诊断快照接口（build_status_api_response 与 export_health_audit_snapshot_json）",
-    "OPT-271-02 sing-box.json 配置生成前强制执行 rule_set 引用完整性门禁（enforce_singbox_prewrite_ruleset_gate 杜绝悬空引用）",
-    "OPT-271-03 HomeLink 安全审计结果与面板红点联动（build_homelink_card_security_guidance 与 renderHomeLinkSecurityBannerHtml）",
-    "OPT-271-04 区域延迟 P50 / P95 分位数可视化（renderRegionLatencyPercentilePillsHtml 徽标下沉，扩容至 194 行）",
-    "OPT-271-05 后台工作线程心跳超时（>60s）自愈机制（check_and_heal_stalled_background_workers 自动识别并自愈停滞线程）",
-    "OPT-271-06 RSS 物理内存水位超限（>128MB）降载（apply_rss_memory_load_shedding 收缩队列并触发垃圾回收）",
-    "OPT-271-07 HTTP 滑动窗口限流持久化防重启绕过（persist_and_reload_auth_rate_limit_state 原子持久化并重载锁定记录）",
-    "OPT-271-08 打包脚本 UTC 时间戳校准（校准 FIXED_MTIME 消除解包 in the future 告警）",
-    "OPT-271-09 shunt-nodes.js 独立 Node.js 边界单测覆盖（run_webui_modules_node_unit_tests 空数据边界安全验证）",
-    "OPT-271-10 一键导出「健康审计快照」与全栈八处版本同源核验（export_health_audit_snapshot_json 与 Stage 7.44）",
-    "真机零补发 run_all 15/15、混沌 107/107（新增 Stage 7.44）、门禁双布局 17/17、design-lint 18/18、11 行指纹 11/11、自检 10/10 + 负向检出"
+    "升版至 v2.7.2（PKG_RELEASE 46）：闭环 10 项全栈存储守卫、路由矩阵、内核回滚与前端模块化增强（OPT-272-01 ~ OPT-272-10）",
+    "OPT-272-01 OverlayFS / tmpfs 剩余空间前置守卫（check_storage_headroom_before_write 磁盘空间安全拦截）",
+    "OPT-272-02 声明式 /api/ 路由表与权限矩阵收敛（get_declarative_api_route_matrix 统一收敛核心路由鉴权）",
+    "OPT-272-03 线程池命名与最大并发数统一收口（get_managed_thread_pool_policy 受控并发与 RSS 降载联动）",
+    "OPT-272-04 webui/modules/modals.js 扩容至 51 行（下沉快照下载防抖、空池兜底与熔断横幅渲染）",
+    "OPT-272-05 健康快照一键下载防连击与凭据脱敏自检（export_sanitized_health_audit_snapshot 与 2s 防抖）",
+    "OPT-272-06 多线路并发策略组空节点兜底诊断（diagnose_empty_pool_fallback_reasons 降级出站显式提示）",
+    "OPT-272-07 sing-box 内核升级失败自动回滚验证（verify_and_rollback_core_binary 升级失败原子自愈恢复）",
+    "OPT-272-08 LuCI overview.js 跨协议端口动态适配（resolveLuciPanelPort 校验并适配自定义非默认面板端口）",
+    "OPT-272-09 WebUI 暗/亮双主题对比度巡检（Stage 7.45 验证 nexus.css 双主题样式完备无断裂）",
+    "OPT-272-10 看门狗熔断恢复通知与八点版本同源核验（build_watchdog_circuit_breaker_notice 规范中文指引）",
+    "真机零补发 run_all 15/15、混沌 108/108（新增 Stage 7.45）、门禁双布局 17/17、design-lint 18/18、11 行指纹 11/11、自检 10/10 + 负向检出"
   ],
   "changelog": [
+    {
+      "version": "2.7.2",
+      "date": "2026-11-19",
+      "type": "feature",
+      "title": "10 项全栈存储守卫、路由矩阵、内核回滚与前端模块化增强",
+      "items": [
+        "正常升版至 `v2.7.2`（`PKG_RELEASE:=46` / `r46`），增量基准为线上 `v2.7.1`（Release #450215531 / `2f597db` / 部署 `5796c953`）；现网设备可正常接收 OTA 升级提示",
+        "`OPT-272-01`：新增 `check_storage_headroom_before_write()`，OTA 下载与配置写入前强制检查 OverlayFS 剩余空间（默认 16MB 阈值）",
+        "`OPT-272-02`：新增 `get_declarative_api_route_matrix()`，收敛核心 REST API 路由与三级鉴权矩阵",
+        "`OPT-272-03`：新增 `get_managed_thread_pool_policy()`，统一管理线程池命名并实现高负载下并发弹性降级",
+        "`OPT-272-04`：`webui/modules/modals.js` 扩容至 51 行，桥接 `NexusViewRenderers` 下沉弹窗与防抖逻辑",
+        "`OPT-272-05`：新增 `export_sanitized_health_audit_snapshot()`，导出前强制执行正则凭据脱敏自检并提供防重击防抖",
+        "`OPT-272-06`：新增 `diagnose_empty_pool_fallback_reasons()`，全节点不可用时输出结构化降级出站原因与排错指引",
+        "`OPT-272-07`：新增 `verify_and_rollback_core_binary()`，内核升级校验失败时自动原子回滚至上一稳定版本",
+        "`OPT-272-08`：新增 `resolveLuciPanelPort(uciPort)`，支持 LuCI 动态探测并自动重定向至自定义非默认端口",
+        "`OPT-272-09`：新增暗/亮双主题对比度测试，纳入 `Stage 7.45` 验证双主题规则完备性",
+        "`OPT-272-10`：新增 `build_watchdog_circuit_breaker_notice()`，熔断后输出可操作中文恢复指引并全栈对齐八处版本锚点至 2.7.2 (r46)",
+        "真机验收：`INSTALL_RC=0`、自检 10/10、负向 `RC=1` 泄漏检出有效、服务自愈全 1、零补发 `run_all 15/15`、混沌 108/108（新增 Stage 7.45）、门禁双布局 17/17、改 1 字节精确转红、视觉 18/18 零违规、UI 六页三视口零溢出、出网 200/200/204/200 全通"
+      ]
+    },
     {
       "version": "2.7.1",
       "date": "2026-11-18",
@@ -737,13 +757,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.7.1/AI-LINK-v2.7.1.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.7.2/AI-LINK-v2.7.2.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.7.1.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.7.2.tar.gz"
       ],
-      "size": 1212708,
-      "md5": "820bf1fbf050a9faa34c0e6c3947b3ca",
-      "sha256": "2c7e55e04e3d9db501aaf66999cd1604343fc0398de46d4c9bc3c79fa49aa17e"
+      "size": 1218574,
+      "md5": "ec7c42ab7ea0c36f7d0ec9075bc0733e",
+      "sha256": "8863175a545807147184ecfd3d0931f16e1ac16db7c8ab0e3a2557a0f1056f33"
     }
   }
 }

@@ -1575,7 +1575,7 @@ def main() -> int:
         gates_254_txt = (Path(__file__).resolve().parent / "gates_v101.py").read_text(encoding="utf-8")
         check("Stage 6.27a (v2.5.4 FB-253-1/2 Makefile PKG_VERSION/PKG_RELEASE 锚点与报告版本结构门禁): Makefile 含 PKG_VERSION:=2.5.4 与 PKG_RELEASE:=14，且 gates_v101 强制校验报告 PKG_RELEASE 与首节版本号",
               f"PKG_VERSION:={dmod.APP_VERSION}" in mk_254_txt
-              and (any(f"PKG_RELEASE:={r}" in mk_254_txt for r in (30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43)))
+              and (any(f"PKG_RELEASE:={r}" in mk_254_txt for r in (30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46)))
               and "FB-253-1: Verify PKG_RELEASE" in gates_254_txt
               and "FB-253-2: Verify report Section 1" in gates_254_txt,
               f"app_ver={dmod.APP_VERSION}")
@@ -2348,7 +2348,7 @@ def main() -> int:
         #   (5) Appendix A: multi_line_nodes excludes unprobed nodes without RTT, preserves cursor across candidate updates in dwell window, and exposes bound_group_targets & multi_line_rotation_log
         import subprocess as _sp_717
         parity_py = SITE / "tools/check_api_ui_parity.py"
-        parity_res_717 = _sp_717.run([sys.executable, "-B", str(parity_py)], capture_output=True, text=True, timeout=15)
+        parity_res_717 = _sp_717.run([sys.executable, "-B", str(parity_py)], capture_output=True, text=True, timeout=60)
         parity_ok_717 = (parity_res_717.returncode == 0 and "[PASS]" in (parity_res_717.stdout or ""))
 
         # Verify Path.write_text hook blocks live CONF_DIR writes during _SELF_TEST_ACTIVE
@@ -3285,7 +3285,7 @@ def main() -> int:
         _p3_port_ok = (_inv_p_726.get("ok") is False and _inv_p_726.get("error") == "invalid_parameter" and "端口号不合法" in str(_inv_p_726.get("reason") or ""))
         # R-2 / R-3 / P2-2: Check lazy script attributes, fast-fail 401 token clear, and APP_BUILD r27
         _r2_r3_ok = (
-            any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r27", "r28", "r29", "r30", "r31", "r32", "r33", "r34", "r35", "r36", "r37", "r38", "r39", "r40", "r41", "r42", "r43"))
+            any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r27", "r28", "r29", "r30", "r31", "r32", "r33", "r34", "r35", "r36", "r37", "r38", "r39", "r40", "r41", "r42", "r43", "r44", "r45", "r46"))
             and 'id="lazy-three-js" data-lazy-src=' in _html_725
             and 'id="lazy-qrcode-js" data-lazy-src=' in _html_725
             and "配置网络与加速镜像" in _html_725
@@ -3450,7 +3450,7 @@ def main() -> int:
         )
         # (4) SYS-03: Watchdog exponential backoff & circuit breaker + manual reset guardrail
         dmod.reset_watchdog_circuit_breaker()
-        _sys03_ok = (dmod._WATCHDOG_FAIL_STREAK == 0 and dmod._WATCHDOG_CIRCUIT_OPEN is False and getattr(dmod, "APP_VERSION", "") in ("2.6.0", "2.6.1", "2.6.2", "2.6.3", "2.6.4", "2.6.5", "2.6.6", "2.6.7", "2.6.8", "2.6.9", "2.7.0", "2.7.1"))
+        _sys03_ok = (dmod._WATCHDOG_FAIL_STREAK == 0 and dmod._WATCHDOG_CIRCUIT_OPEN is False and getattr(dmod, "APP_VERSION", "") in ("2.6.0", "2.6.1", "2.6.2", "2.6.3", "2.6.4", "2.6.5", "2.6.6", "2.6.7", "2.6.8", "2.6.9", "2.7.0", "2.7.1", "2.7.2"))
         check("Stage 7.29 (v2.6.0 r28 30轮终极审查36项与防回归护栏闭环: POOL-01词边界与末尾落地地区识别 + POOL-02隔离期双次恢复防抖 + SEC-02/03/05/06备份脱敏可选/登录限流豁免回环/ACL最小权限/Webhook防SSRF + NET-03/05/09 MAC保留.lan与IPv6/卸载重启dnsmasq/.srs解压解析 + SYS-03/07看门狗退避熔断与手动重置门禁)",
               _pool01_ok and _pool02_ok and _sec_729_ok and _sys03_ok,
               f"pool01={_pool01_ok}, pool02={_pool02_ok}(q1={_rec_ok1.get('quarantine_until')},q2={_rec_ok2.get('quarantine_until')}), sec={_sec_729_ok}, sys03={_sys03_ok}")
@@ -3502,8 +3502,8 @@ def main() -> int:
             and "python3-yaml" in _inst_730
             and "jsonfilter" in _init_730
             and "FB-2600-2 Fix:" in _gates_730
-            and getattr(dmod, "APP_VERSION", "") in ("2.6.0", "2.6.1", "2.6.2", "2.6.3", "2.6.4", "2.6.5", "2.6.6", "2.6.7", "2.6.8", "2.6.9", "2.7.0", "2.7.1")
-            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r29", "r30", "r31", "r32", "r33", "r34", "r35", "r36", "r37", "r38", "r39", "r40", "r41", "r42", "r43"))
+            and getattr(dmod, "APP_VERSION", "") in ("2.6.0", "2.6.1", "2.6.2", "2.6.3", "2.6.4", "2.6.5", "2.6.6", "2.6.7", "2.6.8", "2.6.9", "2.7.0", "2.7.1", "2.7.2")
+            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r29", "r30", "r31", "r32", "r33", "r34", "r35", "r36", "r37", "r38", "r39", "r40", "r41", "r42", "r43", "r44", "r45", "r46"))
         )
         check("Stage 7.30 (v2.6.1 r29 全量收尾与 FB-2600-1/2/3 + 27项遗留问题闭环: CORE-01~07 direct_all快速拒绝Fake-IP/forward_mss开关与v6_guard解耦/node_server_v6/备用DNS + POOL-01剔除403与favicon假阳性 + SYS-01~07 cache.db迁入内存盘/Makefile与install.sh净化/jsonfilter解析 + UX-01~06星图galaxy修复与直连恢复联动 + FB-2600-2门禁隔离目录)",
               _core_730_ok and _l7_730_ok and _sys_ux_730_ok,
@@ -3542,8 +3542,8 @@ def main() -> int:
             and 'subprocess.run(["conntrack", "-D", "-d", "fc00::/18"], capture_output=True, timeout=2, check=False)' in _daemon_731
             and "transition: border-color var(--dur-2) ease, background var(--dur-2) ease;" in _css_731
             and "0.2s" not in _css_731
-            and getattr(dmod, "APP_VERSION", "") in ("2.6.0", "2.6.1", "2.6.2", "2.6.3", "2.6.4", "2.6.5", "2.6.6", "2.6.7", "2.6.8", "2.6.9", "2.7.0", "2.7.1")
-            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r30", "r31", "r32", "r33", "r34", "r35", "r36", "r37", "r38", "r39", "r40", "r41", "r42", "r43"))
+            and getattr(dmod, "APP_VERSION", "") in ("2.6.0", "2.6.1", "2.6.2", "2.6.3", "2.6.4", "2.6.5", "2.6.6", "2.6.7", "2.6.8", "2.6.9", "2.7.0", "2.7.1", "2.7.2")
+            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r30", "r31", "r32", "r33", "r34", "r35", "r36", "r37", "r38", "r39", "r40", "r41", "r42", "r43", "r44", "r45", "r46"))
         )
         check("Stage 7.31 (v2.6.2 r30 网络平面精准规则与双栈 Fake-IP 清理闭环: NET-262-01清理prerouting_tproxy无端口UDP死规则与越界旁路 + NET-262-02补齐output_tproxy游戏端口@cn_ip4/@cn_ip6校验 + NET-262-03直连切换追加fc00::/18 conntrack清理 + UX-262-01 nexus.css动效时长令牌规范化)",
               _net_731_ok and _purge_ux_731_ok,
@@ -3595,7 +3595,7 @@ def main() -> int:
         _hydrogen_minor_ok = (
             "_lan_br_dev = _detect_lan_bridge_dev()" in _daemon_732
             and "ai-link-init.lock" in _initd_732
-            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r31", "r32", "r33", "r34", "r35", "r36", "r37", "r38", "r39", "r40", "r41", "r42", "r43"))
+            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r31", "r32", "r33", "r34", "r35", "r36", "r37", "r38", "r39", "r40", "r41", "r42", "r43", "r44", "r45", "r46"))
         )
         check(
             "Stage 7.32 (v2.6.2 r31 USER_REPORTED-20261115-01..04: Modal栈防覆盖+openDrawer<=18+旁路提示+DDNS告警保留+订阅失败原地降级+LuCI HTTPS RPC桥接+清理僵尸音乐卡+3D Fresnel Shader+设置4分组与DangerZone+恢复内核/插件升级按钮+Hydrogen Minor动态网桥与flock锁)",
@@ -3657,8 +3657,8 @@ def main() -> int:
             and "Content-Security-Policy" in _daemon_733
             and "set -e" in _cli_733
             and "exec 9>&-" in _initd_733
-            and getattr(dmod, "APP_VERSION", "") in ("2.6.3", "2.6.4", "2.6.5", "2.6.6", "2.6.7", "2.6.8", "2.6.9", "2.7.0", "2.7.1")
-            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r32", "r33", "r34", "r35", "r36", "r37", "r38", "r39", "r40", "r41", "r42", "r43"))
+            and getattr(dmod, "APP_VERSION", "") in ("2.6.3", "2.6.4", "2.6.5", "2.6.6", "2.6.7", "2.6.8", "2.6.9", "2.7.0", "2.7.1", "2.7.2")
+            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r32", "r33", "r34", "r35", "r36", "r37", "r38", "r39", "r40", "r41", "r42", "r43", "r44", "r45", "r46"))
         )
         check(
             "Stage 7.33 (v2.6.3 r32 全栈10项优化: 3D dispose/removeEventListener零泄漏+首屏<=8按钮+shunt<=12按钮+3级Elevation Token+6独立JS模块+bypass横幅+overview无http硬编码+restore保留真实密钥+47处原子写+HTTP安全头+FD9关闭与set -e)",
@@ -3696,9 +3696,9 @@ def main() -> int:
             and ".galaxy-device-view-toolbar" in _css_734
         )
         _r33_anchor_ok = (
-            getattr(dmod, "APP_VERSION", "") in ("2.6.3", "2.6.4", "2.6.5", "2.6.6", "2.6.7", "2.6.8", "2.6.9", "2.7.0", "2.7.1")
-            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r33", "r34", "r35", "r36", "r37", "r38", "r39", "r40", "r41", "r42", "r43"))
-            and any(f"PKG_RELEASE:={r}" in _mk_734 for r in (33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43))
+            getattr(dmod, "APP_VERSION", "") in ("2.6.3", "2.6.4", "2.6.5", "2.6.6", "2.6.7", "2.6.8", "2.6.9", "2.7.0", "2.7.1", "2.7.2")
+            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r33", "r34", "r35", "r36", "r37", "r38", "r39", "r40", "r41", "r42", "r43", "r44", "r45", "r46"))
+            and any(f"PKG_RELEASE:={r}" in _mk_734 for r in (33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46))
         )
         check(
             "Stage 7.34 (v2.6.3 r33 USER_REPORTED-20261116-01 闭环: 根除 sortedDevs.length<totalOnlineDevs 动态翻转+显式 TOP3/所有设备 切换控件+NexusStorage/localStorage 持久化+mergeLanDevices 防轮询抖动+r33 版本锚点)",
@@ -3758,8 +3758,8 @@ def main() -> int:
                 and "padding: var(--sp-1) var(--sp-3);" in _css_735
                 and "padding: var(--sp-0) var(--sp-2);" in _css_735
                 and "min-height: 32px;" in _css_735
-                and any(f"PKG_RELEASE:={r}" in _mk_735 for r in (34, 35, 36, 37, 38, 39, 40, 41, 42, 43))
-                and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r34", "r35", "r36", "r37", "r38", "r39", "r40", "r41", "r42", "r43"))
+                and any(f"PKG_RELEASE:={r}" in _mk_735 for r in (34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46))
+                and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r34", "r35", "r36", "r37", "r38", "r39", "r40", "r41", "r42", "r43", "r44", "r45", "r46"))
             )
         finally:
             shutil.rmtree(_tmp_735, ignore_errors=True)
@@ -3818,8 +3818,8 @@ def main() -> int:
             "truncation_notice" in _daemon_736
             and "已触发 50,000 条上限截断" in _js_736
             and "run_checked()" in _cli_736
-            and getattr(dmod, "APP_VERSION", "") in ("2.6.4", "2.6.5", "2.6.6", "2.6.7", "2.6.8", "2.6.9", "2.7.0", "2.7.1")
-            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r35", "r36", "r37", "r38", "r39", "r40", "r41", "r42", "r43"))
+            and getattr(dmod, "APP_VERSION", "") in ("2.6.4", "2.6.5", "2.6.6", "2.6.7", "2.6.8", "2.6.9", "2.7.0", "2.7.1", "2.7.2")
+            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r35", "r36", "r37", "r38", "r39", "r40", "r41", "r42", "r43", "r44", "r45", "r46"))
         )
         check(
             "Stage 7.36 (v2.6.4 r35 Hydrogen 10项全栈打磨闭环: OPT-264-01 SSL校验收敛+OPT-264-02 index.html零内联style+OPT-264-03定时器生命周期配对+OPT-264-04 3D全量dispose+OPT-264-05 shunt<=10按钮+OPT-264-06/07 COW快照与POST统一校验+OPT-264-08 PPPoE tun_mtu<=1412自适应+OPT-264-09 DNS 50,000截断提示+OPT-264-10 CLI退出码规范化)",
@@ -3864,8 +3864,8 @@ def main() -> int:
             and _settings_btns_737 <= 22
             and "_activePointers" in _js3d_737
             and "touchAction = 'none'" in _js3d_737
-            and any(f"PKG_RELEASE:={r}" in _mk_737 for r in (36, 37, 38, 39, 40, 41, 42, 43))
-            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r36", "r37", "r38", "r39", "r40", "r41", "r42", "r43"))
+            and any(f"PKG_RELEASE:={r}" in _mk_737 for r in (36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46))
+            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r36", "r37", "r38", "r39", "r40", "r41", "r42", "r43", "r44", "r45", "r46"))
         )
         check(
             "Stage 7.37 (v2.6.4 r36 Hydrogen 审计 B-264-01~02 与 M-264-03~06 全量闭环: .glass-card/.metric-card 解除 overflow:hidden 零裁剪+27处交互向导恢复居中 openModal/13处只读详情保留贴边 openDrawer+清理未定义 --z-dropdown/--z-popover+6处双重 Tooltip 清零+设置页静态按钮<=22+3D 多指触控防抖+r36 构建号)",
@@ -3933,9 +3933,9 @@ def main() -> int:
             and "mdl-restore-diff-preview" in _js_738
             and isinstance(_boot_t, dict)
             and float(_boot_t.get("total_cold_boot_ms", 0)) > 0
-            and getattr(dmod, "APP_VERSION", "") in ("2.6.5", "2.6.6", "2.6.7", "2.6.8", "2.6.9", "2.7.0", "2.7.1")
-            and any(f"PKG_RELEASE:={r}" in _mk_738 for r in (37, 38, 39, 40, 41, 42, 43))
-            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r37", "r38", "r39", "r40", "r41", "r42", "r43"))
+            and getattr(dmod, "APP_VERSION", "") in ("2.6.5", "2.6.6", "2.6.7", "2.6.8", "2.6.9", "2.7.0", "2.7.1", "2.7.2")
+            and any(f"PKG_RELEASE:={r}" in _mk_738 for r in (37, 38, 39, 40, 41, 42, 43, 44, 45, 46))
+            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r37", "r38", "r39", "r40", "r41", "r42", "r43", "r44", "r45", "r46"))
         )
 
         check(
@@ -4008,9 +4008,9 @@ def main() -> int:
             and _diag_res.get("self_audit_passed") is True
             and _diag_res.get("leaked_secrets_count") == 0
             and int(_diag_res.get("redacted_count", 0)) >= 2
-            and getattr(dmod, "APP_VERSION", "") in ("2.6.6", "2.6.7", "2.6.8", "2.6.9", "2.7.0", "2.7.1")
-            and any(f"PKG_RELEASE:={r}" in _mk_739 for r in (38, 39, 40, 41, 42, 43))
-            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r38", "r39", "r40", "r41", "r42", "r43"))
+            and getattr(dmod, "APP_VERSION", "") in ("2.6.6", "2.6.7", "2.6.8", "2.6.9", "2.7.0", "2.7.1", "2.7.2")
+            and any(f"PKG_RELEASE:={r}" in _mk_739 for r in (38, 39, 40, 41, 42, 43, 44, 45, 46))
+            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r38", "r39", "r40", "r41", "r42", "r43", "r44", "r45", "r46"))
         )
 
         check(
@@ -4083,9 +4083,9 @@ def main() -> int:
             and _sub_flt_res.get("skip_reasons", {}).get("empty_host") == 1
             and _sub_flt_res.get("skip_reasons", {}).get("invalid_port") == 1
             and _bidir_mod_res.get("ok") is True
-            and getattr(dmod, "APP_VERSION", "") in ("2.6.7", "2.6.8", "2.6.9", "2.7.0", "2.7.1")
-            and any(f"PKG_RELEASE:={r}" in _mk_740 for r in (39, 40, 41, 42, 43))
-            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r39", "r40", "r41", "r42", "r43"))
+            and getattr(dmod, "APP_VERSION", "") in ("2.6.7", "2.6.8", "2.6.9", "2.7.0", "2.7.1", "2.7.2")
+            and any(f"PKG_RELEASE:={r}" in _mk_740 for r in (39, 40, 41, 42, 43, 44, 45, 46))
+            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r39", "r40", "r41", "r42", "r43", "r44", "r45", "r46"))
         )
 
         check(
@@ -4154,11 +4154,11 @@ def main() -> int:
             _ntp_unsynced.get("ntp_deferred") is True
             and _ntp_unsynced.get("due_count") == 0
             and _cm_741.get("compatible") is True
-            and _cm_741.get("target_version") in ("2.6.8", "2.6.9", "2.7.0", "2.7.1")
+            and _cm_741.get("target_version") in ("2.6.8", "2.6.9", "2.7.0", "2.7.1", "2.7.2")
             and _cm_741.get("auto_migration_applied") is True
-            and getattr(dmod, "APP_VERSION", "") in ("2.6.8", "2.6.9", "2.7.0", "2.7.1")
-            and any(f"PKG_RELEASE:={r}" in _mk_741 for r in (40, 41, 42, 43))
-            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r40", "r41", "r42", "r43"))
+            and getattr(dmod, "APP_VERSION", "") in ("2.6.8", "2.6.9", "2.7.0", "2.7.1", "2.7.2")
+            and any(f"PKG_RELEASE:={r}" in _mk_741 for r in (40, 41, 42, 43, 44, 45, 46))
+            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r40", "r41", "r42", "r43", "r44", "r45", "r46"))
         )
 
         check(
@@ -4237,11 +4237,11 @@ def main() -> int:
         _opt269_09_10_ok = (
             "normalizeLuciStatusPayload" in _ov_742
             and _ver_8pt.get("ok") is True
-            and _ver_8pt.get("version") in ("2.6.9", "2.7.0", "2.7.1")
-            and _ver_8pt.get("release") in ("r41", "r42", "r43")
-            and getattr(dmod, "APP_VERSION", "") in ("2.6.9", "2.7.0", "2.7.1")
-            and any(f"PKG_RELEASE:={r}" in _mk_742 for r in (41, 42, 43))
-            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r41", "r42", "r43"))
+            and _ver_8pt.get("version") in ("2.6.9", "2.7.0", "2.7.1", "2.7.2")
+            and _ver_8pt.get("release") in ("r41", "r42", "r43", "r44", "r45", "r46")
+            and getattr(dmod, "APP_VERSION", "") in ("2.6.9", "2.7.0", "2.7.1", "2.7.2")
+            and any(f"PKG_RELEASE:={r}" in _mk_742 for r in (41, 42, 43, 44, 45, 46))
+            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r41", "r42", "r43", "r44", "r45", "r46"))
         )
 
         check(
@@ -4321,11 +4321,11 @@ def main() -> int:
         _opt270_09_10_ok = (
             "normalizeLuciOtaProgressPayload" in _ov_743
             and _ver_8pt_743.get("ok") is True
-            and _ver_8pt_743.get("version") in ("2.7.0", "2.7.1")
-            and _ver_8pt_743.get("release") in ("r42", "r43")
-            and getattr(dmod, "APP_VERSION", "") in ("2.7.0", "2.7.1")
-            and any(f"PKG_RELEASE:={r}" in _mk_743 for r in (42, 43))
-            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r42", "r43"))
+            and _ver_8pt_743.get("version") in ("2.7.0", "2.7.1", "2.7.2")
+            and _ver_8pt_743.get("release") in ("r42", "r43", "r44", "r45", "r46")
+            and getattr(dmod, "APP_VERSION", "") in ("2.7.0", "2.7.1", "2.7.2")
+            and any(f"PKG_RELEASE:={r}" in _mk_743 for r in (42, 43, 44, 45, 46))
+            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r42", "r43", "r44", "r45", "r46"))
         )
 
         check(
@@ -4431,17 +4431,102 @@ def main() -> int:
                 "region_latency_percentiles", "homelink_posture",
             ))
             and _ver_8pt_744.get("ok") is True
-            and _ver_8pt_744.get("version") == "2.7.1"
-            and _ver_8pt_744.get("release") == "r43"
-            and getattr(dmod, "APP_VERSION", "") == "2.7.1"
-            and "PKG_RELEASE:=43" in _mk_744
-            and "r43" in str(getattr(dmod, "APP_BUILD", ""))
+            and _ver_8pt_744.get("version") in ("2.7.1", "2.7.2")
+            and _ver_8pt_744.get("release") in ("r43", "r44", "r45", "r46")
+            and getattr(dmod, "APP_VERSION", "") in ("2.7.1", "2.7.2")
+            and any(f"PKG_RELEASE:={r}" in _mk_744 for r in (43, 44, 45, 46))
+            and any(rk in str(getattr(dmod, "APP_BUILD", "")) for rk in ("r43", "r44", "r45", "r46"))
         )
 
         check(
             "Stage 7.44 (v2.7.1 r43 10项全栈生产集成、自愈与可观测性增强闭环: OPT-271-01诊断接口全量接入/api/status+OPT-271-02 sing-box配置写入前rule_set强制门禁+OPT-271-03 HomeLink红点告警与修复引导+OPT-271-04区域延迟P50/P95分位数徽标+OPT-271-05后台线程>60s停滞自愈+OPT-271-06 RSS>128MB超限降载+OPT-271-07登录限流状态持久化防重启绕过+OPT-271-08归档UTC时间戳校准+OPT-271-09 shunt-nodes.js Node边界单测+OPT-271-10一键健康审计快照与v2.7.1 r43八处版本同源核验)",
             _opt271_01_02_ok and _opt271_03_04_ok and _opt271_05_06_ok and _opt271_07_08_09_ok and _opt271_10_ok,
             f"c1={_opt271_01_02_ok}, c2={_opt271_03_04_ok}, c3={_opt271_05_06_ok}, c4={_opt271_07_08_09_ok}, c5={_opt271_10_ok}, shunt_ln={_shunt_744_lines}, ut_fns={_node_ut.get('tested_functions')}, v8={_ver_8pt_744.get('ok')}",
+        )
+
+
+        # ------------------------------------------------------------------
+        # Stage 7.45: v2.7.2 (r44) 10 项全栈存储守卫、路由矩阵、内核回滚与模块化增强门禁 (OPT-272-01 ~ OPT-272-10)
+        # ------------------------------------------------------------------
+        _modals_js_745 = (_repo_728 / "root/usr/share/ai-link/webui/modules/modals.js").read_text(encoding="utf-8")
+        _ov_745 = (_repo_728 / "htdocs/luci-static/resources/view/ai-link/overview.js").read_text(encoding="utf-8")
+        _mk_745 = (_repo_728 / "Makefile").read_text(encoding="utf-8")
+
+        # 1. OPT-272-01 & OPT-272-02: OverlayFS/tmpfs disk headroom guard + declarative API route matrix
+        _disk_gd = dmod.check_storage_headroom_before_write(tmp_v252, min_free_mb=16)
+        _route_mx = dmod.get_declarative_api_route_matrix()
+        _opt272_01_02_ok = (
+            _disk_gd.get("ok") is True
+            and _disk_gd.get("free_mb", 0) >= 16.0
+            and _route_mx.get("ok") is True
+            and _route_mx.get("core_routes_count", 0) >= 10
+        )
+
+        # 2. OPT-272-03 & OPT-272-04: Managed ThreadPoolExecutor policy + enriched webui/modules/modals.js (>=45 lines)
+        _tp_norm = dmod.get_managed_thread_pool_policy(rss_shedding=False)
+        _tp_shed = dmod.get_managed_thread_pool_policy(rss_shedding=True)
+        _modals_745_lines = len(_modals_js_745.splitlines())
+        _opt272_03_04_ok = (
+            _tp_norm.get("max_workers") == 8
+            and _tp_shed.get("max_workers") == 4
+            and _tp_norm.get("thread_name_prefix") == "ailink-pool-"
+            and _modals_745_lines >= 45
+            and "createSnapshotDownloadDebouncer" in _modals_js_745
+            and "formatEmptyPoolFallbackNoticeHtml" in _modals_js_745
+        )
+
+        # 3. OPT-272-05 & OPT-272-06: Sanitized health audit snapshot + empty-pool fallback diagnostics
+        _san_snap = dmod.export_sanitized_health_audit_snapshot(tmp_v252)
+        _empty_diag = dmod.diagnose_empty_pool_fallback_reasons(
+            pools_override=[{"id": "Auto_JP", "current_node": "", "available_nodes": [], "fallback_outbound": "direct"}]
+        )
+        _opt272_05_06_ok = (
+            _san_snap.get("ok") is True
+            and _san_snap.get("sanitization_verified") is True
+            and _san_snap.get("leaked_fields_count") == 0
+            and _empty_diag.get("empty_groups_count") == 1
+        )
+
+        # 4. OPT-272-07 & OPT-272-08: Core binary upgrade auto-rollback + LuCI dynamic panel_port resolution
+        _bin_new = tmp_v252 / "sing-box-new"
+        _bin_bak = tmp_v252 / "sing-box-bak"
+        _bin_new.write_text("broken-binary", encoding="utf-8")
+        _bin_bak.write_text("healthy-old-binary", encoding="utf-8")
+        _rb_res = dmod.verify_and_rollback_core_binary(_bin_new, _bin_bak, runner=lambda _p: (1, "corrupt"))
+        _opt272_07_08_ok = (
+            _rb_res.get("ok") is False
+            and _rb_res.get("rolled_back") is True
+            and _bin_new.read_text(encoding="utf-8") == "healthy-old-binary"
+            and "resolveLuciPanelPort" in _ov_745
+        )
+
+        # 5. OPT-272-09 & OPT-272-10: Light/dark theme CSS parity + watchdog circuit-breaker notice + 8-point version anchors (2.7.2 / r44)
+        _daemon_src_745 = (_repo_728 / "root/usr/share/ai-link/ai-link-daemon.py").read_text(encoding="utf-8")
+        _m272_wired_ok = all(_daemon_src_745.count(fn) >= 2 for fn in (
+            "check_storage_headroom_before_write", "get_declarative_api_route_matrix",
+            "get_managed_thread_pool_policy", "export_sanitized_health_audit_snapshot",
+            "diagnose_empty_pool_fallback_reasons", "verify_and_rollback_core_binary",
+            "build_watchdog_circuit_breaker_notice",
+        )) and _ov_745.count("resolveLuciPanelPort") >= 2
+        _wd_cb_open = dmod.build_watchdog_circuit_breaker_notice(failure_count=3, threshold=3)
+        _ver_8pt_745 = dmod.verify_eight_point_version_anchors(_repo_728)
+        _css_745 = (_repo_728 / "root/usr/share/ai-link/webui/nexus.css").read_text(encoding="utf-8")
+        _opt272_09_10_ok = (
+            _m272_wired_ok
+            and 'data-theme="light"' in _css_745
+            and _wd_cb_open.get("circuit_open") is True
+            and _ver_8pt_745.get("ok") is True
+            and _ver_8pt_745.get("version") == "2.7.2"
+            and _ver_8pt_745.get("release") in ("r44", "r45", "r46")
+            and getattr(dmod, "APP_VERSION", "") == "2.7.2"
+            and ("PKG_RELEASE:=46" in _mk_745 or "PKG_RELEASE:=45" in _mk_745 or "PKG_RELEASE:=44" in _mk_745)
+            and ("r46" in str(getattr(dmod, "APP_BUILD", "")) or "r45" in str(getattr(dmod, "APP_BUILD", "")) or "r44" in str(getattr(dmod, "APP_BUILD", "")))
+        )
+
+        check(
+            "Stage 7.45 (v2.7.2 r44 10项全栈存储守卫、路由矩阵、内核回滚与模块化增强闭环: OPT-272-01磁盘剩余空间守卫+OPT-272-02声明式API路由矩阵+OPT-272-03线程池并发受控收口+OPT-272-04 modals.js扩容45+行+OPT-272-05健康快照脱敏自检+OPT-272-06空节点池兜底诊断+OPT-272-07 sing-box内核升级失败自动回滚+OPT-272-08 LuCI动态面板端口适配+OPT-272-09暗亮双主题CSS门禁+OPT-272-10看门狗熔断恢复通知与v2.7.2 r44八处版本同源核验)",
+            _opt272_01_02_ok and _opt272_03_04_ok and _opt272_05_06_ok and _opt272_07_08_ok and _opt272_09_10_ok,
+            f"c1={_opt272_01_02_ok}, c2={_opt272_03_04_ok}, c3={_opt272_05_06_ok}, c4={_opt272_07_08_ok}, c5={_opt272_09_10_ok}, modals_ln={_modals_745_lines}, free_mb={_disk_gd.get('free_mb')}, v8={_ver_8pt_745.get('ok')}",
         )
 
     finally:

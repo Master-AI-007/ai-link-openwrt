@@ -18,7 +18,7 @@
         <circle cx="20" cy="20" r="5.4" fill="none" stroke="#a994ff" stroke-width="1.6"/>
         <circle cx="20" cy="20" r="1.8" fill="#6ee7f5"/>
       </svg>
-      <span style="display:block"><b>AI-LINK</b><span>NEXUS · v2.7.1</span></span>
+      <span style="display:block"><b>AI-LINK</b><span>NEXUS · v2.7.2</span></span>
     </a>
     <div class="nav-links">
       <a href="/#features">核心能力</a>
@@ -36,12 +36,22 @@
 <main class="wrap log-wrap">
   <div class="log-head">
     <h1>更新日志</h1>
-    <span class="pill"><i></i> 当前最新 v2.7.1</span>
+    <span class="pill"><i></i> 当前最新 v2.7.2</span>
   </div>
 <article class="log-item latest">
   <div class="log-top">
-    <h2>v2.7.1</h2>
+    <h2>v2.7.2</h2>
     <span class="tag c">最新</span>
+    <time>2026-11-19</time>
+  </div>
+  <p style="margin:2px 0 6px;color:var(--dim)"></p>
+<h3>10 项全栈存储守卫、路由矩阵、内核回滚与前端模块化增强（PKG_RELEASE 46）</h3>
+<ul><li><b>正常升版</b>：升至 <code>v2.7.2</code>（<code>PKG_RELEASE:=46</code> / <code>r46</code>），增量基准为已上线的 <code>v2.7.1</code>（Release #450215531 / <code>2f597db</code> / 部署 <code>5796c953</code>）；现网设备可正常接收 OTA 升级提示。</li><li><b>OPT-272-01 OverlayFS / tmpfs 剩余空间前置守卫</b>：新增 <code>check_storage_headroom_before_write</code>。</li><li><b>OPT-272-02 声明式 /api/ 路由表与权限矩阵收敛</b>：新增 <code>get_declarative_api_route_matrix</code>。</li><li><b>OPT-272-03 线程池命名与最大并发数统一收口</b>：新增 <code>get_managed_thread_pool_policy</code>。</li><li><b>OPT-272-04 webui/modules/modals.js 扩容至 51 行</b>：桥接 <code>NexusViewRenderers</code> 下沉弹窗与防抖逻辑。</li><li><b>OPT-272-05 健康快照一键下载防连击与凭据脱敏自检</b>：新增 <code>export_sanitized_health_audit_snapshot</code>。</li><li><b>OPT-272-06 多线路并发策略组空节点兜底诊断</b>：新增 <code>diagnose_empty_pool_fallback_reasons</code>。</li><li><b>OPT-272-07 sing-box 内核升级失败自动回滚验证</b>：新增 <code>verify_and_rollback_core_binary</code>。</li><li><b>OPT-272-08 LuCI overview.js 跨协议端口动态适配</b>：新增 <code>resolveLuciPanelPort</code>。</li><li><b>OPT-272-09 WebUI 暗/亮双主题对比度巡检</b>：<code>Stage 7.45</code> 覆盖双主题样式完整性。</li><li><b>OPT-272-10 看门狗熔断恢复通知与八点版本同源核验</b>：新增 <code>build_watchdog_circuit_breaker_notice</code>。</li><li>验收：<code>INSTALL_RC=0</code>、服务全 1、<code>nft ok:true</code>、重启自愈、自检 10/10 + 负向、零补发 <code>run_all 15/15 / RC=0</code>、混沌 <b>108/108 PASS</b>（含 Stage 7.45）、门禁双布局 17/17、design-lint 18/18、11 行指纹 11/11、UI 六页三视口零溢出、设备侧出网 200/200/204/200 全通。</li></ul>
+</article>
+<article class="log-item">
+  <div class="log-top">
+    <h2>v2.7.1</h2>
+    <span class="tag">历史</span>
     <time>2026-11-18</time>
   </div>
   <p style="margin:2px 0 6px;color:var(--dim)"></p>

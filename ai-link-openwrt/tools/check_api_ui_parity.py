@@ -44,7 +44,8 @@ def check_parity(daemon_path: Path = DAEMON_PATH, nexus_js_path: Path = NEXUS_JS
     daemon_src = daemon_path.read_text(encoding="utf-8")
     nexus_src = nexus_js_path.read_text(encoding="utf-8")
 
-    tree = ast.parse(daemon_src)
+    m_fn = re.search(r"^def preview_subscription_sync_impact\b.*?(?=^(?:def |class |\Z))", daemon_src, re.M | re.S)
+    tree = ast.parse(m_fn.group(0) if m_fn else daemon_src)
     backend_preview_keys = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef) and node.name == "preview_subscription_sync_impact":

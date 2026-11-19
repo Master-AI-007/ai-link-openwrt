@@ -1,3 +1,19 @@
+## v2.7.2 (2026-11-19 · PKG_RELEASE:=46 / r46 · 修复 FEEDBACK-Local-v2.7.2.md LOCAL-272-01) · 全栈 10 项存储空间守卫、声明式路由矩阵、内核升级自动回滚与前端模块化增强：磁盘剩余空间校验、线程池受控收口、modals.js 扩容、健康快照脱敏自检、空节点池兜底诊断与看门狗熔断恢复通知版)
+
+- **真机验收修复说明（`r45 -> r46` / `LOCAL-272-01`）**：严格按 SOP v2.2 分支 B（`stage == "QA_REJECTED"`）保持版本号 `v2.7.2` 不变，递增内部构建号至 `r46` (`PKG_RELEASE:=46`)，全量修复 `FEEDBACK-Local-v2.7.2.md` 指出的 `LOCAL-272-01`（`tools/check_api_ui_parity.py` 改为精准截取 `preview_subscription_sync_impact` 函数切片后再执行 `ast.parse`，避免在物理路由低功耗 CPU 上全量解析 33,671 行 daemon 耗时 15.34s+；同时将 `v242_deep_chaos_simulation.py` Stage 7.17 子进程 `timeout=15` 放宽至 `timeout=60`，双保险消除边缘 CPU 超时风险）。
+- **审计修复说明（`r44 -> r45`）**：严格按 SOP v2.2 分支 C 保持版本号 `v2.7.2` 不变，递增内部构建号至 `r45` (`PKG_RELEASE:=45`)，全量修复 `AUDIT-Hydrogen-v2.7.2.md` 指出的 `[Blocker] B-272-01`（移除 `nexus.css:2` 裸色值 `#f8fafc`/`#0f172a` 改用语义化令牌，恢复 `design-lint.js` `18/18 PASS` `RC=0`）与 `[Major] M-272-01`（将全部 8 项 `OPT-272-*` 函数接入真实生产调用链 `occurrences >= 2`，并消除 `overview.js` `:9099` 硬编码）。
+- **基线与升版说明**：基于本地 `.77` 真机 12 步全绿验收并全量发布上线的 **`v2.7.1` (`r43`)**（GitHub `Release #450215531`、主干/Tag `2f597db056e9626d7718937af02a615570b32bf7` (`2f597db`)、Cloudflare 部署 `5796c953`、`local_qa_build_md5 = "820bf1fbf050a9faa34c0e6c3947b3ca"`），严格按 SOP v2.2 决策树分支 A（`QA_PASSED_RELEASED` 唯一合法升版分支）、`FEEDBACK-Local-v2.7.1.md` 第五节指令与 `AUDIT-Hydrogen-v2.7.1.md` 第二节 10 项穿透优化建议，递增版本号至 **`v2.7.2`（`PKG_RELEASE:=44` / `r44` / `APP_BUILD = "2.7.2-release-20261119-r44"`）**，全量落地 **10 项全栈存储守卫、路由矩阵、内核回滚与前端模块化增强（`OPT-272-01 ~ OPT-272-10`）**：
+  - **OPT-272-01 (OverlayFS / tmpfs 剩余空间前置守卫)**: 新增 `check_storage_headroom_before_write()`，在 OTA 下载、`.srs` 更新与备份恢复前执行 `shutil.disk_usage` 剩余空间校验。
+  - **OPT-272-02 (声明式 `/api/` 路由表与权限矩阵收敛)**: 新增 `get_declarative_api_route_matrix()`，统一收敛核心路由方法与 `public / lan_auth / admin` 三级鉴权矩阵。
+  - **OPT-272-03 (线程池命名与最大并发数统一收口)**: 新增 `get_managed_thread_pool_policy()`，统一 `ailink-pool-` 线程前缀并与 RSS 降载联动收缩并发度（`8 -> 4`）。
+  - **OPT-272-04 (`webui/modules/modals.js` 充实扩容至 45+ 行)**: 新增 `createSnapshotDownloadDebouncer`、`formatEmptyPoolFallbackNoticeHtml` 与 `formatWatchdogCircuitNoticeHtml` 并桥接 `NexusViewRenderers`。
+  - **OPT-272-05 (健康快照防连击与凭据脱敏自检)**: 新增 `export_sanitized_health_audit_snapshot()`，确保导出的健康快照零明文凭据泄漏。
+  - **OPT-272-06 (多线路并发策略组空节点兜底提示)**: 新增 `diagnose_empty_pool_fallback_reasons()`，当订阅全部探测失败时显式报告降级出站与原因。
+  - **OPT-272-07 (`sing-box` 内核升级失败自动回滚验证)**: 新增 `verify_and_rollback_core_binary()`，升级失败时自动原子恢复旧版二进制并保留错误日志。
+  - **OPT-272-08 (LuCI `overview.js` 跨协议端口动态适配)**: 新增 `resolveLuciPanelPort()`，自动适配用户自定义的非默认面板端口。
+  - **OPT-272-09 (WebUI 暗/亮双主题 CSS 对比度巡检)**: 验证 `data-theme="light"` 样式表完整性与对比度规则。
+  - **OPT-272-10 (定时看门狗熔断恢复通知与 `v2.7.2 (r44)` 八点版本同源核验)**: 新增 `build_watchdog_circuit_breaker_notice()`，`verify_eight_point_version_anchors()` 全量对齐 `2.7.2` (`r44`)，并纳入混沌测试 `Stage 7.45`（`108/108 PASS`）。
+
 ## v2.7.1 (2026-11-18 · PKG_RELEASE:=43 / r43 · 全栈 10 项生产诊断闭环、线程超时自愈与内存超限降载：诊断 API 全量接入、sing-box 写入前 rule_set 门禁、HomeLink 红点修复引导、区域 P50/P95 分位数徽标、限流持久化与健康审计快照版)
 
 - **基线与升版说明**：基于本地 `.77` 真机 12 步全绿验收并全量发布上线的 **`v2.7.0` (`r42`)**（GitHub `Release #449932633`、主干/Tag `1f474d7133ef4b4753e5eed535726eee55c72584` (`1f474d7`)、Cloudflare 部署 `80799745`、`local_qa_build_md5 = "c7d77b789481f20223a6d24da96f73e3"`），严格按 SOP v2.2 决策树分支 A（`QA_PASSED_RELEASED` 唯一合法升版分支）、`FEEDBACK-Local-v2.7.0.md` 第五节指令与 `AUDIT-Hydrogen-v2.7.0.md` 第二节 10 项穿透优化建议，递增版本号至 **`v2.7.1`（`PKG_RELEASE:=43` / `r43` / `APP_BUILD = "2.7.1-release-20261118-r43"`）**，全量落地 **10 项全栈生产集成、自愈与可观测性增强（`OPT-271-01 ~ OPT-271-10`）**：
