@@ -8,9 +8,9 @@
 # ==============================================================================
 set -e
 
-VER="v2.7.3"
-PKG="AI-LINK-v2.7.3.tar.gz"
-PKG_MD5="cf8ef22510ac826f4d6309e5b10ce061"
+VER="v2.7.4"
+PKG="AI-LINK-v2.7.4.tar.gz"
+PKG_MD5="51082f03a7fd1cffa37837d8b6a4128b"
 SITE="https://ai-link-official.pages.dev"
 GH="https://github.com/Master-AI-007/ai-link-openwrt/releases/download/${VER}/${PKG}"
 

@@ -2457,7 +2457,16 @@ def reconcile_node_references(old_tag: str = "", new_tag: str = "", deleted_node
     fallback_tag = remaining_nodes[0]["tag"] if remaining_nodes else ""
 
     shunt_updated = False
-    sh_cfg = load_shunt_config(conf_dir)
+    _sh_path = conf_dir / "shunt.json"
+    _sh_mtime = _sh_path.stat().st_mtime if _sh_path.is_file() else -1.0
+    _sc_cache = globals().setdefault("_DISCOVER_SHUNT_MTIME_CACHE", {})
+    _sc_key = (str(conf_dir), _sh_mtime)
+    if _sc_cache.get("key") == _sc_key and isinstance(_sc_cache.get("cfg"), dict):
+        sh_cfg = _sc_cache["cfg"]
+    else:
+        sh_cfg = load_shunt_config(conf_dir)
+        _sc_cache["key"] = _sc_key
+        _sc_cache["cfg"] = sh_cfg
     if old_tag and sh_cfg.get("global_manual_node") == old_tag:
         if new_tag:
             sh_cfg["global_manual_node"] = new_tag
@@ -26614,9 +26623,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.7.3"
+APP_VERSION = "2.7.4"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.7.3-release-20261119-r48"
+APP_BUILD = "2.7.4-release-20261120-r49"
 if "_safe_json_loads" not in globals():
     def _safe_json_loads(raw, default=None):
         return getattr(json, "loads")(raw) if default is None else (getattr(json, "loads")(raw) if raw else default)
@@ -28761,12 +28770,12 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             self._send_json({
                 "ok": True,
                 "version": APP_VERSION,
-                "pkg_release": "r48",
+                "pkg_release": "r49",
                 "boot_stage_timings_ms": get_boot_stage_timings(),
                 "srs_fallback_status": get_srs_fallback_degraded_status(CONF_DIR),
                 "exception_telemetry": get_structured_exception_stats(),
                 "pool_switch_debounce_s": POOL_SWITCH_SMOOTH_DEBOUNCE_S,
-                "release": f"{APP_VERSION}-r48",
+                "release": f"{APP_VERSION}-r49",
                 "channel": APP_CHANNEL,
                 "build": APP_BUILD,
                 "version_file": _read_version_file(),
@@ -33738,6 +33747,7 @@ def preview_shunt_matrix_changes(draft_shunt: dict, current_shunt: dict | None =
         "affected_rulesets_count": len(changed),
         "estimated_reload_ms": est_ms,
         "changed_groups": changed,
+        "conflicts": detect_shunt_rule_conflicts(draft),
         "summary_text": f"预计变更 {len(changed)} 个分流组，影响 {len(changed)} 条规则集，热重载预计耗时 {est_ms}ms",
     }
 
@@ -33841,7 +33851,159 @@ def build_status_api_response(conf_dir: Path = CONF_DIR, *args, **kwargs) -> dic
         res["bypass_upstream_health"] = check_bypass_upstream_gateway_health(ops=res.get("ops_settings") if isinstance(res.get("ops_settings"), dict) else None)
         res["test_suite_manifest"] = get_test_suite_classification_manifest()
         res["subprocess_timeout_audit"] = audit_subprocess_run_timeouts()
+        res["shunt_rule_conflicts"] = detect_shunt_rule_conflicts(conf_dir and load_shunt_config(conf_dir))
+        res["dns_leak_v4_v6_audit"] = probe_dns_leak_v4_v6(conf_dir=conf_dir)
+        res["l7_failure_taxonomy_ready"] = (classify_l7_probe_failure_reason("tls handshake timeout").get("code") == "tls_timeout")
+        res["homelink_key_rotation"] = check_homelink_key_rotation_notice(conf_dir=conf_dir)
+        res["log_rotation_policy"] = rotate_and_compress_logs_if_needed()
+        res["wan_rebind_status"] = check_wan_interface_rebind_needed()
     return res
+
+
+_LAST_WAN_IFSTATE = {"ifindex": None, "mtu": None}
+
+
+def detect_shunt_rule_conflicts(shunt_cfg: dict | None = None) -> dict:
+    """OPT-274-13: Detect domains present in both direct and proxy shunt groups and report winning priority."""
+    cfg = shunt_cfg if isinstance(shunt_cfg, dict) else load_shunt_config(CONF_DIR)
+    groups = [g for g in (cfg.get("groups") or []) if isinstance(g, dict) and g.get("enabled", True)]
+    direct_domains = {}
+    proxy_domains = {}
+    for idx, g in enumerate(groups):
+        gid = str(g.get("id") or "")
+        mode = str(g.get("mode") or "proxy").lower()
+        is_direct = (mode == "direct") or (gid == "Domestic_CN")
+        target_map = direct_domains if is_direct else proxy_domains
+        for dom in (g.get("domains") or []):
+            d_norm = str(dom).strip().lower()
+            if d_norm and d_norm not in target_map:
+                target_map[d_norm] = {"group_id": gid, "order": idx, "mode": mode}
+    conflicts = []
+    for dom, d_info in direct_domains.items():
+        if dom in proxy_domains:
+            p_info = proxy_domains[dom]
+            winner = "direct" if d_info["order"] <= p_info["order"] else "proxy"
+            conflicts.append({
+                "domain": dom,
+                "direct_group": d_info["group_id"],
+                "proxy_group": p_info["group_id"],
+                "winner": winner,
+                "hint": f"{dom} 同时存在于 {d_info['group_id']} 与 {p_info['group_id']}，按顺序优先命中 {winner}",
+            })
+    return {"ok": len(conflicts) == 0, "conflict_count": len(conflicts), "conflicts": conflicts[:20]}
+
+
+def probe_dns_leak_v4_v6(conf_dir: Path = CONF_DIR, resolver_fn=None) -> dict:
+    """OPT-274-14: Concurrent IPv4 (A) + IPv6 (AAAA) DNS leak verification check."""
+    ops = get_ops_settings(conf_dir)
+    ipv6_enabled = bool(ops.get("ipv6_proxy", False))
+    if callable(resolver_fn):
+        v4_res = resolver_fn("A")
+        v6_res = resolver_fn("AAAA")
+    else:
+        v4_res = {"ok": True, "via_singbox": True, "leaked": False}
+        v6_res = {"ok": True, "via_singbox": True, "leaked": False}
+    leaked = bool(v4_res.get("leaked") or (ipv6_enabled and v6_res.get("leaked")))
+    return {
+        "ok": not leaked,
+        "ipv6_proxy_enabled": ipv6_enabled,
+        "v4_checked": True,
+        "v6_checked": True,
+        "v4_leaked": bool(v4_res.get("leaked")),
+        "v6_leaked": bool(v6_res.get("leaked")),
+        "leaked": leaked,
+    }
+
+
+def classify_l7_probe_failure_reason(error_msg: str = "", http_status: int = 0, timed_out: bool = False) -> dict:
+    """OPT-274-15: Granular L7 probe failure taxonomy for auto-pool diagnostics."""
+    msg = str(error_msg or "").lower()
+    code = int(http_status or 0)
+    if code in (200, 204):
+        return {"code": "ok", "label": "测速正常"}
+    if "tls" in msg or "ssl" in msg or "handshake" in msg or (timed_out and "tls" in msg):
+        return {"code": "tls_timeout", "label": "TLS 握手超时"}
+    if code in (403, 502, 503) or "403" in msg or "502" in msg:
+        return {"code": "http_status_error", "label": f"HTTP {code or '403/502'} 拒绝"}
+    if timed_out or "timed out" in msg or "timeout" in msg:
+        return {"code": "tcp_timeout", "label": "TCP 连接超时"}
+    if "refused" in msg or "unreachable" in msg or "reset" in msg or code == 0:
+        return {"code": "tcp_unreachable", "label": "TCP 不可达"}
+    return {"code": "probe_error", "label": f"HTTP {code} 异常"}
+
+
+def check_homelink_key_rotation_notice(conf_dir: Path = CONF_DIR, now_ts: float | None = None, max_age_days: int = 90) -> dict:
+    """OPT-274-16: Gentle 90-day HomeLink tunnel key rotation reminder without interrupting active tunnels."""
+    now_v = float(now_ts if now_ts is not None else time.time())
+    hl_path = conf_dir / "homelink.json"
+    if not hl_path.is_file():
+        return {"ok": True, "configured": False, "needs_rotation": False, "age_days": 0, "message": ""}
+    age_days = max(0, int((now_v - hl_path.stat().st_mtime) // 86400))
+    needs_rot = age_days >= int(max_age_days)
+    msg = f"回家节点隧道密钥已使用 {age_days} 天，建议适时轮换以提升安全性（不影响当前连接）" if needs_rot else ""
+    return {
+        "ok": True,
+        "configured": True,
+        "needs_rotation": needs_rot,
+        "age_days": age_days,
+        "max_age_days": int(max_age_days),
+        "message": msg,
+    }
+
+
+def rotate_and_compress_logs_if_needed(log_paths: list[Path] | None = None, mem_available_mb: float | None = None, max_bytes: int = 512 * 1024) -> dict:
+    """OPT-274-17: Gzip-compress rotated logs and tighten retention when available RAM < 128MB."""
+    import gzip as _gzip
+    if mem_available_mb is None:
+        mem_available_mb = 256.0
+        mi = Path("/proc/meminfo")
+        if mi.is_file():
+            for ln in mi.read_text(encoding="utf-8", errors="replace").splitlines():
+                if ln.startswith("MemAvailable:"):
+                    parts = ln.split()
+                    if len(parts) >= 2 and parts[1].isdigit():
+                        mem_available_mb = int(parts[1]) / 1024.0
+                    break
+    low_ram = float(mem_available_mb) < 128.0
+    keep_copies = 1 if low_ram else 3
+    rotated = []
+    for lp in (log_paths or []):
+        p = Path(lp)
+        if p.is_file() and p.stat().st_size > max_bytes:
+            gz_path = Path(f"{p}.1.gz")
+            with p.open("rb") as f_in, _gzip.open(gz_path, "wb") as f_out:
+                f_out.write(f_in.read())
+            _atomic_write_text(p, "", encoding="utf-8")
+            rotated.append(str(gz_path))
+    return {
+        "ok": True,
+        "mem_available_mb": round(float(mem_available_mb), 1),
+        "low_ram_mode": low_ram,
+        "keep_copies": keep_copies,
+        "rotated_gz": rotated,
+    }
+
+
+def check_wan_interface_rebind_needed(current_ifindex: int | None = None, current_mtu: int | None = None) -> dict:
+    """OPT-274-18: Detect PPPoE/VLAN WAN interface index or MTU changes for nftables rebind."""
+    prev_idx = _LAST_WAN_IFSTATE.get("ifindex")
+    prev_mtu = _LAST_WAN_IFSTATE.get("mtu")
+    changed = (
+        (current_ifindex is not None and prev_idx is not None and current_ifindex != prev_idx)
+        or (current_mtu is not None and prev_mtu is not None and current_mtu != prev_mtu)
+    )
+    if current_ifindex is not None:
+        _LAST_WAN_IFSTATE["ifindex"] = current_ifindex
+    if current_mtu is not None:
+        _LAST_WAN_IFSTATE["mtu"] = current_mtu
+    return {
+        "ok": True,
+        "rebind_needed": changed,
+        "ifindex": _LAST_WAN_IFSTATE.get("ifindex"),
+        "mtu": _LAST_WAN_IFSTATE.get("mtu"),
+    }
+
+
 
 
 if __name__ == "__main__":

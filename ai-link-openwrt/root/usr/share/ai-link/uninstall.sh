@@ -138,14 +138,14 @@ ubus call service delete '{"name":"ai-link"}' >/dev/null 2>&1 || true
 /etc/init.d/uhttpd reload >/dev/null 2>&1 || true
 
 # 7. Final verification gate (never return 0 if daemon or nft table still exists)
-if pgrep -f "ai-link-dae[m]on.py" >/dev/null 2>&1 || nft list table inet ai_link >/dev/null 2>&1; then
+if pgrep -f "ai-link-dae[m]on.py" >/dev/null 2>&1 || nft list table inet ai_link >/dev/null 2>&1 || nft list tables 2>/dev/null | grep -q "inet ai_link"; then
 	for pid in $(pgrep -f "ai-link-dae[m]on.py" 2>/dev/null) $(pidof sing-box 2>/dev/null); do
 		kill -9 "$pid" 2>/dev/null || true
 	done
 	nft delete table inet ai_link 2>/dev/null || true
 fi
 
-if pgrep -f "ai-link-dae[m]on.py" >/dev/null 2>&1 || nft list table inet ai_link >/dev/null 2>&1; then
+if pgrep -f "ai-link-dae[m]on.py" >/dev/null 2>&1 || nft list table inet ai_link >/dev/null 2>&1 || nft list tables 2>/dev/null | grep -q "inet ai_link"; then
 	echo "[AI-LINK] ❌ 卸载后校验未通过：仍有残留进程或 nft 表" >&2
 	exit 1
 fi

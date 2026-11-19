@@ -543,6 +543,25 @@ def opt273_tools_ast_guard():
 
 check("OPT-273-14 tools/*.py 禁止无切片全量 ast.parse(daemon_src)", opt273_tools_ast_guard)
 
+
+def opt274_release_gate():
+    _src = DAEMON.read_text(encoding="utf-8", errors="replace")
+    _syms = [
+        "detect_shunt_rule_conflicts",
+        "probe_dns_leak_v4_v6",
+        "classify_l7_probe_failure_reason",
+        "check_homelink_key_rotation_notice",
+        "rotate_and_compress_logs_if_needed",
+        "check_wan_interface_rebind_needed",
+    ]
+    _missing = [s for s in _syms if _src.count(s) < 2]
+    _n3d = (ROOT / "root/usr/share/ai-link/webui/nexus3d.js").read_text(encoding="utf-8", errors="replace")
+    _un = (ROOT / "root/usr/share/ai-link/uninstall.sh").read_text(encoding="utf-8", errors="replace")
+    _ok = (len(_missing) == 0) and ("_trackLowFpsFallback" in _n3d) and ("nft list tables" in _un)
+    return _ok, f"missing_or_unwired={_missing}"
+
+check("OPT-274-11~20 v2.7.4 全量生产调用链与前端/卸载门禁", opt274_release_gate)
+
 fails = [r for r in results if not r[1]]
 print(f" 合计 {len(results)} 项，通过 {len(results) - len(fails)}，失败 {len(fails)}")
 if fails:

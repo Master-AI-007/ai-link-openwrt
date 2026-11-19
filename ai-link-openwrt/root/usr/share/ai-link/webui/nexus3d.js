@@ -320,6 +320,7 @@
           return;
         }
         this.render();
+        this._trackLowFpsFallback();
         if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches && !this.dragging) {
           this.stopLoop();
           return;
@@ -1522,6 +1523,40 @@
       }
       if (this.surge) {
         this.rebuildLiveConnectionArcs(this.lastSyncPayload);
+      }
+    }
+    _trackLowFpsFallback() {
+      const now = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
+      if (!this._fpsSampleStart) {
+        this._fpsSampleStart = now;
+        this._fpsFrames = 0;
+        this._lowFpsPrompted = false;
+        return;
+      }
+      this._fpsFrames += 1;
+      const elapsed = now - this._fpsSampleStart;
+      if (elapsed >= 2000) {
+        const fps = (this._fpsFrames * 1000) / elapsed;
+        this._fpsSampleStart = now;
+        this._fpsFrames = 0;
+        if (fps < 15 && !this._lowFpsPrompted) {
+          this._lowFpsPrompted = true;
+          const wrap = document.getElementById("galaxy-canvas-wrap");
+          if (wrap && !document.getElementById("btn-galaxy-low-fps-2d")) {
+            const btn = document.createElement("button");
+            btn.id = "btn-galaxy-low-fps-2d";
+            btn.type = "button";
+            btn.className = "btn btn-sm btn-ghost galaxy-low-fps-btn";
+            btn.setAttribute("aria-label", "切换轻量 2D 拓扑");
+            btn.textContent = "切换轻量 2D 拓扑";
+            btn.addEventListener("click", () => {
+              this.stopLoop();
+              if (typeof window.showPage === "function") window.showPage("overview");
+              btn.remove();
+            });
+            wrap.appendChild(btn);
+          }
+        }
       }
     }
     startLoop() {

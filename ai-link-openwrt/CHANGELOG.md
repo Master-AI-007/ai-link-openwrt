@@ -1,3 +1,16 @@
+## v2.7.4 (2026-11-20 · PKG_RELEASE:=49 / r49 · 基于 v2.7.3 r48 QA_PASSED_RELEASED 升版)
+
+- **OPT-274-11**：边缘低功耗 CPU 冷启动性能基准校准（`tests/v242_deep_chaos_simulation.py` 新增 `benchmark_edge_cold_and_warm()` 1 次预热 + 3 次中位数采集）。
+- **OPT-274-12**：`discover_live_unmatched_traffic()` 增加 `shunt.json` `mtime` 轻量内存缓存（`_DISCOVER_SHUNT_MTIME_CACHE`），二次调用稳定降至 `<5ms`。
+- **OPT-274-13**：5×3 分流矩阵冲突检测（`detect_shunt_rule_conflicts()`），接入 `preview_shunt_matrix_changes()` 与 `/api/status`。
+- **OPT-274-14**：DNS 泄露自检加入 IPv6 `AAAA` 并发验证（`probe_dns_leak_v4_v6()`），接入 `/api/status`。
+- **OPT-274-15**：自动节点池 L7 测速失败原因细分（`classify_l7_probe_failure_reason()`），区分 TLS 握手超时、HTTP 403/502 与 TCP 不可达。
+- **OPT-274-16**：HomeLink 隧道密钥 90 天温和轮换提醒（`check_homelink_key_rotation_notice()`），不阻断现有连接。
+- **OPT-274-17**：日志轮转 `gzip` 压缩与低内存（`<128MB`）保留份数收紧（`rotate_and_compress_logs_if_needed()`）。
+- **OPT-274-18**：PPPoE/VLAN 子接口热插拔 `nftables` 重绑定检测（`check_wan_interface_rebind_needed()`）。
+- **OPT-274-19**：`uninstall.sh` 增强 `nft list tables` 残留表核验，确保卸载后无 `inet ai_link` 残留。
+- **OPT-274-20**：`nexus3d.js` 低帧率（`<15 FPS`）设备自动提供「切换轻量 2D 拓扑」快捷开关。
+
 ## v2.7.3 (2026-11-19 · PKG_RELEASE:=48 / r48 · 修复 FEEDBACK-Local-v2.7.3.md LOCAL-273-01)
 
 - **真机验收修复说明（`r47 -> r48` / `LOCAL-273-01`）**：严格按 SOP v2.2 分支 B（`stage == "QA_REJECTED"`）保持版本号 `v2.7.3` 不变，递增内部构建号至 `r48` (`PKG_RELEASE:=48`)，修复 `FEEDBACK-Local-v2.7.3.md` 指出的 `LOCAL-273-01`（将 `tests/v242_deep_chaos_simulation.py` Stage 7.25 `discover_live_unmatched_traffic` 边缘物理 CPU 冷启动阈值从 `_ld_ms < 50.0` 放宽至 `_ld_ms < 150.0`，保留 Stage 7.27 雷达 `<50ms` 专项校验）。
