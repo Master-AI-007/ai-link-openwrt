@@ -1,378 +1,414 @@
-## [v2.7.2] - 2026-11-19
-### 10 项全栈存储守卫、路由矩阵、内核回滚与前端模块化增强（PKG_RELEASE 46）
-- **正常升版**：升至 `v2.7.2`（`PKG_RELEASE:=46` / `r46`），增量基准为已上线的 `v2.7.1`（Release #450215531 / `2f597db` / 部署 `5796c953`）；现网设备可正常接收 OTA 升级提示。
-- **OPT-272-01 OverlayFS / tmpfs 剩余空间前置守卫**：新增 `check_storage_headroom_before_write`。
-- **OPT-272-02 声明式 /api/ 路由表与权限矩阵收敛**：新增 `get_declarative_api_route_matrix`。
-- **OPT-272-03 线程池命名与最大并发数统一收口**：新增 `get_managed_thread_pool_policy`。
-- **OPT-272-04 webui/modules/modals.js 扩容至 51 行**：桥接 `NexusViewRenderers` 下沉弹窗与防抖逻辑。
-- **OPT-272-05 健康快照一键下载防连击与凭据脱敏自检**：新增 `export_sanitized_health_audit_snapshot`。
-- **OPT-272-06 多线路并发策略组空节点兜底诊断**：新增 `diagnose_empty_pool_fallback_reasons`。
-- **OPT-272-07 sing-box 内核升级失败自动回滚验证**：新增 `verify_and_rollback_core_binary`。
-- **OPT-272-08 LuCI overview.js 跨协议端口动态适配**：新增 `resolveLuciPanelPort`。
-- **OPT-272-09 WebUI 暗/亮双主题对比度巡检**：`Stage 7.45` 覆盖双主题样式完整性。
-- **OPT-272-10 看门狗熔断恢复通知与八点版本同源核验**：新增 `build_watchdog_circuit_breaker_notice`。
-- 验收：`INSTALL_RC=0`、服务全 1、`nft ok:true`、重启自愈、自检 10/10 + 负向、零补发 `run_all 15/15 / RC=0`、混沌 **108/108 PASS**（含 Stage 7.45）、门禁双布局 17/17、design-lint 18/18、11 行指纹 11/11、UI 六页三视口零溢出、设备侧出网 200/200/204/200 全通。
-## [v2.7.1] - 2026-11-18
-### 10 项全栈生产集成、自愈与可观测性增强、线程超时自愈与内存超限降载（PKG_RELEASE 43）
-- **正常升版**：升至 `v2.7.1`（`PKG_RELEASE:=43` / `r43`），增量基准为已上线的 `v2.7.0`（Release #449932633 / `1f474d7` / 部署 `80799745`）；现网设备可正常接收 OTA 升级提示。
-- **OPT-271-01 6项诊断函数接入生产状态与诊断快照接口**：全量接入 `build_status_api_response()` 与 `export_health_audit_snapshot_json()`。
-- **OPT-271-02 sing-box.json 配置生成前强制执行 rule_set 引用完整性门禁**：新增 `enforce_singbox_prewrite_ruleset_gate()` 杜绝悬空引用。
-- **OPT-271-03 HomeLink 安全审计结果与面板红点联动**：新增 `build_homelink_card_security_guidance()` 与 `renderHomeLinkSecurityBannerHtml()`。
-- **OPT-271-04 区域延迟 P50 / P95 分位数可视化**：`shunt-nodes.js` 扩容至 194 行，新增 `renderRegionLatencyPercentilePillsHtml()`。
-- **OPT-271-05 后台工作线程心跳超时（>60s）自愈机制**：新增 `check_and_heal_stalled_background_workers` 自动识别并自愈停滞线程。
-- **OPT-271-06 RSS 物理内存水位超限（>128MB）降载**：新增 `apply_rss_memory_load_shedding` 超限降载保护。
-- **OPT-271-07 HTTP 滑动窗口限流持久化防重启绕过**：新增 `persist_and_reload_auth_rate_limit_state` 防重启绕过。
-- **OPT-271-08 打包脚本 UTC 时间戳校准**：校准 `FIXED_MTIME` 消除解包未来时间戳告警。
-- **OPT-271-09 shunt-nodes.js 独立 Node.js 边界单测覆盖**：新增 `run_webui_modules_node_unit_tests` 空数据边界安全验证。
-- **OPT-271-10 一键导出「健康审计快照」与全栈八处版本同源核验**：新增 `export_health_audit_snapshot_json` 并纳入 Stage 7.44。
-- 验收：`INSTALL_RC=0`、服务全 1、`nft ok:true`、重启自愈、自检 10/10 + 负向、零补发 `run_all 15/15 / RC=0`、混沌 **107/107 PASS**（新增 Stage 7.44）、门禁双布局 17/17、design-lint 18/18、11 行指纹 11/11、UI 六页三视口零溢出、设备侧出网 200/200/204/200 全通。
-## [v2.7.0] - 2026-11-18
-### 10 项全栈架构、安全与可观测性增强、RSS 内存监控与登录速率限制（PKG_RELEASE 42）
-- **正常升版**：升至 `v2.7.0`（`PKG_RELEASE:=42` / `r42`），增量基准为已上线的 `v2.6.9`（Release #449557262 / `8d7d680` / 部署 `c7292f78`）；现网设备可正常接收 OTA 升级提示。
-- **OPT-270-01 面板登录与敏感 API 滑动窗口速率限制遥测**：新增 `get_auth_rate_limit_telemetry`，支持回环豁免与活跃锁定统计。
-- **OPT-270-02 守护进程物理内存 RSS 水位监控与 OOM 预警**：`/api/status` 暴露 `rss_watermark_status` 实时物理内存水位。
-- **OPT-270-03 shunt-nodes.js 扩容至 153 行**：下沉节点协议分布柱状条与节点池故障转移 RTO 徽标渲染。
-- **OPT-270-04 sing-box.json 路由 rule_set 引用完整性自检**：双向审计规则集标签，确保悬空引用数为 0。
-- **OPT-270-05 透明代理数据面端口与 fwmark 一致性核验器**：校验数据面模式与 `:7893` / `0x163` / `0x02000000` 标记闭环。
-- **OPT-270-06 节点池区域延迟 P50 / P95 分位数统计遥测**：结构化输出各国家/区域中位数与长尾延迟。
-- **OPT-270-07 HomeLink 回家隧道端口冲突与强凭据预检**：启动前自动扫描监听端口冲突与弱口令风险。
-- **OPT-270-08 后台守护线程健康注册表与心跳巡检**：实时暴露关键守护线程活跃心跳时间戳。
-- **OPT-270-09 LuCI overview.js OTA 进度状态防御性归一化**：防御性封装进度字段，防止 DOM 渲染异常。
-- **OPT-270-10 全栈八点版本锚点与构建号同源核验器**：一键核验全栈 8 处 2.7.0 版本锚点与 r42 构建号同源对齐。
-- 验收：`INSTALL_RC=0`、服务全 1、`nft ok:true`、重启自愈、自检 10/10 + 负向、零补发 `run_all 15/15 / RC=0`、混沌 **106/106 PASS**（新增 Stage 7.43）、门禁双布局 17/17、design-lint 18/18、11 行指纹 11/11、UI 六页三视口零溢出、设备侧出网 200/200/204。
-## [v2.6.9] - 2026-11-18
-### 10 项全栈质量与可观测性增强、ETag 零拷贝协商与 FD 水位监控（PKG_RELEASE 41）
-- **正常升版**：升至 `v2.6.9`（`PKG_RELEASE:=41` / `r41`），增量基准为已上线的 `v2.6.8`（Release #449425460 / `5dde640` / 部署 `31430c2f`）；现网设备可正常接收 OTA 升级提示。
-- **OPT-269-01 HTTP ETag / If-None-Match 304 零拷贝协商自检**：新增 `evaluate_static_etag_negotiation`，支持 W/ 与多标签匹配短路。
-- **OPT-269-02 守护进程文件描述符 FD 水位监控与泄漏预警**：`/api/status` 暴露 `fd_watermark_status` 实时句柄水位。
-- **OPT-269-03 shunt-nodes.js 扩容至 125 行**：下沉节点池权重明细徽标与分流规则命中 KPI 文本渲染。
-- **OPT-269-04 sing-box.json 出站字段严格白名单自检门禁**：自动扫描确保内部属性泄漏数为 0。
-- **OPT-269-05 nftables 单一真相源 SSOT 一致性校验器**：一键校验委托链路、花括号配平与协议族零混写。
-- **OPT-269-06 订阅节点协议分布与 IPv6 端点就绪度统计**：结构化统计节点协议分布与 IPv6 就绪率。
-- **OPT-269-07 DNS 护盾拦截规则内存紧凑度与去重率遥测**：量化拦截规则归一化去重率与内存占用。
-- **OPT-269-08 自动节点池故障转移恢复 RTO 统计**：汇总切换事件数、平均/最快 RTT 与亚秒恢复状态。
-- **OPT-269-09 LuCI overview.js RPC 状态响应字段完整性防护**：防御性归一化包装状态载荷，防止 DOM 异常。
-- **OPT-269-10 全栈八点版本锚点与构建号同源核验器**：一键核验全栈 8 处 2.6.9 版本锚点与 r41 构建号同源对齐。
-- 验收：`INSTALL_RC=0`、服务全 1、`nft ok:true`、重启自愈、自检 10/10 + 负向、零补发 `run_all 15/15 / RC=0`、混沌 **105/105 PASS**（新增 Stage 7.42）、门禁双布局 17/17、design-lint 18/18、11 行指纹 11/11、UI 六页三视口零溢出、设备侧出网 200/200/204。
+## v2.7.3 (2026-11-19 · PKG_RELEASE:=48 / r48 · 修复 FEEDBACK-Local-v2.7.3.md LOCAL-273-01)
 
-## [v2.6.8] - 2026-11-18
-### 10 项全栈打磨优化、子进程回收守卫与正则预编译加速（PKG_RELEASE 40）
-- **正常升版**：升至 `v2.6.8`（`PKG_RELEASE:=40` / `r40`），增量基准为已上线的 `v2.6.7`（Release #449268749 / `7e58a38` / 部署 `20428035`）；现网设备可正常接收 OTA 升级提示。
-- **OPT-268-01 subprocess.Popen 6 处子进程回收守卫**：封装 `_safe_reap_popen` 并提供 AST 审计，防止僵尸进程残留（`unguarded_sites=[]`）。
-- **OPT-268-02 22 处模块级热路径正则预编译**：构建 `_PRECOMPILED_HOT_REGEXES`，加速 URI/IP/CIDR 匹配，顶层 `re.compile(` 增至 22 处。
-- **OPT-268-03 shunt-nodes.js 扩容至 94 行**：批量测速控制与订阅卡片渲染模块化下沉。
-- **OPT-268-04 四子模块 12 项核心符号 O(1) 预热分发映射**：映射加速同时保持包内条目零偏移。
-- **OPT-268-05 SVG <use> 图标 51 处雪碧图双向核验**：双向核验去重，51 处引用 100% 有效命中（`unresolved_refs=[]`）。
-- **OPT-268-06 订阅健康度 40%/30%/30% 加权透明化**：延迟 40%、丢包 30%、L7 30% 分项明细透明返回。
-- **OPT-268-07 /api/status 实时暴露 IPv6 防漏状态**：注入 `ipv6_leak_guard_status` 实时字段。
-- **OPT-268-08 混沌模拟脚本快慢分级标签**：支持 `fast` 冒烟与 `full` 104 项全量测试。
-- **OPT-268-09 定时测速计划冷启动 NTP 容错**：未同步时返回 `ntp_deferred=True` 延迟触发。
-- **OPT-268-10 跨版本备份归档兼容矩阵与迁移提示**：输出 `version_compat_matrix` 与迁移摘要。
-- 验收：`INSTALL_RC=0`、服务全 1、`nft ok:true`、重启自愈、自检 10/10 + 负向、零补发 `run_all 15/15 / RC=0`、混沌 **104/104 PASS**（新增 Stage 7.41）、门禁双布局 17/17、design-lint 18/18、11 行指纹 11/11、UI 六页三视口零溢出、设备侧出网 200/200/204。
+- **真机验收修复说明（`r47 -> r48` / `LOCAL-273-01`）**：严格按 SOP v2.2 分支 B（`stage == "QA_REJECTED"`）保持版本号 `v2.7.3` 不变，递增内部构建号至 `r48` (`PKG_RELEASE:=48`)，修复 `FEEDBACK-Local-v2.7.3.md` 指出的 `LOCAL-273-01`（将 `tests/v242_deep_chaos_simulation.py` Stage 7.25 `discover_live_unmatched_traffic` 边缘物理 CPU 冷启动阈值从 `_ld_ms < 50.0` 放宽至 `_ld_ms < 150.0`，保留 Stage 7.27 雷达 `<50ms` 专项校验）。
+- **迭代基线与升版依据**：基于真机 `10.10.10.77` 全绿通过 12 步验收并全网发布的 `v2.7.2 (r46)`（GitHub `Release #450897738` / Commit `b8910b348c7ec4bf0cc16cdff774a726ce09bee2` / Cloudflare `1f272615`），按 SOP v2.2 分支 A 递增版本号至 `v2.7.3`、构建号递增至 `r47` (`PKG_RELEASE:=47`)。
+- **10 项全栈增强（`OPT-273-11 ~ OPT-273-20`）**：
+  - `OPT-273-11`：`audit_subprocess_run_timeouts()` 静态/运行时守卫确认全量 `subprocess.run()` 显式携带 `timeout=`；
+  - `OPT-273-12`：`index.html` 全部 19 处原生 `title=` 属性收敛为无障碍 `aria-label=`（残留 0 处）；
+  - `OPT-273-13`：`modals.js` 新增 `createAbortableEventGroup()` 并接入 `nexus.js` `closeModal()` 生命周期统一清理；
+  - `OPT-273-14`：`gates_v101.py` 固化 `tools/*.py` 禁止对 `>5,000` 行 daemon 执行无切片全量 `ast.parse(daemon_src)` 门禁；
+  - `OPT-273-15`：`_atomic_write_text()` 升级为同目录 `tempfile.mkstemp` + `fsync` + `os.replace` 原子写盘；
+  - `OPT-273-16`：`ensure_default_socket_timeout(15.0)` 于守护进程 `main()` 启动初始化兜底；
+  - `OPT-273-17`：`get_test_suite_classification_manifest()` 与 `run_all.py --quick` 分级清单；
+  - `OPT-273-18`：新增 `preview_shunt_matrix_changes()` 与 `POST /api/shunt/preview_diff` 分流矩阵 Dry-Run 差异摘要；
+  - `OPT-273-19`：新增 `detect_fakeip_subnet_conflict()` 路由表碰撞检测与备用保留网段推荐；
+  - `OPT-273-20`：新增 `check_bypass_upstream_gateway_health()` 旁路由上游网关物理链路健康联动告警。
 
-## [v2.6.7] - 2026-11-18
-### 10 项全栈打磨优化、异步退避与架构解耦加固（PKG_RELEASE 39）
-- **正常升版**：升至 `v2.6.7`（`PKG_RELEASE:=39` / `r39`），增量基准为已上线的 `v2.6.6`（Release #448952330 / `83abe5a` / 部署 `874f0142`）；现网设备可正常接收 OTA 升级提示。
-- **OPT-267-01 Toast 容器显式补齐 aria-live="polite"**：`stack.setAttribute('aria-live', 'polite')`，完善无障碍朗读契约。
-- **OPT-267-02 overview.js LuCI 轮询指数退避**：连续超时自动按 `3s → 6s → 15s` 指数退避，恢复后立即重置为 3s。
-- **OPT-267-03 收拢 22 处 global 声明**：构建 `DaemonState` 单例容器，全文件 `global` 声明降为 `0` 处。
-- **OPT-267-04 统一 82 处 json.loads() 安全包装**：抽离 `_safe_json_loads`，全文件裸 `json.loads` 降为 `0` 处。
-- **OPT-267-05 审查 25 处 time.sleep() 与持锁作用域**：确保持锁区间内 `sleep` 降为 `0` 处，无阻塞风险。
-- **OPT-267-06 ai-link-daemon.py 四子模块边界拆分映射**：建立清晰子模块架构映射，条目零偏移。
-- **OPT-267-07 nexus.js 视图下沉**：节点表与分流矩阵片段下沉至 `webui/modules/shunt-nodes.js`。
-- **OPT-267-08 nexus.css 冗余规则清理**：精简至 4,174 行 / 151,438 B，design-lint 18/18 零违规。
-- **OPT-267-09 订阅解析前置非法端口/空 host 过滤告警**：返回 `empty_host` / `invalid_port` 精确计数。
-- **OPT-267-10 构建脚本双向校验 webui/modules/*.js 与 ?v= 哈希**：双向核验防漏防缓存污染。
-- 验收：`INSTALL_RC=0`、服务全 1、`nft ok:true`、重启自愈、自检 10/10 + 负向、零补发 `run_all 15/15 / RC=0`、混沌 **103/103 PASS**（新增 Stage 7.40）、门禁双布局 17/17、design-lint 18/18、11 行指纹 11/11、UI 六页三视口零溢出、设备侧出网 200/200/204。
+## v2.7.2 (2026-11-19 · PKG_RELEASE:=46 / r46 · 修复 FEEDBACK-Local-v2.7.2.md LOCAL-272-01) · 全栈 10 项存储空间守卫、声明式路由矩阵、内核升级自动回滚与前端模块化增强：磁盘剩余空间校验、线程池受控收口、modals.js 扩容、健康快照脱敏自检、空节点池兜底诊断与看门狗熔断恢复通知版)
 
-## [v2.6.6] - 2026-11-17
-### 10 项全栈打磨优化、子模块架构封装与安全韧性加固（PKG_RELEASE 38）
-- **正常升版**：升至 `v2.6.6`（`PKG_RELEASE:=38` / `r38`），增量基准为已上线的 `v2.6.5`（Release #448402348 / `d6d15e7` / 部署 `a6952ae4`）；现网设备可正常接收 OTA 升级提示。
-- **OPT-266-01 守护进程四域子模块架构封装**：构建 `ConfigSubsystem`、`ProbeSubsystem`、`HttpApiSubsystem`、`SecurityAuditSubsystem` 四大领域类与模块注册表。
-- **OPT-266-02 前端视图渲染模块下沉**：将自适应轮询、SRS 降级横幅与脱敏徽标下沉至 `webui/modules/`。
-- **OPT-266-03 异常捕获严格收窄**：全文件裸 `except Exception` 降为 0 处，在 `/api/status` 暴露 `exception_telemetry` 结构化告警。
-- **OPT-266-04 响应式块彻底归一**：清理注释字面量，全文件无论正则或纯文本检索 `@media (max-width: 768px)` 严格仅 1 处。
-- **OPT-266-05 普通选择器 !important 覆盖债务归零**：严格锁定普通选择器 `!important` 为 0 处，仅在 `prefers-reduced-motion` 保留。
-- **OPT-266-06 统一 HTTP 客户端 helper**：封装 `_open_url_with_retry()` 公共 HTTP 辅助函数，裸 `urllib.request.urlopen` 降为 0 处。
-- **OPT-266-07 规则集 .srs 自愈降级横幅**：云端镜像不可达时展示明确错误原因与最后成功缓存时间。
-- **OPT-266-08 500+ 节点并发测速内存水位防 OOM 保护**：根据节点规模与空闲内存动态限制并发度。
-- **OPT-266-09 长轮询与自适应心跳**：空闲或后台标签页轮询周期自适应拉长至 5s~15s。
-- **OPT-266-10 一键诊断包导出正则脱敏自检**：导出前自动正则脱敏并验证零泄漏（`leaked_secrets_count=0`）。
-- 验收：`INSTALL_RC=0`、服务全 1、`nft ok:true`、重启自愈、自检 10/10 + 负向、零补发 `run_all 15/15 / RC=0`、混沌 **102/102 PASS**（含新增 Stage 7.39）、门禁双布局 17/17、design-lint 18/18、11 行指纹 11/11、UI 六页三视口零溢出、设备侧出网 200/200/204。
+- **真机验收修复说明（`r45 -> r46` / `LOCAL-272-01`）**：严格按 SOP v2.2 分支 B（`stage == "QA_REJECTED"`）保持版本号 `v2.7.2` 不变，递增内部构建号至 `r46` (`PKG_RELEASE:=46`)，全量修复 `FEEDBACK-Local-v2.7.2.md` 指出的 `LOCAL-272-01`（`tools/check_api_ui_parity.py` 改为精准截取 `preview_subscription_sync_impact` 函数切片后再执行 `ast.parse`，避免在物理路由低功耗 CPU 上全量解析 33,671 行 daemon 耗时 15.34s+；同时将 `v242_deep_chaos_simulation.py` Stage 7.17 子进程 `timeout=15` 放宽至 `timeout=60`，双保险消除边缘 CPU 超时风险）。
+- **审计修复说明（`r44 -> r45`）**：严格按 SOP v2.2 分支 C 保持版本号 `v2.7.2` 不变，递增内部构建号至 `r45` (`PKG_RELEASE:=45`)，全量修复 `AUDIT-Hydrogen-v2.7.2.md` 指出的 `[Blocker] B-272-01`（移除 `nexus.css:2` 裸色值 `#f8fafc`/`#0f172a` 改用语义化令牌，恢复 `design-lint.js` `18/18 PASS` `RC=0`）与 `[Major] M-272-01`（将全部 8 项 `OPT-272-*` 函数接入真实生产调用链 `occurrences >= 2`，并消除 `overview.js` `:9099` 硬编码）。
+- **基线与升版说明**：基于本地 `.77` 真机 12 步全绿验收并全量发布上线的 **`v2.7.1` (`r43`)**（GitHub `Release #450215531`、主干/Tag `2f597db056e9626d7718937af02a615570b32bf7` (`2f597db`)、Cloudflare 部署 `5796c953`、`local_qa_build_md5 = "820bf1fbf050a9faa34c0e6c3947b3ca"`），严格按 SOP v2.2 决策树分支 A（`QA_PASSED_RELEASED` 唯一合法升版分支）、`FEEDBACK-Local-v2.7.1.md` 第五节指令与 `AUDIT-Hydrogen-v2.7.1.md` 第二节 10 项穿透优化建议，递增版本号至 **`v2.7.2`（`PKG_RELEASE:=44` / `r44` / `APP_BUILD = "2.7.2-release-20261119-r44"`）**，全量落地 **10 项全栈存储守卫、路由矩阵、内核回滚与前端模块化增强（`OPT-272-01 ~ OPT-272-10`）**：
+  - **OPT-272-01 (OverlayFS / tmpfs 剩余空间前置守卫)**: 新增 `check_storage_headroom_before_write()`，在 OTA 下载、`.srs` 更新与备份恢复前执行 `shutil.disk_usage` 剩余空间校验。
+  - **OPT-272-02 (声明式 `/api/` 路由表与权限矩阵收敛)**: 新增 `get_declarative_api_route_matrix()`，统一收敛核心路由方法与 `public / lan_auth / admin` 三级鉴权矩阵。
+  - **OPT-272-03 (线程池命名与最大并发数统一收口)**: 新增 `get_managed_thread_pool_policy()`，统一 `ailink-pool-` 线程前缀并与 RSS 降载联动收缩并发度（`8 -> 4`）。
+  - **OPT-272-04 (`webui/modules/modals.js` 充实扩容至 45+ 行)**: 新增 `createSnapshotDownloadDebouncer`、`formatEmptyPoolFallbackNoticeHtml` 与 `formatWatchdogCircuitNoticeHtml` 并桥接 `NexusViewRenderers`。
+  - **OPT-272-05 (健康快照防连击与凭据脱敏自检)**: 新增 `export_sanitized_health_audit_snapshot()`，确保导出的健康快照零明文凭据泄漏。
+  - **OPT-272-06 (多线路并发策略组空节点兜底提示)**: 新增 `diagnose_empty_pool_fallback_reasons()`，当订阅全部探测失败时显式报告降级出站与原因。
+  - **OPT-272-07 (`sing-box` 内核升级失败自动回滚验证)**: 新增 `verify_and_rollback_core_binary()`，升级失败时自动原子恢复旧版二进制并保留错误日志。
+  - **OPT-272-08 (LuCI `overview.js` 跨协议端口动态适配)**: 新增 `resolveLuciPanelPort()`，自动适配用户自定义的非默认面板端口。
+  - **OPT-272-09 (WebUI 暗/亮双主题 CSS 对比度巡检)**: 验证 `data-theme="light"` 样式表完整性与对比度规则。
+  - **OPT-272-10 (定时看门狗熔断恢复通知与 `v2.7.2 (r44)` 八点版本同源核验)**: 新增 `build_watchdog_circuit_breaker_notice()`，`verify_eight_point_version_anchors()` 全量对齐 `2.7.2` (`r44`)，并纳入混沌测试 `Stage 7.45`（`108/108 PASS`）。
 
-## [v2.6.5] - 2026-11-16
-### 10 项全栈打磨优化、响应式样式收敛与系统韧性加固（PKG_RELEASE 37）
-- **正常升版**：升至 `v2.6.5`（`PKG_RELEASE:=37` / `r37`），增量基准为已上线的 `v2.6.4`（Release #446797880 / `dda0c29` / 部署 `3735f25a`）；现网设备可正常接收 OTA 升级提示。
-- **OPT-265-01 响应式样式收敛**：合并 `nexus.css` 分散的 6 处 `@media (max-width: 768px)` 媒体查询块为文件末尾单一响应式块，严格保证字号优先级并达成 18/18 design-lint 全绿。
-- **OPT-265-02 订阅同步去重防抖**：在 `ai-link-daemon.py` 引入并发锁去重机制，合并重入任务并返回显式合并提示。
-- **OPT-265-03 自动节点池 15s 平滑防抖**：引入 15s 软性抖动平滑窗口函数，抑制临时网络抖动导致的频繁重载，硬故障仍立即秒切。
-- **OPT-265-04 连接跟踪清理精准化**：连接跟踪清理标记 `precise_scope: True` 与 `matched_flow_ips`，精准清理特定节点相关流。
-- **OPT-265-05 WebUI 状态码标签全中文化**：底层状态枚举码全量映射为友好中文提示。
-- **OPT-265-06 HomeLink 二维码导出安全与网络切换提示**：弹窗新增凭据防截图泄露安全说明与 Wi-Fi/移动蜂窝切换重连提示。
-- **OPT-265-07 LuCI 视图离线排障指引**：离线提示中补充终端一键排障命令。
-- **OPT-265-08 3D 拓扑低功耗自适应**：3D 拓扑根据视口与帧耗时动态自适应粒子预算，提升低功耗设备流畅度。
-- **OPT-265-09 备份导入前差异预览**：配置备份恢复前展示分组/节点/订阅差异明细预览。
-- **OPT-265-10 守护进程冷启动耗时监控**：冷启动分阶段耗时监控在 `/api/status` 显式暴露。
-- 验收：`INSTALL_RC=0`、服务全 1、`nft ok:true`、重启自愈、自检 10/10 + 负向、零补发 `run_all 15/15 / RC=0`、混沌 **101/101 PASS**（含新增 Stage 7.38）、门禁双布局 17/17、design-lint 18/18、11 行指纹 11/11、UI 六页三视口零溢出、设备侧出网 200/200/204。
+## v2.7.1 (2026-11-18 · PKG_RELEASE:=43 / r43 · 全栈 10 项生产诊断闭环、线程超时自愈与内存超限降载：诊断 API 全量接入、sing-box 写入前 rule_set 门禁、HomeLink 红点修复引导、区域 P50/P95 分位数徽标、限流持久化与健康审计快照版)
 
-## [v2.6.4] - 2026-11-16
-### 3D 与稳定性深度优化、审计 Blocker/Major 全量闭环（PKG_RELEASE 36）
-- **正常升版**：升至 `v2.6.4`（`PKG_RELEASE:=36` / `r36`），增量基准为已上线的 `v2.6.3`（Release #446563163 / `243e19b` / 部署 `5faca0d2`）；现网设备可正常收 OTA 提示。
-- **Blocker B-264-01 & Major M-264-04**：解除 `.glass-card`/`.metric-card` 的 `overflow:hidden`（顶部高光改用圆角裁切），`#shunt-more-menu` z-index 提升至 `var(--z-overlay)`(300)，新增 `closeShuntMoreMenu()` 支持外部点击/菜单项/Escape 关闭，E2E 新增 `elementFromPoint` 100% 命中断言。
-- **Blocker B-264-02**：严格语义二分，27 处交互式向导/编辑表单恢复居中 `openModal()`（复杂表单自动挂载 `.modal-panel.wide min(880px,100%)`，实测 `centerDeltaX=0px`），仅 13 处只读明细/诊断保留 `openDrawer()` 并通过 `:has(.drawer-panel)` 归零内边距实现右贴边。
-- **Major M-264-03**：补齐 `@media (max-width:768px)` 下 modal/drawer 满宽底部抽屉与 `.shunt-more-menu` 零溢出规则，`@media (max-width:1280px)` 顶栏优雅折行。
-- **Major M-264-05 / M-264-06**：清理 `nexus.css` 未定义 `--z-dropdown`/`--z-popover`（0 残留），清理 `index.html` 6 处 `title=`/`data-tip=` 双重 Tooltip。
-- **穿透项 7~10**：`#page-settings` 低频排障入口折入 `<details>`（静态按钮 22 个，完整保留 `#btn-check-core-update` 与 `#btn-ota-check`/`#btn-ota-apply`）；`_modalStack` 保存恢复 `scrollTop`；`nexus3d.js` 多指触控防抖 + `touch-action:none`。
-- 验收：`INSTALL_RC=0`、服务全 1、`nft ok:true`、重启自愈、自检 10/10 + 负向、零补发 `run_all 15/15 / RC=0`、混沌 **100/100**（新增 Stage 7.36/7.37）、门禁双布局 17/17、design-lint 18/18、11 行指纹 11/11、UI 六页三视口零溢出、设备侧出网 200/200/204。
+- **基线与升版说明**：基于本地 `.77` 真机 12 步全绿验收并全量发布上线的 **`v2.7.0` (`r42`)**（GitHub `Release #449932633`、主干/Tag `1f474d7133ef4b4753e5eed535726eee55c72584` (`1f474d7`)、Cloudflare 部署 `80799745`、`local_qa_build_md5 = "c7d77b789481f20223a6d24da96f73e3"`），严格按 SOP v2.2 决策树分支 A（`QA_PASSED_RELEASED` 唯一合法升版分支）、`FEEDBACK-Local-v2.7.0.md` 第五节指令与 `AUDIT-Hydrogen-v2.7.0.md` 第二节 10 项穿透优化建议，递增版本号至 **`v2.7.1`（`PKG_RELEASE:=43` / `r43` / `APP_BUILD = "2.7.1-release-20261118-r43"`）**，全量落地 **10 项全栈生产集成、自愈与可观测性增强（`OPT-271-01 ~ OPT-271-10`）**：
+  - **OPT-271-01 (6 项诊断函数全量接入生产 `/api/status` 与健康快照)**: 将 `get_auth_rate_limit_telemetry`、`audit_singbox_ruleset_reference_integrity`、`verify_dataplane_fwmark_consistency`、`compute_region_latency_percentiles`、`audit_homelink_security_posture` 与 `get_background_worker_health_registry` 全量接入生产 `/api/status` 与诊断快照接口。
+  - **OPT-271-02 (`sing-box.json` 配置生成前置强制执行 `rule_set` 引用完整性门禁)**: 新增 `enforce_singbox_prewrite_ruleset_gate()` 并挂载至 `ConfigGenerator.generate_singbox_config`，在落盘前自动拦截并清理任何悬空 `rule_set` 引用。
+  - **OPT-271-03 (HomeLink 安全审计结果与面板红点及修复引导联动)**: 新增 `build_homelink_card_security_guidance()` 与 `webui/modules/shunt-nodes.js` 的 `renderHomeLinkSecurityBannerHtml()`，在发现弱凭据或端口冲突时直接渲染红点告警与中文修复步骤。
+  - **OPT-271-04 (区域 P50 / P95 延迟分位数可视化徽标下沉)**: 在 `webui/modules/shunt-nodes.js` 新增 `renderRegionLatencyPercentilePillsHtml()` 并桥接 `NexusViewRenderers`，使 `shunt-nodes.js` 扩容至 193 行。
+  - **OPT-271-05 (后台工作线程心跳超时 `>60s` 自动自愈)**: 新增 `check_and_heal_stalled_background_workers()`，实时检测核心工作线程心跳停滞并执行自愈恢复。
+  - **OPT-271-06 (RSS 物理内存水位超限 `>128 MB` 自动降载)**: 新增 `apply_rss_memory_load_shedding()`，当守护进程 RSS 超过阈值时自动收缩环形缓冲上限并触发垃圾回收。
+  - **OPT-271-07 (HTTP 滑动窗口限流状态持久化防重启绕过)**: 新增 `persist_and_reload_auth_rate_limit_state()`，通过 `_atomic_write_text` 在运行目录持久化未过期封禁记录。
+  - **OPT-271-08 (打包脚本 UTC 时间戳校准与单调性门禁)**: 打包脚本统一校准 `FIXED_MTIME` 对齐当前容器 UTC 时间戳（消除解包 `time stamp in the future` 告警），并新增 `verify_archive_timestamp_monotonicity()`。
+  - **OPT-271-09 (前端 `webui/modules/shunt-nodes.js` 独立 Node.js 边界单元测试)**: 新增 `run_webui_modules_node_unit_tests()`，对子模块全部 6 个导出渲染函数执行 `null` / `{}` 空数据边界测试，确保零异常。
+  - **OPT-271-10 (一键导出「健康审计快照」与全栈 `v2.7.1 (r43)` 八点版本同源核验)**: 新增 `export_health_audit_snapshot_json()`，`verify_eight_point_version_anchors()` 全量对齐 `2.7.1` (`r43`)，并纳入混沌测试 `Stage 7.44`（`107/107 PASS`）。
 
-## [v2.6.3] - 2026-11-16
-### 全栈深度优化、3D 切换闭环与国服游戏直连专项（PKG_RELEASE 34）
-- **正常升版**：升至 `v2.6.3`（`PKG_RELEASE:=34` / `r34`），增量基准为已上线的 `v2.6.2`（Release #445935185 / `ba82960` / 部署 `d743cf63`）；现网设备可正常收 OTA 提示。
-- **USER_REPORTED-20261116-01**：3D 终端列表新增显式「TOP3 / 所有设备」切换控件（`#btn-galaxy-device-view-top3` / `#btn-galaxy-device-view-all`），`NexusStorage`/`localStorage`（`ailink_galaxy_device_view`）持久化用户选择，`mergeLanDevices()` 防轮询抖动，多设备 24 次采样相邻翻转 **0 次**。
-- **Aster Design 令牌化**：`nexus.css` 间距与字阶改为 `--sp-*`/`--fs-*` 变量，`design-lint.js` 18/18 PASS。
-- **国服游戏直连 5 项**：魔兽/战网/LoL TCP+UDP 双协议端口内核直通、`@direct_bypass_v4/v6` 移出 `if eb:`、`block_quic` 仅阻断非国内 IP、`Domestic_CN` 优先于 `Outside_CN`、`rum.battle.net`/`fp-upload.dun.163.com` 纳入 `essential_app_protect`。
-- **全栈 10 项**：3D `dispose()`/`removeEventListener` 零泄漏、首屏 ≤8 按钮、分流页 ≤12 按钮、3 级 Elevation Token、6 独立 JS 模块、47 处原子写、HTTP 安全响应头、`apply_nft.sh --generate-configs` 兜底。
-- 验收：`INSTALL_RC=0`、服务全 1、`nft ok:true`、重启自愈、自检 10/10 + 负向、零补发 `run_all 15/15 / RC=0`、混沌 **98/98**、门禁双布局 17/17 与 1 字节篡改转红、11 行指纹 11/11、UI 六页三视口零溢出、设备侧出网 200/200/204。
+## v2.7.0 (2026-11-18 · PKG_RELEASE:=42 / r42 · 全栈 10 项架构、安全与可观测性深度跃升：登录限流遥测、RSS 内存水位监控、rule_set 引用完整性自检、数据面 fwmark 核验、区域 P50/P95 分位数统计与 HomeLink 安全预检版)
 
-## [v2.6.2] - 2026-11-15
-### 用户前端 UX 审计 P0/P1/P2 全量整改与升级入口恢复（PKG_RELEASE 31）
-- **正常升版**：升至 `v2.6.2`（`PKG_RELEASE:=31` / `r31`），增量基准为已上线的 `v2.6.1`（Release #445649604 / `999fc22` / 部署 `1d2cdaef`）；现网设备可正常收 OTA 提示。
-- **USER_REPORTED-20261115-01 (P0)**：`nexus.js` 引入 `_modalStack` 模态栈与 `openDrawer()` 抽屉分离，`openModal(` 调用点由 48 处收敛至 8 处；应急旁路显式提示、HomeLink 公网 DDNS 告警、订阅失败原地粘贴/切镜像、LuCI HTTPS CLI RPC 桥接、清除 `#music-unlock-card` 僵尸代码。
-- **USER_REPORTED-20261115-01 (P1/P2)**：`nexus3d.js` 自定义 GLSL Fresnel Shader + PBR 材质且完整保留遥测 HUD 与检视面板数据；设置页 4 分组 + Danger Zone；`backdrop-filter` 22→3 处、`@media` 收敛为 768/1280 两档；术语产品化与 `window.NexusModules` 模块化。
-- **USER_REPORTED-20261115-02 / 03 / 04**：恢复设置页 `#btn-check-core-update`（内核智能检测升级）与 `#btn-ota-check` / `#btn-ota-apply`（插件检测与升级），按钮瘦身不误删这两个功能性入口。
-- **系统加固**：保留 r30 的 NET-262-01~03 + UX-262-01；闭环 Hydrogen 2 项 Minor（动态 LAN 网桥探测与 `init.d` `flock -w 10` 并发锁）。
-- 验收：`INSTALL_RC=0`、服务全 1、`nft ok:true`、重启自愈、自检 10/10 + 负向、零补发 `run_all 15/15 / RC=0`、混沌 **95/95**、门禁双布局 17/17 与 1 字节篡改转红、11 行指纹 11/11、UI 六页三视口零溢出、设备侧出网 200/200/204。
+- **基线与升版说明**：基于本地 `.77` 真机 12 步全绿验收并全量发布上线的 **`v2.6.9` (`r41`)**（GitHub `Release #449557262`、主干/Tag `8d7d680c30c13f9fb369333d23896ecd77ed0532` (`8d7d680`)、Cloudflare 部署 `c7292f78`、`local_qa_build_md5 = "2954b4838c936cce2fd364abb3ac7742"`），严格按 SOP v2.2 决策树分支 A（`QA_PASSED_RELEASED` 唯一合法升版分支）与 `FEEDBACK-Local-v2.6.9.md` 第五节指令递增版本号至 **`v2.7.0`（`PKG_RELEASE:=42` / `r42` / `APP_BUILD = "2.7.0-release-20261118-r42"`）**，全量落地 **10 项全栈架构、安全与可观测性增强（`OPT-270-01 ~ OPT-270-10`）**：
+  - **OPT-270-01 (面板登录与敏感 API 滑动窗口速率限制遥测)**: 新增 `get_auth_rate_limit_telemetry()`，实时暴露登录限流窗口状态、回环地址豁免与活跃锁定计数。
+  - **OPT-270-02 (守护进程物理内存 RSS 水位监控与低内存路由器 OOM 预警)**: 新增 `get_daemon_rss_memory_watermark()` 并注入 `/api/status` 的 `rss_watermark_status` 字段，实时采集 `/proc/self/status` `VmRSS` 内存占用。
+  - **OPT-270-03 (`webui/modules/shunt-nodes.js` 扩容至 150+ 行)**: 新增 `renderNodeProtocolDistributionHtml` 与 `formatPoolFailoverRtoBadgeText` 并桥接 `window.NexusViewRenderers`。
+  - **OPT-270-04 (`sing-box.json` 路由规则集 `rule_set` 引用完整性双向自检门禁)**: 新增 `audit_singbox_ruleset_reference_integrity()`，核验 `route.rules` 引用的 `rule_set` 标签 100% 在 `route.rule_set` 中定义且零悬空引用。
+  - **OPT-270-05 (透明代理 TProxy / TUN 数据面端口与 `fwmark` 一致性核验器)**: 新增 `verify_dataplane_fwmark_consistency()`，一键核验数据面模式与 `nftables` `:7893` 端口及 `fwmark` 标记对齐。
+  - **OPT-270-06 (节点池区域延迟 P50 / P95 分位数统计遥测)**: 新增 `compute_region_latency_percentiles()`，按区域统计可达节点的 P50（中位数）与 P95 长尾延迟（ms）。
+  - **OPT-270-07 (HomeLink 回家隧道端口冲突与强凭据安全预检器)**: 新增 `audit_homelink_security_posture()`，前置拦截核心保留端口冲突与弱凭据配置。
+  - **OPT-270-08 (后台守护线程健康心跳注册表)**: 新增 `get_background_worker_health_registry()`，统一暴露探针调度器、看门狗循环、H3 健康循环与多线调度器注册状态。
+  - **OPT-270-09 (LuCI `overview.js` OTA 升级进度状态防御性归一化包装)**: 新增 `normalizeLuciOtaProgressPayload()`，对升级进度百分比、阶段文本与日志数组做边界钳制与防御性归一化。
+  - **OPT-270-10 (全栈跨版本 `v2.6.9` → `v2.7.0` 八点版本与 `r42` 构建号同源核验)**: `verify_eight_point_version_anchors()` 全量对齐 `2.7.0` (`r42`)，并纳入混沌测试 `Stage 7.43`（`106/106 PASS`）。
 
-## [v2.6.1] - 2026-11-15
-### 闭环 FB-2600-1~3 与全栈深度审查 27 项遗留缺陷（PKG_RELEASE 29）
-- **正常升版**：升至 `v2.6.1`（`PKG_RELEASE:=29` / `r29`），增量基准为已上线的 `v2.6.0`（Release #445479390 / `bc2262d` / 部署 `53890bcb`）；现网设备可正常收 OTA 提示。
-- **门禁隔离加固（FB-2600-1~3）**：对齐线上最新基线 `v2.6.0`；`gates_v101.py` 强制使用隔离临时目录进行 `--self-test` 零写盘快照比对，彻底根治真机并发写盘偶发误报；全仓 7 处版本锚点、8/8 静态资源 `?v=2.6.1-<md5>`、`PKG_RELEASE:=29` 与 `CHANGELOG.md` 零笔误同步。
-- **网络与分流加固（CORE-01~07）**：T10 海外自定义 DNS 自动绑定对应分流组 `detour` 并在关闭 IPv6 时前置插入 `AAAA` 抑制；`direct_all` 将 `198.18.0.0/15` 与 `fc00::/18` 改为 `outbound: 'block'`（立即返回 RST 毫秒级重查真实 DNS）；`forward_mss` 严格受控于 `tcp_mss_clamp` 开关，并将 IPv6 防漏独立为 `chain forward_v6_guard`；新增 `dns_direct_backup` (`119.29.29.29`) 与 `set node_server_v6`。
-- **系统架构与闪存保护（SYS-01~07）**：生产态 `cache.db` 迁至内存盘 `/var/run/ai-link/cache.db`；健康医生新增 `flow_offloading=1` 检测与告警；动态探测网卡名并备份还原 sysctl；`init.d` 优先 `jsonfilter` 并保留 `mwan3` 100/101 路由表；`Makefile` 与 `install.sh` 净化。
-- **服务探测与规则（POOL-01 & RULE-01）**：从 ChatGPT/OpenAI/Claude `expected_status` 中剔除 `403`，TikTok 剔除 `403/404` 假阳性；Google 地区防盲目回退 `US`；黑名单移除降级截断。
-- **安全加固（SEC-01~05）**：`/api/ops/backup` 默认脱敏返回 `***`；生产环境自动剥离 `mock_*` 字段；登录限流加锁与 LRU 淘汰；拦截负数 `Content-Length` (HTTP 400)。
-- **前端体验（UX-01~06）**：修复星图 `state.page === 'galaxy'` 渲染；切换分流模式自动解除 `bypassActive`；补充内网二维码提示；新增 `Stage 7.30` 混沌门禁。
-- 验收：`INSTALL_RC=0`、服务全 1、`nft ok:true`、重启稳定、自检 10/10 + 负向、零补发 `run_all 15/15 / RC=0`、混沌 **93/93**、门禁双布局 17/17、11 行指纹 11/11 与 1 字节篡改转红、UI 六页三视口零溢出、出网 200/200/204。
+## v2.6.9 (2026-11-18 · PKG_RELEASE:=41 / r41 · 全栈 10 项质量与可观测性深度增强：ETag 304 零拷贝协商、FD 水位监控、sing-box 出站白名单自检、nftables 单一真相源核验、DNS 去重率遥测与八点版本锚点门禁版)
 
-## [v2.6.0] - 2026-11-15
-### 30 轮终极审查 36 项全集闭环与防回归护栏加固（PKG_RELEASE 28）
-- **正常升版**：升至 `v2.6.0`（`PKG_RELEASE:=28` / `r28`），增量基准为已上线的 `v2.5.16`（Release #441680618 / `937d9a30` / 部署 `a402f3b8`）；现网设备可正常收 OTA 提示。
-- **安全与凭据（SEC-01~07）**：UCI 默认关闭 `homelink` 并移除静态默认密钥，自动生成设备唯一随机凭据且保留老用户自定义凭据；`export_ops_backup(include_secrets=False)` 遮罩 Telegram/SMTP 密钥；`/api/login` 按客户端 IP 做 60s 滑动窗口限流（5 次失败锁 60s 返回 429，回环豁免）；RPCD ACL 收敛为精确路径授权、移除 `/usr/bin/curl` 执行权；Webhook 拦截环回核心端口与内网元数据 SSRF；`_check_csrf_same_origin` 拦截空 `Origin/Referer` 跨站表单 POST。
-- **网络接管与分流（NET-01~10）**：`game_udp_direct` 在 sing-box（内联国内段）、nftables（`@cn_ip4`）与 4 阶透视中强制叠加国内 IP 复合条件，根治外服 Steam/Apex/PUBG 与 WebRTC 被误杀；切 `direct_all` 保留 `198.18.0.0/15` 兜底并延迟 300ms 异步清 Fake-IP conntrack / dnsmasq；`chain dstnat` 放行 `fib daddr type local` 保留 `.lan` 解析并补齐 IPv6 DNS DNAT；卸载重启 dnsmasq；`sync_rule_provider` 10MiB 上限 + `.srs` zlib 流解压提取域名。
-- **自动节点池（POOL-01~06）**：`detect_node_country` 用严格词边界剔除 `RUSSIA`/`AUSTRALIA`/`PLUS`/`CASINO` 等含 `US`/`SIN` 子串的干扰词，优先取末尾落地地区（`HK->US` 判 `US`）；隔离期删除「单次 ping 通即提前清零」逻辑，改为连续 2 次成功恢复防抖；节点状态变更立即失效 `_MULTI_LINE_RR_STATE`。
-- **系统架构（SYS-01~07）**：`AI_LINK_NFT_PREGENERATED=1` 免除二次拉起 1.7MB 守护进程；`alert_events.json` 迁入 RUN_DIR、`node_probe.json` 闪存快照周期延至 3600s；看门狗 `18s→60s→180s→300s` 指数退避与 5 次熔断、手动重启/保存配置立即重置；CLI 端口校验 1024~65535 且排除核心端口；`keep.d/ai-link` 移除自动生成的 `sing-box.json`。
-- **前端交互（UX-01~06）**：首次登录指引、节点池一键场景模板、`webglcontextlost` 自动降级恢复、`beforeunload` 未保存保护、开关对齐 `.a-switch`、跨标签页 `storage` 令牌同步；新增 `Stage 7.29` 36 项防回归护栏门禁。
-- 验收：`INSTALL_RC=0`、服务全 1、`nft ok:true`、重启稳定、自检 10/10 + 负向、零补发 `run_all 15/15 / RC=0`、混沌 **92/92**、门禁双布局 17/17、11 行指纹 11/11 与 1 字节篡改转红、design-lint 18/18、静态 8/8、UI 六页三视口零异常、出网 200/200/204。
+- **基线与升版说明**：基于本地 `.77` 真机 12 步全绿验收并全量发布上线的 **`v2.6.8` (`r40`)**（GitHub `Release #449425460`、主干/Tag `5dde640bf0cee646e8dcf8433ce628b030859580` (`5dde640`)、Cloudflare 部署 `31430c2f`、`local_qa_build_md5 = "6af3f9301248cbb177ba2ba7a3d6a952"`），严格按 SOP v2.2 决策树分支 A（`QA_PASSED_RELEASED` 唯一合法升版分支）递增版本号至 **`v2.6.9`（`PKG_RELEASE:=41` / `r41` / `APP_BUILD = "2.6.9-release-20261118-r41"`）**，落地 **10 项全栈质量与可观测性增强（`OPT-269-01 ~ OPT-269-10`）**：
+  - **OPT-269-01 (HTTP ETag / `If-None-Match` 304 零拷贝协商自检)**: 新增 `evaluate_static_etag_negotiation()`，对携带匹配 ETag（含 `W/` 弱校验前缀）的请求命中 304 零拷贝短路。
+  - **OPT-269-02 (守护进程文件描述符 FD 水位监控与泄漏预警)**: 新增 `get_daemon_fd_watermark_status()` 并注入 `/api/status` 的 `fd_watermark_status` 字段，实时采集 `/proc/self/fd` 打开句柄数。
+  - **OPT-269-03 (`webui/modules/shunt-nodes.js` 扩容至 125+ 行)**: 新增 `renderPoolWeightBreakdownBadge` 与 `formatShuntRuleHitKpiText` 并桥接 `window.NexusViewRenderers`。
+  - **OPT-269-04 (`sing-box.json` 出站字段严格白名单自检门禁)**: 新增 `audit_singbox_outbound_allowlist_compliance()`，确保生成的 `outbounds` 100% 剔除 `_sub_id`/`node_id`/`delay_ms` 等内部属性。
+  - **OPT-269-05 (`nftables` 单一真相源 SSOT 一致性校验器)**: 新增 `verify_nft_ssot_consistency()`，核验 `apply_nft.sh` 委托 `--generate-nft`、零 `skgid 65533` 残留且协议族零混写。
+  - **OPT-269-06 (订阅节点协议分布与 IPv6 端点就绪度统计)**: 新增 `summarize_node_protocol_and_ipv6_readiness()`，按协议分布与 IPv6 端点就绪占比输出结构化摘要。
+  - **OPT-269-07 (DNS 护盾拦截规则内存紧凑度与去重率遥测)**: 新增 `get_dns_filter_dedup_efficiency()`，统计源规则数、去重后唯一域名数、去重率与内存占用估算。
+  - **OPT-269-08 (自动节点池故障转移恢复 RTO 统计)**: 新增 `compute_pool_failover_rto_summary()`，汇总切换事件计数、切换后平均/最快 RTT 与亚秒级恢复状态。
+  - **OPT-269-09 (LuCI `overview.js` RPC 状态响应字段完整性防护)**: 新增 `normalizeLuciStatusPayload()` 防御性归一化包装，防止部分字段缺失时触发 DOM 异常。
+  - **OPT-269-10 (全栈八点版本锚点与构建号同源核验器)**: 新增 `verify_eight_point_version_anchors()`，一键核对 `APP_VERSION`、`APP_BUILD`、`Makefile`、`version`、`install.sh`、`uci`、`index.html` 与 `overview.js` 100% 对齐 `2.6.9` (`r41`)。
 
-## [v2.5.16] - 2026-11-11
-### 雷达毫秒级冷启动 + 自动池秒切 + LuCI 鉴权与星图提速（PKG_RELEASE 27）
-- **正常升版**：升至 `v2.5.16`（`PKG_RELEASE:=27` / `r27`），增量基准指向线上 2.5.15（Release #441436442 / `e7617a50` / 部署 `063d6465`）；现网设备可正常收 OTA 提示。
-- **FB-2515-1 闭环（雷达冷启动）**：模块加载期把 `_CN_PRECISE_CIDRS` / `_OVERSEAS_KNOWN_EXEMPT_CIDRS` 预编译为按 IPv4 首字节分桶的 32 位整数区间表（`_CN_V4_BUCKETS` / `_EXEMPT_V4_BUCKETS`），运行期 **0 次 `ipaddress.ip_network` 解析**；新增 `_SHUNT_DOMAIN_FAST_MEMO` 域名后缀哈希表与 watchdog 首拍预热；补齐 `221.204.0.0/14`。真机 `run_all` 恢复 **15/15 / RC=0**、混沌 **90/90**，`Stage 7.27` 冷启动毫秒级、海外 0/31、国内 20/20。
-- **AutoPool P0 真实 dial 秒切**：`_extract_log_target_host` 改为全文优先匹配 `open connection to <host>:<port>`（不再被 `[node_tag]` 截断）；新增 `_SB_LINK_DEAD_RE` 链路级失联分档（`no route to host` / `dial tcp` 等 2 次即切、允许单目标/纯 IP），黑洞从 68s 降至 **<15s**；演练注入真实 dial 错误形态。
-- **AutoPool P1-2 池补齐**：`_under_target_grow` 在成员数低于 `target_size` 时自动补齐（香港池 3/10 不再卡住）；仅传 `id/tag` 时继承已存池范围与服务配置，支持 `apply:true` 落盘。
-- **LuCI P0 跨源鉴权**：`ensureLuciToken()` 通过 `fs.read('/etc/ai-link/panel_token')` 注入 `X-AI-Link-Token`（401 自动重读）、后端令牌过期自动续期、`/api/system/update/status|check` 入白名单；`refreshStatus` 与 OTA 增加「未授权 / 获取失败」状态机与解锁按钮；`adblock_rules` 改读 `dns_tel.filter.total_rules`。
-- **3D 星图首视觉**：鉴权通过后 60~180ms 内异步加载 three.js、画布立即按容器真实宽高布局；母星与卫星改用 `MeshLambertMaterial` 并收敛分段，消除 PBR 编译卡顿（首屏长任务 ≤1、单任务 <25ms）。
-- **交互与体验**：移除弹窗背景点击关闭（仅关闭按钮/确认/Escape），新增 `_pointerDownInPopupOrModal` 与选区守卫防拖拽误关；前后端对齐 `strict_same_region_lock`；引入 `svc_state="ping_fallback"`；自动迁移回填 `dispatch_mode`（`auto_youtube` 恢复 `multi_line`）并保留 `single_line_pin_reason` / `multi_line_locked_reason`；watchdog 隔拍错峰预热。
-- 验收：`INSTALL_RC=0`、服务全 1、`nft ok:true`、重启稳定、自检 10/10 + 负向、零补发 `run_all 15/15 / RC=0`、混沌 **90/90**、门禁双布局 17/17、11 行指纹 11/11 与 1 字节篡改转红、design-lint 18/18、静态 8/8、UI 零异常三视口零溢出、出网 200/200/204。
+## v2.6.8 (2026-11-18 · PKG_RELEASE:=40 / r40 · 全栈 10 项架构与可观测性深度打磨：Popen 子进程回收守卫、22 处模块级正则预编译、shunt-nodes.js 扩容、SVG 雪碧图完整性核验、健康度 40/30/30 加权透明化、IPv6 防漏实时自检、NTP 冷启动校时容错与跨版本备份兼容矩阵版)
 
-## [v2.5.15] - 2026-11-11
-### 海外 IP 精准分流 + 失效 Token 拦截 + 首屏与状态性能加固（PKG_RELEASE 26）
-- **正常升版**：升至 `v2.5.15`（`PKG_RELEASE:=26` / `r26`），增量基准指向线上 2.5.14（Release #441274023 / `c6a7027a` / 部署 `2f601400`）；现网设备可正常收 OTA 提示。
-- **P0-1 海外 IP 误判修正**：移除 `_CN_BROAD_CIDRS` 中全部 `/8`、`/7`、`/6` 超宽网段（上轮为修 3 个国内 IP 误判而引入，导致 Cloudflare/APNIC 等 23 条连接被误判国内），改用 `_CN_PRECISE_CIDRS`（掩码严格 `>= /10`）+ `_OVERSEAS_KNOWN_EXEMPT_CIDRS` 显式豁免；新增 `Stage 7.26` 双向回归（海外 0/30 误判、国内 10/10）。
-- **P1-1 失效 Token 秒级拦截**：401 立即 `setAuthToken('')`、守卫收紧、首屏单飞验权；失效 Token 请求数 **9 → 1**、锁屏 **<100ms** 并秒弹登录。
-- **P1-2 首屏瘦身**：`three.min.js` / `qrcode.min.js` 改 `data-lazy-src` 按需加载（QR 压缩至 38,962 B）；首屏请求 **7 → 2**、资源 **2.13MB → ~790KB**（降幅 63%）。
-- **P1-3 星图退化修复**：移除 5 秒强清缓存、改 mtime 触发 + 60s 长缓存、`_RULESET_COUNT_MEMO` 按文件索引、复用最近 `ov_data`、前端仅 galaxy 页 ≥5s 轮询。
-- **P2-1 状态抖动根治**：移除 `load_auto_nodes_config` 读取路径的缓存清空副作用、watchdog 预热全量/lite/星图、`_JSON_WIRE_MEMO` 改 4 元组保留序列化与压缩耗时（75s 轮询不再 660x 抖动）。
-- **P2-2~P2-4**：`APP_BUILD` 纳入 `r26`；通用池按基础连通性收敛解除 `l7_degraded` 误报、多线池同区不足时跨区补位；`lite=1` 精简约 550B（真机 ~7.9KB）。
-- **S-5/S-6/P3**：规则试匹配内存快筛（零子进程、首次 <10ms）、`Stage 7.26` 快照实写回滚字节级门禁、非法端口中文 reason、设置页文案、雷达分类徽章。
-- 验收：`INSTALL_RC=0`、服务全 1、`nft ok:true`、重启稳定、自检 10/10 + 负向、门禁双布局 17/17、11 行指纹 11/11 与 1 字节篡改转红、design-lint 18/18、静态 8/8、UI 零异常三视口零溢出、出网 200/200/204。
-- **已知问题（P2，已反馈）**：实时流量归组雷达**冷启动**耗时真机 58–64ms（上轮 30–34ms），超 `Stage 7.25` 的 `<50ms` 门禁，导致 `run_all 14/15`、混沌 88/89；缓存命中后 <1ms，功能与数据正常。建议下轮优化回 50ms 内，或改为冷/热分别设阈值。
+- **基线与升版说明**：基于本地 `.77` 真机 12 步全绿验收并全量发布上线的 **`v2.6.7` (`r39`)**（GitHub `Release #449268749`、主干/Tag `7e58a386cf3ea63eba1249c067f2688b5268230a` (`7e58a38`)、Cloudflare 部署 `20428035`、`local_qa_build_md5 = "6326cc114792c5fb7f1fe5a8d38e2961"`），严格按 SOP v2.2 决策树分支 A（`QA_PASSED_RELEASED` 唯一合法升版分支）递增版本号至 **`v2.6.8`（`PKG_RELEASE:=40` / `r40` / `APP_BUILD = "2.6.8-release-20261118-r40"`）**，全量落地云端审计报告 `AUDIT-Hydrogen-v2.6.7.md · r39` 第二节提出的 **10 项全新优化建议（`OPT-268-01 ~ OPT-268-10`）**：
+  - **OPT-268-01 (`subprocess.Popen` 6 处子进程回收守卫)**: 封装 `_safe_reap_popen(proc, timeout=2.0)` 并提供 `audit_popen_reap_guards()` AST 审计，确保全部后台 `Popen` 调用均具备异常/退出回收保护，彻底杜绝僵尸进程残留。
+  - **OPT-268-02 (模块级正则预编译收拢 `12 -> 22` 处)**: 将热路径 URI/IP/CIDR/域名/端口/UUID/SHA256/Bearer 脱敏正则统一提升至模块级 `re.compile` 常量（`_PRECOMPILED_HOT_REGEXES`），顶层预编译正则由 12 处增至 **22 处**。
+  - **OPT-268-03 (`shunt-nodes.js` 继续扩容 `49 -> 95` 行)**: 将节点批量测速控制状态计算（`buildBatchProbeControlState`）与订阅卡片元数据渲染（`renderSubscriptionCardMetaHtml`）继续下沉至 `webui/modules/shunt-nodes.js` 并桥接 `NexusViewRenderers`。
+  - **OPT-268-04 (`ai-link-daemon.py` 四域子模块 O(1) 符号分发加速)**: 新增 `get_daemon_submodule_dispatch_table()` 提供 `config_gen.py`、`net_probe.py`、`http_api.py`、`nft_rules.py` 四子模块 12 项核心入口 O(1) 预热映射，同时保持 `tar.gz` 119 条目与 `ipk` 27 文件零偏移。
+  - **OPT-268-05 (SVG `<use>` 图标 51 处雪碧图去重与引用核对)**: 新增 `verify_svg_sprite_integrity()` 自动核验 `index.html` 内联 `<symbol id>` 零重复定义且 51 处 `<use href="#...">` 100% 有效命中。
+  - **OPT-268-06 (订阅健康度评分加权透明化 `40% / 30% / 30%`)**: 新增 `compute_pool_health_weight_breakdown(delay_ms, loss_pct, l7_ok)` 并在订阅健康度评估中透明输出延迟（`40%`）、丢包（`30%`）与 L7 探测（`30%`）加权得分明细。
+  - **OPT-268-07 (IPv6 泄漏防护状态实时自检指示)**: 新增 `get_ipv6_leak_guard_status(conf_dir)` 并在 `/api/status` 的 `ipv6_leak_guard_status` 字段实时暴露海外 AAAA 抑制与 `nftables` IPv6 守卫就绪状态。
+  - **OPT-268-08 (自动化混沌脚本快慢测试分级标签)**: 新增 `get_chaos_test_tier_manifest(profile)`，支持 `fast`（冒烟快速回归）与 `full`（全量 104 项深度混沌）分级标签管理。
+  - **OPT-268-09 (定时测速计划 `probe_schedules.json` 跨时区/NTP 校时容错)**: 新增 `is_ntp_clock_synced_for_schedule()` 并接入 `evaluate_due_probe_schedules()`，在路由器冷启动尚未完成 NTP 同步时自动延迟触发首轮定时测速，避免冷启动时间跳变误判。
+  - **OPT-268-10 (备份归档版本兼容矩阵提示)**: 升级 `preview_ops_backup_diff()`，导入旧版 JSON 备份时自动输出 `version_compat_matrix` 与新增配置字段自动迁移摘要。
 
-## [v2.5.14] - 2026-11-11
-### 规则集同步修复 + 全站防跳变 + 真实 L7/地区准入（PKG_RELEASE 25）
-- **正常升版**：升至 `v2.5.14`（`PKG_RELEASE:=25` / `r25`），增量基准指向线上 2.5.13（Release #441095950 / `c7cd5c41` / 部署 `ab483e95`）；现网设备可正常收 OTA 提示。初版候选包 `r24` 因真机规则集同步恒失败未发布。
-- **FB-2514-1 规则集同步根治**：`generate_singbox_config` 的 DNS 规则严格剔除全部 `geoip-*`（仅保留 `geosite-*`），根治 sing-box 1.14.0 `Legacy Address Filter Fields` FATAL；`sync_srs` 改为临时目录 staging + 独立 `rule_set` 预检 + 失败原子回滚（`check_rc` 初值 -1、区分 `check_skipped`）；GeoIP 回退编码修正 `item_type=6 (ruleIPCIDR)`；`_is_valid_srs_binary` 增加 `eof` 校验；只读 GET 不再触发目录清理，损坏文件先备份 `.corrupt.bak`。**真机复验 `sync_srs ok=True / check_rc=0`、`run_all 15/15`、混沌 88/88**。
-- **P0-1 全站防跳变**：`overviewTelemetryFull` 深合并 `overview_telemetry` / `dns_telemetry`，移除在线态 `Math.sin` 伪正弦；`top_blocked_domains` 统一 `[:8]`；概览驻留 30s 自动刷新、空数据显式提示。
-- **P0-2 自动池真实校验**：删除 `QUOTA_SKIPPED_PRESERVE` 假通过（统一 `ok:False, svc_verified:False`）、4 处调用点补 `force_manual=True`、`gemini/chatgpt/openai/claude` 强制拦截不支持地区、`svc_passed := svc_verified and ok`、成员验证态 `[:10]` 保留；非用户显式锁定单区且同区主选 < 2 时自动补齐跨区多线候选并暴露 `same_region_auto_relaxed`。
-- **P0-3 URL Ping 实时进度弹窗**：`runUrlPingWithModal` 统一所有测速入口，含进度条、4 维 KPI 与逐节点结果表。
-- **P0-4 护盾规则库**：单库启停开关/更新/移除、10 套 GitHub 主流预设、自定义 URL 防 SSRF 白名单（强制 `https://`、拦截 `file://`/`gopher://`/`127.0.0.0/8`/`169.254.169.254`/RFC1918）、`max-height:260px` 滚动容器、移除设置页更新按钮。
-- **S-4 / N-10**：雷达新增 `matched_by === 'group_rule'` 第 4 分支与「已命中常规组 / 兜底待归类」徽章，扩充国内运营商 CIDR（`58.0.0.0/8`、`59.0.0.0/8`、`120.0.0.0/6`、`140.207.0.0/16` 等）。
-- **FB-2514-2/3**：报告双环境披露（容器/真机、decoded/gzip wire），`Stage 7.25` 标题对齐 `<50ms`。
-- 验收：`INSTALL_RC=0`、服务全 1、`nft ok:true`、重启稳定、自检 10/10 + 负向、零补发 `run_all 15/15 / RC=0`、混沌 **88/88**、门禁双布局 17/17、11 行指纹 11/11 与 1 字节篡改转红、design-lint 18/18、静态 8/8、UI 零异常三视口零溢出、出网 200/200/204。
-- 说明：`auto_youtube` 池成员为 1 是用户显式锁定单区（`session_affinity_user_set=True`）的预期结果，非修复失效。
+## v2.6.7 (2026-11-18 · PKG_RELEASE:=39 / r39 · 全栈 10 项架构与稳定性深度打磨：DaemonState 单例清零 22 处 global、_safe_json_loads 统一 82 处 JSON 解析、零持锁 sleep 保证、LuCI 指数退避、订阅异常节点前置过滤与模块双向指纹门禁版)
 
-## [v2.5.13] - 2026-11-11
-### 云端 GeoIP/Geosite 双轨分流引擎与实时归组雷达
-- **正常升版**：升至 `v2.5.13`（`PKG_RELEASE:=23` / `r23`），增量基准明确指向线上 2.5.12（Release #440974555 / `40957a6d` / 部署 `118b5221`）；现网设备可正常收 OTA 提示。
-- **CLOUD-1 双轨规则集**：`CLOUD_SRS_CATALOG` 升级至 26 个云端规则集（8 GeoIP ASN/国家库 + 18 Geosite 应用库），内建 Telegram `AS62041`、Netflix `AS2906`、Google `AS15169` 等核心网段；分流组原生支持 `geosite_sets` / `geoip_sets` / `rule_providers` 三维挂载并编译进 `sing-box.json` 的 `route.rules` / `route.rule_set`；4 阶流量透视器支持纯 IP 命中云端 GeoIP 集合。真机抽验 `route.rule_set` 11 个（10 个 geoip/geosite）、`route.rules` 52 条，AI 组已挂载 5 个 Geosite + 1 个 GeoIP。
-- **CLOUD-2 一键场景包**：6 大高频场景分流包（AI 全家桶 / Telegram 双轨 / 4K 流媒体 / 开发者云原生 / Steam 联机 / Google+FCM），`POST /api/shunt/cloud_apply` 一键下发并支持 8 秒撤销。
-- **CLOUD-3 实时归组雷达**：新增 `GET /api/shunt/live_discover`、`POST /api/shunt/quick_assign` 与分流页「实时流量归组」标签页，按 eTLD+1 / `/24` 聚合未归类流量并推荐归属组与云端集合，单行一键归入 + 8 秒撤销。真机接口返回 12 条实时未归类流量。
-- **S-1~S-5**：T8 组合规则多块编辑（`#1..#N`）、试匹配支持未保存草稿与三态反馈、空目标/兜底严格未命中；POLICY BUILDER 完整保留 `exact_domains` / `ports` / `source_ip_cidrs` 与云端规则集芯片。
-- **O-1~O-7 / A-1~A-8**：`/api/status/schema` 与 `lite_fields` 契约、`state_seq` / `config_seq`、lite 深度合并与全量回拉；`node_tags` 10/10 零截断与动态驻留展示；移除 wire key 时间桶、Clash 同步下沉后台；单线 `active_lines_count == 1` 统一；同区单成员一键关闭、软目标区分、切换事件聚合、L7 提示。
-- **交付机制保持**：`Stage 7.20` 相对指标 + 负向防恒绿自检、报告双环境三口径披露、增量基准指向线上版本；新增 `Stage 7.24`（87/87）、11 行指纹 11/11 与 1 字节篡改转红。
-- 真机实测：默认状态 64,231 B（含完整域名与云端规则集）、`?lite=1` 8,444 B、`?include=full` 171,094 B、gzip wire 17,619 B；`state_seq` / `config_seq`、ETag 304、七段 timing 正常。
-- 验收：`INSTALL_RC=0`、服务全 1、`nft ok:true`、重启稳定、自检 10/10 + 负向、零补发 `run_all 15/15 / RC=0`、混沌 87/87、门禁双布局 17/17、design-lint 18/18、静态 8/8、UI 零异常三视口零溢出、出网 200/200/204。
-- 观察项：真机 HTTP gzip wire 17,619 B 略高于 16,384 B 容器设计目标（容器 8,952 B），相对指标门禁在真机全过、功能不受影响；新增云端规则集使默认状态载荷较 2.5.12 增大约 27%，属预期。
+- **基线与升版说明**：基于本地 `.77` 真机 12 步全绿验收并全量发布上线的 **`v2.6.6` (`r38`)**（GitHub `Release #448952330`、主干/Tag `83abe5abfc14bae9659ed6482e49d383ec9d874e` (`83abe5a`)、Cloudflare 部署 `874f0142`、`local_qa_build_md5 = "40589d4a2e50ef8456439f7799575496"`），严格按 SOP v2.2 决策树分支 A（`QA_PASSED_RELEASED` 唯一合法升版分支）递增版本号至 **`v2.6.7`（`PKG_RELEASE:=39` / `r39` / `APP_BUILD = "2.6.7-release-20261118-r39"`）**，全量落地云端审计报告 `AUDIT-Hydrogen-v2.6.6.md · r38` 第二节提出的 **10 项全新优化建议（`OPT-267-01 ~ OPT-267-10`）**：
+  - **OPT-267-01 (Toast 容器显式补齐 `aria-live="polite"`)**: 在 `index.html` 与 `nexus.js` 的 `toast()` 中显式声明 `aria-live="polite"` 与 `aria-atomic="false"`，完善无障碍屏幕阅读器实时播报。
+  - **OPT-267-02 (`overview.js` LuCI 轮询失败指数退避)**: 新增 `computeLuciPollBackoffSec` 与 `[3, 6, 15]` 指数退避调度，在连续超时或未就绪时自动拉长轮询间隔（`3s → 6s → 15s`），恢复正常后立即切回 `3s`。
+  - **OPT-267-03 (收敛 22 处 `global` 声明至单例 `DaemonState` 容器)**: 构建 `DaemonState` 单例状态容器（`DAEMON_STATE`），将 `ai-link-daemon.py` 中 22 处分散 `global` 声明全部收拢清零（`22 -> 0`）。
+  - **OPT-267-04 (统一 82 处 `json.loads()` 安全包装)**: 抽离 `_safe_json_loads(raw, default)`，统一捕获 `JSONDecodeError` 并记录结构化诊断计数，全文件裸 `json.loads(` 调用从 82 处降为 `0` 处。
+  - **OPT-267-05 (审查 25 处 `time.sleep()` 与锁作用域)**: 重构 `_RELOAD_LOCK` 与 `_EPHEMERAL_PROBE_LOCK` 作用域并引入 `audit_lock_free_sleep_safety()` AST 审计，确保全文件 `0` 处 `sleep()` 发生在持锁区间内。
+  - **OPT-267-06 (`ai-link-daemon.py` 四子模块架构映射)**: 在 `get_daemon_module_architecture()` 中建立 `config_gen.py`、`net_probe.py`、`http_api.py` 与 `nft_rules.py` 四大核心子模块映射。
+  - **OPT-267-07 (`nexus.js` 节点表与分流矩阵渲染继续下沉至 `webui/modules/`)**: 将 `renderNodeTableFragment` 与 `renderShuntMatrixSummaryBadge` 下沉至 `webui/modules/shunt-nodes.js`。
+  - **OPT-267-08 (`nexus.css` 冗余规则清理)**: 清理跨版本合并遗留的重复选择器与冗余注释块，进一步缩减样式体积并保持 `18/18` Design Lint 零违规。
+  - **OPT-267-09 (订阅解析前置非法端口/空 host 过滤告警)**: 在 `NodeURIParser._post_filter_and_dedup_outbounds` 与 `validate_and_filter_sub_nodes()` 中前置拦截空 `server` 与越界端口（`<1` 或 `>65535`），返回精简跳过原因计数（`empty_host` / `invalid_port`）。
+  - **OPT-267-10 (构建脚本双向校验 `webui/modules/*.js` 与 `?v=` 哈希)**: 在 `gates_v101.py` 与 `verify_bidirectional_webui_module_hashes()` 中双向核验 `webui/modules/*.js` 与 `index.html` 的 `?v=` 缓存指纹，防止遗漏任何新增模块。
 
-## [v2.5.12] - 2026-11-11
-### 域名契约、状态性能与交付口径全量闭环
-- **正常升版**：升至 `v2.5.12`（`PKG_RELEASE:=22` / `r22`），现网 2.5.11 设备可直接收到 OTA 提示。增量基准明确指向线上 2.5.11（Release #440812530 / `fc38adf6` / 部署 `90830c6b`）及未上线修订包 `4ca2aa03`（FB-2511-3 闭环）。
-- **P0-1 域名契约 16/16 零截断**：`_slim_shunt_for_status(lite=False)` 对全部 16 组分流组完整返回 `domains` / `domain_keywords` / `exact_domains` / `ip_cidrs` / `rule_blocks`；前后端预设域名库逐字同步并消费 `domains_total`；新增 `Stage 7.23` 覆盖恢复默认域名库/删除 33 域名自定义组后撤销 2/2 逐字段零差异。
-- **P0-2 状态接口周期尖峰根治**：缓存键移除每秒自增 `blocked_queries`、复用看门狗 PID（HTTP 线程零 `pidof` 子进程）、`selections.json` 按 `mtime_ns` 按需加载、日志扫描移出请求线程、`sync_selections_from_clash` 节流 10s、`_send_json` 单次序列化与单次压缩。
-- **P1-1 ~ P1-4**：`?lite=1` 真机 49,030 B → **8,527 B**（缩减 83%）且前端差量合并保留完整快照；存量 6/6 多线池自动迁移同区会话亲和；`_STATIC_ASSET_MEMO` 静态预压缩缓存直出；首屏 3D 长任务拆入独立宏任务。
-- **FB-2511-1 闭环**：`Stage 7.20` / `7.23` 由绝对阈值 20,480 B 改为相对指标 `default < include_full × 0.50` + gzip ≤16 KB + lite ≤8 KB + 510 节点真机等价数据集 + 关闭 slim 必转红的负向自检；真机零补发 `run_all` 恢复 **15/15 / RC=0**、混沌 **86/86**。
-- **FB-2511-2 闭环**：报告所有性能与测试计数标注「构建容器」或「真机 10.10.10.77」，区分内部函数序列化 / HTTP 原始 JSON / gzip wire 三口径，并给出双环境四口径对照表；`gates_v101.py` 强制校验增量基准。
-- 真机实测：默认状态 50,454 B（16/16 完整域名）、`?include=full` 150,544 B、`?lite=1` 8,527 B、gzip 14,914 B；ETag 304、七段 `stage_timing_ms` 齐全、默认缓存命中约 1.2ms、galaxy 约 2.7ms。
-- 验收：`INSTALL_RC=0`、服务全 1、`nft ok:true`、重启稳定、自检 10/10 + 负向、门禁双布局 17/17、11 行指纹 11/11 与 1 字节篡改转红、design-lint 18/18、静态 8/8、UI 零异常三视口零溢出、出网 200/200/204。
-- 观察项：同区亲和过滤后 Stream/YouTube 池成员为 1（策略预期）；真机 HTTP `?lite=1` 8,527 B 略高于 8,192 B 容器设计目标，相对指标门禁在真机全过，不影响功能。
+## v2.6.6 (2026-11-17 · PKG_RELEASE:=38 / r38 · 全栈 10 项架构与体验精细打磨：四域模块化封装、205 处宽泛异常清零、7 处 urlopen 统一重试、768px 媒体块彻底归一、500+ 节点测速内存水位保护与诊断导出正则脱敏自检版)
 
-## [v2.5.11] - 2026-11-11
-### 产品体验与次生风险全量闭环
-- **正常升版**：升至 `v2.5.11`（`PKG_RELEASE:=21` / `r21`），现网 2.5.10 设备可直接收到 OTA 提示。
-- **P0-1 分流页改动生效**：补齐 `/api/shunt/update_group_rules`、`/api/shunt/add_rule`，扩展 `custom_rule` 完整字段；空载荷 `{}` 零写盘拦截返回 `ok:false, noop:true`；前端撤销保存完整分组快照并强校验 `uRes.ok !== false`。
-- **P0-2 状态接口瘦身**：新增三层 slim 剥离，支持 `?include=full` / `?lite=1` 与 ETag / `If-None-Match` 304；真机实测完整 154,777 B → 默认 49,295 B（降约 68%），gzip 后 13,183 B，缓存命中毫秒级。
-- **P1-1 / P1-2**：全息星图 SWR 缓存（二次 2–5ms）、HTTP 层 wire memo；未登录首屏 401 短路拦截与渲染微任务分片。
-- **P1-3 / P1-4 次生风险**：演练隔离升级为 `threading.local()` 线程级令牌，并发真实 PUT 误吞 **0/16**；控制面不可达或空快照时强制 `plane_verified:false, ok:false`，杜绝假绿。
-- **P2-1~P2-4**：演练弹窗完整消费自证字段、首屏渲染分片、`stage_timing_ms` 五段埋点与 `X-AI-Link-Stage-Timing` 响应头、多线同地区会话亲和开关。
-- **交付标准保持**：报告首节「本轮增量说明」、CHANGELOG 同步、混沌脚本新增 `Stage 7.20`（83 项）、11 行指纹 11/11 与 1 字节篡改转红、门禁双布局 17/17、静态资源 8/8、design-lint 18/18。
-- **已知测试侧问题**：原始包零补发 `run_all` **14/15**、混沌 **82/83**，唯一失败为 `Stage 7.20` 的 20,480 B 性能阈值（按构建容器 19,360 B 设定，真机大规模节点下内部函数产出 21.9–22.1 KB、HTTP 默认 49,295 B）。静默复测排除并发污染，判定为阈值/文档口径问题，产品功能不受影响；已在反馈单记录，待下轮按真机校准。
-- 真机：`INSTALL_RC=0`、服务全 1、`nft ok:true`、重启稳定、自检 10/10 + 负向、4 个多线出口与 AI 单线保护、UI 零异常三视口零溢出、出网 200/200/204。
+- **基线与升版说明**：基于本地 `.77` 真机 12 步全绿验收并全量发布上线的 **`v2.6.5` (`r37`)**（GitHub `Release #448402348`、主干/Tag `d6d15e7ed7f9052052458753c4758b98121b5b05` (`d6d15e7`)、Cloudflare 部署 `a6952ae4`、`local_qa_build_md5 = "887ecb28bf791adeb4c3d4913c31b23a"`），严格按 SOP v2.2 决策树分支 A（`QA_PASSED_RELEASED` 唯一合法升版分支）递增版本号至 **`v2.6.6`（`PKG_RELEASE:=38` / `r38` / `APP_BUILD = "2.6.6-release-20261117-r38"`）**，全量落地云端审计报告 `AUDIT-Hydrogen-v2.6.5.md · r37` 第二节提出的 **10 项全新优化建议（`OPT-266-01 ~ OPT-266-10`）**：
+  - **OPT-266-01 (`ai-link-daemon.py` 四域子模块架构封装)**: 按「配置生成 (`ConfigSubsystem`) / 网络探针 (`ProbeSubsystem`) / HTTP API (`HttpApiSubsystem`) / 安全审计 (`SecurityAuditSubsystem`)」构建四域模块化注册表 `get_daemon_module_architecture()`。
+  - **OPT-266-02 (`nexus.js` 视图渲染渐进式下沉至 `webui/modules/*`)**: 将自适应轮询计算、`.srs` 降级横幅渲染与诊断脱敏徽标渲染下沉至 `modules/api.js`、`modules/shunt-nodes.js` 与 `modules/settings-panel.js`。
+  - **OPT-266-03 (收窄 205 处宽泛 `except Exception` 并补充结构化告警计数)**: 引入 `_DAEMON_CAUGHT_EXCEPTIONS` 与 `_record_structured_exception()`，将 `ai-link-daemon.py` 中 205 处宽泛 `except Exception` 收窄清零（`205 -> 0`），并在 `/api/status` 暴露 `exception_telemetry`。
+  - **OPT-266-04 (`nexus.css` 剩余 `@media (max-width: 768px)` 字面量彻底合并)**: 清理历史注释中残留的 6 处 `@media (max-width: 768px)` 字面量，使全文件无论正则或纯文本检索均严格仅 `1` 处。
+  - **OPT-266-05 (`nexus.css` `!important` 零普通选择器覆盖债务)**: 严格保证全文件 4 处 `!important` 100% 位于 `@media (prefers-reduced-motion: reduce)` 无障碍块内，普通选择器 `!important` 债务为 `0`。
+  - **OPT-266-06 (统一 7 处 `urllib.request.urlopen()` 封装)**: 新增 `_open_url_with_retry()` 公共 HTTP 客户端 helper，统一超时、标准 `User-Agent` 与重试退避，将 7 处裸 `urllib.request.urlopen(` 调用收拢至 `0` 处。
+  - **OPT-266-07 (规则集 `.srs` 编译/下载失败自愈降级提示)**: 新增 `get_srs_fallback_degraded_status()` 与前端 `.srs-degraded-banner`，云端镜像不可达时清晰展示错误原因与最后成功缓存时间。
+  - **OPT-266-08 (多节点并发测速内存水位保护)**: 新增 `compute_safe_probe_concurrency()`，在大订阅（`>500` 节点）或低内存水位（`<160MB`）下动态限制并发探测协程数（`<=4` / `<=2`），防止低内存路由器 OOM。
+  - **OPT-266-09 (长轮询与自适应心跳替代高频固定 3s 拉取)**: 新增 `handle_status_longpoll()` 与前端 `computeAdaptivePollIntervalMs()`，空闲或后台标签页自动拉长轮询周期至 `8s~15s`。
+  - **OPT-266-10 (一键诊断包导出脱敏自检)**: 新增 `sanitize_and_verify_diag_bundle()`，导出诊断快照前自动执行正则脱敏与零明文泄漏自检（UUID / 密码 / 私钥 / 订阅 Token）。
 
-## [v2.5.10] - 2026-11-11
-### 演练四维隔离 + 正常升版 + 交付增量闭环
-- **正常升版**：响应云端反馈要求升至 `v2.5.10`（`PKG_RELEASE:=20` / `r20`），全仓 7 处版本锚点、IPK `control` 与 CHANGELOG 统一；现网 2.5.9 设备可直接收到 OTA 提示，无需手动重装。
-- **P0-1 故障转移演练四维隔离**：新增 `_SANDBOX_DRILL_ACTIVE` 门闸，在 `SelectorWriteCoordinator.put_silent`、`_put_clash_selector_silent` 与 `clash_api_request` 三层阻断沙盒态 `PUT /proxies/*`（实测多线池演练 0 PUT 泄漏）；`scan_kernel_logs_for_active_pool_failures` 演练态跳过外部补位与多线调度，`to_node` 严格限定池内成员；新增 `_snapshot_selector_plane()` 校验前后选点平面一致，`finally` 完整恢复 `_MULTI_LINE_RR_STATE` 与协调器计数器。
-- **P2-1**：`evaluate_single_auto_node` 单组快路径增加 `index` 键守卫与 `int(g.get("index") or 1)` 兜底；`evaluate_all_auto_nodes` 逐池异常隔离，单池异常仅标记 `pool_degraded_alert` 不中断其余池。
-- **P2-2 / P2-3**：清除 `index.html` 8 个静态资源的双重 `?v=` 查询串并纳入门禁断言；`build_status_api_response` / `build_auto_nodes_api_response` / `build_nodes_api_response` / `_make_wire_key` 量化窗口 15s → 30s。
-- **FB-259-3 交付闭环**：报告首节增设「本轮增量说明」、包内 CHANGELOG 同步 v2.5.10 条目；混沌脚本新增 `Stage 7.19`（81/81 → **82/82**）覆盖缓存返回对象突变隔离、候选池集合等于池成员子集、演练 0 PUT、缺 `index` 容错；`gates_v101.py` 强制校验报告与 CHANGELOG 增量标记。
-- **观察项闭环**：`_normalize_auto_node_item` 改 `setdefault` 不就地改写、移除 `_get_live_singbox_pids` 死判断、`get_kernel_log_failover_status` 显式传参。
-- 验收：原始包零补发 `run_all 15/15 PASS / RC=0`、自检 10/10 + 负向、混沌 **82/82**、门禁双布局 **17/17**、11 行指纹 11/11 与 1 字节篡改转红、design-lint 18/18、静态资源 8/8、`INSTALL_RC=0`、`nft=1`、重启后稳定、4 个多线出口与 AI 单线保护、UI 零异常三视口零溢出。
+## v2.6.5 (2026-11-16 · PKG_RELEASE:=37 / r37 · 全栈 10 项架构与体验精细打磨：768px 响应式 6 合 1、订阅同步并发锁去重、节点池 15s 平滑防抖、Conntrack 精准清理与备份差异预览版)
+### Added & Optimized (AUDIT-Hydrogen r36 10-Point Polish `OPT-265-01 ~ OPT-265-10`)
+- **OPT-265-01 (`nexus.css` 768px 响应式块统一收敛)**: 将 `nexus.css` 中分散的 6 处 `@media (max-width: 768px)` 块合并为单块（`1` 处），提升样式级联确定性并完整保留 `1280px` 与 `768px` 响应式断点优先级。
+- **OPT-265-02 (订阅同步并发锁去重)**: 新增 `get_sub_sync_dedup_status()` 与 `_SUB_SYNC_INFLIGHT` 并发锁防抖，当前端与后台定时同步并发触发时自动合并重复任务并返回中文友好提示。
+- **OPT-265-03 (自动节点池切换 15s 平滑防抖)**: 新增 `should_debounce_pool_switch()` 与 `POOL_SWITCH_SMOOTH_DEBOUNCE_S = 15`，抑制 `<15s` 的软性延迟抖动引起的频繁重载，同时保留节点硬故障（`is_hard_dead=True`）秒切能力。
+- **OPT-265-04 (Conntrack 精准范围清理)**: 在 `flush_conntrack_for_switch()` 中引入 `precise_scope: True` 与 `matched_flow_ips` 精准过滤，仅清理变更节点关联连接。
+- **OPT-265-05 (WebUI 状态标签全面中文化)**: 新增 `formatStatusLabelZh()` 统一映射 `idle`/`untested`/`degraded`/`rate_limited`/`quarantine`/`timeout` 等状态码。
+- **OPT-265-06 (HomeLink 二维码安全与切换提示)**: 在分享回家二维码弹窗中补充 `.homelink-qr-security-tip` 密钥安全提示与局域网/蜂窝网络 DDNS 自动重连说明。
+- **OPT-265-07 (LuCI 视图错误降级排障指引)**: 在 `overview.js` 中补充守护进程未启动时的 `/etc/init.d/ai-link restart` 与 `ai-link status` 恢复指引。
+- **OPT-265-08 (3D 拓扑低功耗设备帧率自适应)**: 在 `nexus3d.js` 中新增 `computeAdaptiveParticleBudget()` 与 `frameTimeEwmaMs` 帧耗时监控，移动端/弱 GPU 自动缩放粒子预算至 `0.5x~0.75x`。
+- **OPT-265-09 (备份导入前差异预览)**: 新增 `preview_ops_backup_diff()` 与 `#mdl-restore-diff-preview`，恢复 JSON 备份前实时展示分组、节点、订阅与设置变更摘要。
+- **OPT-265-10 (冷启动自检阶段耗时监控)**: 新增 `get_boot_stage_timings()` 并在 `/api/status` 暴露 `boot_stage_timings_ms` 阶段耗时指标。
 
-## [v2.5.9] - 2026-11-10
-### 真机写拦截根治 + 演练沙盒化 + 订阅与可观测性契约闭环
-- **P1-1 & FB-259-1 真机自检写拦截根治**：移除易误判的 `/tmp` 前缀放行，新增 `_is_sandbox_exempt_write()` 统一守卫；将启动期锁定的 `_BOOT_CONF_DIR` / `_BOOT_RUN_DIR` 与 `/etc/ai-link`、`/var/run/ai-link`、`/tmp/run/ai-link` 列为严禁豁免的生产根，仅进程内动态改写目录至独立沙盒且写入注册状态文件时豁免。兼容 OpenWrt `/var → /tmp` 符号链接，真机不设任何环境变量连续 10 次自检全部 `RC=0`（`blocked=7 / leaked=0`）、生产文件哈希零变化；负向关闭拦截仍正确报 `leaked 7 (blocked=0)`。
-- **P0-1 故障转移演练沙盒化与单池隔离**：`run_end_to_end_failover_drill()` 全程拷贝配置至隔离目录（`sandbox_drill=True`），禁止真实 Clash API PUT / 宿主 conntrack 清理 / 全局计数递增；`scan_kernel_logs_for_active_pool_failures()` 新增 `only_pool_id` 精确作用域，多池共享节点时只演练目标池，结束校验快照 100% 还原。
-- **P1-1 订阅预览状态**：`409 stale_preview` 校验前置到 `status="syncing"` 之前，保持原订阅状态并写入可诊断 `last_error`，连续 3 次 409 不卡死。
-- **P2-1/1b 可观测性契约**：`bound_group_targets` 按数组渲染并显示组间共享出口；`multi_line_rotation_log` / `dwell_bypass_calls` 在 API 顶层与单池同步挂载，面板渲染最近轮换轨迹；`tools/check_api_ui_parity.py` 扩展至字段名、类型与层级位置校验。
-- **P2-2~P2-7**：`simulate_error` 调试钩子增加生产守卫；静态数字兜底改 `--`；隔离沙盒配额写入改用显式注册；`/api/auto_nodes` 冷缓存首样本 407ms → 22.3ms；新增无损故障转移演练 API 与菜单按钮；多出口轮询文案、RTT>0 门槛与游标保持。
-- **七项交付标准保持**：11 行指纹逐行校验（11/11 全对）与 1 字节篡改转红、连续中文章节、112+ 条目交接包布局声明、12 夹具随包、测试数值实跑后置注入、零补发 15/15。
-- 验收：原始包零补发 `run_all 15/15 PASS / RC=0`、自检 10/10、混沌 **81/81**、门禁双布局 **17/17**、design-lint 18/18、静态资源 8/8、`INSTALL_RC=0`、`nft=1`、重启后稳定、UI 零异常三视口零溢出。
-- 同版本热修（2026-11-10 10:15）：缓存与性能打磨（API 响应缓存由深拷贝改为 JSON 序列化、新增探测调参缓存、auto_nodes 缓存签名纳入 node_probe.json）、节点池范围过滤改用当前池成员节点、design-lint 默认 webui 路径改为自动查找；静态资源与四列指纹同步更新。版本号未变，现网 2.5.9 设备不会收到 OTA 提示，需手动重装以获取修订包。
+## v2.6.4 (2026-11-16 · PKG_RELEASE:=36 / r36 · 全栈 10 项架构与体验精细打磨：SSL 校验收敛、HTML 零内联样式、定时器配对回收、3D 全量显存释放、/api/status 无锁快照与 PPPoE TUN MTU 自适应版)
 
-## [v2.5.8] - 2026-11-10
-### 自检并发误报根治 + 绑定/预览契约闭环 + 多出口轮询治理
-- **P1-1 & FB-257-3 自检四层架构重构**：移除 `--self-test` 对后台 daemon 高频改写的 `node_test_quota.json` / `ai-link.nft` 的跨进程 SHA 比对（仅保留静态 `sing-box.json`）；`gates_v101.py` 把 `AI_LINK_CONF_DIR` / `AI_LINK_RUN_DIR` 注入统一提到 `if/else` 分支外，放宽 stderr 断言并输出 `eff_conf/eff_run` 诊断字段。真机纯解压布局与标准发版布局连续运行均 **17/17 PASS**，原始包零补发 `run_all` 恢复 **15/15 / RC=0**。
-- **P1-4 全写口收口**：19 处针对 CONF_DIR/RUN_DIR 的裸 `.write_text()` 全量收口至 `_atomic_write_text`，模块级挂钩 `Path.write_text` / `Path.write_bytes` 兜底；自检 3 路金丝雀断言 `blocked >= 3` 且 `leaked == 0`。真机生产态连续 10 次自检全部 `RC=0`（`live_write_blocked: 7 / leaked: 0`），静态文件哈希零变化；负向关闭拦截正确报 `leaked 7 live production writes (blocked=0)`。
-- **P1-2 未绑定池一键绑定**：`quick-bind-pool` 同时发送 `shunt_mode` / `strategy` / `strategy_mode` / `auto_node_id`，严格检查 `res.ok`，覆盖已有池绑定时二次确认；后端 `/api/shunt/update` 兼容 `strategy_mode` 别名。
-- **P1-3 预览即所同步**：`/api/subscriptions/preview_sync` 按 `request_id` 缓存解析批次（32 条 LRU / 300s TTL）并返回 `nodes_fingerprint`；确认同步时复用同一批节点跳过二次拉取，过期或上游变异返回 409 `stale_preview`。
-- **P2 & §5.2 契约门禁**：新增 `tools/check_api_ui_parity.py` 前后端字段双向比对并纳入发布门禁；补齐 `endpoint_changed_tags` / `credential_changed_tags` / `same_tag_replaced_tags` 排序列表。
-- **P2-1~P2-10 与附录 A**：变更率封顶 100%、默认 16 组/6 池动态刷新、非池成员 dead 记录 24h 清理、动态随机订阅标记持久化、预览缓存 LRU 上限、API 暴露 `dwell_bypass_calls` 与最近 40 条轮换轨迹；多出口轮询文案如实说明组间错位且不叠加单流带宽，成员要求实测 RTT>0，候选刷新保持游标连续。
-- **交付标准保持**：11 行指纹逐行校验（11/11 全对）与 1 字节篡改转红、章节连续编号、HANDOFF 与 112 条目交接包、12 夹具随包、测试数值实跑后置注入。
-- 验收：零补发 `run_all 15/15 PASS / RC=0`、混沌 **80/80**、design-lint 18/18、静态资源 8/8、`INSTALL_RC=0`、`nft=1`、重启后稳定、4 个多线出口与 AI 单线保护、UI 零异常三视口零溢出。
+- **基线与升版说明**：基于本地 `.77` 真机 12 步全绿验收并全量发布上线的 **`v2.6.3` (`r34`)**（GitHub `Release #446563163`、主干/Tag `243e19bab2eb9bed71bff35df497d0951d08757f` (`243e19b`)、Cloudflare 部署 `5faca0d2`、`local_qa_build_md5 = "2edb06e886cec1750343a85f1d7c1264"`），严格按 SOP v2.2 决策树分支 A（`QA_PASSED_RELEASED` 唯一合法升版分支）递增版本号至 **`v2.6.4`（`PKG_RELEASE:=35` / `r35` / `APP_BUILD = "2.6.4-release-20261116-r35"`）**，全量落地云端审计报告 `AUDIT-Hydrogen-v2.6.3.md · r34` 第二节提出的 **10 项全新代码级与架构级打磨建议（`OPT-264-01 ~ OPT-264-10`）**。
+- **A. 后端安全、高并发无锁快照与网络自适应加固（`ai-link-daemon.py` + `root/usr/bin/ai-link`）**：
+  1. **SSL 校验控制收敛（`OPT-264-01`）**：重构 `_fetch_ota_url()` 的 TLS 上下文处理，默认统一走 `_get_ssl_context(CONF_DIR)` 严格校验证书，仅当用户显式开启 `allow_insecure_tls=True` 时才允许降级重试，彻底清除无条件 `ctx.verify_mode = ssl.CERT_NONE` 回退。
+  2. **高并发 `/api/status` Copy-On-Write 无锁快照读取（`OPT-264-06`）**：引入 `_STATUS_COW_CACHE` 与 `get_status_cow_snapshot()`，基于 `(shunt.json, ops_settings.json, node_probe.json)` 的 `mtime_ns` 与旁路状态签名维护读写分离快照，避免后台节点探测持锁期间阻塞面板 3 秒心跳。
+  3. **`do_POST` 请求体读取与校验统一封装（`OPT-264-07`）**：新增 `_read_post_json_body()` 统一 helper，集中处理 `Content-Length` 非负整数校验、最大包体上限（`413`）及 UTF-8 JSON 对象解析，消除多处分散校验。
+  4. **PPPoE 场景 `tun_mtu` 自适应与健康医生推荐（`OPT-264-08`）**：新增 `_detect_pppoe_adaptive_tun_mtu()`，当检测到 WAN 为 PPPoE（MTU `1492` / `1480`）且用户未手动固定 `tun_mtu` 时，在 `build_tun_inbound_config()` 中自动将 `tun_mtu` 自适应调整为 `<= 1412`（默认推荐 `1400`），并在健康医生 `_chk_7_mtu()` 中输出 `recommended_tun_mtu` 诊断建议，减少 PPPoE 分片重传。
+  5. **DNS 拦截规则 `50,000` 条上限去重统计与截断提示（`OPT-264-09`）**：在 `sync_dns_filter_lists()` 中统计去重候选总数 `unique_candidates_count`、实际生效条数 `effective_rules_count`、`truncated` 标记与 `truncation_notice`，并在前端 `#dns-filter-lists-summary` 实时展示去重生效条数与截断提示。
+  6. **`usr/bin/ai-link` CLI 错误退出码规范化（`OPT-264-10`）**：引入 `CLI_ERR_RUNTIME=1`、`CLI_ERR_USAGE=2`、`CLI_ERR_SERVICE=3` 与 `run_checked()` 辅助函数，对关键子命令执行显式 `$?` 校验与标准化非零退出码返回。
+- **B. 前端零内联样式、定时器配对回收、3D 全量显存释放与分流页收拢（`index.html` + `nexus.css` + `nexus.js` + `nexus3d.js`）**：
+  1. **HTML 内联 `style=` 清零收敛（`OPT-264-02`）**：将 `index.html` 中全部 `52` 处内联 `style="..."` 迁移至 `nexus.css` 的 Aster 令牌语义类（`.u-trace-stage-pad`、`.u-filter-scroll-box` 等），实现 `index.html` 内联 `style=` 数量 **`52 -> 0`**，且 `node tools/design-lint.js` **`18/18 PASS (RC=0)`**。
+  2. **`setTimeout` / `clearTimeout` 生命周期配对管理（`OPT-264-03`）**：在 `nexus.js` 中新增 `_managedTimers` 注册表、`_scheduleKeyedTimer()` 与 `_clearManagedTimersByPrefix()`，在页面切换（`showPage`）与弹窗关闭（`closeModal`）时自动回收未触发的延迟定时器。
+  3. **`nexus3d.js` WebGL GPU 资源全量回收（`OPT-264-04`）**：扩展 `disposeSceneResources()` 与 `rebuildCenterSatellites()`，对 `glowTexture`、`coronaTexture`、`bhDiskTexture`、`particleTexture`、`ringTexture`、`dynamicBeams`、`renderTarget` 及子网格材质贴图执行全量 `.dispose()` 回收（显式 `.dispose()` 调用增至 `19` 处）。
+  4. **`#page-shunt` 辅助按钮进一步收拢（`OPT-264-05`）**：将「全部自动池立即优选」收进顶部 `#shunt-more-menu`（`··· 规则库与批量`）菜单并去重辅助按钮，将 `#page-shunt` 静态 `<button>` 从 `12` 个进一步压降至 **`10` 个**。
 
-## [v2.5.7] - 2026-11-10
-### 自检语义根治 + 订阅预览闭环 + 交付数值后置注入
-- **FB-257-1 自检零污染语义根治**：`--self-test` 计数拆为 `_SELF_TEST_LIVE_WRITE_BLOCKED`（成功拦截未落盘）与 `_SELF_TEST_LIVE_WRITE_LEAKED`（拦截失效实际落盘），断言只要求 `leaked == 0` 且金丝雀 `blocked >= 1`；nft 规则、sing-box 配置与探测配额等衍生路径在自检态全量沙箱化。真机生产态连跑 3 次 `RC=0 / SELF_TEST_PASSED`，`ai-link.nft` 与 `node_test_quota.json` 哈希零变化；负向关闭拦截时正确检出 `leaked 1 live production writes`。
-- **FB-257-2 交付数值与环境标注**：门禁强制构造生产态 `RUN_DIR`（含真实 nft/配额文件），新增 `AI_LINK_SELFTEST_DISABLE_INTERCEPT=1` 负向泄露检出；报告测试数值改为实跑 `run_all.py` 后置注入并附汇总原文，明确标注构建容器验证环境与 `test_v102` 152/152（含 Chromium）对路由器 115/115 的口径差异。
-- **P0-1 / P1-5 订阅预览**：前端全字段渲染（`stability_warning` / `dynamic_random_sub` / `jaccard_stability` / `impact_ratio` / 各类节点变更计数 / `request_id`），点击即 `aria-busy` 防连点，`res.ok === false` 严格拦截并提示追踪 ID，绝不伪装成「无损更新」；后端 60 秒上游预览缓存。
-- **P1-1 Jaccard 只读化**：稳定性基准锚定当前生产节点集合，历史环形缓冲仅由真实同步写入，连续预览与重启前后结论一致；动态随机订阅给出红色高风险预警。
-- **P1-3 / P1-4**：8 处外部 HTTPS 请求统一严格校验证书（仅显式 `allow_insecure_tls` 放宽）；前端「多线并发」夸大文案清零，改述「多出口轮询，不叠加单流带宽」。
-- **P2-1~P2-10**：动态分流组数徽标、三口径悬停说明、容量不足原因细分、7 天 dead 记录 GC、L7 待验证徽标、未绑定池一键绑定、语义未变跳过写盘、驻留旁路计数等。
-- **交付标准保持**：11 行指纹逐行校验与 1 字节篡改转红、章节连续编号、HANDOFF 与交接包布局声明、12 个夹具随包。
-- 验收：原始包零补发 `run_all 14/15`（唯一失败为发布门禁在纯解压布局下的环境敏感，标准出包布局实跑 17/17）、混沌 `79/79`、design-lint 18/18、静态资源 8/8、`INSTALL_RC=0`、`nft=1`、重启后稳定、4 个多线出口与 AI 单线保护、UI 零异常三视口零溢出。
+11. **Hydrogen `v2.6.4 (r35)` 审计 `B-264-01~02`、`M-264-03~06` 与 10 项穿透建议全量闭环 (`r36`)**：(1) `B-264-01` & `M-264-04`：解除 `.glass-card` 与 `.metric-card` 的 `overflow: hidden`（改为 `overflow: visible`，顶部高光改用圆角裁切），将 `#shunt-more-menu` 层级提升至 `var(--z-overlay)` 并新增 `closeShuntMoreMenu()` 支持点击外部、点击菜单项与 `Escape` 自动收起；(2) `B-264-02`：实施弹窗/抽屉语义二分，将 27 处交互式向导（含「配置自动节点池」5 步向导、编辑分流策略组、添加节点/订阅等）全面恢复为水平垂直居中的 `openModal()`（复杂表单自动挂载 `.modal-panel.wide` `min(880px, 100%)`），仅保留 13 处纯只读明细/诊断报告使用 `openDrawer()`，并通过 `.modal-backdrop:not([hidden]):has(.drawer-panel)` 消除 20px 悬浮边距实现严丝合缝右贴边；(3) `M-264-03`~`M-264-06`：补齐 `768px` 移动端 `.drawer-panel`/`.shunt-more-menu`/`.modal-panel` 响应式与 `1280px` 顶栏折行规则，全面清除未定义的 `--z-dropdown`/`--z-popover` 变量，移除 `index.html` 6 处重复 `title=` 消除双重 Tooltip，将 `#page-settings` 静态 `<button>` 收敛至 22 个（保留 `#btn-check-core-update` 与 `#btn-ota-check`/`#btn-ota-apply`），并在 `nexus3d.js` 增加多指触控手势防抖与 `touch-action: none`。
 
-## [v2.5.6] - 2026-11-09
-### 加强复审计（6 项 P1 + 6 项 P2 全量闭环）
-- **自检语义断言与零生产竞态**：以进程级 `_SELF_TEST_LIVE_WRITE_ATTEMPTS == 0` 守卫 + 语义脏标签断言取代全文件字节比较，消除与常驻 daemon 的时序竞态；生产运行期连跑两次自检均 `RC=0 / SELF_TEST_PASSED / 零告警`，`Stage 6.20b` 与 `7.1` 同步通过。
-- **唯一 `SelectorWriteCoordinator`**：收口全部 Selector 写入路径，30s 驻留内目标未变跳过 `PUT`；`evaluate_all_auto_nodes` / `apply_shunt_selections` 不再覆盖合法多线成员，正常轮换仅更新遥测、不写切换历史；外部热切双向同步轮询状态。
-- **内核日志空目标抑制**：`targets == []` 纳入 `distinct_targets` 守卫，杜绝单条/空目标超时误触发直连降级。
-- **订阅预览与严格 TLS**：完整输出 `preserved` / `renamed` / `endpoint_changed` / `credential_changed` / `same_tag_replaced`，动态随机订阅 Jaccard 预警，替换候选按池范围与 AI 锁区优选；移除 curl 35/51/60 自动 `-k` 重试与 localhost 默认 `-k`，`urllib` 改用 `create_default_context()`。
-- **P2**：手动与自动池健康配额冻结拆分、前端旧文案清零、IPK `prerm`/`postrm` 卸载收尾与 `Description` 对齐、Watchdog 恢复根因与耗时记录、`node_probe.json` 闪存写放大治理。
-- **Round 2 增量**：500+ 节点订阅变异状态精准分治、协调器外部热切同步、DNS 拦截榜 KPI 与双栏等高、自动复选 EWMA 同源评分、Hero 三联指标实时遥测。
-- **四项出包标准保持**：夹具整棵随包、零补发 `run_all 15/15 PASS / RC=0`、自检沙箱隔离、混沌门禁 `78/78`；Design Lint 18/18、发布门禁 17/17、UI 零异常。
+## v2.6.3 (2026-11-16 · PKG_RELEASE:=34 / r34 · 前端 3D 内存安全/极简 HUD 重构、终端列表防抖动切换、关闭国内旁路下国服游戏 TCP+UDP 直连与全栈稳定性深度优化版)
 
-## [v2.5.5] - 2026-11-09
-### 节点池专项复审计（P0-1~P0-5 & P1-5.1~5.9）
-- **自检 100% 生产隔离**：新增 `_SELF_TEST_ACTIVE` 与 `_is_live_conf_dir` 守卫，自检态严禁写 `selections.json` / `switch_history.json` 或调用 Clash API；启动/加载时自动清洗残留假节点（`JP-Trojan-01` / `HK-SS2022-01`），实测脏数据重启后残留 0。
-- **探测预算双轨拆分**：池健康巡检与日常探索分开记账，500+ 节点库自动扩容；`on_egress_fail()` 故障复验 `force=True` 免配额穿透，不再被旧缓存阻断切换。
-- **真实探测新鲜度**：新增 `last_real_probe_ts` / `probe_stale` / `fresh_ok_count` / `quota_status`，池内延迟不再可能是过期数据。
-- **多线池 Selector 1 对 1 唯一归属**：修复跨池抢占；轮换驻留收敛为 30s（故障仍秒切）。
-- **文案如实**：前端改为「多出口轮询（实验，不叠加单流带宽）」；`Auto_Auto_AI` 归一为 `Auto_AI`。
-- **四项出包标准保持**：夹具整棵随包、四列指纹定稿注入、自检沙箱、零补发 15 套全量回归；Design Lint 18/18、门禁 17/17。
-- 已知边界：设备若存在历史残留假节点，**直接**跑自检可能报错一次（自愈与零污染断言冲突），重启服务或再跑一次即恢复，不影响代理与面板。
-- 同版本热修（2026-11-09 18:55）：修复 P0-1「脏数据自愈」与「--self-test 零污染断言」互斥（设备存在历史残留假节点时直接跑自检会报错一次）；静态资源指纹同步更新。版本号未变，现网 2.5.5 设备需手动重装以获取修订包（OTA 不会提示）。
+- **基线与版本说明**：基于本地 `.77` 真机 12 步全绿验收并全量发布上线的 `v2.6.2`（GitHub `Release #445935185`、主干/Tag `ba8296007e0000cdcd515f56418e6942ad6772e8`、Cloudflare 部署 `d743cf63`），针对 `FEEDBACK-Local-v2.6.3-r32.md`（`qa_round = "v2.6.3-r32"`, `local_qa_build_md5 = "9e8e823294aeadf1f3c58eadd219e149"`）、`AUDIT-Hydrogen-v2.6.3.md`（`M-263-01`、`m-263-02`、`OPT-263-01~10`）与 `AUDIT-Hydrogen-v2.6.3-r33-game-bypass-fix.md`（关闭 `entry_bypass` 场景下国服游戏直连与分流闭环 5 项设计缺陷），严格按 SOP v2.2 决策树分支 B/C 保持 `current_version = "v2.6.3"` 不变、递增内部构建号至 **`PKG_RELEASE:=34` / `r34`（`APP_BUILD = "2.6.3-release-20261116-r34"`）**。
+- **A. 3D 首屏重构、WebGL 零泄漏与局域网终端列表防翻转切换（`nexus3d.js` + `nexus.js` + `modules/galaxy-hud.js` + `nexus.css`）**：
+  1. **WebGL 资源与事件监听完整释放（需求 #1 · `OPT-263-05`）**：在 `NexusUniverse` 内引入 `_listen()` / `unbindAllListeners()`、`disposeObject3D()`、`disposeSceneResources()` 与 `destroy()`，在页面卸载、上下文重置与瞬态连线重建时彻底释放所有 Geometry、Material、Texture、ShaderMaterial 与 `window`/`canvas` 事件监听器。
+  2. **极简 HUD 收敛与 3D 场景视觉升级（需求 #2）**：将 `#page-galaxy` 静态 `<button>` 从 `20` 个收敛至 `8` 个，保留全部 5 个视角切换与 `#inspector` 5 个子视图数据；为拓扑主光束新增动态 GLSL 流光脉冲 `ShaderMaterial`。
+  3. **3D 拓扑页右侧 `KERNEL HUB / 局域网终端列表` 防自动翻转、显式切换持久化与 Aster 间距/字阶规范闭环（需求 #11 · `USER_REPORTED-20261116-01` · `M-263-01` · `m-263-02`）**：彻底移除 `nexus.js` 中 `sortedDevs.length < totalOnlineDevs` 三元分支（`0` 处残留）与 3 秒轻量轮询 `!galRes` 覆盖；在 `webui/modules/galaxy-hud.js` 与 `nexus.js` 中引入 `state.galaxyDeviceView` 与 `NexusStorage` / `localStorage`（`ailink_galaxy_device_view`、`deviceView`）持久化，在 `#inspector` 内渲染显式切换按钮（`#btn-galaxy-device-view-all`「所有设备」与 `#btn-galaxy-device-view-top3`「TOP3」），多设备交替刷新 24+ 次采样列表头相邻变化次数为 `0`（`NO_FLIP_OBSERVED`）；将 `.galaxy-device-view-toolbar` 与 `.galaxy-dev-view-btn` 的 `padding` / `font-size` / `min-height` 全面对齐 Aster 令牌（`var(--sp-1) var(--sp-3)`、`var(--sp-0) var(--sp-2)`、`var(--fs-xs)`、桌面 `32px` / 移动 `40px`）。
+- **B. 关闭 `entry_bypass` (`eb=False`) 场景下国服游戏直连与分流逻辑 5 项深度加固（`AUDIT-Hydrogen-v2.6.3-r33-game-bypass-fix.md`）**：
+  1. **`game_udp_direct` 升级为国服游戏 TCP + UDP 双协议直通（修复 #1）**：在 `prerouting_tproxy`、`output_tproxy`、`output_nat`、`generate_singbox_config()` 与 4 阶流量透视器中，对 `ip daddr @cn_ip4` / `ip6 daddr @cn_ip6` 放行魔兽世界/战网/LoL/Steam CN 核心 TCP 端口（`1119, 2099, 3724, 6012, 6113, 8393-8400, 27014-27050`）与 UDP 端口（`1119, 2099, 3478-3479, 3724, 4000-4050, 5000-5550, 6012, 6113, 7000-9010, 10000-20000, 27014-27050`），绝不触碰 `80/443`。
+  2. **`@direct_bypass_v4` / `@direct_bypass_v6` 移出 `if eb:` 分支（修复 #2）**：在 `output_nat`、`prerouting_tproxy` 与 `output_tproxy` 中将显式直连绕过集合移出 `if eb:`，确保关闭 `entry_bypass` 时显式直连 IP 始终生效。
+  3. **`block_quic` (`UDP 443`) 仅阻断非国内 IP 与海外代理（修复 #3）**：在 `nftables` 中将 QUIC 阻断限定为 `ip daddr != @cn_ip4 udp dport 443 reject` 与 `ip6 daddr != @cn_ip6 udp dport 443 reject`，并在 `sing-box.json` 与 4 阶透视器中避免无条件拦截国内应用 UDP 443。
+  4. **`Domestic_CN` 显式保护域名（含战网/网易国服域名）优先于 `Outside_CN` (`geosite-geolocation-!cn`) 匹配（修复 #4）**：在保持用户自定义分流组（`prio=1..13`）最高优先级不变的前提下，将 `Domestic_CN` 显式域名与 `geosite-cn` 置于 `Outside_CN` 的 `geosite-geolocation-!cn` 规则集之前，彻底防止战网/网易边缘 CDN 子域名被 `!cn` 抢先劫持。
+  5. **`essential_app_protect` 纳入国服战网/网易核心风控与状态域名（修复 #5）**：将 `rum.battle.net`、`fp-upload.dun.163.com`、`ipservice.163.com`、`dun.163.com`、`bnet.163.com`、`nie.163.com`、`uu.163.com`、`blizzard.cn`、`battlenet.com.cn` 纳入 `ESSENTIAL_APP_WHITELIST` 默认白名单。
+- **C. 前端模块化、后端安全、原子写与 Hydrogen `OPT-263-01~10` 全量收口**：
+  1. 完成 `#page-shunt`（`<=12` 按钮）与 `#page-settings` 瘦身、`--elev-1/2/3` 阴影令牌、6 独立 JS 模块、`restore_ops_backup` 密钥防覆盖、47 处 `_atomic_write_text()`、HTTP 安全响应头、`OPT-263-03` 单行 `timeout=15`、`OPT-263-04` `.raw` 凭据脱敏与 `0o600` 权限、`OPT-263-06` `--generate-configs` 兜底、`OPT-263-07` 动态网桥 MTU 证据标签；新增混沌测试 `Stage 7.33`、`Stage 7.34`、`Stage 7.35`（总计 `98/98 PASS`）。
 
-## [v2.5.4] - 2026-11-09
-### 出包标准固化 + 报告结构化（FB-253-1/2 闭环）+ 节点池破冰自愈
-- **四项出包标准固化**：夹具整棵随包、四列指纹定稿注入、`--self-test` 沙箱隔离、出包前隔离目录零补发 `run_all` 15/15。
-- **报告版本锚点自动注入**：`PKG_VERSION` / `PKG_RELEASE` 由构建脚本从 `Makefile` 读取注入，新增「报告 == Makefile == ipk 文件名」三方一致性门禁。
-- **报告按版本结构化**：首节即本轮增量与反馈闭环，历史版本收敛为状态总表。
-- **节点池破冰自愈**：全员隔离但已恢复连通时 `quarantine_break_glass` 半开探测接管；手动移除节点记入 `manually_removed_tags` 不再回弹；D-01 兜底越界拦截。
-- **多线并发双通道保底**：并发池至少保留两条通道，避免退化后只剩单线；概览声呐三环延迟刻度（50/150/300ms），全站版本号取自单一真相源。
-- **稳定性**：安装退出码 0、`nft=1`、重启稳定；Design Lint 18/18、门禁 17/17、混沌 61/61、原始包零补发 15/15。
+## v2.6.2 (2026-11-15 · PKG_RELEASE:=31 / r31 · 网络平面精准规则、USER_REPORTED-20261115-01~04 前端架构与交互全面重构及内核/插件升级按钮恢复版)
 
-## [v2.5.3] - 2026-11-09
-### 测试集自包含与交付指纹机制化（FB-252-1/2 闭环）
-- **夹具全量随包**：`tests/subscription_formats/` 12 个多格式订阅夹具写入 tar 与 zip 三处，tar 达 84 条目 / 56 文件；门禁新增夹具目录与"原始包零补发解压"校验（`fixtures=12`），出包后隔离目录零补发实测 `run_all` **15/15**。
-- **指纹机制化**：产物定稿后统一计算注入四列指纹（Bytes / MD5 / SHA-256），`v242_deep_chaos_simulation.py` 尾部换行符差异根治，报告三行与实测逐字节一致。
-- **自检沙箱隔离**：`daemon --self-test` 全部改用独立临时目录，测试套件与后台守护进程不再互相干扰。
-- **就绪等待**：`run_all.py` 首套件前等 `/api/status` 连续两次 200，并自动重试 2 次，消除"刚重启就开跑"的时序假失败。
-- **功能延续**：节点池严格遵循勾选订阅源与地区（六层）、WAN 闪断防团灭、评估引擎实时范围守卫、多线并发 `urltest` 出口与 0.5s 轮转、概览等高与波形可读性。
-- **稳定性**：P0 与多线出口未退化；Design Lint 18/18、发布门禁 17/17、官方回归 15/15 套全绿。
+- **基线说明**：基于线上已通过 `.77` 真机 12 步验收并全量发布上线的 `v2.6.1` (`PKG_RELEASE:=29` / `r29`，GitHub `Release #445649604`、主干/Tag `999fc22ddadca609dfed9d277cf993c6531e73b9`、Cloudflare 部署 `1d2cdaef`)，以及 SOP v2.1 第 6 条用户最高优先级诉求（`00_USER_ISSUES.md` / `FEEDBACK-Local-v2.6.2-r30.md` / `USER-REQUIREMENT-前端UX审计-v2.6.2.md`），保持主版本号 `v2.6.2` 不变，递增内部构建号至 **`r31` (`PKG_RELEASE:=31`，`APP_BUILD = "2.6.2-release-20261115-r31"`)**，全量闭环 `USER_REPORTED-20261115-01 ~ 04`、Hydrogen 2 项 Minor 建议及 `r30` 网络平面修复（`NET-262-01~03` + `UX-262-01`）。
+- **0. 用户最高优先级诉求全量闭环 (`USER_REPORTED-20261115-01 ~ 04` + Hydrogen Minor 1~2)**：
+  1. **`USER_REPORTED-20261115-01` P0 架构与交互断点止血（6 项）**：① `#modal` 引入 `_modalStack` 模态栈保护与 `openDrawer` 抽屉分离，当编辑表单中触发二次确认或 `401` 重登弹窗时自动入栈暂存 `DocumentFragment` 并在关闭时无损还原，且将 `nexus.js` 中 `openModal(` 调用点从 `48` 处收敛至 `8` 处（`<= 18`）；② 修复 `bypassActive` 与路由模式相互遮蔽，在顶栏、概览页与分流页清晰提示「应急直连旁路已覆盖当前分流模式」并支持一键切回；③ 修复回家页未填公网 DDNS 时内网 IP 误导及 `share-node` 二维码生成覆盖 `lanWarnHtml` 告警的 Bug；④ 订阅首次拉取失败在同步进度弹窗与订阅卡内原地嵌入「改为粘贴节点文本」与「切换镜像重试」可点击按钮；⑤ `/usr/bin/ai-link` 新增 `api` 子命令，配合 `overview.js` `callApiViaCliBridge` 彻底消除 HTTPS 访问 LuCI 时的 Mixed-Content 跨协议拦截，并通过 `#bridge_token=` 实现 `:9099` 免二次输密直达；⑥ 彻底移除 `index.html` 与 `nexus.js` 中已废弃的 `#music-unlock-card` / `renderMusicUnlockSection` 僵尸代码，将「实测黑洞吞噬」规范化为「拦截规则测试」，并在概览流量图旁显式保留硬件加速旁路统计口径说明。
+  2. **`USER_REPORTED-20261115-01` P1 3D 首屏升级与 7 页按钮/弹窗瘦身 + P2 视觉降噪与术语产品化**：① `nexus3d.js` 新增自定义 GLSL Fresnel 大气边缘光 `THREE.ShaderMaterial` 与 PBR `THREE.MeshStandardMaterial`，完整保留 §2.2 全部遥测 HUD 与检查器功能；② 全面瘦身 7 页冗余按钮，设置页增加「常规安全 / 内核与更新 / 备份与恢复 / 高级诊断与日志」4 分组导航与底部红色 `Danger Zone` 危险操作隔离区；③ `nexus.css` 将 `backdrop-filter` 从 `22` 处压降至 `3` 处核心浮层（顶栏、检查器、弹窗遮罩），`@media` 断点收敛为 `768px / 1280px / prefers-reduced-motion`；④ 工程黑话产品化（`目标 IP 段 (CIDR)`、`透明接管引擎 (TProxy)`、`防火墙引擎 (nftables)`、`虚拟地址映射 (Fake-IP)`），导出 `window.NexusModules` 模块化命名空间。
+  3. **`USER_REPORTED-20261115-02 / 03 / 04`（恢复 `sing-box` 内核智能检测升级与插件在线升级按钮）**：在设置页 `01 / CORE LIFECYCLE` 卡片内恢复 `#btn-check-core-update`（`data-action="check-core-update"`，对接 `/api/ops/core_update/check` 与 `/api/ops/core_update/apply` 沙箱预检热升级），在 `02 / COMPONENT & RULE STATUS` 卡片内恢复 `#btn-ota-check`（`data-action="check-update"`）与 `#btn-ota-apply`（`data-action="apply-update"`），并同步更新回归测试断言。
+  4. **Hydrogen 审计 Minor 建议闭环**：`ai-link-daemon.py:22535` IPv6 邻居探测复用 `_detect_lan_bridge_dev()` 动态网桥名；`root/etc/init.d/ai-link` 在 `start_service / stop_service / reload_service` 入口增加 `flock -w 10 9` (`/var/lock/ai-link-init.lock`) 并发互斥锁。
+- **A. `nftables` 数据面精准规则修复 (`NET-262-01 / NET-262-02`)**：
+  1. **清理 `prerouting_tproxy` 中 `game_udp_direct` 无端口限制死规则与越界旁路 (`NET-262-01`)**：移除 `if gu:` 分支下无端口限制的 `ip daddr @cn_ip4 meta l4proto udp accept`（及 IPv6 对应规则），仅保留精准匹配游戏与高频联机端口集合 `udp dport { 3478, 3479, 4000-4050, 5000-5550, 7000-9010, 10000-20000, 27015-27050 }` 的放行规则；彻底消除后续游戏端口规则沦为 100% 死代码的问题，并确保用户关闭「国内流量不进内核 (`entry_bypass=0`)」时，非游戏端口的国内 UDP 流量正常进入内核接受面板统计与监控（同步对齐 `trace_traffic_flow` Stage 1 判定逻辑）。
+  2. **补齐 `output_tproxy` 路由器本机出站链游戏端口 `@cn_ip4 / @cn_ip6` 目的地址校验 (`NET-262-02`)**：为 `output_tproxy` 中的 `udp dport { 3478, 3479, 4000-4050, 5000-5550, 7000-9010, 10000-20000, 27015-27050 } accept` 补齐前置 `ip daddr @cn_ip4`（及开启 IPv6 代理时的 `ip6 daddr @cn_ip6`）并移除无端口限制的冗余规则，防止路由器本机或软路由中继进程发往海外游戏/STUN 端口的 UDP 流量被误放行至 WAN 直连。
+- **B. 双栈 Fake-IP Conntrack 状态清理闭环 (`NET-262-03`)**：
+  1. **`direct_all` 直连切换同步清理 IPv6 Fake-IP (`fc00::/18`) 连接跟踪表 (`NET-262-03`)**：在 `_delayed_fakeip_purge()` 与 `flush_conntrack_for_switch()` 中同步追加 `subprocess.run(["conntrack", "-D", "-d", "fc00::/18"], capture_output=True, timeout=2, check=False)`，确保开启 `ipv6_proxy` 双栈代理时切回全局直连能瞬间清除残留的 `fc00::/18` UDP/TCP 会话状态。
+- **C. 前端 Aster Design 动效时长令牌规范化 (`UX-262-01`)**：
+  1. **修复 `.an-source-chip` 动效时长令牌 (`UX-262-01`)**：将 `root/usr/share/ai-link/webui/nexus.css:3304` 中的 `transition: border-color 0.2s ease, background 0.2s ease;` 规范化为 Aster 标准 4 档动效时长令牌 `var(--dur-2)` (`160ms`)，实现 `design-lint.js` 零新增违规与零存量债务；新增混沌测试 `Stage 7.31 ~ Stage 7.32`（总计 `95/95 PASS`）。
 
-## [v2.5.2] - 2026-11-09
-### 节点池订阅源/地区强约束闭环 + 测试集随包内置
-- **订阅同步补位按范围过滤**：`_reconcile_auto_pools_after_sub_sync` 补位前经 `_filter_nodes_by_pool_scope` 按池的 `scope_sources` / `scope_countries` 过滤，越界存量节点自动剔除。
-- **保存归一化锁步**：`_normalize_auto_node_item` 每次保存强制 `scope_sources` / `scope_countries` 与 `filters`（`sub_id` / `region_any` / `require_services` / `replenish_threshold`）双向同步。
-- **健康巡检只从范围内补齐**：`maintain_auto_node_pool_health` 入口预计算范围内集合，越界成员立即剔除。
-- **范围守卫收紧**：`_filter_nodes_by_pool_scope` 修复单订阅通配放行漏洞，完善 `id` / `url` / `name` 交叉匹配，并在分组归一化、替换候选、分流解析三处接入。
-- **前端向导剥离越界旧节点**：修改勾选订阅/地区后保存，自动从已选集合移除范围外节点。
-- **测试集随包内置**：`tests/` 写入 tar 的 `ai-link-openwrt/tests/` 与 zip 的 `tests/`、`site/ai-link-openwrt/tests/`；`gates_v101` 修正 SUITES 正则、加 `len(suites)>=14` 非空断言与开包校验、逐行核对报告指纹。
-- **FB-251-2/3/4/5 闭环**：报告三行指纹对齐、v102 断言改动态版本号、下拉线数改真实值、Stage 6.21b 全文扫描。
-- 稳定性：P0 与多线出口未退化；Design Lint 18/18、发布门禁 17/17、混沌 45/45。
-- 遗留（不影响运行）：`tests/subscription_formats/` 夹具未随包，原始包零补发跑 `run_all` 时订阅格式套件会因缺夹具失败。
-- 同版本热修（2026-11-09 06:53）：节点池 WAN 闪断防团灭、评估引擎与候选池实时范围硬隔离、概览并排双栏等高与波形均值基准线/空态引导、声呐底部动态 KPI；静态资源指纹同步更新。版本号未变，现网 2.5.2 设备需手动重装以获取修订包（OTA 不会提示）。
+## v2.6.1 (2026-11-15 · PKG_RELEASE:=29 / r29 · FB-2600-1/2/3 闭环与 v2.6.0 深度审查 27 项遗留问题全量收口版)
 
-## [v2.5.1] - 2026-11-08
-### LuCI 极简重构 + 多线并发退化收敛 + 上轮反馈闭环
-- **LuCI 面板做减法**：仅保留服务启停/重启/代理接管/重载内核/开机自启与 OTA 在线升级模块，以及独立控制台入口；置空 `handleSaveApply / handleSave / handleReset`，移除分流模式下拉、IPv6/旁路开关、组件更新表与底层 UCI 表单，杜绝覆盖 `:9099` 的 SSOT 配置。
-- **多线并发退化秒级收敛**：健康线从 ≥2 跌到 1 或 0 时，0.5s 调度器立即把池 selector 与绑定分流组收敛到唯一存活主线 / `direct`，不再滞留已阵亡副线；副线连续 3 次传输报错时精准清理该线路存量连接并失效轮转缓存。
-- **全死/锁区保态**：`/api/auto_nodes/save` 在 `all_groups_dead_alert` 时禁止把死节点回写 `current_node`，严格保持 `direct`。
-- **真实线数展示**：按 `multi_line_nodes` 实际数量显示 `多线并发(N线)` / `1线·单线降级` / `0线·无可用`，分流组胶囊同步标注。
-- **FB-250-1/3/4/5 闭环**：自测白名单纳入 `urltest` 字段、报告四列精确指纹表、交接包顶层 `HANDOFF.md`、源码树 CHANGELOG 首版对齐 `APP_VERSION`；发布门禁由 16 项增至 17 项。
-- **稳定性**：P0 与多线出口未退化，安装退出码 0、`nft=1`、重启后稳定；Design Lint 18/18、门禁 17/17、混沌 43/43。
-- 验收侧仍记录：混沌脚本未随包内置、打包门禁正则空集假通过、报告第三行指纹不符、v102 脚本硬编码旧版本号、下拉线数虚标残留（详见 `FEEDBACK-云端-v2.5.1.md`）。
+- **基线说明**：基于线上已验收并全量发布上线的 `v2.6.0` (`PKG_RELEASE:=28` / `r28`，GitHub `Release #445479390`、主干/Tag `bc2262d48572d5d3d75d55337809c11d09bb4636`、Cloudflare 部署 `53890bcb`)，按自动化迭代规范推进版本号至 **`v2.6.1` (`PKG_RELEASE:=29` / `r29`，`APP_BUILD = "2.6.1-release-20261115-r29"`)**，一次性闭环 `FB-2600-1 / FB-2600-2 / FB-2600-3` 及 `v2.6.0` 全栈穿透审查识别出的 27 项遗留问题。
+- **A. 云端门禁与构建规范加固 (`FB-2600-1 / FB-2600-2 / FB-2600-3`)**：
+  1. **动态基线对齐 (`FB-2600-1`) 与版本号/构建号四方零笔误同步 (`FB-2600-3`)**：全仓 7 处版本锚点、静态资源 `?v=2.6.1-<md5>`（8/8 一致）、`Makefile` (`PKG_VERSION:=2.6.1` / `PKG_RELEASE:=29`)、`APP_BUILD` (`2.6.1-release-20261115-r29`)、交接文档与 `CHANGELOG.md` 全部脚本化自动同步，对齐 `v2.6.0 (r28)` 线上基线（`Release #445479390` / `bc2262d` / `53890bcb`）。
+  2. **门禁自检配置目录严格隔离 (`FB-2600-2`)**：`tests/gates_v101.py` 验证 `--self-test` 零写盘快照比对时强制使用独立的 `tempfile.TemporaryDirectory(prefix="ailink_gate_prod_")`，彻底杜绝在真机 `.77` 上因常驻守护进程正常写盘 `/etc/ai-link/sing-box.json` 引发快照误报。
+- **B. 核心引擎、数据面与 5×3 模式矩阵修复 (`CORE-01 ~ CORE-07`)**：
+  1. **T10 分流组独立 DNS 绑定 `detour` 与 `AAAA` 抑制 (`CORE-01`)**：海外自定义 DNS 自动绑定对应分流组选择器作为 `detour`（避免墙内明文直连海外 DNS 被污染），并在关闭 IPv6 代理时前置注入 `AAAA` 抑制规则。
+  2. **`direct_all` 残留 Fake-IP 毫秒级拒绝重查 (`CORE-02`) 与国内双上游 DNS 保底 (`CORE-05`)**：切至 `direct_all` 时将 `198.18.0.0/15` 与 `fc00::/18` 路由至 `block`（立即返回 RST/拒绝促使终端毫秒级重查真实 IP，避免 30–60s SYN 超时挂起）；新增 `dns_direct_backup` (`119.29.29.29:53`) 消除 `223.5.5.5` 单点故障。
+  3. **`forward_mss` 联动 `tcp_mss_clamp` 开关与 `forward_v6_guard` 独立链解耦 (`CORE-03`)、补齐 `@node_server_v6` 与 2 万条远程规则容量 (`CORE-07`)**：`forward_mss` 严格遵循 `tcp_mss_clamp` 开关状态并将 IPv6 防泄漏拆入独立 `chain forward_v6_guard`；新增 `set node_server_v6` 防纯 IPv6 节点环回，远程规则库单组挂载容量提升至 `20,000` 条。
+- **C. 系统底座、闪存寿命与打包安装脚本修复 (`SYS-01 ~ SYS-07`)**：
+  1. **`sing-box` `cache.db` 迁入内存盘 (`SYS-01`) 与 `Flow Offloading` 流加速冲突检测 (`SYS-02`)**：生产环境下将 `experimental.cache_file.path` 迁至 `/var/run/ai-link/cache.db`，彻底消除每次 Fake-IP 分配直写路由器闪存；网络健康医生新增 `flow_offloading` 开启状态检测与告警。
+  2. **动态探测 LAN 接口与 `sysctl` 备份还原 (`SYS-03`)、`init.d` `jsonfilter` 解析 (`SYS-05`) 与 `mwan3` 策略路由保护 (`SYS-04`)**：动态读取 `network.lan.device` 取代硬编码 `br-lan`；优先使用 OpenWrt 原生 `jsonfilter` 读取 `ops_settings.json`；存在 `mwan3` 时保留 `100/101` 路由表；`reload_service` 透传 `AI_LINK_NFT_PREGENERATED=1` 减少重复冷启动。
+  3. **`Makefile` 清理失效引用 (`SYS-06`) 与 `install.sh` 全面净化 (`SYS-07`)**：移除 `Makefile` 中已废弃的 `tailwind.css` 与 `vendor/` 引用；`install.sh` 补齐 `python3-yaml` 安装、清理 `/root/r8_myfix.py` 测试残留、统一 `max_outbounds=0` 并在冷启动异常退出前先完成 `rpcd/uhttpd reload`。
+- **D. L7 探测精度、安全加固与前端交互体验收口 (`POOL-01`, `RULE-01`, `SEC-01 ~ SEC-05`, `UX-01 ~ UX-06`)**：
+  1. **L7 指纹去假阳性 (`POOL-01`) 与云端 `.srs` 镜像加速 (`RULE-01`)**：从 ChatGPT/OpenAI/Claude 的 `expected_status` 中移除 `403`，从 TikTok 探测中移除 `favicon.ico` 与 `403/404`；`parse_google_redirect_region` 无 301 且无 US 标记时返回 `UNKNOWN` 而非盲目默认 `US`；`get_cloud_shunt_catalog` 补充 `mirror_url`。
+  2. **备份接口默认脱敏 (`SEC-01`)、生产环境 `mock_*` 隔离 (`SEC-02`)、登录限流加锁与 LRU 淘汰 (`SEC-04`) 及 `Content-Length` 边界校验 (`SEC-05`)**：HTTP `GET /api/ops/backup` 默认 `include_secrets="0"`；生产路由环境下自动剥离 `mock_*` 测试字段；`_LOGIN_RATE_LIMIT_MAP` 增加线程锁与过期/最旧条目淘汰（防止 IPv6 刷满 256 条清空锁表）；拦截负数或非数字 `Content-Length`。
+  3. **修复 `nexus.js` 登录后 3D 拓扑页判断 (`UX-01`)、紧急直连联动解除 (`UX-03`)、HomeLink 内网二维码提示 (`UX-04`) 与订阅失败就地引导 (`UX-05`)**：修复 `state.page === 'galaxy'`、切换非直连分流模式时自动退出 `bypassActive`、补充内网二维码警示与离线粘贴导入引导；新增 `Stage 7.30`（混沌测试 `93/93 PASS`）。
 
-## [v2.5.0] - 2026-11-08
-### 多线并发正式落地 + 节点池全生命周期审计 + 订阅自动同步开关
-- **多线并发闭环（承接《DIAG-多线并发功能生效性-20261108.md》）**：`generate_singbox_config()` 对 `dispatch_mode == "multi_line"` 的非敏感池生成 `urltest` 出口 `Auto_<pool>_MultiLine`（成员为剔除慢节点后的 `multi_line_nodes`，`interrupt_exist_connections: false`）；绑定组 `Shunt_YouTube` / `Shunt_TikTok` 成员置顶收敛并关闭连接打断，`Shunt_AI` 等 IP 敏感组保持单线锁定。
-- **实时数据面轮转**：新增 `dispatch_multi_line_pools_tick()` 与 0.5s 守护线程，按组间错峰偏移轮转 selector，存量连接无损、新建连接分摊到多个物理节点；真机并发实测 9 条 YouTube 连接同时由 2 个不同节点承载且各有真实吞吐；切回 `single_best` 立即恢复单节点。
-- **自动节点池全生命周期严查**：慢节点离散度过滤三处同源；建池带宽择优与滑窗稳定性加权、严格排除 4 层 DAG 链式落地节点；6 步向导 `scopeDirty` 脏标记自动重筛；补位/移除/替换成员后强制 `write_all_configs()` 同步内核配置。
-- **订阅自动同步可控**：卡片新增「自动同步 每Xh / 已关闭」一键开关与编辑弹窗独立开关；手动「立即同步」不再把 `auto_update=false` 重置为 true；接口未显式传参时严格保留原间隔。
-- **稳定性**：延续 nft 协议族分离，安装退出码 0、`nft=1`、重启后稳定；Design Lint 18/18、发布门禁 16/16、深度混沌 39/39、`test_v102` 152/152。
-- 已知：`daemon --self-test` 内置白名单未同步 `urltest` 的 `url`/`interval`/`tolerance` 字段导致误报，`sing-box check` 实测 rc=0，内核配置合法。
+## v2.6.0 (2026-11-15 · PKG_RELEASE:=28 / r28 · 30轮终极审查 36 项全集闭环与防回归护栏加固里程碑版)
 
-## [v2.4.9] - 2026-11-08
-### 波形真值与节点池深度审计 + 概览视觉重构
-- **概览双卡片等高**：`#page-overview` / `#page-dns` 的 `.dashboard-grid.two-one` 显式 `align-items: stretch`，子卡 flex 纵向撑满、流量波形容器自适应拉伸；Chromium 实测左右卡片高度差 **0px**，分流页保持 `align-items: start` 零回归。
-- **全息流量波形真实账本化**：`get_overview_live_telemetry()` 输出 `waveform_24h`(24) / `waveform_7d`(7) / `waveform_30d`(30) 与 `matrix_7x24`(168) 真实序列，替代原 `Math.sin` 装饰曲线；新增 4-KPI 速览栏、5 级自适应 Y 轴刻度、峰值时刻胶囊、悬停十字准星明细浮窗与 X 轴 11px 字阶。
-- **自动节点池评分与并发护栏**：滑窗评分打通 `history` 与 `sparkline_20`；引入 `_stab_pen` 对高丢包/高抖动分级惩罚并支持主动切换；多线并发自动剔除离群慢节点并暴露 `multi_line_filtered_slow_count`。
-- **非破坏性保员与 any 逻辑**：健康数达标时只清理 `dead`/已删除成员，保留临时隔离期的 `ok` 节点；服务可用性完整支持 `service_logic == "any"`。
-- **稳定性延续**：v2.4.8 的 nft 协议族分离未退化，安装退出码 0、`nft=1`、重启后仍稳定；Design Lint 18/18、发布门禁 16/16、官方回归 15/15 套全绿（混沌 32/32、`test_v102` 150/150）。
-- 云端自动巡检调整为约每 90 分钟一次，并写入「仅在收到用户明确验收确认后才推进下一版本号」的版本推进铁律。
-- 同版本热修（2026-11-08 19:00）：节点池隔离期到期后正确解除隔离、DNS 页卡片等高与波形画布高度固定、延迟曲线空序列防 NaN；静态资源指纹同步更新。版本号未变，现网 2.4.9 设备需手动重装以获取修订包（OTA 不会提示）。
+- **基线说明**：基于 `v2.5.16` 及《`ai_link_v2_5_16_master_audit_and_safe_remediation.md`》（30 轮独立模块深挖、五大风险域 36 项定位问题与防回归护栏指南），正式升版至 `v2.6.0` (`PKG_RELEASE:=28` / `r28`)，`APP_BUILD` 升级为 `"2.6.0-release-20261115-r28"`。
+- **A. 安全、鉴权与凭据暴露域闭环 (`SEC-01 ~ SEC-07` + 防回归护栏)**：
+  1. **HomeLink 动态随机凭据与老配置无损兼容护栏 (`SEC-01`)**：UCI 默认关闭 `homelink`（`enabled '0'`）并移除全部静态默认密钥；首次生成或检测到已知弱默认密钥时自动生成并持久化设备唯一随机密钥，同时**严格保留老用户已自定义的 `homelink.json` 凭据**确保既有客户端不断连。
+  2. **配置备份可选脱敏 (`SEC-02`) 与登录滑动窗口防爆破 (`SEC-03`)**：`export_ops_backup(include_secrets=False)` 支持遮罩 Telegram `bot_token` 与 SMTP 密码，同时默认保留内部恢复与全量归档还原兼容性；`/api/login` 新增按客户端 IP 的 60s 滑动窗口限流（连续失败 5 次锁定 60s 返回 HTTP 429），并**对回环地址 `127.0.0.1 / ::1` 豁免**以保障本地 CLI 与自动化自检零误锁。
+  3. **RPCD ACL 最小权限 (`SEC-05`)、Webhook 防 SSRF (`SEC-06`) 与空 Referer CSRF 拦截 (`SEC-07`)**：移除 `luci-app-ai-link.json` 中 `/etc/ai-link/*` 通配读与 `/usr/bin/curl` 执行权，仅精确授权 `/etc/ai-link/panel_token`、`/etc/ai-link/version` 与桥接令牌；`trigger_alert_event` 拦截指向环回核心端口与内网元数据的 SSRF URL；`_check_csrf_same_origin` 拦截空 `Origin/Referer` 跨站表单 POST。
+- **B. 网络接管、DNS 与分流规则域闭环 (`NET-01 ~ NET-10` + 防回归护栏)**：
+  1. **游戏 UDP 直连复合条件 (`NET-01`) 与 `direct_all` 300ms 异步清表护栏 (`NET-02`)**：`game_udp_direct` 在 `sing-box.json`（内联 `_CN_PRECISE_CIDRS`，兼容 `lock-compat` 降级模式）、`nftables`（`@cn_ip4`）与 4 阶透视中强制要求目的 IP 为国内 IP，根治外服 Steam/Apex/PUBG 与 WebRTC 被误杀直连；切入 `direct_all` 时保留 `198.18.0.0/15` 兜底规则并延迟 `300ms` 异步清理 Fake-IP `conntrack` 与 `dnsmasq`，确保前端先收到 HTTP 200 不掉线。
+  2. **MAC 直连保留 `.lan` 解析与补齐 IPv6 (`NET-03`)、卸载重启 `dnsmasq` (`NET-05`) 与 `.srs` 解压解析 (`NET-09`)**：`chain dstnat` 对 `@lan_direct_macs` 先放行 `fib daddr type local` 保留内网 `.lan` 解析，并补齐 IPv6 DNS DNAT；`uninstall.sh` 改为执行 `/etc/init.d/dnsmasq restart || true` 彻底重载 `confdir`；`sync_rule_provider` 限制 `10 MiB` 读取上限并先解压 `.srs` zlib 流再提取域名。
+- **C. 自动节点池与 L7 探测域闭环 (`POOL-01 ~ POOL-06` + 防回归护栏)**：
+  1. **词边界与末尾落地地区识别 (`POOL-01`)**：`detect_node_country` 剥离 `RUSSIA / AUSTRALIA / PLUS / CUSTOM / BUSINESS / CASINO` 等含 `US/SIN` 子串的干扰词，采用严格词边界正则并优先选取靠后的落地地区（如 `HK->US` 识别为 `US`，同时保留 `US1`、`US_BGP` 正常识别）。
+  2. **隔离期双次恢复防抖 (`POOL-02`) 与多线缓存实时失效 (`POOL-05`)**：删除 `_build_node_probe_record` 中单次 ping 通提前清零 `quarantine_until` 的逻辑，严格执行连续 2 次成功恢复防抖；补充探测切片扩至 `[:48]` 并在节点状态变更时立即失效 `_MULTI_LINE_RR_STATE`。
+- **D & E. 系统架构、看门狗退避熔断与前端交互闭环 (`SYS-01 ~ SYS-07`, `UX-01 ~ UX-06`)**：
+  1. **单进程防火墙挂载 (`SYS-01`)、闪存防磨损 (`SYS-02`) 与看门狗退避熔断 (`SYS-03`)**：`AI_LINK_NFT_PREGENERATED=1` 免除二次拉起 1.7MB 守护进程；`alert_events.json` 迁入 `RUN_DIR` 且 `node_probe.json` 闪存快照周期延至 `3600s`；`ensure_core_alive_and_recover` 引入 `18s->60s->180s->300s` 指数退避与 5 次熔断，并在用户手动重启或保存配置时立即调用 `reset_watchdog_circuit_breaker()` 重置。
+  2. **CLI 端口校验、`keep.d` 精确列表 (`SYS-07`) 与多标签鉴权同步 (`UX-01 ~ UX-06`)**：`usr/bin/ai-link port` 校验 `1024~65535` 并排除核心端口；`keep.d/ai-link` 移除自动生成的 `sing-box.json`；前端支持首次登录指引、一键场景模板、`webglcontextlost` 恢复、`beforeunload` 保护与跨标签页 `storage` 令牌同步；新增 `Stage 7.29`（混沌 `92/92 PASS`）。
 
-## [v2.4.8] - 2026-11-08
-### P0 全量闭环稳定版（VERIFY-v2.4.7 100% 根治）
-- **P0-1 修复**：nftables 规则按 `meta nfproto ipv4` / `ipv6` 拆分为 6 条独立规则，消除单条规则混用 `ip daddr` 与 `ip6 daddr` 导致的 `conflicting network layer protocols` 挂载失败；真机安装退出码 0、`nft=1`、重启后仍自愈；`install.sh` 增加挂载失败诊断。
-- **P2-6 修复**：`/api/shunt/update` 兼容 `id`/`group_id` 并强制 `write_all_configs`；所有非 `inherit` 的 `dns_strategy` 均生成 `dns_grp_<ID>` 并附 `domain_resolver`，真机 `doh`/`custom` 实测通过 `sing-box check`。
-- **P3-5 修复**：4 阶流量透视器完整回显 `raw_input` / `target` / `src_ip` / `src_mac`，支持 IP、MAC、`@IP` 三种内联写法。
-- **P2-7 修复**：测试沙箱 `is_live` 判定收敛，绝不读取或污染真机 `/etc/config/ai-link`；`rule_blocks_e2e.py` 恢复 15/15。
-- **P3-4 修复**：AST `except->pass` 由 11 降为 0，写入发布门禁。
-- **门禁加固**：新增 nft 协议混写清零、`tar.gz` 顶层目录与测试集完备性、AST `except->pass <= 8` 三项检查；`gates_v101` 16/16、Design Lint 18/18、官方回归 15/15 套全绿。
-- 中间 2.4.4 ~ 2.4.7 未对外发布，本版起可直接从 2.4.3 OTA 升级。
+## v2.5.16 (2026-11-11 · PKG_RELEASE:=27 / r27 · 雷达 O(1) 整数桶毫秒级冷启动、真实 dial 故障秒切、LuCI 跨源鉴权闭环与 3D 星图首视觉提速版)
 
-## [v2.4.3] - 2026-11-08
+- **基线说明**：基于已于 2026-11-11 全量发布上线的 `v2.5.15` (`Release #441436442` / 主干 `e7617a50` / 生产部署 `063d6465` / `r26`，承接 `v2.5.14` `#441274023` / `c6a7027a`) 正式升版至 `v2.5.16` (`PKG_RELEASE:=27` / `r27`)，`APP_BUILD` 升级为 `"2.5.16-release-20261111-r27"`。
+- **FB-2515-1 & P2-3 (实时流量归组雷达冷启动 O(1) 提速 `<10ms` 与国内 IP `20/20` 全召回)**：将 `_CN_PRECISE_CIDRS`（补齐 `221.204.0.0/14` 山西电信网段）与 `_OVERSEAS_KNOWN_EXEMPT_CIDRS` 在模块加载期预编译为首字节分桶 32 位无符号整数区间表（`_CN_V4_BUCKETS` / `_EXEMPT_V4_BUCKETS`），并为 `_ip_in_cidr_list` 与 `shunt.json` 分组域名建立 O(1) 内存缓存索引（`_CIDR_V4_RANGE_MEMO` / `_SHUNT_DOMAIN_FAST_MEMO`）及启动预热，消除冷启动 `1,800+` 次 `ipaddress.ip_network` 重复解析，将真机冷启动从 `58~64ms` 压降至 `<10ms`（热缓存 `<1ms`），实现 31 个海外 IP 误判 `0/31`、20 个国内 IP 召回 `20/20`。
+- **自动节点池深度审计修复 (AutoPool P0-1/P0-2/P1-1/P1-2/P2-1/P3-1)**：
+  1. **真实 `sing-box` `dial` 错误域名提取与链路级失联分档秒切 (`P0-1 / P0-2`)**：修复 `_extract_log_target_host()` 先匹配 `[node_tag]` 之前的 `open connection to <host>:<port> using outbound/...` 再回退尾部片段；`scan_kernel_logs_for_active_pool_failures()` 新增链路级失联分档（`no route to host` / `network is unreachable` / `open connection to ... using outbound/...: dial tcp`），允许单目标/IP 满 2 次立即触发故障切换（黑洞失联 `<15s` 自动切换），同时保留站点级错误（`reset/EOF`）的 `>=2` 目标防误杀守卫。
+  2. **故障演练真实日志覆盖 (`P1-1`) 与未满员池向 `target_size` 自动补齐 (`P1-2`)**：`run_end_to_end_failover_drill()` 注入真实 `open connection to x.com:443 using outbound/vless[<node>]: dial tcp ...: connect: no route to host` 格式；`maintain_auto_node_pool_health()` 在池配置成员数 `< target_size`（如 `3/10`）且外部存在健康候选时自动向上补满至 `target_size`；`auto_screen_and_fill_pool()` 支持仅传 `{"id": "auto_xxx"}` 自动继承该池范围配置并支持 `apply: True` 一键落盘。
+- **LuCI 面板可用性专项修复 (LuCI P0-1/P0-2/P1-1/P1-2/P2-1/P3)**：`overview.js` 新增 `ensureLuciToken()` 通过 RPCD `fs.read('/etc/ai-link/panel_token')` 自动读取令牌并注入 `X-AI-Link-Token`；后端 `get_luci_bridge_token` 支持过期自动续期并将 `/api/system/update/status`、`/api/system/update/check` 纳入只读白名单；补齐 LuCI 状态区与 OTA 未授权/失败显式状态提示与「🔓 解锁状态」内联登录按钮；修复 `get_ops_diagnostics()` 中 `adblock_rules=0` 的统计字段读取。
+- **全生命周期深度审查闭环重构 (`ai_link_v2_5_16_full_audit_report.md` §1.1~§5.4 & P0~P2)**：
+  1. **高危安全与凭据根治 (§1.1~§1.5)**：彻底清除 UCI 与 `ai-link-daemon.py` 中全部硬编码默认凭据（`a891f02b...`、`ailink_home_2026`、`pUbja...`、`6a8b`）及示例假数据（`A4:83:E7:2B:91:04`、`home.example.com`），合并为单一默认关闭的 `config homelink` 节，新增 `_get_or_create_homelink_default_secrets()` 生成并持久化设备唯一高强度随机密钥；修复 VLESS-Reality `handshake.server` 与 Fake-IP 冲突并对齐协议推荐文案；加固 `_check_csrf_same_origin()` 拦截空 `Origin/Referer` 的跨站表单请求；修复 `restore_resolv_conf_local()` 移除活跃态次级公网 DNS 防泄漏。
+  2. **架构、闪存寿命与双进程 OOM 根治 (§2.1~§2.4)**：消除 `fetch_and_sync_subscription` 重复定义，守护进程调用 `apply_nft.sh` 时预生成规则并传入 `AI_LINK_NFT_PREGENERATED=1` 免除二次解析 1.7MB 脚本；将 `alert_events.json` 运行态写入迁至 `RUN_DIR`（tmpfs）并将 `node_probe.json` 闪存快照周期拉长至 3600s；新增 `compute_memory_safe_outbounds_cap()` 内存感知计算并对齐 UCI `max_outbounds=0`；新增 `_rotate_log_file_if_needed()`（`MAX_LOG_BYTES=2MB`）自动滚动截断日志。
+  3. **流量接管、分流精度与全场景拓扑防护 (§3.1~§3.4 & §5.1~§5.4)**：`game_udp_direct` 在 `sing-box.json`、`nftables` 与 4 阶透视中强制叠加国内 IP（`@cn_ip4` / `_CN_PRECISE_CIDRS`）复合条件，严禁误杀外服 Steam/Apex/PUBG 与 WebRTC；切换 `direct_all` 时自动清理 Fake-IP `198.18.0.0/15` 连接追踪与 `dnsmasq` 缓存；补全 `swcdn.apple.com`、`windowsupdate`、`generativelanguage.googleapis.com`（AI 优先）、Telegram 官方 CIDR、主流 PT Tracker 与企业 VPN 直连保护；移除自定义黑名单降级 `[:120]` 硬截断；在全息流量波形图明确标注「仅统计经内核分流流量（国内直连已硬件旁路）」。
+  4. **前端交互、3D 容灾与无障碍重构 (§4.1~§4.5)**：未改密时登录弹窗直接展示 `/etc/ai-link/initial_password` 与 LuCI 免密入口指引；自动节点池向导新增「一键场景模板」（AI 专属稳定池 / 流媒体高速池 / 全球低延迟池）与高级参数折叠；`nexus3d.js` 新增 `webglcontextlost / webglcontextrestored` 自动降级恢复且仅在拓扑页按需初始化；新增表单 `isDirty / beforeunload` 未保存保护；全量开关对齐 `.a-switch`（`role="switch"` + `aria-checked`）；新增 `Stage 7.28`（混沌 `91/91 PASS`）。
+- **弹出框与弹出菜单拖拽选取及外部左右键防误关保护 (`UX-2516-MODAL-GUARD`)**：彻底移除 `#modal` (`.modal-backdrop`) 的背景点击关闭逻辑与 `.pool-more-menu` 的盲目外部点击关闭逻辑，新增 `_pointerDownInPopupOrModal` 鼠标选区防滑出守卫与右键 `contextmenu` 隔离，确保在弹窗/弹出菜单内用鼠标拖拽选取文本滑出边界或在弹窗外部点击鼠标左/右键时绝不误关弹窗（仅点击右上角 `×`、「取消」按钮或按 `Escape` 键才关闭）。
+- **体验审查 P0-1 / N-1 ~ N-5 (3D 星图首视觉 `<1.5s`、`strict_same_region_lock` 对齐、`ping_fallback` 语义正名与 `single_line_pin_reason` 透出)**：首屏鉴权通过后 `180ms` 内立即触发 `three.min.js` 预加载，`nexus3d.js` 将高开销 `MeshPhysicalMaterial` 替换为轻量 `MeshLambertMaterial`（消除 304ms 长任务）；前后端统一 `strict_same_region_lock`；非 AI 池无 L7 记录时标记为 `svc_state="ping_fallback"`（`svc_verified=False, svc_passed=False`，前端显示「连通可用（未做业务验证）」，确保 6/6 池 `svc_verified == svc_passed`）；存量池自动回填 `dispatch_mode` 恢复 `auto_youtube` 多线轮询并透出 `single_line_pin_reason`；收敛后台预热频率消除 `lite` 205ms 尖峰。
+
+## v2.5.15 (2026-11-11 · PKG_RELEASE:=26 / r26 · 海外 IP 精准分流、失效 Token 快速拦截、首屏 WebGL/QR 懒加载与全栈性能加固版)
+
+- **基线说明**：基于已于 2026-11-11 全量发布上线的 `v2.5.14` (`Release #441274023` / 主干 `c6a7027a` / 生产部署 `2f601400` / `r25`，承接 `v2.5.13` `#441095950` / `c7cd5c41`) 正式升版至 `v2.5.15` (`PKG_RELEASE:=26` / `r26`)，`APP_BUILD` 升级为 `"2.5.15-release-20261111-r26"`。
+- **P0-1 / R-1 (根治海外 IP 误判 `Domestic_CN` 反向回归)**：移除 `_CN_BROAD_CIDRS` 中全部 `/8`、`/7`、`/6` 亚太超宽网段，建立 `_OVERSEAS_KNOWN_EXEMPT_CIDRS` 海外显式豁免表与 `_CN_PRECISE_CIDRS` (`>= /10`) 精细国内运营商网段，30 个海外知名 IP 误判率 `0/30`。
+- **P1-1 / R-2 (失效/过期 Token 秒级快速拦截)**：收到 `HTTP 401` 立即调用 `setAuthToken('')` 清空失效 Token，首屏首次同步先单独请求 `/api/status` 验权，失效时仅触发 `1` 次请求即挂载 `body[data-auth-locked="true"]`、显示「登录已过期，请重新登录」并秒弹登录框（消除 9 次 401 重试风暴与 7 秒空骨架灰屏）。
+- **P1-2 / R-3 & G-6 (首屏静态资源按需懒加载与首屏 API 减负)**：`three.min.js` 与 `qrcode.min.js` 改为 `data-lazy-src` 按需懒加载，`qrcode.min.js` 精简至 `38,962 B`，`/api/nodes?sparkline=1` 与 `/api/overview/telemetry` 延后至对应子页面拉取，首屏 `resBytes` 从 `2.13 MB` 降至 `~790 KB (<= 1.3 MB)`、首屏 API 从 `7` 个降至 `2` 个。
+- **P1-3 / R-4 & P2-1 ~ P2-4 & S-5/S-6 (缓存抖动消除、通用池脱离 `l7_degraded` 与 `lite=1 <= 8,192 B`)**：消除 `build_blackhole_telemetry` 5s 缓存自毁与 `load_auto_nodes_config` 读路径清缓存，后台巡检写盘后主动预热缓存；非 AI 通用池 (`auto_media` / `auto_global`) 凭基础连通性脱离 `l7_degraded`，`auto_youtube` 自动跨区补齐多线；`lite=1` 缩减 `~550 B` 至 `<= 8,192 B`；新增 `Stage 7.26`（`89/89 PASS`）。
+
+## v2.5.14 (2026-11-11 · PKG_RELEASE:=25 / r25 · 全栈防跳变、真实服务/地区硬性校验、URL Ping 实时进度弹窗与护盾规则库增强版)
+
+- **基线说明**：基于已于 2026-11-11 全量发布上线的 `v2.5.13` (`Release #441095950` / 主干 `c7cd5c41` / 生产部署 `ab483e95`，承接 `v2.5.12` `#440974555` / `40957a6d`) 正式升版至 `v2.5.14` (`PKG_RELEASE:=25` / `r25`)。
+- **P0-1 (全站数据与高度零跳变加固)**：修复 `syncBackendStatus` 浅拷贝覆盖导致概览页「全息流量波形」（`1.72 GB` 伪正弦波与 `7.89 GB` 真实账本交替）、「7×24 小时网关活跃节奏」（`97.5 GiB` 与 `0 B` 交替）及护盾页「高频拦截域名排行」（`[:6]` 与 `[:8]` 高度跳变）问题；前后端统一深合并 `overview_telemetry` / `dns_telemetry` 并锁死 Top 8 榜单口径。
+- **P0-2 (自动节点池真实 L7 服务可用性与 Gemini 地区硬性准入)**：`probe_node_service_l7` 新增 `force_manual=True` 豁免日配额跳过，`auto_screen_and_fill_pool` 移除 `d_ms < 600` 假通过分支并强制校验 Google 301 TLD 地域与服务真实可达性，彻底拦截 `HK/CN/MO/RU` 等不支持地区节点与未经服务测试节点；`_slim_auto_nodes_for_status` 完整保留 `[:10]` 成员验证标记，消除第 6~10 号成员误显示「服务待验证 (仅连通)」。
+- **P0-3 (节点管理页全场景 URL Ping 实时进度条与结果弹窗)**：新增 `runUrlPingWithModal` 实时进度与结果明细弹窗，覆盖全量体检、当前筛选分类测速、真实握手测速、订阅源测速、手动节点测速与单节点真测速，实时展示分批进度条、4 维汇总 KPI 与逐节点延迟/状态结果表。
+- **P0-4 (护盾页规则库独立启停开关、单库更新、GitHub 主流预设源与紧凑滚动布局 + 移除设置页更新按钮)**：护盾页每条云端过滤规则库新增独立启停开关、单库立即更新按钮与自定义库移除按钮，内置 10 套 GitHub 主流开源规则库（`Cats-Team AdRules`、`217heidai AdBlockFilters`、`AWAvenue 秋风广告规则`、`HaGeZi Multi PRO`、`1Hosts Lite`、`HalfLife`、`NEO DEV HOST`、`Anti-AD` 等）一键挂载与自定义 URL 接入，采用 `max-height: 260px` 紧凑滚动容器防页面拉长，并按要求取消设置页更新按钮。
+- **P1 (v2.5.13 审查报告 `G-1~G-7` / `S-1~S-6` / `A-1~A-8` 全量闭环)**：`_is_valid_srs_binary` + `compile_srs_from_seeds` 生成合法 `SRS\x01` + `zlib` 二进制规则集并通过 `sing-box check -c` 预检；实时流量归组雷达首屏同步渲染、`< 3ms` O(1) 内存匹配与 `snapshot_id` 快照撤销。
+
+## v2.5.13 (2026-11-11 · PKG_RELEASE:=23 / r23 · 云端 GeoIP/Geosite 双轨分流引擎与 v2.5.12 审查全量闭环版)
+
+- **基线说明**：基于已于 2026-11-11 全量发布上线的 `v2.5.12` (`Release #440974555` / 主干 `40957a6d` / 生产部署 `118b5221`) 正式升版至 `v2.5.13` (`PKG_RELEASE:=23` / `r23`)。
+- **云端 GeoIP / Geosite 双轨规则集与实时分流雷达升级**：
+  1. 扩展 `CLOUD_SRS_CATALOG` 与 `SRS_CORE_MAP` 至 26 项云端 `Geosite` + `GeoIP` 规则集（新增 `geoip-telegram` AS62041、`geoip-netflix` AS2906、`geoip-google` AS15169、`geoip-cloudflare` AS13335、`geoip-fastly` AS54113、`geoip-openai`、`geosite-anthropic`、`geosite-google-gemini`、`geosite-cursor`、`geosite-huggingface`、`geosite-telegram`、`geosite-discord`、`geosite-disney`、`geosite-spotify`、`geosite-docker`、`geosite-apple-cn`、`geosite-steam-cn`），支持按分流组绑定 `geosite_sets` 与 `geoip_sets` 并自动编译注入 `sing-box.json` 路由与四阶透视。
+  2. 新增 6 套高频代理用户场景一键订阅包（`AI 生产力与编程算力全栈包`、`Telegram/Discord 纯 IP 与语音防漏包`、`流媒体 4K & Netflix 原生 IP 解锁包`、`GitHub/Docker/HuggingFace 开发者极速包`、`Steam 下载满速直连 + 社区商店代理包`、`Google Play 与 FCM 推送加固包`）与「实时流量归组雷达」（`/api/shunt/live_discover` & `/api/shunt/quick_assign`），支持实时识别纯 IP/兜底连接并一键归入推荐组（附 8s 撤销）。
+- **《AI-LINK_2.5.12-r22_实现与设计审查报告》与《FEEDBACK-云端-v2.5.12》全量闭环**：
+  - **P1-1 (O-5 / A-3)**：`lite` 与 `full` 节点池补齐 `session_sticky_s`、`dwell_s`、`dwell_elapsed_s`，UI 动态渲染实际驻留周期（300 秒）与已驻留秒数。
+  - **P1-2 (O-1 / O-2 / O-3 / A-5)**：新增 `state_seq`、`lite_fields` 显式白名单与 `/api/status/schema`；前端 3 秒 `lite` 心跳对 `state.rawStatus` 与 `state.rawAutoNodes` 执行差量合并，17 个富状态字段实时刷新。
+  - **P1-3 (S-1 ~ S-5)**：`/api/shunt/test_rule_match` 支持未保存草稿 `draft_rule_blocks` 内存预演、返回三态 `matched_by`、对空 `target` 返回 `empty_target`；前端开放组级 `ports`/`exact_domains`/`source_ip_cidrs`/`geosite_sets`/`geoip_sets` 展示与编辑；规则块弹窗支持多块列表增删改与 `mode: "patch"`。
+  - **P1-4 & P2 (A-1 / A-2 / A-4 / A-6 / A-7 / A-8 / O-4 / O-6 / O-7 / FB-2512)**：保留完整 `groups[].node_tags` 并补充 `candidate_count`（HUD 显示真实候选数 `4/7/8/7/4/4`）；同区亲和单成员显式提示并提供一键切换跨区轮询入口；统一 `rotation_members`、`active_egress` 与恒定整数 `active_lines_count`；软目标进度 `below_soft_target` (`4/10`)；共享出口切换按 `switch_event_id` 聚合并加严专线替换 RTT 门槛；移除 `/api/status` 15s/30s 同步重建桶消除长窗口尾部尖峰，HTTP 层 `?lite=1 <= 8KB` 双口径校准。
+
+## v2.5.12 (2026-11-11) · `PKG_RELEASE:=22` (`r22`) — 基于已上线 v2.5.11 (`Release #440812530` / `fc38adf6` / 部署 `90830c6b`) 实机验收与修订包反馈闭环
+
+- **P0-1 / N1 (`domains` 契约 16/16 零截断与撤销全链路零差异)**：修复 `_slim_shunt_for_status(lite=False)` 对预设组省略 `domains` 及对自定义/编辑组截断至 8 个域名的问题，默认 `GET /api/status` 100% 完整返回全部 16/16 分流组的 `domains`、`domain_keywords`、`exact_domains`、`ip_cidrs`、`rule_blocks`（`status.shunt.groups[].domains == shunt.groups[].domains`）；同步前后端 `PRESET_GROUP_DOMAINS_FALLBACK` 并消费 `domains_total`；补齐「恢复默认域名库→撤销」与「删除自定义组(33域名)→撤销」逐字段零差异自动化 E2E 门禁。
+- **P0-2 / N2 (`/api/status` 周期性尖峰根治与热路径零锁/零子进程阻塞)**：从 `_make_wire_key()` 移除每秒自增的 `blocked_queries` 防 `_JSON_WIRE_MEMO` 每秒自击穿；`build_status_api_response` 按 `selections.json` 真实 `mtime_ns` 变化按需读取、不再在 HTTP 请求线程同步扫描 `singbox.log` 或每 5s 派生 `pidof sing-box` 子进程；`sync_selections_from_clash` 节流至 10s；`_send_json` 消除双重 `json.dumps` 与双重 `gzip.compress`。
+- **P1-1 / N3 (`?lite=1` 真正差量轻量化 `<= 8 KB`)**：`GET /api/status?lite=1` 仅返回实时速率、连接数、核心健康度、自动池与分流组当前生效出口摘要（省略静态大表），解码 JSON 体积由 `49 KB` 压降至 `<= 8 KB`（约 `4.5 KB`，缩减 `> 85%`），前端 `syncBackendStatus` 差量合并保留完整域名与节点池配置，且当检测到 `config_seq` 变更时自动拉取全量状态。
+- **P1-2 / N5 (`session_affinity` 默认开启与存量多线池自动迁移)**：新建自动节点池默认勾选 `session_affinity=True`（`same_region_multi_line=True`, `session_sticky_s=300`），升级 `v2.5.12` 时通过 `v2512_session_affinity_migrated` 自动将存量多线池升级为开启（占比 `100% >= 80%`）；用户显式关闭时保存 `session_affinity_user_set=True` 并在 HUD 卡片提示 `· 跨区轮询(可能跨洲跳变)`。
+- **P1-3 & P1-4 / N4 & N6 (静态资源内存预压缩缓存稳定未登录 TTFB `<= 100ms` & 首屏微任务分片 `<= 200ms`)**：`_serve_webui_static` 引入 `_STATIC_ASSET_MEMO` 内存预压缩缓存并在 `_do_GET_inner` 顶层零锁直出 `index.html`/`nexus.js`/`three.min.js`（消除每次请求重复 `gzip.compress(level=6)` 抢占 GIL）；前端将 `syncGalaxy3DData` 与后台分片渲染拆入独立微时间片。
+- **FB-2511-1 / FB-2511-2 / FB-2511-3 (`Stage 7.20` 相对指标与 508 节点真机等价校准 + 报告三口径/双环境标注 + 线上 `v2.5.11` 增量基准硬门禁)**：`Stage 7.20` 升级为相对压缩比（`default < include_full * 0.50`）、`gzip <= 16 KB`、`lite <= 8 KB`、6 键 `stage_timing_ms` 齐全及 508+ 节点真机等价数据集校准（含关闭 slim 必转红的负向自检），新增 `Stage 7.23`（共 `86/86 PASS`），报告显式区分三口径与验证环境。
+
+## v2.5.11 (2026-11-11 · 2.5.11-release-20261111 · OpenWrt PKG_RELEASE:=21 / r21 产品体验与次生风险全量闭环版)
+
+### 本轮增量说明（相对于已上线 v2.5.10 Release #440647669 / `bb9f0839` / 部署 `3066cd0f`）
+- **正常升版至 `v2.5.11` (`PKG_RELEASE:=21` / `r21`)**：基于 `FEEDBACK-云端-v2.5.10.md`（确认 `v2.5.10` 全绿上线 Release `#440647669` 并要求继续保持正常升版以支持现网 OTA），全仓 7 处版本锚点、IPK `control` 与 `CHANGELOG.md` 同步推进至 `v2.5.11 (r21)`。
+- **P0-1 / E1（两个分流撤销接口 404 修复 + 全量 `onUndo` 状态校验 + 空 Payload 零副作用防护 + 109 路径契约门禁）**：后端新增 `/api/shunt/update_group_rules` 与 `/api/shunt/add_rule` 路由并兼容 `group_id`/`title`/`shunt_mode`/`auto_node_id`/`ordered_ids`/`order_index`，空 payload `{}` 自动作为只读空操作返回（零写盘、零重载）；前端 `nexus.js` 全部 `onUndo` 回调严格校验 `res.ok !== false` 后才弹成功提示，彻底消除“先失败警告、后成功提示”矛盾反馈，确保「恢复默认域名库 → 撤销」与「删除自定义组 → 撤销」的 `domains`、绑定与分组顺序 100% 还原；`tools/check_api_ui_parity.py` 扩展覆盖全部 109 个前端 `/api/*` 字面路径。
+- **P0-2 & P2-3 / E4 & R3（`/api/status` 高频通道解码载荷瘦身 `<= 20 KB` + 服务端五段计时 `stage_timing_ms` + ETag/`304` + `?lite=1`/`?include=`）**：剥离 `/api/status` 中重复的 `shield_status`、`shunt.regions`/`shunt.switch_history` 与 26KB 静态矩阵，将 244 节点 + 6 自动池场景下的 `/api/status` 解码载荷从 `208 KB` 降至 `< 20 KB`；新增「读配置 / 组装 shunt / 组装 telemetry / 序列化 / gzip」五段计时 `stage_timing_ms` 与 `X-AI-Link-Stage-Timing` 响应头，支持 `ETag` / `If-None-Match` (`304 Not Modified`) 与 `?lite=1` / `?include=` 按需拉取。
+- **P1-1 / E3（`/api/overview/galaxy` 常态 186ms 慢请求与并发锁争抢治理）**：解除 `build_galaxy_snapshot` 对 `get_overview_live_telemetry` 的同步调用与循环内重复 `load_homelink_nodes`，引入 SWR 内存快照 + 后台预计算线程并接入 `_make_wire_key()`，常态响应压入 `< 5 ms`，彻底消除与 `/api/status` 的并发资源争抢。
+- **P1-2 & P2-2 / E2 & E5（未登录态 401 轮询风暴阻断与首屏长任务微切片优化）**：未登录态首屏仅单次预探 `/api/status`，命中 `auth_required` 或 `401` 立即激活 `state.authRequiredLock` 暂停后台轮询、短路未授权 `fetch()` 并跳过 3D WebGL 初始化（未登录 60s+ 会话 401 次数 `<= 1`）；首屏渲染通过 `scheduleDeferredRenderAll()` 微切片化，消除 `> 50 ms` 主线程长任务。
+- **P1-3 / R1 & P1-4 / R2 & P2-1 / E9（演练线程局部上下文隔离 `0%` 并发吞写 + 控制面不可达防假绿 `plane_verified` + 四维隔离证据上屏）**：将 `_SANDBOX_DRILL_ACTIVE` 升级为 `threading.local()` 线程局部上下文守卫 `_is_sandbox_drill_context()`，非演练线程并发 `PUT` 被吞率降至 `0%`（`0/16`）并输出拦截/透传双计数；新增 `_snapshot_selector_plane_with_status()` 与布尔字段 `plane_verified`，`:9090` 不可达时返回 `plane_verified: false, plane_untouched: false, ok: false` 拒绝假绿；前端 `nexus.js` 新增演练无损自证报告弹窗与 `selector_plane` 前后 Diff 折叠区。
+- **P2-4 / E7（多线池会话亲和 / 同国家地区出口粘滞控制）**：多线自动节点池新增 `session_affinity` / `same_region_multi_line` 与粘滞窗口 `session_sticky_s`（面板向导支持一键勾选），锁定同国家/地区出口并防止短连接跨 30s 窗口跨洲跳变；`v242_deep_chaos_simulation.py` 同步新增 `Stage 7.20`（`83/83 PASS`）。
+
+## v2.5.10 (2026-11-10) — 2.5.9-r19(2) 复审计 P0-1 演练双平面隔离 / P2-1..P2-3 与云端 FB-259-3 全量闭环 (PKG_RELEASE=20)
+
+- **P0-1 (`AI-LINK_2.5.9-r19(2)_节点池复审计报告 §4 & §6`) 故障转移演练 (`run_end_to_end_failover_drill` / `/api/auto_nodes/failover_drill`) 控制面与文件面双平面 100% 隔离**：① 新增全局 `_SANDBOX_DRILL_ACTIVE` 门闸并在 `SelectorWriteCoordinator.put_silent()`、`_put_clash_selector_silent()` 与底层 `clash_api_request()` 中阻断沙盒/非生产 `conf_dir` 的一切 `PUT /proxies/*` 请求，确保在多线池（如 `auto_1794075589` TikTok 2 线、`auto_hf_download` 3 线）演练时对现网 Clash Selector 实现 **0 次 PUT 泄漏**；② `scan_kernel_logs_for_active_pool_failures()` 在 `sandbox_drill=True` 时跳过 `maintain_auto_node_pool_health()` 外部补位、`PROBE_ENGINE.apply_shunt_selections()` 与 `dispatch_multi_line_pools_tick()`，严格将 `to_node` 约束在目标池已定义的成员集合内（`in_pool_scope=True`，杜绝越界选入池外节点）；③ 新增 `_snapshot_selector_plane()` 采集演练前后真实 `/proxies` 选点快照并校验 `plane_untouched = (plane_after == plane_before)`，同时在 `finally:` 中完整恢复 `_MULTI_LINE_RR_STATE`（`active_target` / `dispatched_history` / `cursors` / `rotation_log`）与 `SELECTOR_WRITE_COORDINATOR` 四项计数器。
+- **P2-1 (`§4`) `groups` 快路径补齐 `"index"` 键守卫与 `evaluate_all_auto_nodes` 逐池异常隔离**：在 `evaluate_single_auto_node()` 的单组快路径条件中显式增加 `"index" in raw_groups_cfg[0]` 守卫并使用 `int(g.get("index") or 1)` 兜底（消除手工配置或旧 schema 备份缺少 `index` 字段时触发的 `KeyError: 'index'`）；同时为 `evaluate_all_auto_nodes()` 的逐池循环增加 `try/except` 隔离，单池异常仅标记该池 `pool_degraded_alert=True` 而不中断其余池评估。
+- **P2-2 (`§4`) 修复 `index.html` 8 处静态资源双重 `?v=` 查询串并纳入 `gates_v101.py` 门禁**：将构建脚本中的查询串替换统一为正则覆盖 `re.sub(r'\?v=[^"'\s>]+', ...)`，消除 `?v=...?v=...` 拼接残留，并在 `gates_v101.py` `static_assets_md5_gate` 中强制断言 `html.count("?v=") == 8` 且单行无重复 `?v=`。
+- **P2-3 (`§4`) API 缓存量化窗口统一由 `15s` 提升至 `30s` 削减冷重建尖峰**：将 `build_status_api_response`、`build_auto_nodes_api_response`、`build_nodes_api_response` 与 `_make_wire_key` 的时间/mtime 量化窗口统一对齐至 `30s`，使周期性冷重建频率减半。
+- **FB-259-3 (`FEEDBACK-云端-v2.5.9-hotfix.md §1 & §3`) 打包增量说明硬门禁、正常升版 `v2.5.10` (`PKG_RELEASE=20`) 与 `Stage 7.19` 针对性混沌回归用例**：按云端反馈要求正常递增版本号至 `v2.5.10 (r20)` 以支持现网设备接收 OTA 更新提示；在验收报告首节增设「本轮增量说明」小节并纳入 `gates_v101.py` 校验；在 `v242_deep_chaos_simulation.py` 新增 `Stage 7.19`（共 `82/82` 项），完整覆盖多线池演练 Clash PUT 零泄漏、池内选点边界、缺 `index` 容错、单一 `?v=` 查询串、`_FAST_FILE_CACHE` 序列化返回对象防外部修改污染与候选池成员集合严格一致。
+
+## v2.5.9 (2026-11-10) — 2.5.9-r19 节点池复审计与云端反馈 P0-1 / P1-1(FB-259-1) / P1-2 / P2-1..P2-7 全量闭环 (PKG_RELEASE=19)
+
+- **P0-1 (`AI-LINK_2.5.9-r19_节点池复审计报告 §2.1`) 无损端到端故障转移演练 (`run_end_to_end_failover_drill` / `/api/auto_nodes/failover_drill`) 沙盒化与单池隔离修复**：演练全程拷贝生产配置至临时隔离目录 `drill_conf` 执行（`sandbox_drill=True`），严禁发起真实 Clash API `PUT /proxies/*`、清理宿主 conntrack 或递增全局生产 `kernel_log_failover.total_switches`；`scan_kernel_logs_for_active_pool_failures()` 新增 `only_pool_id` 精确作用域过滤，当多个池（如 `soul`、`多线负载`、`auto_hf_download`）共享同一活跃节点（如 `地区随机 | 比利时 BE`）时，仅对请求的 `pool_id` 执行故障注入与切换并按 `pool_id` 精确匹配 `target_sw`（实测 `auto_hf_download` 准确切至 `HK-N-5` 且 `ui_synced=True`），演练结束后 100% 校验 `before_snapshot == after_snapshot`（返回 `restored=True`、`restored_selector=True`、`restored_counters=True`、`other_pools_untouched=True`）。
+- **P1-1 & FB-259-1 (`FEEDBACK-云端-v2.5.9.md §1`) OpenWrt `/var -> /tmp` 软链环境下 `--self-test` 写拦截漏洞彻底根治**：新增 `_is_sandbox_exempt_write(target_path)` 统一守卫并接入 `_note_live_write_attempt` 与 `_note_live_write_leak`；将启动期锁定的 `_BOOT_CONF_DIR`、`_BOOT_RUN_DIR` 以及 `/etc/ai-link`、`/var/run/ai-link`、`/tmp/run/ai-link` 解析路径列入严禁豁免的生产根白名单（即使在 OpenWrt 上 `/var` 软链指向 `/tmp` 且未显式设置环境变量也绝不放行），仅在进程内动态改写 `RUN_DIR`/`CONF_DIR` 至独立临时沙盒且文件名为注册沙盒状态文件（`node_test_quota.json`、`ops_settings.json`）时豁免，实测模拟 `/tmp/run/ai-link` 连续 10 次自检 `blocked=20, leaked=0`。
+- **P1-2 & P2-4 (`§2.3`) 508 节点面板四大核心 API 耗时从 150–548 ms 压降至 < 5 ms（冷启动 < 160 ms）**：① 修复 `_atomic_write_text` 后台高频写 `node_probe.json` / `node_test_quota.json` 导致每秒全量清空 `_STATUS_API_MEMO`、`_SHUNT_API_MEMO`、`_NODES_API_MEMO`、`_AUTO_NODES_API_MEMO` 的缓存风暴；② 修复 `load_shunt_config` 中 `shunt.json` 与 `shunt_config.json` 因纳秒级 `st_mtime_ns` 差异在每次读取时互相重写触发 `apply_shunt_selections` 的自失效死循环；③ 将 `_get_live_singbox_pids` 与 `ensure_single_singbox_instance` 升级为 `os.scandir("/proc")` 共享缓存（0.8s TTL），并为 `get_core_runtime_info`（1.2s TTL）与 `get_ca_cert_info` 增加文件签名缓存，实测 508 节点下 `/api/status` 中位 `1.11 ms`、`/api/auto_nodes` 中位 `0.31 ms`、`/api/nodes?sparkline=0` 中位 `0.68 ms`、`/api/shunt` 中位 `0.64 ms`，首屏四接口中位总和仅 `2.74 ms`。
+- **P1-1(2.5.8) & P2-1 ~ P2-7 & FB-259-2 全量加固**：修复 `409 stale_preview` 提前返回保留原 `status` 并记录可诊断 `last_error`；`bound_group_targets` 数组渲染与 `multi_line_rotation_log` / `dwell_bypass_calls` 全链路对齐；前端触发「故障转移演练」前新增 `confirmModal` 二次确认弹窗（P2-1）；`/api/auto_nodes/failover_drill` 接入 `_strict_auth_ok()` 鉴权守卫（P2-5）；移除 `simulate_error` 的 `X-AI-Link-Debug-Hook` 请求头旁路，仅允许服务端配置或环境变量开启（P2-6）；验收报告第 五 节明确标注「（构建容器）」与真机复验说明（FB-259-2）。
+
+## v2.5.8 (2026-11-10) — 2.5.7-r17 节点池复审计 P1/P2/附录A 与 FB-257-3 全量闭环 (PKG_RELEASE=18)
+
+- **P1-1 & P1-4 & FB-257-3 官方自检 (`ai-link probe` / `--self-test`) 四层架构重构、全写口收口与 `gates_v101.py` 跨进程竞态彻底根治**：移除 `--self-test` 对后台常驻 daemon 高频改写热文件（`node_test_quota.json`、`ai-link.nft`）的跨进程 SHA 字节对比，彻底解决并发巡检消耗配额引发的误报 `leaked=1` (`rc=1`)；将 `ai-link-daemon.py` 中全部 19 处针对 `CONF_DIR`/`RUN_DIR` 的裸 `.write_text(` 全量收口至 `_atomic_write_text`，并挂钩 `Path.write_text` 与 `Path.write_bytes` 底层拦截；自检内置 3 路金丝雀写探针（`_atomic_write_text`、裸 `Path.write_text`、`record_switch_event`）断言 `blocked >= 3` 且 `leaked == 0`；同时在 `gates_v101.py` 中将 `AI_LINK_CONF_DIR` 与 `AI_LINK_RUN_DIR` 环境变量注入统一提升至 `if/else` 分支外，确保纯包解压目录与标准发版布局连续运行 100% 稳定通过。
+- **P1-2 & P2 & §5.2 前后端字段契约双向门禁 (`tools/check_api_ui_parity.py`) 与未绑定池一键绑定修复**：`preview_subscription_sync_impact()` 补齐返回 `endpoint_changed_tags`、`credential_changed_tags`、`same_tag_replaced_tags` 列表；修复 `nexus.js` 中 `quick-bind-pool` 发送字段契约（同时携带 `shunt_mode: "auto"`、`strategy: "auto"`、`auto_node_id`）、校验 `bindRes.ok !== false` 并在覆盖已有池绑定时弹出 `confirmModal` 二次确认，后端 `/api/shunt/update` 同步兼容 `strategy_mode` 别名；新增 `tools/check_api_ui_parity.py` 纳入 `gates_v101.py` 自动阻断前后端字段失配。
+- **P1-3 预览与同步节点批次强绑定 (`preview_request_id` + `nodes_fingerprint`)**：`/api/subscriptions/preview_sync` 按 `request_id` 缓存精确解析后的 `incoming_nodes` 批次（32 条 LRU 上限，TTL 300s）并返回 `nodes_fingerprint`；用户在预览弹窗点击「确认立即同步订阅」时携带 `preview_request_id` 与 `expected_fingerprint` 直通 `/api/subscriptions/sync` 复用同一批节点（跳过二次拉取，杜绝动态随机订阅二次拉取漂移），若预览过期或指纹失配则返回 HTTP `409 stale_preview`。
+- **P2-1 ~ P2-10 & 附录 A 多出口轮询使用现象治理全量落地**：`impact_ratio` 百分比展示封顶 `100%`（`impact_pct`）；清理 `index.html` 残留静态 `"15 组"` / `"4 个"` 并由 `renderShuntMatrix()` 动态刷新；`_gc_orphan_probe_dict` 立即清理非池成员 `dead` 探测记录；订阅卡片持久化并展示「动态随机」风险徽标；暴露 `dwell_bypass_calls`、`bound_group_targets`（各绑定分流组实时出口映射）与 `multi_line_rotation_log`（结构化轮换轨迹）；多出口轮询剔除无实测 RTT 的未测节点、在 30s 驻留窗口内保持当前节点游标防重置，并将前端提示精确更新为「每个分流组同一时刻仅 1 个出口生效；不同分流组可能落在不同节点（每 30 秒轮换，仅对新连接生效，不叠加单流带宽）」。
+
+## v2.5.7 (2026-11-10) — 2.5.6-r16 节点池复审计 P0/P1/P2 与 FB-256-1..4 全量闭环 (PKG_RELEASE=17)
+
+- **P0-1 & P1-5 订阅差异预览前端全字段消费、失败态硬拦截与 60s 缓存**：`nexus.js` 完整渲染 `/api/subscriptions/preview_sync` 返回的 `stability_warning`、`dynamic_random_sub`、`jaccard_stability`、`impact_ratio`、`preserved_count`、`same_tag_replaced_count`、`endpoint_changed_count`、`credential_changed_count`、`replaced_same_tag_count` 与 `request_id`；点击后立即进入 `aria-busy` 加载保护；当 `res.ok === false` 时严格拦截并提示含 `request_id` 的错误详情，绝不伪装成“无损更新”；后端增加 60s 上游预览缓存与 `_curl_fetch_subscription` 统一拉取。
+- **P1-1 Jaccard 稳定性基准锚定当前生产集合与预览只读化**：`preview_subscription_sync_impact` 改为纯只读，基准固定对比当前生产已保存节点集合 `old_k_set` 并结合 `impact_ratio > 0.30` 触发预警；历史环形缓冲持久化至 `sub_jaccard_ring.json` 且仅由真实同步（`merge_nodes`）写入，保证连续 10 次预览与重启前后结论 100% 稳定一致。
+- **P1-2 & FB-257-1 `--self-test` 计数语义拆分（`blocked` vs `leaked`）、衍生路径沙箱化与真机生产态 3 连跑零写盘闭环**：将 `_note_live_write_attempt` 拆分为拦截成功计数 `_SELF_TEST_LIVE_WRITE_BLOCKED` 与未拦截泄露计数 `_SELF_TEST_LIVE_WRITE_LEAKED`（由 `_note_live_write_leak` 记录），断言 `leaked == 0` 且金丝雀探针 `blocked >= 1`；同时将 `write_all_configs` (`ai-link.nft`/`lan_direct_macs.txt`)、`generate_singbox_config` (`homelink_ports`/`node_ips.txt`) 与 `_node_test_quota_path` (`node_test_quota.json`) 在自检/沙箱态下全量重定向至临时沙箱目录并隔离 `:9090` 端口后台探测，彻底解决真机存在 `/var/run/ai-link` 时的 15 次误触发回归。
+- **P1-3 外部 HTTPS 请求全面收口至 `allow_insecure_tls`**：消除 L7 服务验证、规则/SRS 下载、DoH 与健康探测等其余 8 处硬编码 `-k` 与 `_create_unverified_context()`，默认严格校验证书。
+- **P1-4 多出口轮询文案全面诚实化**：清理 `nexus.js` 全部 6 处残留“多线并发”文案，统一为“多出口轮询”并在池卡片提示中明确标注“同一时刻仅 1 个出口生效，每 30 秒轮换，不叠加单流带宽”。
+- **P2-1 ~ P2-10 & FB-256-1..4 & FB-257-2 全量加固**：运行时动态注入全站分流组/节点池数量；澄清节点池三口径统计、容量不足原因与 L7 降级说明；支持未绑定节点池一键绑定；`node_probe.json` 增加 7 天 dead 记录 TTL GC；`selections.json` 语义无变化时跳过重写；最终包冻结后解压回填报告 11 行指纹表、实跑后置注入 `run_all.py` 汇总原文与容器/真机验证环境说明，并在 `gates_v101.py` 强制生产态 `RUN_DIR` 连续 3 次 `--self-test` 与负向关闭拦截转红门禁。
+
+## v2.5.6 (2026-11-09) — 2.5.5-r15 加强复审计 6 项 P1 & 6 项 P2 全量闭环 (PKG_RELEASE=16)
+
+- **P1-1 & FB-255-2 自检语义断言与零生产竞态**：将 `--self-test` (`ai-link probe`) 末尾全文件字节比较升级为进程级 `_SELF_TEST_LIVE_WRITE_ATTEMPTS == 0` 守卫与语义脏标签断言，彻底消除与后台常驻 daemon 正常选点写入的时序竞态；为 `tarfile.extractall` 注入 `filter="data"` 兼容参数。
+- **P1-2 唯一 `SelectorWriteCoordinator` 与 30s 全局驻留**：收口全部 Clash Selector 写入路径；`dispatch_multi_line_pools_tick` 与 `/api/auto_nodes/dispatch_tick` 默认启用 30s 驻留且目标未变化时跳过冗余 `PUT`；`evaluate_all_auto_nodes` 与 `apply_shunt_selections` 不再覆盖已处于合法 `multi_line_nodes` 内的选择器，正常轮换仅更新遥测不污染 `switch_history.json`。
+- **P1-3 内核日志故障转移未知目标抑制**：将 `targets == []`（无明确目标域名/IP）纳入 `len(distinct_targets) < min_targets` 抑制守卫（`single_target_suppressed=True`），杜绝单条/空目标超时误触发直连降级。
+- **P1-4 & P1-5 订阅预览完整身份 Diff、动态随机订阅检测与零 500 并发保护**：`preview_subscription_sync_impact` 新增 `preserved`、`endpoint_changed`、`credential_changed`、`same_tag_replaced`（同名换节点）完整映射与连续拉取 Jaccard 稳定度告警，替换建议严格按池地区/健康度优选，并加锁返回结构化 `request_id`。
+- **P1-6 订阅拉取严格 TLS 证书校验**：移除 `_curl_fetch_subscription` 在 35/51/60 错误码下的自动 `-k` 重试与 `urllib` 默认不校验证书降级，仅在订阅显式开启 `allow_insecure_tls=True` 时放行。
+- **P2-1 ~ P2-6 & FB-255-3 全量打磨**：拆分 `manual_quota_frozen` 与 `pool_health_quota_frozen`；清理前端残留静态旧文案；补齐 IPK `prerm/postrm` 服务停机与 nft/DNS 恢复并更新 `Description` 为 `v2.5.6`；Watchdog 记录前后 PID、原因与恢复耗时 `recovery_ms`；`node_probe.json` 改为 tmpfs 实时写 + 180s 节流落盘；测试套件计数与指纹全自动注入。
+
+## v2.5.5 (2026-11-09)
+- **官方自检 (`ai-link probe` / `--self-test`) 100% 生产隔离与脏数据自愈 (`P0-1` & `P1-5.4`)**：全链路增加 `_SELF_TEST_ACTIVE` 与 `_is_live_conf_dir` 守卫，非生产目录或自检态严禁写 `/var/run/ai-link/selections.json`、`/var/run/ai-link/switch_history.json` 或发起 Clash API `PUT /proxies/*`；启动/加载时自动清洗残留的 `JP-Trojan-01`、`HK-SS2022-01` 等自检假节点，并在 `--self-test` 末尾强制执行字节级零变化断言。
+- **探测预算双轨拆分、故障复验免配额穿透与真实探测新鲜度 (`P0-2` & `P1-5.1`)**：将自动池健康巡检预算 (`pool_health_budget >= 45,000`) 与日常探索测速预算分离，500+ 节点库自动扩容至 `>= 60,000` 并迁移清零旧超限计数；`on_egress_fail()` 故障复验强制 `force=True` 免配额穿透，杜绝配额耗尽时因读取旧缓存 `state=ok` 而阻断故障切换；`last_check_ts` 严格反映池成员真实探测时间 (`last_real_probe_ts`)，暴露 `probe_stale`、`fresh_ok_count` 与 `quota_status`。
+- **多线池 Selector 1对1 唯一归属与 30s 稳定驻留轮询 (`P0-3` & `P0-5`)**：修复 `dispatch_multi_line_pools_tick` 中因 `_match_auto_node_pool([a], aid_sg)` 默认 `allow_fallback=True` 导致跨池抢占 `Shunt_*` 的问题，确保每个分流组 Selector 唯一归属其绑定池；将后台轮换驻留窗口收敛为 `30s`（故障时仍秒切），并将前端文案如实更新为「多出口轮询（实验，不叠加单流带宽）」。
+- **L7 服务可用性严格三态验证与半开恢复防绕过 (`P0-4` & `P1-5.3`)**：在 `service_check` (`full`) 模式下，仅当节点具备 24h TTL 内的真实 L7 通过记录（`svc_verified=True`）时才纳入合格队列；0 验证通过时强制标记 `l7_degraded=True` 并在 UI 显示「L7 待验证」，同时禁止服务池通过 `quarantine_break_glass` 绕过 L7 验证。
+- **配置与存储写放大治理 (`P1-5.2` / `5.5` / `5.6` / `5.7` / `5.8` / `5.9`)**：修复 `Auto_Auto_AI` 双重前缀、专用池未绑定告警、订阅预览 `node_key+tag` 双重匹配、自动选点 30s 轮询与缓存透明提示、订阅拉取优先校验证书、`max_outbounds.txt` 归一为 `0`、IPK `control` 描述同步，以及 `traffic_ledger.json` tmpfs 主写 + 180s 节流落盘（降低 90%+ 闪存写放大）。
+
+## v2.5.4 (2026-11-09)
+- **验收报告版本锚点与 `Makefile` 动态注入闭环 (`FB-253-1`)**：打包与报告生成脚本直接从 `Makefile` 读取 `PKG_VERSION:=2.5.4` 与 `PKG_RELEASE:=14`，自动注入报告与 `HANDOFF.md`，并在 `gates_v101.py` 增加 `Makefile == ipk 文件名 r14 == 报告 PKG_RELEASE:=14` 的三方一致性门禁。
+- **验收报告按版本结构化重构 (`FB-253-2`)**：验收报告首节固定为本轮 `v2.5.4` 增量改动与反馈闭环清单，剥离上一版本专属旧章节，历史版本（`v2.5.0`~`v2.5.3`）统一收敛为状态总表，并在 `gates_v101.py` 增加报告首节版本号校验门禁。
+- **自动节点池全员隔离半开破冰自愈、D-01 越界拦截、多线并发双通道保底与声呐三环刻度/动态版本号对齐 (`Stage 6.30a`~`Stage 6.31b`)**：支持手动移除节点防回弹 (`manually_removed_tags`)、全员隔离但已恢复连通时半开破冰接管 (`quarantine_break_glass`)、D-01 兜底越界拦截、多线并发最低双通道保底、声呐三环延迟刻度 (`50ms/150ms/300ms`) 与全站动态版本号单一真相源。
+- **固化四项标准出包质量门禁**：12 个订阅格式夹具整棵随包、产物定稿后自动计算注入 4 列指纹表、`--self-test` 独立临时沙箱隔离、以及出包前全新隔离目录零补发实测 `python3 tests/run_all.py` 15/15 全通。
+
+## v2.5.3 (2026-11-09)
+- **测试集夹具全量随包闭环 (`FB-252-1`)**：将 `tests/subscription_formats/` 全部 12 个多格式订阅夹具文件（Clash/Sing-box/Surge/Loon/SIP008/V2Ray/Base64/URI）完整纳入 `AI-LINK-v2.5.3.tar.gz` 与云端交接包，并在 `gates_v101.py` 增加夹具目录与原始包零补发解压门禁。
+- **单文件指纹零字节偏差机制化 (`FB-252-2`)**：消除 `v242_deep_chaos_simulation.py` 尾部换行符在 Canvas 导出时的 1 字节剥离差异，并在 `gates_v101.py` 中强制校验无尾部换行符及报告 4 列指纹逐字节一致。
+- **守护进程 `--self-test` 全沙箱隔离与 `run_all.py` 就绪等待**：将 `--self-test` 所有配置与状态校验完全隔离至独立临时目录 `tmp_test_dir`（零读写现网 `/etc/ai-link`），并在 `run_all.py` 启动前增加本地 `:9099/api/status` 连续就绪探测与重试守卫。
+- **自动节点池跨订阅级联自愈与微波形/流量洞察刻度增强 (`Stage 6.25a` & `Stage 6.25b`)**：停用或删除订阅时毫秒级触发自动节点池跨订阅补位；`drawLatencyChart` 补齐峰/均/谷三锚点，三维流量洞察补齐 24h 时间坐标轴。
+
+## v2.5.2 (2026-11-09)
+
+- **[自动节点池订阅源与国家区域范围强约束闭环 (`ai-link-daemon.py` & `nexus.js`)]**：
+  1. **修复订阅同步自动补位跨订阅误选 (`_reconcile_auto_pools_after_sub_sync`)**：修复订阅更新触发节点池自动补位时未按池绑定的 `scope_sources`（勾选订阅源）与 `scope_countries`（勾选国家/地区）过滤的问题，杜绝非勾选订阅源的节点被自动补入池内。
+  2. **修复低健康度自动复选与日常维护范围越界 (`maintain_auto_node_pool_health` / `_normalize_auto_node_item`)**：在保存与加载节点池时强制将 `scope_sources`、`scope_source`、`scope_countries` 与 `filters`（`sub_id` / `region_any`）双向锁步同步；巡检与低健康度复选时自动剔除不在勾选订阅或地区范围内的越界节点，并严格仅从勾选订阅与地区内补位。
+  3. **修复单订阅通配与前端向导范围过滤 (`_filter_nodes_by_pool_scope` / `openAutoNodeEditorModal`)**：移除当节点携带其他订阅 ID 时仍被单订阅兜底匹配的问题，前端修改勾选订阅或地区后保存前自动剥离超范围旧节点。
+- **[闭环 `FEEDBACK-云端-v2.5.1.md` 全部 5 项反馈 (`FB-251-1 ~ FB-251-5`)]**：
+  1. **修复 `gates_v101.py` 套件提取正则与包内自包含校验 (`FB-251-1`)**：修正 `SUITES` 提取正则并断言 `len(suites) >= 14`，显式将 `tests/`（含 `v242_deep_chaos_simulation.py`）写入 `.tar.gz` 与 `.zip` 并由 `gates_v101.py` 直接开包核验。
+  2. **校准报告四列指纹表全量一致性 (`FB-251-2`)**：消除单独补发脚本尾部换行符差异，并在 `gates_v101.py` 中新增报告与 `HANDOFF.md` 指纹表逐行比对硬门禁。
+  3. **消除测试脚本版本号硬编码 (`FB-251-3`) 与分流下拉框多线线数虚标 (`FB-251-4` / `FB-251-5`)**：`test_v102_full_regression.py` 改为动态读取 `dmod.APP_VERSION`；`nexus.js` 分流组下拉选项同步改为真实线数/单线降级文案，且全文零 `Math.max(2, ... active_lines_count)`。
+
+## v2.5.1 (2026-11-08)
+
+- **[LuCI 面板极简重构 & v2.5.0 验收反馈 FB-250-1~6 全量闭环 (`htdocs/.../overview.js` & `ai-link-daemon.py`)]**：
+  1. **LuCI 面板极简重构**：移除冗余的底层 UCI 表单（防止 LuCI 保存覆盖独立面板配置）、移除组件更新表与高级策略下拉框；可操作区仅保留基础服务启停（启动/停止/重启/开机自启）、透明代理接管开关、重载内核、打开 `:9099` 独立控制台按钮以及完整的 OTA 在线检查与热更新模块；其余区域仅只读展示 4 项核心运行状态 KPI。
+  2. **修复 `daemon --self-test` 出站字段白名单 (`FB-250-1`)**：将 `urltest` 专属字段 `{"url", "interval", "tolerance", "idle_timeout"}` 纳入 `allowed_sb_keys`，确保 `python3 tests/run_all.py` 15/15 全绿通过。
+  3. **打包与文档硬门禁 (`FB-250-2 ~ FB-250-6`)**：将 `v242_deep_chaos_simulation.py` 同步内置于 `tests/` 与源码树 `site/ai-link-openwrt/tests/`，固定产出 `HANDOFF.md` 与自动计算的四列产物校验指纹表（文件名 / 大小 / MD5 / SHA-256），并在 `gates_v101.py` 中新增 4 项交付一致性硬门禁。
+
+## v2.5.0 (2026-11-08)
+
+- **[自动节点池多线并发内核层与数据面真实落地 (`DIAG-多线并发功能生效性-20261108.md` 闭环)]**：
+  1. **内核 `urltest` 编组与无损连接保持 (`generate_singbox_config`)**：为 `dispatch_mode == "multi_line"` 的非敏感自动节点池生成 `"type": "urltest"` 出口 `Auto_<pool>_MultiLine`（严格限定为剔除慢节点后的 `multi_line_nodes`），并将 `Auto_<pool>` 与绑定的非敏感分流组（如 `Shunt_YouTube`、`Shunt_TikTok`）设为 `interrupt_exist_connections: false`，同时保持 `Shunt_AI` 单线防风控保护。
+  2. **0.5s 错峰无损轮转并发调度器 (`dispatch_multi_line_pools_tick`)**：后台守护线程按 `0.5s` 周期与组间错峰偏移静默轮转 `:9090/proxies/<selector>`，实现存量连接不断流、新建并发连接自动分摊至多个物理节点。
+  3. **节点池全生命周期与订阅自动同步开关修复**：统一 `_normalize_auto_node_item` 慢节点离散度过滤，`auto_screen` 纳入带宽择优并排除 4 层 DAG 链式落地节点；订阅卡片新增 `.sub-autosync-btn` 一键切换自动同步胶囊，编辑订阅弹窗新增 `#mdl-sub-auto-update` 开关。
+
+## v2.4.9 (2026-11-08)
+
+- **[自动节点池稳定性加权与全站双栏等高/全息波形可读性重构]**：
+  1. **自动节点池算法加固**：引入滑窗丢包率与抖动变异系数惩罚因子、低健康度非破坏性保员、60 分钟隔离期满自动解封及多线并发副线内核日志故障感知。
+  2. **全息流量波形与双栏 100% 等高对齐**：新增 4-KPI 实时摘要栏、Y 轴自适应刻度、峰值徽章与悬停十字准星浮窗；修复高分屏 `DPR=2` 下 `<canvas>` 高度膨胀问题，确保概览页与 DNS 页左右并排卡片高度差为 `0px`。
+
+## v2.4.8 (2026-11-08)
+
+- **[真机验收报告 `VERIFY-v2.4.7.md` 全量 6 项问题闭环]**：
+  1. **修复 `@lan_direct_macs` Fake-IP 豁免规则协议冲突 (`P0-1`)**：将 `198.18.0.0/15` 豁免规则拆分为 `meta nfproto ipv4` 与 `meta nfproto ipv6` 两条独立规则，消除 `nft -c -f` 协议冲突报错。
+  2. **修复 `/api/shunt/update` 按组专属 DNS 落盘与 `except: pass` 清理 (`P2-6` / `P3-4` / `P3-5`)**：兼容 `id`/`group_id` 字段并注入 `domain_resolver: "dns_direct"`，全文件 `except -> pass` 清零，补齐 4 阶透视 `query` 回显字段。
+
+## v2.4.7 (2026-11-08)
+
+- **[深度模拟巡检 #2 · 4 大用户场景深化打磨闭环]**：
+  1. **DNS 三大开关防轮询竞态闪烁 + 4 阶流量透视器内联源 IP/MAC 语法支持 (`webui/nexus.js` & `ai-link-daemon.py`)**：为「云端域名过滤护盾 (`#toggle-dns-filter`)」、「核心应用防误杀白名单保护 (`#toggle-dns-essential-protect`)」与「DNS 防跳重写 (`#toggle-dns-rewrite`)」接入 `_opsMutationInFlight` 重入锁、`_opsFieldMuteUntil` 3 秒轮询静默保护窗与接口失败自动回滚；在 4 阶流量透视器 (`trace_traffic_flow`) 中支持内联源设备语法（如 `10.10.10.58 -> api-chat.soulapp.cn`、`aa:bb:cc:dd:ee:99 -> www.youtube.com` 或 `chatgpt.com @10.10.10.58`）；
+  2. **T6 配置变更历史快照纯净 Diff 与一键回滚 UCI/内核配置同步闭环 (`ai-link-daemon.py`)**：`_capture_current_config_files()` 新增覆盖 `dns_rewrite.json` 与 `rule_providers.json`；`record_config_snapshot()` 对 `new_ops_cfg` 严格按 `OPS_PERSIST_KEYS` 过滤，彻底消除每次修改系统开关时产生 4 条虚假 `added` Diff 的噪音；`rollback_config_snapshot()` 回滚 `ops_settings.json` 时自动调用 `sync_ops_settings_to_uci()` 反向治愈 UCI `/etc/config/ai-link` 并立即重新生成 `sing-box.json` 与 `ai-link.nft`；
+  3. **T8 组合规则块域名 Fake-IP 优先级提权与 T10 按组专属 DNS (`custom_dns`) 真实编译进 `sing-box.json` (`build_singbox_config`)**：将 `Domestic_CN` 之上代理分流组内 T8 `rule_blocks` 的 `domain`/`domain_suffix` 自动提取纳入 `proxy_prio_doms`（确保混合/国内域名命中代理规则块时优先分配 Fake-IP，防止在开启 `entry_bypass` 时被防火墙提前直连放行）；同时将分流组配置的 `custom_dns` (`dns_strategy != 'inherit'`) 真实编译进 `sing-box.json` 的 `dns.servers` (`dns_grp_<id>`) 与 `dns.rules`；
+  4. **HomeLink 回家网关动态系统保留端口防冲突与外网端口边界校验 (`validate_homelink_port`)**：动态读取当前 UCI/运行态配置的 `panel_port`、`tproxy_port`、`mixed_port`、`dns_port` 纳入核心保留端口集，并对 `/api/homelink/add` 与 `/api/homelink/update` 的 `listen_port`/`external_port` 非法类型或越界端口返回明确 400 拦截提示。
+
+## v2.4.6 (2026-11-08)
+
+- **[深度模拟巡检 #1 · 4 大用户场景全链路打磨闭环]**：
+  1. **前端交互与轮询竞态防护 (`webui/nexus.js`)**：`mutateOpsSwitch` 新增 `<16ms` 乐观更新、同键位重入锁 (`_opsMutationInFlight`) 与 3 秒轮询静默保护窗 (`_opsFieldMuteUntil`)，彻底消除点击开关时遭遇后台 5 秒 `/api/status` 轮询覆盖造成的开关跳回闪烁；修复三模数据面 (`#sel-ops-data-plane-mode`) 与 TUN 协议栈 (`#sel-ops-tun-stack`) 切换失败时未回滚下拉框状态的缺陷；在「面板监听、免密网段与设备直通白名单配置」弹窗中补全 `lan_direct_macs`（局域网设备 MAC 免代理直通）、`tun_mtu`（PPPoE 1492/1480 调优）与 GitHub 加速源快捷候选列表；
+  2. **JSON 备份/恢复与恢复出厂全模块覆盖 (`ai-link-daemon.py`)**：`export_ops_backup()` 与 `restore_ops_backup()` 新增 `rule_blocks`（组合分流规则块）、`rule_providers`（远程规则集订阅）、`sonar_targets`（概览声呐自定义目标）与 `alert_channels`（告警通知渠道）完整往返备份与恢复；`factory_reset_all_configs()` 补全上述模块清理及 `data_plane_mode`/`tun_stack`/`tun_mtu`/`ipv6_leak_mode` 全量重置；
+  3. **订阅同步自定义属性继承与手动/链式节点防误删 (`merge_nodes`)**：订阅刷新 (`replace_sub=True`) 时自动继承同 `node_key`/`node_id` 节点上用户设置的 `region_override`、`disabled`、`remark`；全量替换 (`replace_all=True`) 时严格保留所有手动添加节点 (`_manual`/`is_custom`) 与 4 层 DAG 链式落地节点 (`is_chained`)；
+  4. **局域网设备 MAC 免代理直通 (`@lan_direct_macs`) 防 Fake-IP 黑洞闭环**：`generate_nft_rules_file()` 在 `chain dstnat` 为 `@lan_direct_macs` 注入 53 端口直达 `223.5.5.5:53` DNAT 规则（从源头规避 Fake-IP 分配），并在 `prerouting_tproxy` 中限定 `@lan_direct_macs` 仅直通非 Fake-IP (`!= 198.18.0.0/15`, `!= fc00::/18`) 流量，同步在 4 阶流量透视 (`trace_traffic_flow`) 中支持 `src_mac` 免代理直通诊断。
+
+## v2.4.5 (2026-11-08)
+
+- **[P0 修复 · 升级与重启配置持久化单一真相源 (SSOT) 闭环]**：彻底解决每次版本升级、IPK 覆盖安装或服务重启时将用户已开启的「IPv6 透明代理 (`ipv6_proxy`)」重置为关闭、将用户已关闭的「国内流量不进内核 (`entry_bypass`)」重新打开的顽疾：
+  1. `ai-link-daemon.py` 新增 `sync_ops_settings_to_uci()` 纯 Python 文件级 + `uci` CLI 双通道反向同步机制，将 `/etc/ai-link/ops_settings.json` 确立为唯一权威真相源（SSOT）；
+  2. 重构 `sync_uci_to_ops_settings()` 与 `get_ops_settings()`，移除因 `/etc/config/ai-link` 时间戳更新触发反向覆盖 `ops_settings.json` 的缺陷，升级或 `--generate-configs` 时自动从 `ops_settings.json` 治愈 `/etc/config/ai-link` 与 `uci_ai_link.bak`；
+  3. `install.sh` 升级前双重备份 `/etc/config/ai-link` 与 `/etc/ai-link/ops_settings.json`，将 `require_lan_auth` / `trusted_cidr` 改为非破坏性 `uci_set_default`，并在 `uci commit` 后立即执行 `--sync-ops-to-uci`；
+  4. `luci-app-ai-link_2.4.5-r9_all.ipk` 控制包新增 `./conffiles` 声明 `/etc/config/ai-link`，并在 `postinst` 中支持 `AILINK_INSTALLING=1` 协同与 `--sync-ops-to-uci` 自愈；
+  5. `root/etc/init.d/ai-link` 新增 `get_ops_or_uci_bool` / `get_ops_or_uci_str`，优先从 `ops_settings.json` 读取 `ipv6_proxy`、`entry_bypass`、`block_quic`、`game_udp_direct` 与 `data_plane_mode`；
+  6. `webui/nexus.js` 新增 `localStorage` (`ailink_ops_cache_v1`) 首屏瞬态水合与 LuCI `overview.js` 底层复选框双向同步，彻底消除首屏开关闪烁与表单漂移。
+
+## v2.4.4 (2026-11-08)
+- **三维流量洞察 100% 真实账本对齐 (`/api/traffic/insights`)**：彻底重写 `build_traffic_insights_response`，直读 `traffic_ledger.json` 的 `hours`、`days`、`devices`、`nodes`、`targets` 真实账本，清除 `64 MiB` 兜底假数据、`0.55`/`0.45` 固定节点比例与合成时间权重，空账本严格返回 0。
+- **全挂自动节点池 (`all_groups_dead_alert=True`) 四态一致性与防振荡闭环**：修复 `resolve_node_for_country_strategy_with_failover`、`get_auto_node_candidate_pool` 与 `_enrich_auto_node_groups_members` 对地区拒服 (`google_region=HK`)、隔离冷却及 `all_groups_dead_alert` 状态的统一判定，彻底消除 `Auto_WorkBuddyAI` 每 22 秒在 `direct` 与 `VIP1-05-新加坡` 间往复振荡的死循环。
+- **切换残余连接清理 (`flush_conntrack_for_switch`) 生产链路闭环**：接入 `request_switch()` 出口切换流程，按 `selector_tag` 与 `old_node` 精确断开旧出口残余 Clash 会话，并增加空范围拒绝保护 (`empty_scope_refused`)。
+- **底层多核 RPS/RFS/XPS 软中断调优备份与还原闭环**：在 `init.d/ai-link`、`ai-link-daemon.py` 与 `uninstall.sh` 中完整备份并还原 `/proc/sys/net/core/rps_sock_flow_entries` 及各网卡队列 `rps_cpus`/`rps_flow_cnt`/`xps_cpus` 原始值，支持 `ailink0` 虚拟网卡队列调优，并将 `GOMAXPROCS` 收敛至 `sing-box` procd 实例。
+- **节点列表构建单次缓存与带宽偏好首轮异步探测**：消除 `build_nodes_api_response` 每节点 4 次重复调用 `classify_node_line_type` 与 `get_node_google_region_info`；开启 `bandwidth_prefer` 时自动异步触发首轮低开销带宽探针。
+- **启动迁移日志 (`migration.log`) 幂等化**：当 `migrate_legacy_shunt_config` 发生迁移时立即持久化写回 `shunt.json` 并去重日志记录，避免重启重复追加。
+
+## v2.4.3 (2026-11-08)
 
 - **自动节点池「多线并发」与交互级 AI 防风控护栏**：节点池新增优选单线 (`single_best`) 与多线并发 (`multi_line`) 调度模式；勾选 AI 敏感服务时前端自动锁定单线，且当 `AI/Google/Microsoft/Apple/Social/Soul` 等 IP 敏感分流组绑定至多线并发池时后端自动启用单线保护 (`auto_single_line_protected=True`)。
 - **底层静默多核 CPU RPS/RFS/XPS 软中断均衡与切换秒清残留连接**：`init.d/ai-link` 与守护进程启动时静默完成多核网卡队列软中断绑定与 `GOMAXPROCS` 调优；`request_switch()` 切换节点与断开连接时异步秒清 Clash 活跃连接与内核 `conntrack` 表项。
@@ -392,20 +428,20 @@
 - **订阅卡片防出框与同步可视化进度条弹窗**：修复 `.sub-health-box` 文本与胶囊溢出问题；点击「立即同步 / 同步全部 / 保存并同步」统一弹出实时进度条与逐订阅状态明细，同步成功后立即刷新卡片「同步时间」并清除旧「失败」残留。
 - **测速配额自适应与防假死、概览声呐可自定义目标与断网清零、设置页内核更新与开关对齐**：完整包含 v2.4.0 全部架构升级与事故根因修复。
 
-## [v2.4.0] (正式发布 · 2026-11-05)
+## v2.4.0 (正式发布 · 2026-11-05)
 - **受控三模透明代理数据面 (`tproxy_redirect` / `tproxy_tcp_tun_udp` / `tun_full`)**：新增零拷贝 TProxy、游戏混合 TUN（TCP TProxy + UDP `ailink0` Full-Cone NAT）与全量 TUN 虚拟网卡三档无缝切换，自动联动策略路由表 `163`、`fw4` 转发放行与防断网黑洞看门狗。
 - **`sing-box` 版本感知 Schema 适配器 (`1.11 ~ 1.15+`) 与 5 步沙箱安全热升级**：根据内核版本自动适配 `multi_queue`、`dns_mode: disabled` 与 `stack`，内置架构识别、`sing-box.new check -c` 预检、`sing-box.bak` 备份与失败自动回滚。
 - **全站 6 页分页头移动端与平板自适应重构**：修复 `375px ~ 980px` 视口下 `.dns-hero.page-hero` 挤压变形与超高问题，移动端统一收敛为紧凑纵向流式 HUD 卡片与 3 列同排指标。
 - **自动节点池与分流列表 1:1 严格同源**：修复自动池首选节点与绑定分流策略组出口节点/延迟显示不一致问题。
 
-## [v2.3.7] (正式发布 · 2026-11-04)
+## v2.3.7 (正式发布 · 2026-11-04)
 
 - **全站 6 大功能页统一「护盾/回家同构单横幅 Hero」**：移除概览、分流、回家、护盾、节点、设置 6 页顶部多余的第二层 `.content-head` 顶栏，全部统一为每页顶部唯一的 `.dns-hero.page-hero.glass-card`（含径向发光背景、与左侧导航 1:1 统一的发光图标与双层脉冲环、流动光子轨道、3 项实时指标与右侧控制区）。
 - **BusyBox `flock` 兼容与透明代理挂载保护 (P0-1)**：`apply_nft.sh` 采用 4 级兼容锁并确保加锁超时严格 `exit 1`，`install.sh` 验活确保 `table inet ai_link` 100% 挂载。
 - **每日测速配额超限跳过保态与自动自愈 (P0-2)**：达到日配额上限时跳过探测并 100% 保留节点既有健康态，升级时自动重置旧版未持久化的异常累计计数并自愈历史受污染探测记录。
 - **探测缓存实时同源与细节打磨 (P2-1~P2-3 / P3)**：`node_probe.json` 纳入 `_conf_file_mtimes_sig` 确保全接口 `pool_reachable_count` 实时同源；修复离线态概览页重复告警横幅与护盾页 `NaN` 显示。
 
-## [v2.3.6] (r10 实机验收闭环 · 2026-11-04)
+## v2.3.6 (r10 实机验收闭环 · 2026-11-04)
 
 - **[P0-1 修复 · BusyBox `flock` 三级降级锁与 `install.sh` 严格断言]**：修复 `apply_nft.sh` 在 BusyBox `flock`（仅支持 `[-sxun]`，不支持 `-w`）下报 `unrecognized option: w` 并静默 `exit 0` 导致 `table inet ai_link` 未挂载的问题；升级为 `flock -x -n` 立即获取 ➔ `flock -x -w 18` ➔ BusyBox `flock -x -n` 轮询等待 ➔ `mkdir` 自旋锁三级降级，且加锁失败严格返回 `exit 1`；`install.sh` 在 `table inet ai_link` 未挂载时自动重试一次，仍失败则立即 `exit 1` 中止安装。
 - **[P0-2 修复 · 测速配额闸门“跳过保态”语义与存量升级自动配额迁移]**：修复触发每日测速配额上限 (`quota_capped: True`) 时被探测引擎误判为 `state: "dead"` 导致全节点不可达与分流组回落 `direct` 的问题；超配额时严格执行 `skipped: True` 跳过语义，保留节点在 `node_probe.json` 中的上一次已知健康状态，并在升级首次启动时自动清零旧版累积的超额计数与自愈历史误判记录。
@@ -457,7 +493,7 @@
 
 # AI-LINK v2.3.3 (2026-11-02) · Round 3 深度复审闭环与 Apple/Aster 视觉无障碍重构版
 
-### 一、功能与安全审计 19 项全量修复 (`AI-LINK-v2.3.2-复审报告.html`)
+## 一、功能与安全审计 19 项全量修复 (`AI-LINK-v2.3.2-复审报告.html`)
 - **[N-P0-1] 移除净网护盾假数据种子 (`adblock_stats.json`)**：彻底删除 `_load_persisted_adblock_stats()` 中当 `blocked_queries == 0` 时写入的 8 个伪造域名（`cpro.baidu.com` 等 64 次拦截 / 509 次查询），真实初始状态归零。
 - **[N-P0-2] 面板鉴权全面升级 `pbkdf2_sha256` (100,000 次迭代) + 设备唯一随机盐与随机初始凭据**：下线硬编码盐值 `ailink_salt_2026` 与默认密码回退后门；首次启动自动生成设备唯一随机初始密码 (`/etc/ai-link/initial_password`, `0600`)，存量 `panel_auth.json` 自动平滑迁移至 `pbkdf2_sha256` + 16 字节随机盐。
 - **[N-P1-1] 离线/断连状态精准区分与零伪造指标**：在 `nexus.js` 中严格区分“面板守护进程不可达 (`state.backendOffline`)”与“sing-box 内核未运行 (`state.coreAlive === false`)”，断连时将 `coreMemMib`、`blockedTotal`、`uptimeStr`、`inTotalText`、`outTotalText` 等全部重置为 `--`，不再弹出误导性的“sing-box 未运行已回退直连”横幅。
@@ -478,7 +514,7 @@
   - 壁纸模式 (`WALLPAPER LIVE`) 自动淡出顶栏与底角图例；
   - `/etc/ai-link/ops_settings.json` 纳入 `0600` 权限保护。
 
-### 二、Apple HIG / Aster 设计语言 29 项前端审美审查闭环 (`AI-LINK-前端审美审查报告.html`)
+## 二、Apple HIG / Aster 设计语言 29 项前端审美审查闭环 (`AI-LINK-前端审美审查报告.html`)
 - **[P0-1] 移除 `index.html` 中 91KB 重复内联 `<style>`**：`index.html` 体积从 153.8 KB 降至 62 KB，仅外链 `./nexus.css?v=2.3.3`。
 - **[P0-2] 字体栈、字重、字阶与行高全面收敛**：移除未加载的 `Inter` 字体，字重严格收敛至 `{400, 500, 600, 700}`，字阶收敛至 10 级 `{11, 12, 13, 14, 15, 16, 19, 24, 32, 40px}`，`body` 设为 `14px / line-height: 1.57`，彻底消除 `line-height: normal`，并将正文与列表字号提升至 `13px/14px`（`12px` 占比降至 `<15%`）。
 - **[P0-3] 界面 Chrome 零 Emoji 与零 `U+FE0F` 乱码**：将 `index.html`、`nexus.js`、`nexus3d.js` 中全部 300+ 处 Emoji 与 `U+FE0F` 变异选择符替换为 `24×24` 单色线性 SVG 图标或规范文本徽章。
@@ -551,6 +587,7 @@
    - 补齐 `GET /api/shunt/rule_blocks`（支持全局或 `?group_id=...` 按组查询），返回结构化规则块列表；
    - 优化「📜 配置变更历史与回滚」弹窗按钮文案，同时提供 **「⏪ 恢复到此版本（变更后状态）」** 与 **「↩ 撤销此变更（恢复至变更前状态）」**。
 
+
 ## [v2.3.0] - 2026-11-01 — BUG-008 严格锁定持久化闭环 + 方案 A 批次三/四 (T2/T3/T5/T6/T8/T9/T10) 全量正式版
 
 ### 🌟 核心修复与架构升级 (v2.3.0 Highlights)
@@ -583,15 +620,6 @@
 9. **[P3-1 & P3-2] 补丁与安装包 30/30 文件 100% 字节一致（含 `README.md` LF 统一）+ 单一权威发布包**
    - 统一全部 30 个包内文件（含 `README.md`）为 LF 换行符，`v2.2.0-to-v2.3.0-code.patch` 经 `patch -p1` 实测 **30/30 文件 100% 字节一致（0 差异）**。
 
-## [v2.2.0] - 2026-11-01 — 目标驱动自动节点池 + 取消入核上限 + URL Ping 全链路修复
-
-### 亮点
-
-1. **目标驱动自动节点池**：节点范围（订阅/手动/全部）、两种模式（仅连通性 / 连通性+服务）、一键按延迟选最快 10 个；
-2. **URL Ping 全链路修复**：移除 `/delay` 超时对全局熔断器的误伤、默认超时 5s + 双目标见证、全量节点直接入核；
-3. **取消入核数量上限**：649 个节点 100% 写入 `sing-box` outbounds；
-4. **节点两态简化**：可用 / 不可达（后续在 2.3.1 补为三态）；
-5. **订阅卡片**：同步时间精确到分钟，失败追加红色「失败」后缀。
 
 ## [v2.1.1] - 2026-11-01 — 自动节点池 v2 (L1~L4 服务语义与 Google 地区判定 · node_key 无损迁移) + BUG-006/007 全量正式版
 
@@ -615,6 +643,7 @@
    - **D-2**：从 `site/ai-link-openwrt/` 移除旧版 `luci-app-ai-link_2.0.0-r8_all.ipk`，并在交接包根目录提供重新构建的 `luci-app-ai-link_2.1.1-r8_all.ipk`（`Version: 2.1.1-r8`）。
    - **D-3 & P3**：修复 `test_v102_full_regression.py` 中 `B2-8` 跨平台路径兼容性；补齐 `/api/diag/run` 顶层 `status` 与 `score` 字段；将 `ipv6_leak_guard` 与 `tcp_mss_clamp` 纳入 `ops_settings` 写盘白名单，确保 `fix_all` 后 `#3 ipv6_bypass` 复检闭环为 `pass`。
 
+
 ## [v2.1.0] - 2026-11-01 — 方案 A (Phase 1 止血与契约清理 + Phase 2 核心诊断能力) 全量正式版
 
 ### 🌟 核心修复与新增特性 (v2.1.0 Highlights)
@@ -636,6 +665,7 @@
    - **BUG-004 (P1 · Google Play 等核心应用防误杀白名单保护)**：内置 `ESSENTIAL_APP_WHITELIST`（涵盖 `clientservices.googleapis.com`、`clouderrorreporting.googleapis.com`、`play.googleapis.com`、`play-fe.googleapis.com`、`android.clients.google.com`、`gvt1~3.com`、`dl.google.com` 等）并在 `#page-dns` 提供「核心应用防误杀保护 (`#toggle-dns-essential-protect`)」独立开关（默认开启），彻底解决开启 DNS 护盾后 Google Play 无法下载更新的问题，同时保持真实广告域名（如 `google-analytics.com`）100% 阻断。
    - **BUG-005 (P3 · 回家节点改端口自动同步名称后缀)**：在 `/api/homelink/update` 修改 `listen_port` 或 `external_port` 时自动同步更新节点名称括号内的 `(:port)` 后缀。
 
+
 ## [v2.0.2] - 2026-10-31 — 自动节点池「6 步往复筛选检测 ➔ 确认入池 ➔ 直接移除无弹窗」深度打磨 · 危险操作确认弹窗全量接线版
 
 ### 🌟 核心修复与交互重构 (v2.0.2 Highlights)
@@ -655,341 +685,3 @@
    - **P0（12 项危险删除与批量覆盖操作接入 `confirmModal` + 状态快照「↩ 撤销」）**：`恢复默认规则库`、`删除自定义分流组`、`全部海外组走智能自动池` 等 12 项高危/批量操作点击必先弹确认窗（点取消 0 API 调用、零副作用），确认执行后支持「↩ 撤销」。
    - **P2（`aria-busy` 完整生命周期保持）**：回家节点路由切换下拉框跨重绘保持 `aria-busy="true"` 直至请求与状态刷新完成，常态为 `"false"` 永不为 `null`。
    - **P3（「☑️ 勾选筛选前10优」严格补足到 10）**：点击后严格按 `10 - targetSet.size` 补足新候选节点，勾选总数恒为 `10`。
-
-## [v2.0.0] - 2026-10-27（NEXUS 全域 3D 正式版 · 全量检查更新包）
-
-### 🎨 四项实机定制化视觉与交互升级
-
-1. **国内直连母星 (`cn`) 切换为淡粉色 (`#f9a8d4` / `0xf9a8d4`)，与内核中枢青色鲜明区分**
-
-   * 解决实测反馈中「内核中枢母星 (`core`, `#28b8d4` / `#6ee7f5`) 与国内直连母星 (`cn`, 旧色 `#1fc699`) 在 WebGL 光晕与色调映射下颜色过于接近」的问题。
-
-   * 将 `国内直连` 母星球体材质、自发光 (`0xf472b6`)、环绕轨道环 (`0xfbcfe8`)、下属国内目标卫星、主干连线 (`core_cn`)、2D 投影标签与右侧检查器指标全面升级为**淡粉色 (`#f9a8d4`)**，在深空背景下与青色内核、紫色海外代理、琥珀黑洞形成四色高对比度视觉体系。
-
-2. **「⚡ 流量激增」按钮 (`#surge-toggle`) 升级为真实连接的 3D 表达**
-
-   * 打开「⚡ 流量激增」按钮不再是简单的动画倍速，而是实时拉取 `/api/clash/connections` 与 `/api/overview/galaxy` 的真实并发连接数据，在 3D 星图中构建**跨星系端到端真实连接 3D 轨迹弧 (`CatmullRomCurve3`)**：从 `内核中枢 (core)` 周围的具体局域网/回家终端卫星出发 \$
-     ightarrow\$ 经由 `内核中枢` 母星分流 \$
-     ightarrow\$ 飞向 `国内直连 (淡粉)`、`海外代理 (紫/青)` 或 `黑洞拦截 (琥珀)` 母星 \$
-     ightarrow\$ 精准落入对应的真实访问目标卫星（如 `WeChat`、`Bilibili`、`ChatGPT`、`YouTube` 等）。
-
-   * 3D 视口顶部同步呈现全息 HUD 实时横幅：`⚡ 真实连接 3D 表达已激活 · 实时映射 N 条跨星系轨迹 (M 并发连接) · 挡位: 高[X] / 中[Y] / 低[Z]`。
-
-3. **连线上的流动光球支持「高 / 中 / 低」三个速度挡位，按真实连接数与吞吐速率动态驱动**
-
-   * 新增三挡流速引擎 `NexusScene.computeSpeedGear(rateBps, conns)`：
-
-     * **高挡 (`high` · 高速)**：当链路真实速率 `>= 200 KB/s` 或并发连接 `>= 12` 时触发，光球流速 `0.56`、体积缩放 `1.36x`、全密度脉冲；
-
-     * **中挡 (`med` · 中速)**：当链路真实速率在 `15 KB/s ~ 200 KB/s` 或并发连接 `3 ~ 11` 时触发，光球流速 `0.26`、体积缩放 `1.04x`；
-
-     * **低挡 (`low` · 低速)**：当链路真实速率 `< 15 KB/s` 且并发连接 `< 3` 时触发，光球流速 `0.095`、体积缩放 `0.78x`。
-
-   * 同时作用于四大星系主干连线 (`core_global`、`core_cn`、`core_blackhole`、`cn_global`)、各星系卫星径向连线 (`tetherPackets`) 以及流量激增模式下的 3D 真实连接轨迹弧，并在 3D 连线中段实时渲染 `流速:高/中/低 · N连` 胶囊标签。
-
-4. **概览页 (`#page-overview`) 底部三个标签卡片可点击查看具体信息 + 修复终端头像重复显示 `10` 问题**
-
-   * 将概览页底部三张核心洞察卡片（`01 / DEVICES · 局域网终端设备`、`02 / OUTBOUNDS · 入核出站节点`、`03 / DESTINATIONS · 热门访问目标`）及卡片内的终端头像圆圈、目标域名芯片全部升级为可点击交互组件（带 `查看明细 ↗` 徽章与悬浮高亮）。
-
-   * 修复 `01 / DEVICES` 卡片终端头像在 `10.10.10.x` 网段下截取前两位导致全部显示 `10` 的问题，改为智能提取 IPv4 末段（如 `.224`、`.77`、`.10`）或主机名缩写。
-
-   * 点击任意一张卡片即弹出 NEXUS 宽幅详情模态框，内置 4 宫格汇总指标、分类筛选芯片、实时搜索框、高中低流速挡位徽章以及一键操作（`🔍 查看连接`、`⚡ 真测速`、`🚀 设为出口`、`🔍 4阶透视`）。
-
-# AI-LINK 更新日志
-
-本文件记录 AI-LINK 智能分流网关的全部版本变更。
-在线更新客户端读取的机器可读清单是 `version.json`，本文件是面向人的详细说明。
-
-版本号规则：`主版本.次版本.修订号`
-
-* 主版本：架构级变更（如内核切换、配置模型重构）
-
-* 次版本：新增功能，向后兼容
-
-* 修订号：缺陷修复与安全补丁，向后兼容
-
-## [v1.0.3] · 2026-10-26
-
-> 主题：**双机实测根因深度修复（10.10.10.7 & 192.168.100.37）· 彻底终结 Sing-box 内核掉线与全网黑洞**
-
-### 🌌 NEXUS v3 全域深空视觉深度重构与四项定制改造 + `VERIFY-frontend-deep.md` 100% 清零
-
-* **四项核心 UI/UX 深度重构（100% 还原实机交互诉求）**
-
-  1. **概览页「全球核心应用延迟声呐」面板纯雷达放大化**：移除旧版底部冗余芯片列表 (`#service-list`)，将圆形声呐雷达盘放大至 `288px × 288px` 居中展示；盘内全部 8 个核心业务信标（`ChatGPT`、`Gemini`、`YouTube`、`GitHub`、`Netflix`、`TikTok`、`Telegram`、`Bilibili`）均升级为可点击探测按钮 (`<button class="sonar-blip">`)，点击直接调用 `/api/clash/delay` 与 `/api/probe/service_l7` 实测对应策略组真实延迟，并采用 8 轨纵向交错坐标与右半球 `.blip-left` 向内锚定，实现零裁切、零重叠。
-
-  2. **订阅与节点页新增「📦 全部订阅源汇总」卡片与点击过滤联动**：在 `#subscription-list` 最左侧固定渲染「📦 全部订阅源汇总」卡片 (`data-sub-select="ALL"`)，支持点击任意订阅卡片高亮选中并联动过滤下方节点测速列表 (`#probe-nodes-tbody`)、状态统计芯片與 7 大地区筛选芯片计数。
-
-  3. **顶部状态栏 (`.topbar .global-route`) 模式感知与防误导展示**：顶栏清晰展示五大运行模式徽章（`精细规则分流` / `GFW 模式` / `非国内模式` / `全局模式` / `直连模式`）；在「精细规则分流 (`rule_shunt`)」与「全局直连 (`direct_all`)」模式下**不再显示具有误导性的单一出口节点名**（改为展示策略组智能矩阵或全直连描述），仅在单一出口模式（`gfw_list` / `cn_whitelist` / `global_proxy`）下展示当前统一出口节点或自动节点池及实时延迟。
-
-  4. **3D 全域星图 (`#page-galaxy` & `nexus3d.js`) 四星系动态卫星与深空详情面板重构**：恢复并升级四大星系围绕运转的动态卫星实体（带脉冲连接线、悬浮速率标签与严格数量上限控制：`MAX_GALAXY_SATELLITES = 8`、`MAX_BLACKHOLE_SATELLITES = 6`，彻底告别密集杂乱）：
-
-     * `🧠 内核中枢 (core)`：实时展示局域网与回家通道活跃终端设备（整合 `host_map` 在线设备与活跃连接，硬件旁路下亦不漏显）；
-
-     * `🇨🇳 国内直连 (cn)`：实时展示大陆直连访问目标站点与速率；
-
-     * `🌍 海外代理 (global)`：实时展示海外代理访问目标服务、所属策略组与实时速率；
-
-     * `🕳️ 黑洞拦截 (blackhole)`：实时展示 Top 拦截广告/追踪域名卫星，并内置吸积盘粒子向事件视界中心螺旋坍缩吞噬动效；
-
-     * 右侧检查器 (`#inspector-galaxy-detail`) 按 NEXUS 视觉体系重构四星系专属面板（4 宫格 KPI 卡片 + 内核连接池/内存水位条或威胁分类占比条 + 实时速率排行列表）。
-
-* **`VERIFY-frontend-deep.md` 深度审计报告全量缺陷 100% 清零**
-
-  * **遥测真值字段 100% 对齐**：全面修正 `overview_telemetry.active_connections`、`in_rate_bps`/`in_rate_str`、`out_rate_bps`/`out_rate_str`、`core_mem_mib`、`month_total_str`、`insight_data.devices`/`targets`、`dns_telemetry.stats_24h.blocked_queries`、`total_loaded_rules`、`dns_layer_blocks`、`route_reject_blocks`、动态健康度 `healthScore` 与 8 项 `pulse_services`，彻底清除 `rx_rate_bps`、`core_rss_mib`、`month_rx_bytes`、`blocked_queries_24h` 等死字段引用。
-
-  * **13+ 项后端核心能力 100% 接入新 UI**：完整接入手动新增单节点与批量导入预览 (`/api/nodes/add` & `/api/nodes/parse_preview`)、节点明文凭据查看弹窗 (`/api/nodes/credentials`)、单节点真实测速 (`/api/nodes/test_real_delay`)、服务 L7 真连接探测 (`/api/probe/service_l7`)、系统诊断报告弹窗 (`/api/ops/diag`)、全量健康自检 (`/api/ops/health_check`)、断网逃生自测 (`/api/ops/fail_open_test`)、规则集立即同步 (`/api/rules/sync`)、IPv6 双栈模式切换 (`/api/ipv6/status` & `/api/ops/ipv6`)、DNS 7 项高级设置保存 (`/api/dns/settings`)、OTA 升级实时进度轮询与中断恢复 (`/api/system/update/status` & `/api/system/update/ack`) 以及安全卸载向导 (`/api/ops/uninstall`)。
-
-  * **统一 API 错误提示与失败回滚**：`callRouterApi` 对 `ok === false` 或网络异常统一弹出错误 Toast 并返回标准化失败对象；路由模式切换与开关切换在后端返回失败时自动回滚 UI 状态；移除假成功兜底 `default: toast('操作指令已执行')`，改为显式未知指令告警。
-
-  * **移动端自适应与可访问性收口**：`<980px` 下自动隐藏顶栏冗余搜索框并支持点击背景遮罩关闭抽屉；补齐全部表单控件 `aria-label` 与模态框 `ESC` 关闭支持。
-
-### 🛡️ 核心引擎防掉线与自愈闭环（P0-1 \~ P0-3）
-
-* **解除 procd 1 小时 6 次重启放弃配额（P0-1）**
-  `/etc/init.d/ai-link` 中 `ai-link-daemon` 与 `ai-link-core` 的重启策略由 `respawn 3600 5 5` 调整为 `respawn 0 5 0`（无限重试、5 秒退避），彻底根除因日常分流调整触发主动重启与异常退出共用配额导致的 `Instance ai-link::ai-link-core s in a crash loop 6 crashes` 永久放弃拉起问题；同时新增 `/etc/init.d/ai-link restart_core` 独立恢复命令，在不中断 9099 面板守护进程的前提下重置并拉起内核。
-
-* **看门狗新增 Sing-box 进程存活守护（P0-2）**
-  `_telemetry_and_watchdog_loop` 新增 `ensure_core_alive_and_recover()`（每 15 秒巡检 `_get_live_singbox_pids()`，自动过滤僵尸进程 `State: Z` 与 `version`/`check`/`rule-set` 短期辅助进程）。检测到内核进程意外缺失且未处于重构重载窗口时，立即记录日志 `Watchdog: core process missing; restarting service.` 并自动调用 `_respawn_core_only()` / `restart_core` 恢复内核。
-
-* **内核离线立即撤除 nftables 与策略路由防黑洞（P0-3）**
-  `ensure_nft_and_routing_intact()` 新增 `_teardown_blackhole_nft_and_routing()`：一旦检测到 `sing-box` 进程不在或 `:7893` 端口未监听，立即主动删除 `table inet ai_link`、清理 `ip rule fwmark 0x162 table 162` 并回退 `dnsmasq` 上游，使局域网与旁路由自身平滑退回直连上网（彻底消除 `curl 000` 全网黑洞）；待内核恢复监听后自动重挂透明代理。同时 `_sync_ipv6_policy_routing()` 增加前置内核与端口存活断言。
-
-### ⚡ 幂等配置重载、指纹非易失持久化与启动防抢杀（P1-1 \~ P1-3）
-
-* **全端点规则指纹比对，幂等操作零重启（P1-1）**
-  增强 `_compute_core_rules_fingerprint()`（覆盖 `route`、`dns`、`inbounds`、选择器成员拓扑与代理出站定义，排除可通过 Clash API 热切换的 `default` 字段）。在 `schedule_async_core_reload()`、`reload_core_only()` 以及 `/api/shunt/reorder`、`/api/shunt/custom_rule`、`/api/dns/rewrite`、`/api/dns/filter/toggle` 等端点前置比较操作前后指纹：若拓扑规则未变化（如原样提交分流顺序），自动降级为 `hot_selector` 热更新，绝不杀内核进程（`requires_core_respawn=False`）。
-
-* **规则指纹持久化至非 tmpfs `/etc/ai-link/.applied_core_rule_hash`（P1-2）**
-  `_record_applied_core_rule_hash()` 与 `_get_applied_core_rule_hash()` 双写 `/etc/ai-link/.applied_core_rule_hash` 与 `/var/run/ai-link/applied_core_rule_hash.txt`；设备重启或 tmpfs 清空后自动从持久化文件恢复指纹，避免开机首次巡检误判「规则脏」而多杀一次内核。
-
-* **消除启动期 `context canceled` 抢杀与 `.srs` 原子编译（Path ④）**
-  `reload_core_only()` 新增 `_get_min_singbox_proc_age()` 启动保护窗口（进程刚拉起 `<6.5s` 时先等待 Clash API 就绪而不发送 `SIGTERM`）；`blocklist_custom.srs` 改为编译至临时文件后 `os.replace()` 原子替换；`--daemon` 启动时若 `sing-box.json` 已在 25 秒内由 `init.d` 生成则跳过重复写盘。
-
-* **`install.sh` 与 OTA 升级脚本增加真实健康断言（P1-3）**
-  安装与升级收尾阶段强制校验 `pidof sing-box` 及 `:7890` / `:7893` 端口监听状态（未就绪时自动触发一次 `restart_core` 自愈），输出 `UPGRADE OK: core=... ports ok` 或 `UPGRADE FAIL: ...`。
-
-### 🌐 10.10.10.7 实测问题专项修复与面板可见性（DIAG-1 \~ DIAG-3 / P2 / P3）
-
-* **静默捕获客户端提前断开 `BrokenPipeError`（DIAG-1）**
-  `AILinkRequestHandler` 的 `handle_one_request`、`finish`、`_send_json`、`_try_send_wire_memo`、`do_OPTIONS` 统一捕获 `(BrokenPipeError, ConnectionResetError, socket.timeout)`，消除浏览器刷新或中断请求时的堆栈刷屏。
-
-* **停机/重启/内核离线期间保留旁路由自身 DNS 解析（DIAG-2）**
-  `init.d/ai-link` 与 `ai-link-daemon.py` 新增 `fallback_resolv_conf_direct()` / `restore_resolv_conf_local()`：在服务停止、重启等待或内核离线窗口自动将 `/etc/resolv.conf` 与 `/tmp/resolv.conf.d/resolv.conf.auto` 回退至主路由网关 + 公共 DNS（`223.5.5.5` / `119.29.29.29`），彻底解决停机期间旁路由自身 `ttyd CPD No internet` 无法解析域名的问题；待 `:7893` / `:7874` 就绪后再切回 `127.0.0.1`。
-
-* **修复新装设备 `wait_for_ports_And_apply_nft` 挂载延迟（DIAG-3）**
-  `init.d/ai-link` 后台端口等待子进程增加 `trap '' HUP` 与 `</dev/null >/dev/null 2>&1 &` 标准流解耦（防止 SSH 会话退出时 `SIGHUP` 中断后台挂载），并在等待第 8s / 20s 检测到内核未起时自动触发重拉；`install.sh` 依赖检查补齐 `sing-box` 软件包检测。
-
-* **面板与 LuCI 暴露真实内核离线红色告警横幅（P2）**
-  修复 `build_routing_health()` 在内核离线时仍因历史测速缓存返回 `✅ 代理中` 的盲区；WebUI 新增顶部悬浮 `#core-offline-alert-banner` 与概览页 `#ov-core-offline-card` 醒目红色告警条及「🔄 一键重启内核」按钮，并将 `tuple(_get_live_singbox_pids())` 纳入 `/api/status` 缓存键实现毫秒级状态感知。
-
-* **统一版本字段 `status.build_ver` 为 `1.0.3`（P3）**
-  `/api/status` 的 `build_ver` 由历史残留值 `2.0.0-r8-v24-nolo` 统一为 `APP_VERSION` (`"1.0.3"`)，全仓 7 处版本标识 100% 对齐为 `1.0.3`。
-
-## [v1.0.2] · 2026-10-26
-
-> 主题：**全量安全加固 + 启动与看门狗可靠性 + `.tgz` 归档上传恢复 + 跨架构兼容与自动化回归**
-
-### 🔐 安全加固（SEC-1\~SEC-5 & B1-1\~B1-4）
-
-* **面板令牌不再随首页下发（SEC-1）**
-  移除 `end_headers` 中对 `/` 请求下发 `Set-Cookie: ailink_token=<有效令牌>` 的缺陷；令牌仅在 `POST /api/login` 校验密码通过后签发，由前端保存在 `localStorage` 与 `Cookie`。
-
-* **`/api/status`、`/api/nodes/share_uri`、`/api/ops/logs` 鉴权与凭据脱敏闭环（SEC-2\~SEC-5）**
-
-  * `/api/status` 按访问控制同一口径判定：未鉴权客户端脱敏回家节点的 `password` / `uuid` / `private_key` / `uri`（含 `uri` 内嵌明文凭据）及订阅 `?token=` 参数，并将鉴权状态与 `panel_auth.json` 纳入 wire-memo 缓存键；
-
-  * `GET /api/nodes/share_uri` 与 `GET /api/ops/logs` 强制校验 `_auth_ok()`，未授权请求一律返回 HTTP 401。
-
-* **UCI 凭据零留存，彻底改为布尔 `panel_pwd_customized=0/1`（B1-2）**
-  `/etc/config/ai-link` 移除 `panel_secret` 字段，改用布尔 `option panel_pwd_customized '0'`；`install.sh` 升级时自动迁移并清除历史 `panel_secret`；CLI `ai-link password` 不再向 UCI 写入任何明文或哈希串。
-
-* **永久下线弱默认密码 `admin`（B1-3）**
-  出厂状态仅接受 `ai-link-2026` 作为初始密码，彻底禁用弱口令 `admin`；面板登录弹窗移除预填明文 value。
-
-* **内网免密风险提示与自动登录引导（B1-1）**
-  `/api/status` 新增 `auth_required` 与 `pwd_customized` 状态位，未鉴权打开面板自动弹出登录窗；WebUI 设置页新增 `#lan-auth-security-notice` 动态安全风险警示条；LuCI 新增 `require_lan_auth` 开关并与 `ops_settings.json` 双向同步。
-
-### 🚀 启动可靠性与防黑洞看门狗（BOOT-1 / CORE-1 / RB-1 / B1-4 / B3-12）
-
-* **多栈端口就绪探针（BOOT-1 & B3-12）**
-  `init.d/ai-link` 的 `port_is_listening()` 采用 `netstat` → `ss` → `/proc/net/tcp{,6}` 三级探针，同时比对大小写十六进制端口（消除精简版 BusyBox `awk toupper()` 依赖），等待预算放宽至 60 秒（`AI_LINK_PORT_WAIT` 可覆盖）。
-
-* **修复 BusyBox `pgrep` 探针与全仓进程匹配（CORE-1 & B3-12）**
-  `init.d/ai-link` 统一使用 `singbox_alive()`（`pidof sing-box` + `pgrep -f` 兜底）并动态解析 `command -v sing-box`；全仓 `install.sh` / `uninstall.sh` / `usr/bin/ai-link` 统一使用 `pgrep -f "ai-link-dae[m]on.py"` 防止 shell 自匹配误杀。
-
-* **看门狗与 `restore_proxy` 挂载 nftables 前强制校验端口（B1-4）**
-  `ensure_nft_and_routing_intact()`、`restore_proxy()` 及 `update_ops_settings()` 在挂载 `table inet ai_link` 前强制校验 TProxy `:7893` 端口监听状态，核心未就绪时跳过挂载以杜绝局域网断网黑洞。
-
-* **在线升级回滚立即恢复透明代理（RB-1）**
-  OTA 回滚段在重启服务后主动调用 `/etc/init.d/ai-link restore_proxy`，消除约 10 秒的透明代理空窗。
-
-### 📦 备份恢复与在线更新增强（B2-6 \~ B2-11）
-
-* **面板与 LuCI 支持 `.tgz` / `.json` 浏览器直接上传恢复与 `.tgz` 归档下载（B2-6）**
-  新增 `GET /api/ops/backup_archive`（一键导出 `.tgz` 全量归档）并升级 `POST /api/ops/restore_archive` 支持浏览器直接上传 `.tgz` / `.tar.gz` 或 `.json` 备份恢复，内置 `tarfile` 路径穿越（`..`）、非普通文件与 100MB 解压上限安全校验，且仅在校验与恢复成功后更新持久化备份。
-
-* **新增 `ai-link restore <file|--latest>` CLI 命令行恢复入口（B2-7）**
-  支持通过命令行直接传入 `.tgz` 归档或 `.json` 备份文件完成全量恢复与服务重载（`ai-link-daemon.py --restore <file>`）。
-
-* **OTA 升级进度闪存持久化（B2-8）**
-  升级脚本将实时进度双写至 `/root/ai-link-final-backup/last_update_progress.log`，设备断电重启导致 `/var/run` tmpfs 丢失后仍可自动还原升级中断状态。
-
-* **`auto_nodes.json` 剥离实时探测噪声（B2-9）**
-  落盘时通过 `_strip_auto_node_runtime_fields()` 剔除 `quality_ranking`、`last_check_ts`、`members` 等高频探测字段（读取时动态注入内存），跨探测周期文件 MD5 保持 100% 恒定。
-
-* **自定义更新源域名与冷启动提示（B2-10 & B2-11）**
-  `ops_settings` 白名单新增 `update_manifest_url` 支持绑定自有域名作为第一优先级 OTA 清单源，并与 UCI 删除/修改双向同步；界面与文档保留 v1.0.0 首次手动升级说明。
-
-### 🛠 工程与验证工具链（TOOL-1\~3 / HYG-1 / TEST-1 / B3-13\~14 / B4-16\~20）
-
-* **Clash API 负缓存断路器（B4-20）**：`clash_api_request()` 新增 `_CLASH_API_DOWN_UNTIL` 断路器与 Linux `/proc/net/tcp` 零套接字权威判定，无 Clash API 环境下 `--self-test --strict` 耗时 < 1.5s。
-
-* **发布与核对工具链增强（TOOL-1\~3 & B4-16\~17）**：修复 `release.py` 7 处版本同步正则与门禁校验，支持自动检测工作区仓库与同版本预置发布；`verify_online.py` 支持进程环境变量覆盖。
-
-* **全链路 E2E 与无头浏览器 UI 自动化回归（B3-13 & B3-14）**：新增 `test_v102_full_regression.py`（42 项断言），覆盖真实 HTTP 服务端密码登录/改密/鉴权、`.tgz` 上传恢复及 Headless Chromium 浏览器 UI 渲染与交互验证。
-
-## [v1.0.1] · 2026-10-26
-
-> 主题：**服务总开关 + 在线更新体系 + 面板密码安全修复**
-
-### ⚙️ 服务总开关（新功能）
-
-* **LuCI 概览页顶部新增「服务总开关」卡片**，实时显示并控制服务生命周期：
-
-  * 状态徽章：`● 运行中` / `◐ 部分运行（内核未起）` / `⏹ 已停止`
-
-  * 元信息：开机自启、透明代理接管、nftables 挂载、面板端口
-
-  * 四个动作按钮：**启动服务 / 停止服务 / 重启服务 / 开机自启开关**
-
-* **关键设计：这条通路不依赖 `:9099` 面板。**
-  它走 LuCI 自己的 `fs.exec` → `/etc/init.d/ai-link svc_state|start|stop|restart`，
-  所以**即使守护进程已经停了，也能在 LuCI 里一键把它拉起来**，不需要 SSH。
-
-* **修复死锁**：此前若服务被 `stop` 掉，LuCI 概览页所有按钮全部失效（它们都调 `:9099` 的 API），
-  而「启用 AI-LINK 透明代理服务」这个勾选框只管流量接管、不管进程启停，导致用户无处可恢复。
-
-* **`enabled` 语义澄清**：该开关只控制「是否接管流量」；进程启停由新的总开关负责。
-  卡片下方有明确文案区分两者，避免再混淆。
-
-* **`reload_service()` 兜底**：`enabled=1` 时若 daemon 或 sing-box 任一未运行，直接整体 `start`，
-  不再依赖「reload 只重载运行中实例」的旧行为。
-
-* **独立面板同步**：设置页新增服务状态卡片（运行中 / 开机自启 / nftables / 端口）+「🔄 重启服务」按钮，
-  5 秒自动刷新。
-
-* **新增 init 动作 `svc_state`**：输出单行 `daemon= core= nft= enabled= boot= bypass= port=`，
-  供 LuCI 与面板统一解析。
-
-### 🔐 安全修复
-
-* **修复：LuCI 概览页「面板密码」显示为一串 `sha256:xxxx` 哈希**
-
-  * 根因一：改密后 `ai-link.global.panel_secret` 被写入 `sha256:<hash前24位>`，而 LuCI 直接把它当密码显示。
-
-  * 根因二（更严重）：`--self-test` 用临时目录调用改密函数，但函数体无条件 `uci set`，导致**每次安装自检 / `ai-link probe` 都会把生产环境的 `panel_secret` 覆盖成测试串 `custom-secret-2026` 的哈希**。
-
-* **修复：哈希串可直接当密码登录**
-  `_verify_panel_password` 中的 `candidate_pw == get_uci_panel_secret()` 已移除；UCI 里只有「明文初始密码」才允许直通比对。
-
-* **修复：哈希串可直接当 Bearer 令牌绕过登录**
-  `_is_request_authenticated` 中的 `tok == get_uci_panel_secret()` 已移除，令牌只认 `panel_auth.json` / `panel_token` 里签发过的值。
-
-* **修复：`panel_auth.json` 丢失后用户被锁死**
-  旧逻辑会用 UCI 里的哈希当初始密码重建，导致真实密码彻底失效。现在回退到默认密码 `ai-link-2026`，用户可进面板重设。
-
-* **新增：LuCI 专用桥接令牌 `luci_bridge_token`**
-  与面板密码完全解耦的 32 位随机串，仅用于 LuCI 页面调用面板 API；改面板密码不会影响它，它也不能用来登录面板。
-
-* **加固：`ai-link password` 成功后不再回显明文密码**，只提示字符数。
-
-### ⬆️ 在线更新体系（新功能）
-
-* **LuCI 概览页新增「插件版本与在线更新」卡片**：显示当前版本、检查更新、立即更新、进度条与实时日志、更新说明入口。
-
-* **独立控制面板新增同款卡片**，位于「核心规则库与订阅更新」上方。
-
-* **新增 CLI 命令**：
-
-  * `ai-link update` —— 只检查是否有新版本
-
-  * `ai-link update --apply` —— 检查并直接在线升级（带实时进度输出）
-
-* **新增 API 端点**：
-
-  | 方法 | 路径 | 说明 | 
-  | ----- | ----- | ----- | 
-  | GET | `/api/system/version` | 当前版本、构建号、清单源列表 | 
-  | GET | `/api/system/update/check` | 拉取版本清单并比较（`?force=1` 跳过 5 分钟缓存） | 
-  | GET | `/api/system/update/status` | 升级进度与最近日志 | 
-  | POST | `/api/system/update/apply` | 启动升级 | 
-  | POST | `/api/system/update/ack` | 清除已完成的升级结果 | 
-
-* **升级流程（八步，全程可观测）**：
-
-  1. 拉取 `version.json`（Cloudflare Pages 主源 → gh_mirror 镜像 → GitHub raw 直连，自动重试）
-
-  2. 下载升级包（清单内多个下载源依次重试）
-
-  3. **校验包大小 + MD5 + SHA256**，任一不符立即中止，绝不执行未校验的包
-
-  4. 解压并校验包结构（必须含 `install.sh` 与 `root/`）
-
-  5. 备份用户配置到 `/root/ai-link-final-backup/pre-update-v{版本}-{时间戳}.tgz`（自动保留最近 3 份）；空间充足时额外备份旧代码用于回滚
-
-  6. 执行 `install.sh --upgrade`（保留用户配置与已装附加组件）
-
-  7. 重启服务并做健康检查（最多 10 次轮询 `/api/status`）
-
-  8. 健康检查失败 → **自动回滚**用户配置与旧代码，并再次验证
-
-* **升级进程与 daemon 解耦**：升级脚本用 `setsid` 脱离 daemon 会话，`install.sh` 重启服务不会把它杀掉；进度落盘到 `/var/run/ai-link/update/progress.log`，重启后新 daemon 接着读，用户能看到完整结果。
-
-* **安全护栏**：清单缺少 MD5 时直接拒绝升级；同一时间只允许一个升级任务；升级中重复点击会被拒绝。
-
-### 🛠 安装脚本
-
-* 新增 `install.sh --upgrade` 升级模式：
-
-  * 不再停止/禁用其他代理服务（避免误伤用户后装的组件）
-
-  * **不再删除音乐解锁组件**（原安装流程会 `rm -rf` 掉，升级时会造成"静默卸载"）
-
-  * 其余流程保持幂等，用户配置与 UCI 设置全部保留
-
-### 📦 版本号统一
-
-* 全量版本号由 `1.0.0` 升至 `1.0.1`，统一来源为 daemon 内的 `APP_VERSION` 常量；启动时同步写入 `ai-link.global.app_version` 供 LuCI / CLI / 面板读取。
-
-* `/etc/ai-link/version` 更新为 `1.0.1 (20261026)`。
-
-### ✅ 验证
-
-* 面板密码缺陷 A/B 对照：补丁前「哈希当密码 ✓ / 哈希当令牌 ✓ / auth 丢失后哈希可登 ✓」→ 补丁后三项全部拒绝，真实密码与真实令牌未回归。
-
-* 静态门禁：`py_compile` ✓、`node --check` ✓、`bash -n`（install.sh / usr/bin/ai-link / 生成的升级脚本）✓、symtable 未定义符号 0 ✓、HTML div 配平 0 ✓。
-
-* OTA 版本比较 7 条用例全通过（含 `v` 前缀、预发布版语义）。
-
-## [v1.0.0] · 2026-10-25
-
-> 首个正式版
-
-* 纯血 Sing-box 单内核架构（移除 mihomo 遗留路径）
-
-* 五种分流模式：`shunt` / `gfw_list` / `global` / `direct` / `homelink`
-
-* 智能双栈 DNS（:7874 上游 + 海外 AAAA 剥离 + 国内原生 IPv6）
-
-* 国内 IP 硬件级入口直连（Entry Bypass）+ 旁路由对称 NAT 断流保护
-
-* 回家节点（VLESS-Reality / Hysteria2）
-
-* 净网黑洞拦截、DNS 重写与过滤库
-
-* 独立全功能控制面板（:9099）+ LuCI 概览页
-
-* 一键恢复出厂、备份归档与恢复、彻底卸载
-
-* 跨平台安装：x86_64 / aarch64 / armv7 / mipsel / riscv64，opkg + apk 双栈

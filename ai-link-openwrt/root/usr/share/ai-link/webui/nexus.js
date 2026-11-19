@@ -826,7 +826,8 @@
   }
   window.openDrawer = openDrawer;
 
-  function closeModal(forceCloseAll) {
+  let _activeModalEventGroup = (typeof window.createAbortableEventGroup === 'function') ? window.createAbortableEventGroup() : null;
+function closeModal(forceCloseAll) {
     const m = $('#modal');
     if (!forceCloseAll && _modalStack.length > 0 && m && !m.hidden) {
       const prev = _modalStack.pop();

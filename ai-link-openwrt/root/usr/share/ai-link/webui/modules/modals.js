@@ -44,13 +44,41 @@
       Number(n.failure_count || 0) + ' 次）：' + String(n.recovery_hint_zh || '请检查内核日志并点击一键恢复') + '</div>';
   }
 
+
+  function createAbortableEventGroup() {
+    var ctrl = (typeof AbortController === 'function') ? new AbortController() : null;
+    var bound = [];
+    return {
+      signal: ctrl ? ctrl.signal : undefined,
+      on: function (el, type, fn, opts) {
+        if (!el || typeof el.addEventListener !== 'function' || typeof fn !== 'function') return;
+        var o = Object.assign({}, opts && typeof opts === 'object' ? opts : {});
+        if (ctrl && ctrl.signal) o.signal = ctrl.signal;
+        el.addEventListener(type, fn, o);
+        bound.push([el, type, fn, o]);
+      },
+      abortAll: function () {
+        if (ctrl && typeof ctrl.abort === 'function') {
+          try { ctrl.abort(); } catch (_e) {}
+        }
+        bound.forEach(function (item) {
+          try { item[0].removeEventListener(item[1], item[2], item[3]); } catch (_e) {}
+        });
+        bound.length = 0;
+      },
+      size: function () { return bound.length; }
+    };
+  }
+
   window.NexusModules = window.NexusModules || {};
   window.NexusModules.modals = Object.assign(window.NexusModules.modals || {}, {
     createSnapshotDownloadDebouncer: createSnapshotDownloadDebouncer,
     formatEmptyPoolFallbackNoticeHtml: formatEmptyPoolFallbackNoticeHtml,
-    formatWatchdogCircuitNoticeHtml: formatWatchdogCircuitNoticeHtml
+    formatWatchdogCircuitNoticeHtml: formatWatchdogCircuitNoticeHtml,
+    createAbortableEventGroup: createAbortableEventGroup
   });
   window.createSnapshotDownloadDebouncer = createSnapshotDownloadDebouncer;
   window.formatEmptyPoolFallbackNoticeHtml = formatEmptyPoolFallbackNoticeHtml;
   window.formatWatchdogCircuitNoticeHtml = formatWatchdogCircuitNoticeHtml;
+  window.createAbortableEventGroup = createAbortableEventGroup;
 

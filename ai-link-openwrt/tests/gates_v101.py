@@ -534,6 +534,15 @@ def fb250_packaging_and_luci_gate():
 check("FB-250/251 自检、14+测试套件双端与包内完整性、指纹表逐行核对、CHANGELOG 与 LuCI 精简门禁", fb250_packaging_and_luci_gate)
 
 print("\n" + "=" * 78)
+def opt273_tools_ast_guard():
+    _bad = []
+    for _tp in sorted((ROOT / "tools").glob("*.py")):
+        if "ast.parse(daemon_src)" in _tp.read_text(encoding="utf-8", errors="replace"):
+            _bad.append(_tp.name)
+    return len(_bad) == 0, f"unsliced_ast_tools={_bad}"
+
+check("OPT-273-14 tools/*.py 禁止无切片全量 ast.parse(daemon_src)", opt273_tools_ast_guard)
+
 fails = [r for r in results if not r[1]]
 print(f" 合计 {len(results)} 项，通过 {len(results) - len(fails)}，失败 {len(fails)}")
 if fails:

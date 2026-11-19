@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="color-scheme" content="dark">
   <title>AI-LINK NEXUS · 全域 3D 智能网关指挥舱</title>
-  <link rel="icon" type="image/svg+xml" href="./favicon.svg?v=2.7.2-8b1d6b14">
-  <link rel="alternate icon" href="./favicon.ico?v=2.7.2-218c306e">
-  <link rel="apple-touch-icon" href="./apple-touch-icon.png?v=2.7.2-89c068d7">
-  <link rel="stylesheet" href="./nexus.css?v=2.7.2-c04275c0">
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg?v=2.7.3-8b1d6b14">
+  <link rel="alternate icon" href="./favicon.ico?v=2.7.3-218c306e">
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png?v=2.7.3-89c068d7">
+  <link rel="stylesheet" href="./nexus.css?v=2.7.3-c04275c0">
 </head>
 <body>
   <a class="skip-link" href="#main-stage">跳至主内容</a>
@@ -74,25 +74,25 @@
     <div class="workspace">
       <header class="topbar">
         <div class="page-heading">
-          <span class="eyebrow">AI-LINK / NEXUS 3D · <span class="version-chip">v2.7.2</span></span>
+          <span class="eyebrow">AI-LINK / NEXUS 3D · <span class="version-chip">v2.7.3</span></span>
           <h1 id="page-title">全域星图</h1>
         </div>
-        <div class="global-route u-cursor-pointer" data-page-link="shunt" title="点击进入分流与出口编排">
+        <div class="global-route u-cursor-pointer" data-page-link="shunt" aria-label="点击进入分流与出口编排">
           <span class="live-dot"></span>
           <div><small id="top-route-label">当前运行模式</small><strong id="top-exit">精细规则分流</strong></div>
           <span class="route-latency" id="top-latency">16 组策略 · 6 组自动池</span>
         </div>
         <div class="top-telemetry">
-          <div class="u-cursor-pointer" data-action="jump-active-connections" title="点击跳转至「设置与诊断 · 06 / 实时活跃代理连接」查看五元组与按设备筛选"><small>活跃连接</small><b id="top-connections">0</b></div>
+          <div class="u-cursor-pointer" data-action="jump-active-connections" aria-label="点击跳转至「设置与诊断 · 06 / 实时活跃代理连接」查看五元组与按设备筛选"><small>活跃连接</small><b id="top-connections">0</b></div>
           <div><small>实时下行</small><b id="top-down">274 KB/s</b></div>
           <div><small>实时上行</small><b id="top-up">24 KB/s</b></div>
         </div>
         <div class="quick-actions">
-          <button id="btn-top-sync-sub" class="button ghost compact" data-action="sync" title="立即同步全部订阅源" aria-label="更新订阅"><svg><use href="#i-refresh"/></svg><span>更新订阅</span></button>
-          <button id="btn-top-probe-now" class="button ghost compact" data-action="probe-all" title="全量节点 URL Ping 连通性与延迟体检" aria-label="全量体检"><svg><use href="#i-probe"/></svg><span>全量体检</span></button>
-          <button id="btn-top-network-doctor" class="button ghost compact" data-action="network-doctor" title="8 项全链路网络健康体检与一键自动修复"><svg><use href="#i-doctor"/></svg><span>网络医生</span></button>
-          <button id="btn-top-topology-wizard" class="button ghost compact" data-action="topology-wizard" title="拓扑自动识别与 3 步快速接入向导"><svg><use href="#i-compass"/></svg><span>接入向导</span></button>
-          <span class="topbar-divider" aria-hidden="true"></span><button id="btn-top-recover" class="button ghost danger-text compact" data-action="recover" title="临时暂停透明劫持并回退宽带原生直连" aria-label="直连恢复"><svg><use href="#i-direct"/></svg><span>直连恢复</span></button>
+          <button id="btn-top-sync-sub" class="button ghost compact" data-action="sync" aria-label="更新订阅"><svg><use href="#i-refresh"/></svg><span>更新订阅</span></button>
+          <button id="btn-top-probe-now" class="button ghost compact" data-action="probe-all" aria-label="全量体检"><svg><use href="#i-probe"/></svg><span>全量体检</span></button>
+          <button id="btn-top-network-doctor" class="button ghost compact" data-action="network-doctor" aria-label="8 项全链路网络健康体检与一键自动修复"><svg><use href="#i-doctor"/></svg><span>网络医生</span></button>
+          <button id="btn-top-topology-wizard" class="button ghost compact" data-action="topology-wizard" aria-label="拓扑自动识别与 3 步快速接入向导"><svg><use href="#i-compass"/></svg><span>接入向导</span></button>
+          <span class="topbar-divider" aria-hidden="true"></span><button id="btn-top-recover" class="button ghost danger-text compact" data-action="recover" aria-label="直连恢复"><svg><use href="#i-direct"/></svg><span>直连恢复</span></button>
         </div>
       </header>
 
@@ -225,7 +225,7 @@
               <span class="eyebrow">NETWORK PULSE · ACTIVE EGRESS TELEMETRY</span>
               <div class="hero-title-line">
                 <h3 id="ov-hero-node">新加坡 06 <span class="lat-badge mid">--</span></h3>
-                <button type="button" class="hud-help-btn" data-action="show-hud-help" data-help-topic="overview" title="一屏统览出口延迟、核心应用声呐、实时流量波形与分流矩阵" aria-label="全域网络脉搏说明">?</button>
+                <button type="button" class="hud-help-btn" data-action="show-hud-help" data-help-topic="overview" aria-label="全域网络脉搏说明">?</button>
               </div>
               <p id="ov-hero-desc">当前模式：精细规则分流 · 单组智能节点池与防黑洞看门狗实时守护中</p>
               <div class="shield-stats">
@@ -314,9 +314,9 @@
           </article>
 
           <div class="dashboard-grid three">
-            <article id="ov-card-devices" class="glass-card insight-card clickable-card" data-action="open-overview-detail" data-detail-type="devices" title="点击查看局域网与回家终端设备实时速率、流量占比与活跃连接明细"><div class="insight-card-top"><span class="card-index">01 / DEVICES</span><span class="insight-more-pill">查看明细 ↗</span></div><h3>局域网终端设备</h3><b id="ov-devices-count">1</b><p id="ov-devices-sub">1 台活跃传输 · 共 1 台在线终端 (点击查看详情)</p><div class="avatar-stack" id="ov-devices-avatars"><i>.224</i></div></article>
-            <article id="ov-card-outbounds" class="glass-card insight-card clickable-card" data-action="open-overview-detail" data-detail-type="outbounds" title="点击查看入核出站节点池、实测延迟、滑动评分与快捷切换"><div class="insight-card-top"><span class="card-index">02 / OUTBOUNDS</span><span class="insight-more-pill">查看明细 ↗</span></div><h3>入核出站节点</h3><b id="ov-outbounds-count">200</b><p id="ov-outbounds-sub">6 已验证可用 · 0 待探测 (点击查看详情)</p><div class="thin-progress"><i class="u-bar-w72"></i></div></article>
-            <article id="ov-card-destinations" class="glass-card insight-card clickable-card" data-action="open-overview-detail" data-detail-type="destinations" title="点击查看热门访问目标域名、分流策略组、出站节点与流量排行"><div class="insight-card-top"><span class="card-index">03 / DESTINATIONS</span><span class="insight-more-pill">查看明细 ↗</span></div><h3>热门访问目标</h3><b id="ov-destinations-count">4</b><p id="ov-destinations-sub">AI 与流媒体服务实时访问统计</p><div class="destination-tags" id="ov-destinations-tags"><span>ChatGPT</span><span>YouTube</span><span>GitHub</span><span>Bilibili</span></div></article>
+            <article id="ov-card-devices" class="glass-card insight-card clickable-card" data-action="open-overview-detail" data-detail-type="devices" aria-label="点击查看局域网与回家终端设备实时速率、流量占比与活跃连接明细"><div class="insight-card-top"><span class="card-index">01 / DEVICES</span><span class="insight-more-pill">查看明细 ↗</span></div><h3>局域网终端设备</h3><b id="ov-devices-count">1</b><p id="ov-devices-sub">1 台活跃传输 · 共 1 台在线终端 (点击查看详情)</p><div class="avatar-stack" id="ov-devices-avatars"><i>.224</i></div></article>
+            <article id="ov-card-outbounds" class="glass-card insight-card clickable-card" data-action="open-overview-detail" data-detail-type="outbounds" aria-label="点击查看入核出站节点池、实测延迟、滑动评分与快捷切换"><div class="insight-card-top"><span class="card-index">02 / OUTBOUNDS</span><span class="insight-more-pill">查看明细 ↗</span></div><h3>入核出站节点</h3><b id="ov-outbounds-count">200</b><p id="ov-outbounds-sub">6 已验证可用 · 0 待探测 (点击查看详情)</p><div class="thin-progress"><i class="u-bar-w72"></i></div></article>
+            <article id="ov-card-destinations" class="glass-card insight-card clickable-card" data-action="open-overview-detail" data-detail-type="destinations" aria-label="点击查看热门访问目标域名、分流策略组、出站节点与流量排行"><div class="insight-card-top"><span class="card-index">03 / DESTINATIONS</span><span class="insight-more-pill">查看明细 ↗</span></div><h3>热门访问目标</h3><b id="ov-destinations-count">4</b><p id="ov-destinations-sub">AI 与流媒体服务实时访问统计</p><div class="destination-tags" id="ov-destinations-tags"><span>ChatGPT</span><span>YouTube</span><span>GitHub</span><span>Bilibili</span></div></article>
           </div>
         </section>
 
@@ -332,7 +332,7 @@
               <span class="eyebrow">POLICY ORCHESTRATION · TACTICAL SHUNT MATRIX</span>
               <div class="hero-title-line">
                 <h3 id="shunt-hero-title-groups">16 组精细分流矩阵与自动节点池协同调度</h3>
-                <button type="button" class="hud-help-btn" id="shunt-hero-help-btn" data-action="show-hud-help" data-help-topic="shunt" title="配置全局分流模式、自动节点池与 16 组精细应用出口策略" aria-label="代理与分流说明">?</button>
+                <button type="button" class="hud-help-btn" id="shunt-hero-help-btn" data-action="show-hud-help" data-help-topic="shunt" aria-label="代理与分流说明">?</button>
               </div>
               <p>国内流量硬件级直通零损耗，海外 AI 与流媒体按自动节点池定时 URL Ping 极速优选切换。</p>
               <div class="shield-stats">
@@ -389,7 +389,7 @@
           <!-- Auto Node Pools Manager Card -->
           <article class="glass-card u-mb-sp4">
             <div class="card-head">
-              <div><span>AUTO NODE POOLS · TACTICAL EGRESS CLUSTERS</span><h3>自动节点池 <button type="button" class="hud-help-btn" data-action="show-hud-help" data-help-topic="autopool" title="自动节点池定时对池内候选节点执行轻量 URL Ping 选最快切换；仅在建池与健康节点跌破阈值时执行服务可用性复选" aria-label="自动节点池机制说明">?</button></h3></div>
+              <div><span>AUTO NODE POOLS · TACTICAL EGRESS CLUSTERS</span><h3>自动节点池 <button type="button" class="hud-help-btn" data-action="show-hud-help" data-help-topic="autopool" aria-label="自动节点池机制说明">?</button></h3></div>
               <div class="button-row">
                 <button class="button ghost compact" data-action="new-auto-pool"><svg><use href="#i-plus"/></svg>新建自动池</button>
                 <span role="button" tabindex="0" class="button secondary compact" data-action="optimize"><svg><use href="#i-probe"/></svg>全部自动池立即优选</span>
@@ -451,7 +451,7 @@
                 </div>
               </article>
 
-              <!-- v2.7.2: Real-Time Traffic Shunt Radar & Cloud GeoIP/Geosite 1-Click Assign -->
+              <!-- v2.7.3: Real-Time Traffic Shunt Radar & Cloud GeoIP/Geosite 1-Click Assign -->
               <article id="shunt-live-radar-card" data-shunt-obs-pane="radar" class="glass-card shunt-obs-hidden">
                 <div class="card-head u-mb-sp2">
                   <div>
@@ -480,7 +480,7 @@
                       <span role="tab" tabindex="0" type="button" data-hit-tab="by_rule">按规则项</span>
                       <span role="tab" tabindex="0" type="button" data-hit-tab="by_outbound">按实际出口</span>
                     </div>
-                    <button type="button" class="button ghost compact" data-action="refresh-hit-stats" title="立即刷新 1 小时分流命中统计">刷新</button>
+                    <button type="button" class="button ghost compact" data-action="refresh-hit-stats" aria-label="立即刷新 1 小时分流命中统计">刷新</button>
                   </div>
                 </div>
                 <p class="u-text-muted-mb2">实时聚合最近 60 分钟网关连接与 4 阶透视命中分布（点击任意排行项可直接跳转查看对应实时活跃连接）。</p>
@@ -513,7 +513,7 @@
               <span class="eyebrow">PRIVATE ENCRYPTED TUNNEL · SECURE HOMELINK</span>
               <div class="hero-title-line">
                 <h3>在外连回家，内网与科学上网一步到位</h3>
-                <button type="button" class="hud-help-btn" data-action="show-hud-help" data-help-topic="homelink" title="提供 VLESS-Reality 与 Hysteria2 加密入站隧道，支持外网安全访问家庭内网" aria-label="回家隧道说明">?</button>
+                <button type="button" class="hud-help-btn" data-action="show-hud-help" data-help-topic="homelink" aria-label="回家隧道说明">?</button>
               </div>
               <p id="homelink-hero-desc">2 个加密回家入站正在监听，随时可扫码一键接入家庭内网，每个入站可独立指定路由模式。</p>
               <div class="shield-stats">
@@ -560,7 +560,7 @@
               <span class="eyebrow" id="dns-engine-readiness">规则引擎已激活 · DNS REFUSED + 路由 REJECT 双层实时守护中</span>
               <div class="hero-title-line">
                 <h3 id="dns-hero-title">-- 条净网与防污染规则正在协同工作</h3>
-                <button type="button" class="hud-help-btn" data-action="show-hud-help" data-help-topic="dns" title="本地安全 DNS (:7874) 双栈防污染解析、海外 FakeIP 与双层广告黑洞拦截" aria-label="DNS护盾说明">?</button>
+                <button type="button" class="hud-help-btn" data-action="show-hud-help" data-help-topic="dns" aria-label="DNS护盾说明">?</button>
               </div>
               <p>国内域名直连 223.5.5.5 极速解析（保留原生 IPv6），海外域名走加密 FakeIP 远程解析（自动抑制异常 AAAA 抢答）。</p>
               <div class="shield-stats">
@@ -612,7 +612,7 @@
                   <div><i class="amber"></i><span>第二层：路由层 REJECT 拦截硬编码 IP</span><b id="dns-layer-reject">0</b></div>
                   <div><i class="violet"></i><span>双栈防漏：海外域名 AAAA 抑制保护</span><b>已启用</b></div>
                   <div class="u-flex-between-sp2">
-                    <div class="u-flex-center-sp2"><i class="mint"></i><span title="自动豁免 Google Play (clientservices/play.googleapis.com、gvt1~3)、Apple 推送与微软核心更新域名，防止广告黑洞误杀正常应用下载与登录">核心应用防误杀保护 (Google Play / Apple / MS)</span></div>
+                    <div class="u-flex-center-sp2"><i class="mint"></i><span aria-label="自动豁免 Google Play (clientservices/play.googleapis.com、gvt1~3)、Apple 推送与微软核心更新域名，防止广告黑洞误杀正常应用下载与登录">核心应用防误杀保护 (Google Play / Apple / MS)</span></div>
                     <button id="toggle-dns-essential-protect" class="switch a-switch on" role="switch" aria-checked="true" data-action="dns-essential-protect-toggle" aria-label="切换核心应用防误杀白名单保护"><i></i></button>
                   </div>
                 </div>
@@ -647,7 +647,7 @@
               <span class="eyebrow">NODE OBSERVATORY · MULTI-FORMAT ENGINE</span>
               <div class="hero-title-line">
                 <h3>多源机场订阅与自建节点全量入核中枢</h3>
-                <button type="button" class="hud-help-btn" data-action="show-hud-help" data-help-topic="nodes" title="支持 11 种主流订阅格式解析、同步前 diff 预览、Google 落地地区识别与 20 次滑动评分" aria-label="节点与订阅说明">?</button>
+                <button type="button" class="hud-help-btn" data-action="show-hud-help" data-help-topic="nodes" aria-label="节点与订阅说明">?</button>
               </div>
               <p>支持 11 种主流订阅格式解析、同步前 diff 预览与 Google 落地地区探测，全部启用节点 100% 入核。</p>
               <div class="shield-stats">
@@ -733,7 +733,7 @@
               <span class="eyebrow">SYSTEM CONTROL & TELEMETRY · CORE OPS</span>
               <div class="hero-title-line">
                 <h3>系统引擎守护、安全鉴权与实时连接透视</h3>
-                <button type="button" class="hud-help-btn" data-action="show-hud-help" data-help-topic="settings" title="管控内核生命周期、硬件级旁路、局域网安全鉴权、活跃五元组连接与内核日志" aria-label="系统设置说明">?</button>
+                <button type="button" class="hud-help-btn" data-action="show-hud-help" data-help-topic="settings" aria-label="系统设置说明">?</button>
               </div>
               <p>代理引擎常驻防掉线自愈守护、硬件级旁路加速、全量配置归档回滚与活跃五元组连接管理。</p>
               <div class="shield-stats">
@@ -771,7 +771,7 @@
             <article class="glass-card system-card">
               <span class="card-index">01 / CORE LIFECYCLE</span>
               <div class="system-title">
-                <div><h3 id="sys-core-title">sing-box --</h3><p id="sys-core-sub">AI-LINK v2.7.2 · 单一真相源架构</p></div>
+                <div><h3 id="sys-core-title">sing-box --</h3><p id="sys-core-sub">AI-LINK v2.7.3 · 单一真相源架构</p></div>
                 <div class="core-head-right">
                   <span class="status-pill" id="settings-proxy-status-pill">运行正常</span>
                 </div>
@@ -792,14 +792,14 @@
               </div>
             </article>
 
-            <!-- Card 2: Component & Rule Runtime Summary (Update buttons removed per v2.7.2 spec; rule updates managed directly in Shield/Shunt pages) -->
+            <!-- Card 2: Component & Rule Runtime Summary (Update buttons removed per v2.7.3 spec; rule updates managed directly in Shield/Shunt pages) -->
             <article class="glass-card">
               <span class="card-index">02 / COMPONENT & RULE STATUS</span>
               <h3>组件版本与规则运行概览</h3>
               <div class="update-row">
                 <div><b>AI-LINK 插件版本</b><span id="ota-sub">当前已运行最新稳定版全栈架构</span></div>
                 <div class="button-row u-gap-sp2-center">
-                  <span class="version-chip">v2.7.2</span>
+                  <span class="version-chip">v2.7.3</span>
                   <button type="button" id="btn-ota-check" class="button secondary compact" data-action="check-update">检测插件升级</button>
                   <button type="button" id="btn-ota-apply" class="button primary compact hidden" data-action="apply-update">立即升级插件</button>
                 </div>
@@ -990,16 +990,16 @@
     </div>
   </div>
 
-  <script id="lazy-qrcode-js" data-lazy-src="./static/qrcode.min.js?v=2.7.2-f8cf3403"></script>
-  <script id="lazy-three-js" data-lazy-src="./assets/three.min.js?v=2.7.2-eb854986"></script>
-  <script src="./nexus3d.js?v=2.7.2-2c2bf387"></script>
-  <script src="./modules/storage.js?v=2.7.2-16786115"></script>
-  <script src="./modules/api.js?v=2.7.2-1b21a07b"></script>
-  <script src="./modules/modals.js?v=2.7.2-ee95b2d5"></script>
-  <script src="./modules/galaxy-hud.js?v=2.7.2-2b7cb85b"></script>
-  <script src="./modules/shunt-nodes.js?v=2.7.2-59828c0b"></script>
-  <script src="./modules/settings-panel.js?v=2.7.2-3c6b616e"></script>
-  <script src="./nexus.js?v=2.7.2-e7e71864"></script>
+  <script id="lazy-qrcode-js" data-lazy-src="./static/qrcode.min.js?v=2.7.3-f8cf3403"></script>
+  <script id="lazy-three-js" data-lazy-src="./assets/three.min.js?v=2.7.3-eb854986"></script>
+  <script src="./nexus3d.js?v=2.7.3-2c2bf387"></script>
+  <script src="./modules/storage.js?v=2.7.3-16786115"></script>
+  <script src="./modules/api.js?v=2.7.3-1b21a07b"></script>
+  <script src="./modules/modals.js?v=2.7.3-1fccbc34"></script>
+  <script src="./modules/galaxy-hud.js?v=2.7.3-2b7cb85b"></script>
+  <script src="./modules/shunt-nodes.js?v=2.7.3-59828c0b"></script>
+  <script src="./modules/settings-panel.js?v=2.7.3-3c6b616e"></script>
+  <script src="./nexus.js?v=2.7.3-248ae21c"></script>
 <!-- NEXUS-UI-CONTRACT: sub-health-box | 仅入池检测达标项 | 免测直接加入池 | delete-custom-group | sub-card-custom | 手动添加节点 | btn-an-auto-screen | btn-an-mode-ping | btn-an-mode-svc | 同步时间: -->
 </body>
 </html>

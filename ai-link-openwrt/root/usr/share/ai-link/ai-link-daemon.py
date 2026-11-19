@@ -198,7 +198,7 @@ def _open_url_with_retry(
     context=None,
     retries: int = 1,
     backoff_s: float = 0.2,
-    user_agent: str = "AI-LINK/2.7.2 (OpenWrt; Sing-Box-Nexus)",
+    user_agent: str = "AI-LINK/2.7.3 (OpenWrt; Sing-Box-Nexus)",
 ):
     if isinstance(req_or_url, str):
         req_obj = urllib.request.Request(req_or_url, headers={"User-Agent": user_agent})
@@ -227,6 +227,7 @@ def _open_url_with_retry(
     raise last_err
 
 import subprocess
+import tempfile
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from http.server import HTTPServer, SimpleHTTPRequestHandler
@@ -331,7 +332,9 @@ def _atomic_write_text(target: Path, content: str, encoding: str = "utf-8") -> N
                 PROBE_ENGINE._last_lp_sig = None
         except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
             globals().get("_record_internal_diag", str)(_e_diag)
-    tmp_p = target.parent / f".{target.name}.tmp.{os.getpid()}.{threading.get_ident()}"
+    _mk_fd, _mk_path = tempfile.mkstemp(prefix=f".{target.name}.", suffix=".tmp", dir=str(target.parent))
+    os.close(_mk_fd)
+    tmp_p = Path(_mk_path)
     try:
         if target.is_file() and target.suffix == ".json" and target.name not in ("traffic_ledger.json", "node_probe.json", "selections.json", "switch_history.json", "auto_probe_rounds.json", "auto_pool_runtime.json", "node_test_quota.json") and target.stat().st_size > 2:
             bak_p = target.with_suffix(target.suffix + ".bak")
@@ -26611,9 +26614,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.7.2"
+APP_VERSION = "2.7.3"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.7.2-release-20261119-r46"
+APP_BUILD = "2.7.3-release-20261119-r48"
 if "_safe_json_loads" not in globals():
     def _safe_json_loads(raw, default=None):
         return getattr(json, "loads")(raw) if default is None else (getattr(json, "loads")(raw) if raw else default)
@@ -28758,12 +28761,12 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             self._send_json({
                 "ok": True,
                 "version": APP_VERSION,
-                "pkg_release": "r46",
+                "pkg_release": "r48",
                 "boot_stage_timings_ms": get_boot_stage_timings(),
                 "srs_fallback_status": get_srs_fallback_degraded_status(CONF_DIR),
                 "exception_telemetry": get_structured_exception_stats(),
                 "pool_switch_debounce_s": POOL_SWITCH_SMOOTH_DEBOUNCE_S,
-                "release": f"{APP_VERSION}-r46",
+                "release": f"{APP_VERSION}-r48",
                 "channel": APP_CHANNEL,
                 "build": APP_BUILD,
                 "version_file": _read_version_file(),
@@ -29574,6 +29577,9 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 "probe_running": True,
                 "selections": PROBE_ENGINE.current_selections
             })
+            return
+        if clean_path == "/api/shunt/preview_diff":
+            self._send_json(preview_shunt_matrix_changes(payload if isinstance(payload, dict) else {}, load_shunt_config(CONF_DIR)))
             return
         if clean_path == "/api/shunt/update":
             if "strategy_mode" in payload and "shunt_mode" not in payload:
@@ -32150,6 +32156,7 @@ def start_background_probe_scheduler(interval_sec: int = 21600):
     return t
 
 def main():
+    ensure_default_socket_timeout(15.0)
     if "--restore" in sys.argv:
         idx = sys.argv.index("--restore")
         target_f = sys.argv[idx + 1] if (idx + 1 < len(sys.argv) and not sys.argv[idx + 1].startswith("--")) else "/root/ai-link-final-backup/etc-ai-link.tgz"
@@ -33650,6 +33657,172 @@ def perform_guarded_core_binary_upgrade(new_bin: Path, backup_bin: Path, runner=
     return verify_and_rollback_core_binary(new_bin, backup_bin, runner=runner)
 
 
+
+# === v2.7.3 (r47) OPT-273-11 ~ OPT-273-20 Guardrails, Dry-Run, Conflict & Bypass Link Health ===
+def audit_subprocess_run_timeouts(src_text: str | None = None) -> dict:
+    """OPT-273-11: Verify all subprocess.run calls in ai-link-daemon.py explicitly carry timeout=."""
+    if src_text is None:
+        src_text = Path(__file__).read_text(encoding="utf-8")
+    lines = src_text.splitlines()
+    missing_lines = []
+    total_calls = 0
+    for idx, ln in enumerate(lines, 1):
+        if "subprocess.run(" in ln and not ln.lstrip().startswith("#"):
+            total_calls += 1
+            window = "\n".join(lines[idx - 1 : min(len(lines), idx + 6)])
+            if "timeout=" not in window:
+                missing_lines.append(idx)
+    return {
+        "ok": len(missing_lines) == 0,
+        "total_subprocess_run": total_calls,
+        "missing_timeout_count": len(missing_lines),
+        "missing_lines": missing_lines[:20],
+    }
+
+
+def ensure_default_socket_timeout(timeout_s: float = 15.0) -> float:
+    """OPT-273-16: Ensure a safe default socket timeout baseline is active."""
+    cur = socket.getdefaulttimeout()
+    if cur is None:
+        socket.setdefaulttimeout(float(timeout_s))
+        return float(timeout_s)
+    return float(cur)
+
+
+def get_test_suite_classification_manifest() -> dict:
+    """OPT-273-17: Classify tests/ scripts into core (fast) and deep (regression) tiers."""
+    suites = [
+        {"script": "gates_v101.py", "tier": "core", "est_s": 8, "desc": "发布门禁与静态一致性"},
+        {"script": "check_panel_js.py", "tier": "core", "est_s": 1, "desc": "面板内联脚本语法"},
+        {"script": "test_security_fixes.py", "tier": "core", "est_s": 1, "desc": "安全脱敏与回滚回归"},
+        {"script": "test_subscription_formats.py", "tier": "core", "est_s": 1, "desc": "11种订阅格式解析"},
+        {"script": "ota_e2e.py", "tier": "core", "est_s": 1, "desc": "OTA 清单与防篡改"},
+        {"script": "ota_selftest.py", "tier": "core", "est_s": 1, "desc": "升级脚本与版本比较"},
+        {"script": "pwd_ab.py", "tier": "core", "est_s": 1, "desc": "面板密码 A/B 验证"},
+        {"script": "diag_e2e.py", "tier": "core", "est_s": 1, "desc": "网络健康医生并发体检"},
+        {"script": "trace_e2e.py", "tier": "core", "est_s": 1, "desc": "四阶流量透视与命中排行"},
+        {"script": "autopool_v2_e2e.py", "tier": "core", "est_s": 1, "desc": "自动节点池全量 E2E"},
+        {"script": "rule_blocks_e2e.py", "tier": "core", "est_s": 2, "desc": "严格锁定与规则块 E2E"},
+        {"script": "full_user_journey_simulation.py", "tier": "deep", "est_s": 10, "desc": "全生命周期用户动线"},
+        {"script": "test_v102_full_regression.py", "tier": "deep", "est_s": 60, "desc": "全量修复与 Chromium E2E"},
+        {"script": "v242_deep_chaos_simulation.py", "tier": "deep", "est_s": 18, "desc": "109项多因素混沌自测"},
+    ]
+    return {
+        "ok": True,
+        "core_count": sum(1 for s in suites if s["tier"] == "core"),
+        "deep_count": sum(1 for s in suites if s["tier"] == "deep"),
+        "total_est_s": sum(s["est_s"] for s in suites),
+        "suites": suites,
+    }
+
+
+def preview_shunt_matrix_changes(draft_shunt: dict, current_shunt: dict | None = None) -> dict:
+    """OPT-273-18: Dry-run diff summary before applying 5x3 shunt matrix changes."""
+    cur = current_shunt if isinstance(current_shunt, dict) else load_shunt_config(CONF_DIR)
+    draft = draft_shunt if isinstance(draft_shunt, dict) else {}
+    cur_groups = {g.get("id"): g for g in (cur.get("groups") or []) if isinstance(g, dict) and g.get("id")}
+    draft_groups = {g.get("id"): g for g in (draft.get("groups") or []) if isinstance(g, dict) and g.get("id")}
+    changed = []
+    for gid, dg in draft_groups.items():
+        cg = cur_groups.get(gid, {})
+        diffs = {}
+        for k in ("enabled", "mode", "manual_node", "auto_node_id", "strict_lock", "dns_strategy"):
+            if dg.get(k) != cg.get(k):
+                diffs[k] = {"from": cg.get(k), "to": dg.get(k)}
+        if diffs:
+            changed.append({"group_id": gid, "title": dg.get("title") or gid, "changes": diffs})
+    est_ms = 120 + len(changed) * 45
+    return {
+        "ok": True,
+        "changed_count": len(changed),
+        "affected_rulesets_count": len(changed),
+        "estimated_reload_ms": est_ms,
+        "changed_groups": changed,
+        "summary_text": f"预计变更 {len(changed)} 个分流组，影响 {len(changed)} 条规则集，热重载预计耗时 {est_ms}ms",
+    }
+
+
+def detect_fakeip_subnet_conflict(cidr: str = "198.18.0.0/15", route_table_text: str | None = None) -> dict:
+    """OPT-273-19: Detect overlapping kernel routes with Fake-IP CIDR and suggest fallback reserved subnets."""
+    if route_table_text is None:
+        rp = Path("/proc/net/route")
+        route_table_text = rp.read_text(encoding="utf-8", errors="replace") if rp.is_file() else ""
+    try:
+        target_net = ipaddress.ip_network(cidr, strict=False)
+    except ValueError:
+        target_net = ipaddress.ip_network("198.18.0.0/15")
+    conflicts = []
+    for ln in route_table_text.splitlines():
+        parts = ln.strip().split()
+        if not parts or parts[0].lower() in ("iface", "destination"):
+            continue
+        # Support both /proc/net/route hex destination (col 1) and human CIDR strings
+        tok = parts[1] if len(parts) > 1 else parts[0]
+        cand_net = None
+        if "/" in tok or "." in tok:
+            try:
+                cand_net = ipaddress.ip_network(tok, strict=False)
+            except ValueError:
+                cand_net = None
+        elif len(tok) == 8 and len(parts) >= 8:
+            try:
+                d_int = int(tok, 16)
+                m_int = int(parts[7], 16)
+                # /proc/net/route is little-endian hex on x86/armel
+                ip_s = ".".join(str((d_int >> (8 * i)) & 0xFF) for i in range(4))
+                mask_s = ".".join(str((m_int >> (8 * i)) & 0xFF) for i in range(4))
+                if ip_s != "0.0.0.0" and mask_s != "0.0.0.0":
+                    cand_net = ipaddress.ip_network(f"{ip_s}/{mask_s}", strict=False)
+            except (ValueError, OSError):
+                cand_net = None
+        if cand_net is not None and cand_net.version == 4 and cand_net.overlaps(target_net):
+            conflicts.append({"iface": parts[0], "subnet": str(cand_net)})
+    return {
+        "ok": len(conflicts) == 0,
+        "has_conflict": len(conflicts) > 0,
+        "fakeip_cidr": str(target_net),
+        "conflicts": conflicts,
+        "fallback_cidrs": ["198.19.0.0/16", "100.64.0.0/15", "172.30.0.0/16"],
+    }
+
+
+def check_bypass_upstream_gateway_health(ops: dict | None = None, gateway_ip: str | None = None, probe_fn=None) -> dict:
+    """OPT-273-20: Detect upstream main-router gateway reachability in bypass/onearm mode."""
+    o = ops if isinstance(ops, dict) else get_ops_settings(CONF_DIR)
+    topo = str(o.get("topology_mode") or "auto").lower()
+    if topo not in ("bypass", "onearm") and probe_fn is None:
+        return {"ok": True, "checked": False, "topology_mode": topo, "banner_level": "none", "message": ""}
+    gw = str(gateway_ip or o.get("upstream_gateway") or "10.10.10.1").strip()
+    reachable = True
+    if callable(probe_fn):
+        reachable = bool(probe_fn(gw))
+    else:
+        arp_p = Path("/proc/net/arp")
+        if arp_p.is_file():
+            arp_txt = arp_p.read_text(encoding="utf-8", errors="replace")
+            if gw in arp_txt and "00:00:00:00:00:00" in arp_txt:
+                reachable = False
+    if not reachable:
+        return {
+            "ok": False,
+            "checked": True,
+            "topology_mode": topo,
+            "gateway_ip": gw,
+            "reachable": False,
+            "banner_level": "danger",
+            "message": f"旁路由上游主路由网关 {gw} 物理链路不可达，请优先检查网线/DHCP 网关设置（非代理节点故障）",
+        }
+    return {
+        "ok": True,
+        "checked": True,
+        "topology_mode": topo,
+        "gateway_ip": gw,
+        "reachable": True,
+        "banner_level": "none",
+        "message": f"旁路由上游网关 {gw} 物理链路正常",
+    }
+
+
 def build_status_api_response(conf_dir: Path = CONF_DIR, *args, **kwargs) -> dict:
     """OPT-268-07..OPT-272-10: Enrich /api/status with watermarks, storage headroom, pool fallback & watchdog circuit status."""
     res = _ORIG_BUILD_STATUS_API_RESPONSE_V268(conf_dir, *args, **kwargs)
@@ -33664,6 +33837,10 @@ def build_status_api_response(conf_dir: Path = CONF_DIR, *args, **kwargs) -> dic
         res["empty_pool_fallback_diag"] = diagnose_empty_pool_fallback_reasons(conf_dir=conf_dir)
         res["watchdog_circuit_breaker"] = build_watchdog_circuit_breaker_notice(failure_count=0, threshold=3)
         res["sanitized_snapshot_ready"] = bool(export_sanitized_health_audit_snapshot(conf_dir=conf_dir).get("sanitization_verified"))
+        res["fakeip_conflict_check"] = detect_fakeip_subnet_conflict()
+        res["bypass_upstream_health"] = check_bypass_upstream_gateway_health(ops=res.get("ops_settings") if isinstance(res.get("ops_settings"), dict) else None)
+        res["test_suite_manifest"] = get_test_suite_classification_manifest()
+        res["subprocess_timeout_audit"] = audit_subprocess_run_timeouts()
     return res
 
 

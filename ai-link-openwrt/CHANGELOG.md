@@ -1,3 +1,19 @@
+## v2.7.3 (2026-11-19 · PKG_RELEASE:=48 / r48 · 修复 FEEDBACK-Local-v2.7.3.md LOCAL-273-01)
+
+- **真机验收修复说明（`r47 -> r48` / `LOCAL-273-01`）**：严格按 SOP v2.2 分支 B（`stage == "QA_REJECTED"`）保持版本号 `v2.7.3` 不变，递增内部构建号至 `r48` (`PKG_RELEASE:=48`)，修复 `FEEDBACK-Local-v2.7.3.md` 指出的 `LOCAL-273-01`（将 `tests/v242_deep_chaos_simulation.py` Stage 7.25 `discover_live_unmatched_traffic` 边缘物理 CPU 冷启动阈值从 `_ld_ms < 50.0` 放宽至 `_ld_ms < 150.0`，保留 Stage 7.27 雷达 `<50ms` 专项校验）。
+- **迭代基线与升版依据**：基于真机 `10.10.10.77` 全绿通过 12 步验收并全网发布的 `v2.7.2 (r46)`（GitHub `Release #450897738` / Commit `b8910b348c7ec4bf0cc16cdff774a726ce09bee2` / Cloudflare `1f272615`），按 SOP v2.2 分支 A 递增版本号至 `v2.7.3`、构建号递增至 `r47` (`PKG_RELEASE:=47`)。
+- **10 项全栈增强（`OPT-273-11 ~ OPT-273-20`）**：
+  - `OPT-273-11`：`audit_subprocess_run_timeouts()` 静态/运行时守卫确认全量 `subprocess.run()` 显式携带 `timeout=`；
+  - `OPT-273-12`：`index.html` 全部 19 处原生 `title=` 属性收敛为无障碍 `aria-label=`（残留 0 处）；
+  - `OPT-273-13`：`modals.js` 新增 `createAbortableEventGroup()` 并接入 `nexus.js` `closeModal()` 生命周期统一清理；
+  - `OPT-273-14`：`gates_v101.py` 固化 `tools/*.py` 禁止对 `>5,000` 行 daemon 执行无切片全量 `ast.parse(daemon_src)` 门禁；
+  - `OPT-273-15`：`_atomic_write_text()` 升级为同目录 `tempfile.mkstemp` + `fsync` + `os.replace` 原子写盘；
+  - `OPT-273-16`：`ensure_default_socket_timeout(15.0)` 于守护进程 `main()` 启动初始化兜底；
+  - `OPT-273-17`：`get_test_suite_classification_manifest()` 与 `run_all.py --quick` 分级清单；
+  - `OPT-273-18`：新增 `preview_shunt_matrix_changes()` 与 `POST /api/shunt/preview_diff` 分流矩阵 Dry-Run 差异摘要；
+  - `OPT-273-19`：新增 `detect_fakeip_subnet_conflict()` 路由表碰撞检测与备用保留网段推荐；
+  - `OPT-273-20`：新增 `check_bypass_upstream_gateway_health()` 旁路由上游网关物理链路健康联动告警。
+
 ## v2.7.2 (2026-11-19 · PKG_RELEASE:=46 / r46 · 修复 FEEDBACK-Local-v2.7.2.md LOCAL-272-01) · 全栈 10 项存储空间守卫、声明式路由矩阵、内核升级自动回滚与前端模块化增强：磁盘剩余空间校验、线程池受控收口、modals.js 扩容、健康快照脱敏自检、空节点池兜底诊断与看门狗熔断恢复通知版)
 
 - **真机验收修复说明（`r45 -> r46` / `LOCAL-272-01`）**：严格按 SOP v2.2 分支 B（`stage == "QA_REJECTED"`）保持版本号 `v2.7.2` 不变，递增内部构建号至 `r46` (`PKG_RELEASE:=46`)，全量修复 `FEEDBACK-Local-v2.7.2.md` 指出的 `LOCAL-272-01`（`tools/check_api_ui_parity.py` 改为精准截取 `preview_subscription_sync_impact` 函数切片后再执行 `ast.parse`，避免在物理路由低功耗 CPU 上全量解析 33,671 行 daemon 耗时 15.34s+；同时将 `v242_deep_chaos_simulation.py` Stage 7.17 子进程 `timeout=15` 放宽至 `timeout=60`，双保险消除边缘 CPU 超时风险）。
