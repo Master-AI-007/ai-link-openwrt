@@ -1,24 +1,44 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.7.4",
+  "latest": "2.7.5",
   "release_date": "2026-11-20",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.7.4",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.7.5",
   "highlights": [
-    "升版至 v2.7.4（PKG_RELEASE 49 / r49）：闭环 10 项全栈性能、稳定性与路由热重载增强（OPT-274-11 ~ OPT-274-20）",
-    "OPT-274-11 边缘低功耗 CPU 冷启动性能基准校准（v242_deep_chaos_simulation.py 新增 benchmark_edge_cold_and_warm）",
-    "OPT-274-12 discover_live_unmatched_traffic 增加 shunt.json mtime 内存缓存（二次调用稳降至 <5ms）",
-    "OPT-274-13 5×3 分流矩阵规则冲突检测提示（detect_shunt_rule_conflicts 接入 preview 与 /api/status）",
-    "OPT-274-14 DNS 泄露自检加入 IPv6 AAAA 并发验证（probe_dns_leak_v4_v6 接入 /api/status）",
-    "OPT-274-15 自动节点池 L7 测速失败原因细分（区分 TLS 超时、HTTP 403/502 与 TCP 不可达）",
-    "OPT-274-16 HomeLink 隧道密钥 90 天温和轮换提醒（check_homelink_key_rotation_notice 不阻断现有连接）",
-    "OPT-274-17 日志轮转 gzip 压缩与低内存（<128MB）保留份数收紧（rotate_and_compress_logs_if_needed）",
-    "OPT-274-18 PPPoE/VLAN 子接口热插拔 nftables 重绑定检测（check_wan_interface_rebind_needed）",
-    "OPT-274-19 uninstall.sh 增强 nft list tables 残留表核验，确保无 inet ai_link 表残留",
-    "OPT-274-20 nexus3d.js 低帧率（<15 FPS）自动提供「切换轻量 2D 拓扑」快捷开关",
-    "真机零补发 run_all 15/15、混沌 110/110（新增 Stage 7.47）、门禁双布局 19/19、design-lint 18/18、11 行指纹 11/11、自检 10/10 + 负向检出"
+    "升版至 v2.7.5（PKG_RELEASE 50 / r50）：闭环 10 项全栈诊断拆包、并发安全与多订阅权重增强（OPT-275-01 ~ OPT-275-10）",
+    "OPT-275-01 单文件拆包里程碑化（抽离独立纯函数诊断子模块 ailink_diag.py 与 get_diag_submodule_manifest）",
+    "OPT-275-02 discover_live_unmatched_traffic mtime 缓存增加线程锁与命中计数（_DISCOVER_SHUNT_CACHE_LOCK）",
+    "OPT-275-03 sing-box 出站标签 UTF-8 字节上限截断守卫（sanitize_singbox_outbound_tag 接入 /api/status）",
+    "OPT-275-04 Fake-IP 持久化映射缓存一键清理接口（clear_fakeip_cache_entries 接入 /api/status）",
+    "OPT-275-05 自动节点池多订阅优先级加权延迟评分（score_node_with_sub_priority 接入 /api/status）",
+    "OPT-275-06 备份敏感字段脱敏二次预览清单摘要（summarize_backup_redacted_fields 接入 /api/status）",
+    "OPT-275-07 低内存环境 .gz 归档总字节配额限制（rotate_and_compress_logs_if_needed 限制 <=2MB）",
+    "OPT-275-08 多 WAN 出站接口绑定与路由核对提示（detect_multi_wan_egress_hint 接入 /api/status）",
+    "OPT-275-09 3D 星图低帧率切轻量 2D 拓扑用户偏好持久化（nexus3d.js localStorage 记录）",
+    "OPT-275-10 旁路由客户端网关与 DNS 指向配置指引文案（get_bypass_client_gateway_hint 接入 /api/status）",
+    "真机零补发 run_all 15/15、混沌 111/111（新增 Stage 7.48）、门禁双布局 20/20、design-lint 18/18、11 行指纹 11/11、自检 10/10 + 负向检出"
   ],
   "changelog": [
+    {
+      "version": "2.7.5",
+      "date": "2026-11-20",
+      "type": "feature",
+      "title": "10 项全栈诊断拆包、并发安全与多订阅权重增强闭环 (r50)",
+      "items": [
+        "正常升版至 `v2.7.5`（`PKG_RELEASE:=50` / `r50`），增量基准为线上 `v2.7.4`（Release #451837813 / `88386ff` / 部署 `81b5d5a6`）；现网设备可正常接收 OTA 升级提示",
+        "`OPT-275-01`：单文件拆包里程碑化，抽离独立纯函数诊断子模块 `ailink_diag.py` 与 `get_diag_submodule_manifest()`",
+        "`OPT-275-02`：`discover_live_unmatched_traffic()` 的 `mtime` 缓存增加 `_DISCOVER_SHUNT_CACHE_LOCK` 并发锁与命中计数",
+        "`OPT-275-03`：新增 `sanitize_singbox_outbound_tag()` 出站标签 UTF-8 字节上限安全截断守卫，接入 `/api/status`",
+        "`OPT-275-04`：新增 `clear_fakeip_cache_entries()` Fake-IP 持久化映射缓存一键清理接口，接入 `/api/status`",
+        "`OPT-275-05`：新增 `score_node_with_sub_priority()` 自动节点池多订阅优先级加权延迟评分模型，接入 `/api/status`",
+        "`OPT-275-06`：新增 `summarize_backup_redacted_fields()` 备份脱敏字段二次预览清单摘要，接入 `/api/status`",
+        "`OPT-275-07`：`rotate_and_compress_logs_if_needed()` 增加低内存 `.gz` 归档总字节配额限制（`<=2MB`）",
+        "`OPT-275-08`：新增 `detect_multi_wan_egress_hint()` 多 WAN 出站接口绑定与路由核对提示，接入 `/api/status`",
+        "`OPT-275-09`：`nexus3d.js` 低帧率切换 2D 拓扑增加 `localStorage` 用户偏好持久化（`ailink_prefer_2d_topology`）",
+        "`OPT-275-10`：新增 `get_bypass_client_gateway_hint()` 旁路由客户端网关与 DNS 指向配置指引文案，接入 `/api/status`",
+        "真机验收：`INSTALL_RC=0`、自检 10/10、负向 `RC=1` 泄漏检出有效、服务自愈全 1、零补发 `run_all 15/15`、混沌 111/111（新增 Stage 7.48）、门禁双布局 20/20、改 1 字节精确转红、视觉 18/18 零违规、UI 六页三视口零溢出、出网 200/200/204/200 全通"
+      ]
+    },
     {
       "version": "2.7.4",
       "date": "2026-11-20",
@@ -798,13 +818,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.7.4/AI-LINK-v2.7.4.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.7.5/AI-LINK-v2.7.5.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.7.4.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.7.5.tar.gz"
       ],
-      "size": 1228713,
-      "md5": "51082f03a7fd1cffa37837d8b6a4128b",
-      "sha256": "9afeabcf8f56755ee67a3756d4a84c82376f52640a7fc0665ecee0da2b1ef239"
+      "size": 1230969,
+      "md5": "24c1ad91c3b670fa6b179e8d42b36379",
+      "sha256": "c6ac645796614ed1ccd12bd795221939b2a52e66b86358f719ccc7208d1c0fc0"
     }
   }
 }

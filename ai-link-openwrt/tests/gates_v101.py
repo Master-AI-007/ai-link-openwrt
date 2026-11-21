@@ -562,6 +562,26 @@ def opt274_release_gate():
 
 check("OPT-274-11~20 v2.7.4 全量生产调用链与前端/卸载门禁", opt274_release_gate)
 
+
+def opt275_release_gate():
+    _src = DAEMON.read_text(encoding="utf-8", errors="replace")
+    _syms = [
+        "get_diag_submodule_manifest",
+        "sanitize_singbox_outbound_tag",
+        "clear_fakeip_cache_entries",
+        "score_node_with_sub_priority",
+        "summarize_backup_redacted_fields",
+        "detect_multi_wan_egress_hint",
+        "get_bypass_client_gateway_hint",
+    ]
+    _missing = [s for s in _syms if _src.count(s) < 2]
+    _diag = (ROOT / "root/usr/share/ai-link/ailink_diag.py").is_file()
+    _n3d = (ROOT / "root/usr/share/ai-link/webui/nexus3d.js").read_text(encoding="utf-8", errors="replace")
+    _ok = (len(_missing) == 0) and _diag and ("ailink_prefer_2d_topology" in _n3d)
+    return _ok, f"missing_or_unwired={_missing}, diag={_diag}"
+
+check("OPT-275-01~10 v2.7.5 全量生产调用链与子模块/前端门禁", opt275_release_gate)
+
 fails = [r for r in results if not r[1]]
 print(f" 合计 {len(results)} 项，通过 {len(results) - len(fails)}，失败 {len(fails)}")
 if fails:

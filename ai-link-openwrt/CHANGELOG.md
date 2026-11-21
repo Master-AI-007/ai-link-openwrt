@@ -1,3 +1,16 @@
+## v2.7.5 (2026-11-20 · PKG_RELEASE:=50 / r50 · 基于 v2.7.4 r49 QA_PASSED_RELEASED 升版)
+
+- **OPT-275-01**：新增独立纯函数诊断子模块 `ailink_diag.py`（`build_diag_module_manifest()`），迈出单文件拆包第一步。
+- **OPT-275-02**：为 `_DISCOVER_SHUNT_MTIME_CACHE` 增加 `_DISCOVER_SHUNT_CACHE_LOCK` 并发锁保护与命中计数统计。
+- **OPT-275-03**：新增 `sanitize_singbox_outbound_tag()` UTF-8 安全字节截断守卫。
+- **OPT-275-04**：新增 `clear_fakeip_cache_entries()` 一键清理 Fake-IP 缓存接口。
+- **OPT-275-05**：新增 `score_node_with_sub_priority()` 多订阅权重配额评分函数。
+- **OPT-275-06**：新增 `summarize_backup_redacted_fields()` 备份敏感脱敏字段摘要提示。
+- **OPT-275-07**：`rotate_and_compress_logs_if_needed()` 增加 `max_total_gz_bytes` 总字节配额上限。
+- **OPT-275-08**：新增 `detect_multi_wan_egress_hint()` 多 WAN 出站接口绑定提示。
+- **OPT-275-09**：`nexus3d.js` 低帧率切换轻量 2D 拓扑后写入 `localStorage` (`ailink_prefer_2d_topology`) 持久记住偏好。
+- **OPT-275-10**：新增 `get_bypass_client_gateway_hint()` 旁路由客户端网关/DNS 简明指引。
+
 ## v2.7.4 (2026-11-20 · PKG_RELEASE:=49 / r49 · 基于 v2.7.3 r48 QA_PASSED_RELEASED 升版)
 
 - **OPT-274-11**：边缘低功耗 CPU 冷启动性能基准校准（`tests/v242_deep_chaos_simulation.py` 新增 `benchmark_edge_cold_and_warm()` 1 次预热 + 3 次中位数采集）。

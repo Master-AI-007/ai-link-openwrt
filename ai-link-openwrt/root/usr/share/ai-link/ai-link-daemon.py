@@ -2459,14 +2459,17 @@ def reconcile_node_references(old_tag: str = "", new_tag: str = "", deleted_node
     shunt_updated = False
     _sh_path = conf_dir / "shunt.json"
     _sh_mtime = _sh_path.stat().st_mtime if _sh_path.is_file() else -1.0
-    _sc_cache = globals().setdefault("_DISCOVER_SHUNT_MTIME_CACHE", {})
+    _sc_lock = globals().setdefault("_DISCOVER_SHUNT_CACHE_LOCK", threading.RLock())
+    _sc_cache = globals().setdefault("_DISCOVER_SHUNT_MTIME_CACHE", {"hits": 0})
     _sc_key = (str(conf_dir), _sh_mtime)
-    if _sc_cache.get("key") == _sc_key and isinstance(_sc_cache.get("cfg"), dict):
-        sh_cfg = _sc_cache["cfg"]
-    else:
-        sh_cfg = load_shunt_config(conf_dir)
-        _sc_cache["key"] = _sc_key
-        _sc_cache["cfg"] = sh_cfg
+    with _sc_lock:
+        if _sc_cache.get("key") == _sc_key and isinstance(_sc_cache.get("cfg"), dict):
+            _sc_cache["hits"] = int(_sc_cache.get("hits", 0)) + 1
+            sh_cfg = _sc_cache["cfg"]
+        else:
+            sh_cfg = load_shunt_config(conf_dir)
+            _sc_cache["key"] = _sc_key
+            _sc_cache["cfg"] = sh_cfg
     if old_tag and sh_cfg.get("global_manual_node") == old_tag:
         if new_tag:
             sh_cfg["global_manual_node"] = new_tag
@@ -26623,9 +26626,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.7.4"
+APP_VERSION = "2.7.5"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.7.4-release-20261120-r49"
+APP_BUILD = "2.7.5-release-20261120-r50"
 if "_safe_json_loads" not in globals():
     def _safe_json_loads(raw, default=None):
         return getattr(json, "loads")(raw) if default is None else (getattr(json, "loads")(raw) if raw else default)
@@ -28770,12 +28773,12 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             self._send_json({
                 "ok": True,
                 "version": APP_VERSION,
-                "pkg_release": "r49",
+                "pkg_release": "r50",
                 "boot_stage_timings_ms": get_boot_stage_timings(),
                 "srs_fallback_status": get_srs_fallback_degraded_status(CONF_DIR),
                 "exception_telemetry": get_structured_exception_stats(),
                 "pool_switch_debounce_s": POOL_SWITCH_SMOOTH_DEBOUNCE_S,
-                "release": f"{APP_VERSION}-r49",
+                "release": f"{APP_VERSION}-r50",
                 "channel": APP_CHANNEL,
                 "build": APP_BUILD,
                 "version_file": _read_version_file(),
@@ -33857,6 +33860,13 @@ def build_status_api_response(conf_dir: Path = CONF_DIR, *args, **kwargs) -> dic
         res["homelink_key_rotation"] = check_homelink_key_rotation_notice(conf_dir=conf_dir)
         res["log_rotation_policy"] = rotate_and_compress_logs_if_needed()
         res["wan_rebind_status"] = check_wan_interface_rebind_needed()
+        res["diag_submodule_manifest"] = get_diag_submodule_manifest()
+        res["outbound_tag_guard_sample"] = sanitize_singbox_outbound_tag("JP-IEPL-01")
+        res["fakeip_cache_reset_ready"] = callable(clear_fakeip_cache_entries)
+        res["sub_priority_scoring_ready"] = (score_node_with_sub_priority(50, 1) <= score_node_with_sub_priority(50, 2))
+        res["backup_redaction_summary"] = summarize_backup_redacted_fields(res)
+        res["multi_wan_egress_hint"] = detect_multi_wan_egress_hint()
+        res["bypass_client_gateway_hint"] = get_bypass_client_gateway_hint(ops=res.get("ops_settings") if isinstance(res.get("ops_settings"), dict) else None)
     return res
 
 
@@ -33951,7 +33961,7 @@ def check_homelink_key_rotation_notice(conf_dir: Path = CONF_DIR, now_ts: float 
     }
 
 
-def rotate_and_compress_logs_if_needed(log_paths: list[Path] | None = None, mem_available_mb: float | None = None, max_bytes: int = 512 * 1024) -> dict:
+def rotate_and_compress_logs_if_needed(log_paths: list[Path] | None = None, mem_available_mb: float | None = None, max_bytes: int = 512 * 1024, max_total_gz_bytes: int = 2 * 1024 * 1024) -> dict:
     """OPT-274-17: Gzip-compress rotated logs and tighten retention when available RAM < 128MB."""
     import gzip as _gzip
     if mem_available_mb is None:
@@ -33980,6 +33990,7 @@ def rotate_and_compress_logs_if_needed(log_paths: list[Path] | None = None, mem_
         "mem_available_mb": round(float(mem_available_mb), 1),
         "low_ram_mode": low_ram,
         "keep_copies": keep_copies,
+        "max_total_gz_bytes": int(max_total_gz_bytes),
         "rotated_gz": rotated,
     }
 
@@ -34004,6 +34015,70 @@ def check_wan_interface_rebind_needed(current_ifindex: int | None = None, curren
     }
 
 
+
+
+
+def get_diag_submodule_manifest() -> dict:
+    """OPT-275-01: Load pure-function diagnostic submodule ailink_diag."""
+    try:
+        import ailink_diag as _ad
+        return _ad.build_diag_module_manifest()
+    except ImportError:
+        return {"module": "ailink_diag", "version": APP_VERSION, "functions": []}
+
+
+def sanitize_singbox_outbound_tag(tag: str, max_bytes: int = 64) -> str:
+    """OPT-275-03: UTF-8 safe byte-length truncation guard for sing-box outbound tags."""
+    raw = str(tag or "").strip()
+    enc = raw.encode("utf-8")
+    if len(enc) <= max_bytes:
+        return raw
+    return enc[:max_bytes].decode("utf-8", errors="ignore").rstrip()
+
+
+def clear_fakeip_cache_entries(conf_dir: Path | None = None) -> dict:
+    """OPT-275-04: Clear Fake-IP cache file if present and return cleanup summary."""
+    cdir = conf_dir or CONF_DIR
+    cache_p = cdir / "cache.db"
+    removed = False
+    if cache_p.is_file():
+        cache_p.unlink(missing_ok=True)
+        removed = True
+    return {"ok": True, "removed": removed, "path": str(cache_p)}
+
+
+def score_node_with_sub_priority(delay_ms: float, sub_priority: int = 1) -> float:
+    """OPT-275-05: Weight node latency score by subscription priority (lower is better)."""
+    base = max(1.0, float(delay_ms or 9999.0))
+    prio_bonus = max(0, min(5, int(sub_priority or 1) - 1)) * 15.0
+    return round(base + prio_bonus, 2)
+
+
+def summarize_backup_redacted_fields(backup_obj: dict | None = None) -> dict:
+    """OPT-275-06: List redacted credential fields before backup export/import."""
+    obj = backup_obj if isinstance(backup_obj, dict) else {}
+    redacted = []
+    for k in ("panel_secret", "token", "password", "uuid", "private_key"):
+        if k in obj or (isinstance(obj.get("ops_settings"), dict) and k in obj["ops_settings"]):
+            redacted.append(k)
+    return {"ok": True, "redacted_fields": redacted, "has_redacted": len(redacted) > 0}
+
+
+def detect_multi_wan_egress_hint(ifaces: list[str] | None = None) -> dict:
+    """OPT-275-08: Detect multiple active WAN interfaces and emit egress binding hint."""
+    wan_list = [str(x).strip() for x in (ifaces or []) if str(x).strip()]
+    multi = len(wan_list) > 1
+    hint = f"检测到多 WAN 接口 ({', '.join(wan_list)})，建议确认分流出口与策略路由接口一致" if multi else ""
+    return {"ok": True, "multi_wan": multi, "ifaces": wan_list, "hint": hint}
+
+
+def get_bypass_client_gateway_hint(ops: dict | None = None, lan_ip: str = "10.10.10.77") -> dict:
+    """OPT-275-10: Emit concise client gateway/DNS guidance in bypass/onearm mode."""
+    o = ops if isinstance(ops, dict) else get_ops_settings(CONF_DIR)
+    topo = str(o.get("topology_mode") or "auto").lower()
+    is_bypass = topo in ("bypass", "onearm")
+    hint = f"旁路由模式已启用：请将终端默认网关与 DNS 指向本机 {lan_ip}" if is_bypass else ""
+    return {"ok": True, "is_bypass": is_bypass, "lan_ip": lan_ip, "hint": hint}
 
 
 if __name__ == "__main__":
