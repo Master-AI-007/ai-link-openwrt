@@ -44,6 +44,23 @@ def main() -> int:
     assert gw["changed"] is True
     print("  PASS  OPT-279-02..10 诊断与自愈纯函数套件")
 
+
+    # 12. OPT-280-01..10
+    sb_r = diag.export_shunt_to_singbox_route_rules({"groups": [{"id": "AI", "domains": ["openai.com"]}]})
+    assert sb_r["count"] == 1 and sb_r["route"]["rules"][0]["outbound"] == "Shunt_AI"
+    ecs = diag.build_dns_ecs_privacy_patch(True)
+    assert ecs["ecs_strip_enabled"] is True and ecs["client_subnet"] == "0.0.0.0/0"
+    cd = diag.compute_node_cooldown_progress({"rate_limited_until": 2000}, now_ts=1500, total_cooldown_s=1000)
+    assert cd["in_cooldown"] is True and cd["remaining_s"] == 500
+    pk = diag.record_disk_peak_usage({"/etc/ai-link": 72.5})
+    assert pk["peaks"]["/etc/ai-link"] >= 72.5
+    vpns = diag.get_vpn_bypass_interfaces(["eth0", "wg0", "tailscale0", "ailink0"])
+    assert vpns["interfaces"] == ["tailscale0", "wg0"]
+    assert diag.verify_ipk_conffiles_preservation("conffiles\n/etc/config/ai-link")["has_conffiles"] is True
+    bg = diag.evaluate_bypass_boot_grace(uptime_s=12.0, gw_reachable=False)
+    assert bg["suppress_offline_alert"] is True
+    print("  PASS  OPT-280-01..10 路由导出/隐私/冷却/峰值/VPN白名单/开机宽限")
+
     print("=" * 78)
     print(" AI-LINK ailink_diag 独立模块单元测试 (OPT-278-05)")
     print("=" * 78)

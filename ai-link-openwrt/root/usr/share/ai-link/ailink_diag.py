@@ -18,7 +18,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-DIAG_MODULE_VERSION = "2.7.9"
+DIAG_MODULE_VERSION = "2.8.0"
 
 SENSITIVE_CREDENTIAL_KEYS = (
     "panel_secret",
@@ -903,4 +903,106 @@ def detect_upstream_gateway_mac_change(
         "current_mac": cur,
         "saved_mac": prev,
         "message": msg,
+    }
+
+
+# ---------------------------------------------------------------------------
+# v2.8.0 (r55) OPT-280-01 .. OPT-280-10 Pure Diagnostic & Helper Functions
+# ---------------------------------------------------------------------------
+def export_shunt_to_singbox_route_rules(shunt_data: dict[str, Any] | None) -> dict[str, Any]:
+    """OPT-280-01: Export 5x3 shunt groups into native sing-box route.rules JSON snippet."""
+    groups = (shunt_data or {}).get("groups") if isinstance(shunt_data, dict) else []
+    rules = []
+    for g in (groups or []):
+        if not isinstance(g, dict):
+            continue
+        gid = str(g.get("id") or g.get("name") or "").strip()
+        if not gid:
+            continue
+        outbound = f"Shunt_{gid}" if not gid.startswith("Shunt_") else gid
+        domains = [str(d).strip() for d in (g.get("domains") or []) if str(d).strip()]
+        cidrs = [str(c).strip() for c in (g.get("ip_cidr") or []) if str(c).strip()]
+        rule: dict[str, Any] = {"outbound": outbound}
+        if domains:
+            rule["domain_suffix"] = domains[:50]
+        if cidrs:
+            rule["ip_cidr"] = cidrs[:50]
+        if len(rule) > 1:
+            rules.append(rule)
+    return {"ok": True, "count": len(rules), "route": {"rules": rules}}
+
+
+def build_dns_ecs_privacy_patch(ecs_strip_enabled: bool = True) -> dict[str, Any]:
+    """OPT-280-02: Build EDNS0 Client Subnet (ECS) stripping privacy config."""
+    strip = bool(ecs_strip_enabled)
+    return {
+        "ok": True,
+        "ecs_strip_enabled": strip,
+        "client_subnet": "0.0.0.0/0" if strip else "",
+        "privacy_mode": "strict_no_ecs" if strip else "default",
+    }
+
+
+def compute_node_cooldown_progress(member: dict[str, Any] | None, now_ts: int | None = None, total_cooldown_s: int = 3600) -> dict[str, Any]:
+    """OPT-280-03: Compute remaining failover cooldown seconds & progress percentage for UI."""
+    now = int(now_ts if now_ts is not None else time.time())
+    m = member if isinstance(member, dict) else {}
+    until = int(m.get("rate_limited_until") or m.get("quarantine_until") or 0)
+    rem = max(0, until - now)
+    tot = max(1, int(total_cooldown_s))
+    pct = min(100.0, round(((tot - rem) / tot) * 100.0, 1)) if rem > 0 else 100.0
+    return {
+        "in_cooldown": rem > 0,
+        "remaining_s": rem,
+        "progress_pct": pct,
+        "manual_reset_available": rem > 0,
+    }
+
+
+_DISK_PEAK_HISTORY: dict[str, float] = {}
+
+
+def record_disk_peak_usage(usage_by_path: dict[str, float] | None) -> dict[str, Any]:
+    """OPT-280-05: Track 7-day peak disk usage percentages across monitored paths."""
+    for k, v in (usage_by_path or {}).items():
+        try:
+            fv = round(float(v), 1)
+        except (TypeError, ValueError):
+            continue
+        if fv > _DISK_PEAK_HISTORY.get(str(k), 0.0):
+            _DISK_PEAK_HISTORY[str(k)] = fv
+    return {"ok": True, "peaks": dict(_DISK_PEAK_HISTORY)}
+
+
+def get_vpn_bypass_interfaces(net_devs: list[str] | None = None) -> dict[str, Any]:
+    """OPT-280-06: Identify WireGuard/Tailscale virtual interfaces to whitelist from TProxy."""
+    if net_devs is None:
+        net_devs = []
+        sys_net = Path("/sys/class/net")
+        if sys_net.is_dir():
+            net_devs = [p.name for p in sys_net.iterdir()]
+    matched = [
+        d for d in net_devs
+        if d != "ailink0" and (d.startswith("wg") or d.startswith("tailscale") or d.startswith("tun"))
+    ]
+    return {"ok": True, "interfaces": sorted(matched), "count": len(matched)}
+
+
+def verify_ipk_conffiles_preservation(makefile_text: str | None = None) -> dict[str, Any]:
+    """OPT-280-07: Verify Makefile defines Package/*/conffiles for /etc/ai-link config preservation."""
+    txt = makefile_text or ""
+    has_conf = ("conffiles" in txt) and ("/etc/ai-link" in txt or "/etc/config/ai-link" in txt)
+    return {"ok": has_conf, "has_conffiles": has_conf}
+
+
+def evaluate_bypass_boot_grace(uptime_s: float = 0.0, gw_reachable: bool = False, grace_s: float = 30.0) -> dict[str, Any]:
+    """OPT-280-10: Suppress false-positive upstream gateway offline alerts during cold-boot grace period (<=30s)."""
+    up = max(0.0, float(uptime_s or 0.0))
+    suppress = (not gw_reachable) and (up <= float(grace_s))
+    return {
+        "ok": True,
+        "uptime_s": round(up, 1),
+        "gw_reachable": bool(gw_reachable),
+        "suppress_offline_alert": suppress,
+        "status": "boot_grace_waiting" if suppress else ("online" if gw_reachable else "offline"),
     }

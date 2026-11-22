@@ -10854,3 +10854,19 @@ async function undoShuntChange() {
   }
 }
 if (typeof window !== 'undefined') window.undoShuntChange = undoShuntChange;
+
+// OPT-280-01 & OPT-280-04: Sing-box Route Rules Export & HomeLink QR Confirm
+async function exportSingboxRouteRulesPreview() {
+  return api('/api/shunt/export_singbox_rules', { method: 'POST', body: '{}' });
+}
+function confirmHomeLinkQrReveal(onConfirm) {
+  if (typeof openConfirmModal === 'function') {
+    openConfirmModal('确认展示回家节点二维码', '二维码包含节点连接凭据，请勿随意截图分享给他人。', onConfirm);
+  } else if (typeof onConfirm === 'function') {
+    onConfirm();
+  }
+}
+if (typeof window !== 'undefined') {
+  window.exportSingboxRouteRulesPreview = exportSingboxRouteRulesPreview;
+  window.confirmHomeLinkQrReveal = confirmHomeLinkQrReveal;
+}

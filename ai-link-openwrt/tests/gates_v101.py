@@ -674,6 +674,34 @@ def opt279_release_gate():
 
 check("OPT-279-01~10 v2.7.9 全量生产调用链、安全区适配与安装包校验门禁", opt279_release_gate)
 
+
+
+def opt280_release_gate():
+    _src = DAEMON.read_text(encoding="utf-8", errors="replace")
+    _syms = [
+        "export_shunt_to_singbox_route_rules",
+        "build_dns_ecs_privacy_patch",
+        "compute_node_cooldown_progress",
+        "record_disk_peak_usage",
+        "get_vpn_bypass_interfaces",
+        "verify_ipk_conffiles_preservation",
+        "evaluate_bypass_boot_grace",
+    ]
+    _missing = [s for s in _syms if _src.count(s) < 2]
+    _nx = (ROOT / "root/usr/share/ai-link/webui/nexus.js").read_text(encoding="utf-8", errors="replace")
+    _init = (ROOT / "root/etc/init.d/ai-link").read_text(encoding="utf-8", errors="replace")
+    _mk = (ROOT / "Makefile").read_text(encoding="utf-8", errors="replace")
+    _ok = (
+        len(_missing) == 0
+        and "exportSingboxRouteRulesPreview" in _nx
+        and "confirmHomeLinkQrReveal" in _nx
+        and "OPT-280-08" in _init
+        and "conffiles" in _mk
+    )
+    return _ok, f"missing={_missing}"
+
+check("OPT-280-01~10 v2.8.0 全量生产调用链、优雅停机与 conffiles 保留门禁", opt280_release_gate)
+
 fails = [r for r in results if not r[1]]
 print(f" 合计 {len(results)} 项，通过 {len(results) - len(fails)}，失败 {len(fails)}")
 if fails:

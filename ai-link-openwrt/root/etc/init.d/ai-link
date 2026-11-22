@@ -532,6 +532,9 @@ start_service() {
 }
 
 stop_service() {
+	# OPT-280-08: Graceful wait up to 5s before SIGKILL
+	local _w=0
+	while [ $_w -lt 5 ] && pidof sing-box >/dev/null 2>&1; do sleep 1; _w=$((_w + 1)); done
 	mkdir -p /var/lock 2>/dev/null || true
 	exec 9>/var/lock/ai-link-init.lock 2>/dev/null || true
 	command -v flock >/dev/null 2>&1 && { flock -n 9 2>/dev/null || flock -w 3 9 2>/dev/null || true; }

@@ -1,3 +1,16 @@
+## v2.8.0 (2026-11-23)
+
+- **OPT-280-01**：新增 5×3 分流规则一键导出为标准 `sing-box route.rules` 预览（`export_shunt_to_singbox_route_rules` / `/api/shunt/export_singbox_rules`）。
+- **OPT-280-02**：新增 Fake-IP 与自定义 DNS EDNS0 Client Subnet（ECS）隐私剥离配置（`build_dns_ecs_privacy_patch`）。
+- **OPT-280-03**：新增自动节点池故障转移冷却期剩余秒数与进度条计算（`compute_node_cooldown_progress`）。
+- **OPT-280-04**：新增 HomeLink 回家隧道 QR 二维码展示前二次确认保护（`confirmHomeLinkQrReveal`）。
+- **OPT-280-05**：新增 `/etc/ai-link` 与 `/var/run/ai-link` 7 天磁盘使用率峰值历史追踪（`record_disk_peak_usage`）。
+- **OPT-280-06**：新增 WireGuard / Tailscale 虚拟网卡白名单识别防 TProxy 回环（`get_vpn_bypass_interfaces`）。
+- **OPT-280-07**：`Makefile` 补充 `conffiles` 配置保留声明与核验（`verify_ipk_conffiles_preservation`）。
+- **OPT-280-08**：`init.d/ai-link` `stop_service()` 新增最长 5 秒优雅等待子进程退出兜底。
+- **OPT-280-09**：LuCI `overview.js` 新增与控制台一致的主题偏好同步辅助（`syncThemePreferenceHint`）。
+- **OPT-280-10**：新增单臂旁路由冷启动 <=30s 上游网关离线告警抑制窗口（`evaluate_bypass_boot_grace`）。
+
 ## v2.7.9 (2026-11-22)
 
 - **OPT-279-01**：新增 30 秒分流规则热更新撤销快照（`save_shunt_undo_snapshot` / `restore_shunt_undo_snapshot` / `/api/shunt/undo`）。

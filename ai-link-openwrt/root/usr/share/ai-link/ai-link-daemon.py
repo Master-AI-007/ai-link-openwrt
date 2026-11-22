@@ -26641,9 +26641,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.7.9"
+APP_VERSION = "2.8.0"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.7.9-release-20261122-r54"
+APP_BUILD = "2.8.0-release-20261123-r55"
 if "_safe_json_loads" not in globals():
     def _safe_json_loads(raw, default=None):
         return getattr(json, "loads")(raw) if default is None else (getattr(json, "loads")(raw) if raw else default)
@@ -29797,6 +29797,9 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 print(f"[ai-link] shunt_undo_snap warn: {_e_snap}", file=sys.stderr)
             res_br = parse_and_validate_bulk_shunt_rules(payload.get("raw_text") or payload.get("rules") or "", fmt=str(payload.get("format") or "auto"))
             self._send_json(res_br, status=200 if res_br.get("ok") else 400)
+            return
+        if clean_path == "/api/shunt/export_singbox_rules":
+            self._send_json(export_shunt_to_singbox_route_rules(load_shunt_config(CONF_DIR)))
             return
         if clean_path == "/api/shunt/undo":
             res_undo = restore_shunt_undo_snapshot()
@@ -34230,8 +34233,15 @@ try:
         check_disk_quota_warning,
         detect_flow_offloading_conflict,
         format_watchdog_recovery_event,
-        detect_upstream_gateway_mac_change,
-    )
+    detect_upstream_gateway_mac_change,
+    export_shunt_to_singbox_route_rules,
+    build_dns_ecs_privacy_patch,
+    compute_node_cooldown_progress,
+    record_disk_peak_usage,
+    get_vpn_bypass_interfaces,
+    verify_ipk_conffiles_preservation,
+    evaluate_bypass_boot_grace,
+)
 except ImportError:
     def validate_and_migrate_backup_schema(backup_data, target_version=APP_VERSION):
         return {"ok": isinstance(backup_data, dict), "schema_version": target_version, "migrated": False, "migration_changes": [], "data": backup_data or {}}
@@ -34325,6 +34335,11 @@ def build_status_api_response(conf_dir: Path = CONF_DIR, *args, **kwargs) -> dic
         res["homelink_clients_summary"] = summarize_homelink_clients(res.get("homelink_peers") or [])
         res["upstream_gw_mac_check"] = detect_upstream_gateway_mac_change()
         res["watchdog_recovery_sample"] = format_watchdog_recovery_event(reason="healthy", downtime_s=0.0, recovered_node="")
+        res["dns_ecs_privacy"] = build_dns_ecs_privacy_patch(bool(ops.get("ecs_strip_enabled", True)))
+        res["disk_peak_history"] = record_disk_peak_usage((res.get("disk_quota_warning") or {}).get("usage_pct_by_path"))
+        res["vpn_bypass_interfaces"] = get_vpn_bypass_interfaces()
+        res["bypass_boot_grace"] = evaluate_bypass_boot_grace(uptime_s=60.0, gw_reachable=True)
+        res["ipk_conffiles_check"] = verify_ipk_conffiles_preservation()
         if isinstance(res.get("subscriptions"), list):
             for s in res["subscriptions"]:
                 if isinstance(s, dict):
@@ -34337,6 +34352,7 @@ def build_status_api_response(conf_dir: Path = CONF_DIR, *args, **kwargs) -> dic
                             for m in grp["members"]:
                                 if isinstance(m, dict):
                                     m["jitter_stats"] = compute_node_jitter_stats(m.get("sparkline_20"))
+                                    m["cooldown_progress"] = compute_node_cooldown_progress(m)
     return res
 
 
