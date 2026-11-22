@@ -626,6 +626,25 @@ def opt277_release_gate():
 
 check("OPT-277-01~10 v2.7.7 全量生产调用链、LuCI锁与分页/诊断门禁", opt277_release_gate)
 
+
+
+def opt278_release_gate():
+    _src = DAEMON.read_text(encoding="utf-8", errors="replace")
+    _syms = [
+        "parse_and_validate_bulk_shunt_rules",
+        "compute_subscription_usage_summary",
+        "compute_next_schedule_preview",
+        "check_bypass_multi_subnet_forwarding",
+        "run_data_plane_quick_probe",
+    ]
+    _missing = [s for s in _syms if _src.count(s) < 2]
+    _td = (ROOT / "tests/test_diag_module.py").is_file()
+    _nx = (ROOT / "root/usr/share/ai-link/webui/nexus.js").read_text(encoding="utf-8", errors="replace")
+    _ok = (len(_missing) == 0) and _td and ("startAuthLockCountdown" in _nx) and ("bulkExportShuntRules" in _nx)
+    return _ok, f"missing={_missing}, test_diag={_td}"
+
+check("OPT-278-01~10 v2.7.8 全量生产调用链、独立单测与前端快捷键/限流门禁", opt278_release_gate)
+
 fails = [r for r in results if not r[1]]
 print(f" 合计 {len(results)} 项，通过 {len(results) - len(fails)}，失败 {len(fails)}")
 if fails:

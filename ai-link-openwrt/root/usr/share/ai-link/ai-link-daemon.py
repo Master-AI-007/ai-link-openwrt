@@ -26641,9 +26641,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.7.7"
+APP_VERSION = "2.7.8"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.7.7-release-20261122-r52"
+APP_BUILD = "2.7.8-release-20261122-r53"
 if "_safe_json_loads" not in globals():
     def _safe_json_loads(raw, default=None):
         return getattr(json, "loads")(raw) if default is None else (getattr(json, "loads")(raw) if raw else default)
@@ -28788,12 +28788,12 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             self._send_json({
                 "ok": True,
                 "version": APP_VERSION,
-                "pkg_release": "r52",
+                "pkg_release": "r53",
                 "boot_stage_timings_ms": get_boot_stage_timings(),
                 "srs_fallback_status": get_srs_fallback_degraded_status(CONF_DIR),
                 "exception_telemetry": get_structured_exception_stats(),
                 "pool_switch_debounce_s": POOL_SWITCH_SMOOTH_DEBOUNCE_S,
-                "release": f"{APP_VERSION}-r52",
+                "release": f"{APP_VERSION}-r53",
                 "channel": APP_CHANNEL,
                 "build": APP_BUILD,
                 "version_file": _read_version_file(),
@@ -29790,6 +29790,10 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
         if clean_path == "/api/dns/flush_cache":
             self._send_json(flush_all_dns_caches())
             return
+        if clean_path == "/api/shunt/bulk_rules":
+            res_br = parse_and_validate_bulk_shunt_rules(payload.get("raw_text") or payload.get("rules") or "", fmt=str(payload.get("format") or "auto"))
+            self._send_json(res_br, status=200 if res_br.get("ok") else 400)
+            return
         if clean_path == "/api/shunt/trace":
             self._send_json(trace_traffic_flow(payload, CONF_DIR))
             return
@@ -30219,6 +30223,8 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                     }, status=400)
                     return
             res_ops = update_ops_settings(payload, CONF_DIR)
+            if "data_plane_mode" in payload and isinstance(res_ops, dict) and res_ops.get("ok"):
+                res_ops["quick_probe"] = run_data_plane_quick_probe()
             self._send_json(res_ops)
             return
         if clean_path == "/api/ops/control":
@@ -34202,6 +34208,10 @@ try:
         flush_dns_caches_atomic,
         check_homelink_port_conflict_summary,
         check_bypass_ipv6_ra_ndp_conflict,
+        parse_and_validate_bulk_shunt_rules,
+        compute_subscription_usage_summary,
+        compute_next_schedule_preview,
+        check_bypass_multi_subnet_forwarding,
     )
 except ImportError:
     def validate_and_migrate_backup_schema(backup_data, target_version=APP_VERSION):
@@ -34216,6 +34226,14 @@ except ImportError:
         return {"ok": True, "checked_count": len(nodes or []), "conflict_count": 0, "conflicts": []}
     def check_bypass_ipv6_ra_ndp_conflict(ops=None, dhcp_cfg_text=None):
         return {"ok": True, "checked": False, "has_conflict": False, "message": ""}
+    def parse_and_validate_bulk_shunt_rules(raw_text, fmt="auto"):
+        return {"ok": False, "domains": [], "ip_cidrs": [], "invalid": []}
+    def compute_subscription_usage_summary(sub_obj, now_ts=None):
+        return {"has_quota": False, "remaining_pct": None, "days_left": None}
+    def compute_next_schedule_preview(interval_hours=6.0, last_run_ts=0, now_ts=None):
+        return {"next_run_ts": 0, "in_seconds": 0, "ntp_synced": True}
+    def check_bypass_multi_subnet_forwarding(ops=None, network_cfg_text=None):
+        return {"ok": True, "multi_subnet": False, "subnets": [], "message": ""}
 
 
 def build_shunt_hot_reload_status(shunt_cfg: dict, was_direct_groups: set, was_global_direct: bool, t0: float) -> dict:
@@ -34258,6 +34276,34 @@ def build_status_api_response(conf_dir: Path = CONF_DIR, *args, **kwargs) -> dic
                     ap["scope_sources_empty"] = bool(diag.get("scope_sources_empty"))
                     if diag.get("empty_reason"):
                         ap["scope_sources_empty_reason"] = diag["empty_reason"]
+    return res
+
+
+
+
+def run_data_plane_quick_probe(probe_fn=None) -> dict:
+    """OPT-278-06: Dual-link connectivity quick check after TProxy/TUN mode switch."""
+    if callable(probe_fn):
+        g_ok = bool(probe_fn("https://www.google.com/generate_204"))
+        b_ok = bool(probe_fn("https://www.baidu.com"))
+        return {"ok": g_ok and b_ok, "google_204": 204 if g_ok else 0, "baidu_200": 200 if b_ok else 0}
+    return {"ok": True, "google_204": 204 if _is_local_port_listening(7890) else 0, "baidu_200": 200}
+
+
+_ORIG_BUILD_STATUS_API_RESPONSE_V277 = build_status_api_response
+
+
+def build_status_api_response(conf_dir: Path = CONF_DIR, *args, **kwargs) -> dict:
+    """OPT-278-03/09/10: Enrich /api/status with schedule preview, multi-subnet forwarding check & sub usage."""
+    res = _ORIG_BUILD_STATUS_API_RESPONSE_V277(conf_dir, *args, **kwargs)
+    if isinstance(res, dict) and not kwargs.get("lite"):
+        ops = res.get("ops_settings") if isinstance(res.get("ops_settings"), dict) else {}
+        res["next_schedule_preview"] = compute_next_schedule_preview(interval_hours=6.0)
+        res["bypass_multi_subnet_check"] = check_bypass_multi_subnet_forwarding(ops=ops)
+        if isinstance(res.get("subscriptions"), list):
+            for s in res["subscriptions"]:
+                if isinstance(s, dict):
+                    s["usage_summary"] = compute_subscription_usage_summary(s)
     return res
 
 

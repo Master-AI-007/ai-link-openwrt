@@ -448,6 +448,10 @@ start_service() {
 	local entry_bypass block_quic game_udp_direct ipv6_proxy
 	config_get_bool enabled 'global' 'enabled' '1'
 	config_get panel_port 'global' 'panel_port' '9099'
+	if command -v netstat >/dev/null 2>&1 && netstat -tuln 2>/dev/null | grep -q ":${panel_port} "; then
+		logger -t ai-link "[WARN] panel_port ${panel_port} may already be in use; check port conflict"
+		echo "panel_port=${panel_port}" > /var/run/ai-link/port_conflict.warn 2>/dev/null || true
+	fi
 	config_get tproxy_port 'global' 'tproxy_port' '7893'
 	config_get mixed_port 'global' 'mixed_port' '7890'
 	get_ops_or_uci_bool entry_bypass 'entry_bypass' '1'

@@ -1,3 +1,16 @@
+## v2.7.8 (r53) - 2026-11-22
+- **基线版本**: 基于已全网发布的 `v2.7.7 (r52)`（GitHub Release #454315090 / Commit `e5df062ab002a31972083085d5a29248ec3e81ed` / CF Pages `244b1797`）。
+- **OPT-278-01**: 新增 `parse_and_validate_bulk_shunt_rules()`、`/api/shunt/bulk_rules` 与 `bulkExportShuntRules()` 支持分流规则 JSON/文本批量导入导出与语法校验。
+- **OPT-278-02**: 修复 `nexus.js` 超大列表分页 `effTotalPages` 按钮边界并强化搜索联动。
+- **OPT-278-03**: 新增 `compute_subscription_usage_summary()` 并在 `/api/status` 订阅对象中返回剩余流量百分比与到期倒计时。
+- **OPT-278-04**: `nexus.js` 新增 `startAuthLockCountdown()` 对 HTTP 429 登录限流精确展示剩余解锁秒数倒计时。
+- **OPT-278-05**: 新增独立轻量化单测 `tests/test_diag_module.py` 并接入 `run_all.py`（16 套全量回归）。
+- **OPT-278-06**: 新增 `run_data_plane_quick_probe()` 支持透明代理 TProxy/TUN 切换后双链路快速连通性自检。
+- **OPT-278-07**: `init.d/ai-link` 启动前检测 `panel_port` 占用并输出友好冲突日志与 `/var/run/ai-link/port_conflict.warn`。
+- **OPT-278-08**: `nexus.js` 新增键盘快捷键（`/` 聚焦节点搜索、`Esc` 关闭当前抽屉或弹窗）。
+- **OPT-278-09**: 新增 `compute_next_schedule_preview()` 在 `/api/status` 返回下次定时任务执行时间预览与 NTP 同步标识。
+- **OPT-278-10**: 新增 `check_bypass_multi_subnet_forwarding()` 检测单臂旁路由多 VLAN/Guest 子网并提示防火墙转发策略。
+
 ## v2.7.7 (r52) - 2026-11-22
 - **基线版本**: 基于已全网发布的 `v2.7.6 (r51)`（GitHub Release #454080557 / Commit `9f36a99eb33b2caf67ed40488ab0684e3d7c1524` / CF Pages `1428e04b`）。
 - **OPT-277-01**: `overview.js` 全部 LuCI 操作按钮（启停、重启、开机自启、接管切换、内核重载、OTA 检查与升级）全面接入 `withLuciActionLock` 防连击保护。

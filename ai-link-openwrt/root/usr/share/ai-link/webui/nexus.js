@@ -2109,6 +2109,46 @@ function closeModal(forceCloseAll) {
   }
 
   /* v2.3.2: All-Subscriptions Summary Card (#1) + Manual/Custom Nodes Category Card (#2) + Subscription Cards with Sync Timestamp & Failure Suffix + Two-State Node Management */
+
+  // OPT-278-04: Auth lockout countdown helper
+  function startAuthLockCountdown(retryAfterS) {
+    const secs = Math.max(1, parseInt(retryAfterS, 10) || 60);
+    const errEl = $('#auth-error-msg') || $('#login-error');
+    if (!errEl) return;
+    let rem = secs;
+    errEl.textContent = '登录失败次数过多，请 ' + rem + ' 秒后再试';
+    const iv = setInterval(() => {
+      rem -= 1;
+      if (rem <= 0) {
+        clearInterval(iv);
+        errEl.textContent = '';
+      } else {
+        errEl.textContent = '登录失败次数过多，请 ' + rem + ' 秒后再试';
+      }
+    }, 1000);
+  }
+
+  // OPT-278-01: Bulk export shunt rules helper
+  function bulkExportShuntRules(groupObj) {
+    const g = groupObj || {};
+    return JSON.stringify({ domains: g.domains || [], ip_cidrs: g.ip_cidrs || [] }, null, 2);
+  }
+
+  // OPT-278-08: Keyboard shortcuts ('/' focuses search, 'Escape' closes active modal/drawer)
+  document.addEventListener('keydown', (e) => {
+    const tag = (e.target && e.target.tagName) ? e.target.tagName.toUpperCase() : '';
+    if (e.key === '/' && tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
+      const sBox = $('#node-search-input');
+      if (sBox) {
+        e.preventDefault();
+        sBox.focus();
+      }
+    } else if (e.key === 'Escape') {
+      const m = $('.modal.open, .drawer.open');
+      if (m) m.classList.remove('open');
+    }
+  });
+
   function renderSubscriptionsAndNodes() {
     const customNodesList = mock.nodes.filter(n => isNodeManualCustom(n));
     const customOkCnt = customNodesList.filter(n => getNodeThreeState(n) === 'ok').length;
@@ -2394,19 +2434,19 @@ function closeModal(forceCloseAll) {
 
     const pagerEl = $('#node-pagination-controls');
     if (pagerEl) {
-      if (totalPages <= 1) {
+      if (effTotalPages <= 1) {
         pagerEl.innerHTML = '<span style="color:var(--dim);">共 1 页 (' + allFiltered.length + ' 条)</span>';
       } else {
         const btns = [];
         btns.push('<button class="page-btn" data-page-nav="prev" ' + (state.nodePage <= 1 ? 'disabled' : '') + '>上一页</button>');
         const maxButtons = 5;
         let pStart = Math.max(1, state.nodePage - 2);
-        let pEnd = Math.min(totalPages, pStart + maxButtons - 1);
+        let pEnd = Math.min(effTotalPages, pStart + maxButtons - 1);
         if (pEnd - pStart < maxButtons - 1) pStart = Math.max(1, pEnd - maxButtons + 1);
         for (let p = pStart; p <= pEnd; p++) {
           btns.push('<button class="page-btn ' + (p === state.nodePage ? 'active' : '') + '" data-page-num="' + p + '">' + p + '</button>');
         }
-        btns.push('<button class="page-btn" data-page-nav="next" ' + (state.nodePage >= totalPages ? 'disabled' : '') + '>下一页</button>');
+        btns.push('<button class="page-btn" data-page-nav="next" ' + (state.nodePage >= effTotalPages ? 'disabled' : '') + '>下一页</button>');
         pagerEl.innerHTML = btns.join('');
       }
     }

@@ -18,7 +18,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-DIAG_MODULE_VERSION = "2.7.7"
+DIAG_MODULE_VERSION = "2.7.8"
 
 SENSITIVE_CREDENTIAL_KEYS = (
     "panel_secret",
@@ -564,5 +564,133 @@ def build_diag_module_manifest() -> dict[str, Any]:
             "check_bypass_ipv6_ra_ndp_conflict",
             "check_storage_headroom_pure",
             "is_port_listening_local",
+            "parse_and_validate_bulk_shunt_rules",
+            "compute_subscription_usage_summary",
+            "compute_next_schedule_preview",
+            "check_bypass_multi_subnet_forwarding",
         ],
+    }
+
+
+def parse_and_validate_bulk_shunt_rules(raw_text: str, fmt: str = "auto") -> dict[str, Any]:
+    """OPT-278-01: Parse and validate bulk shunt rules from JSON or plain domain/CIDR lines."""
+    text = str(raw_text or "").strip()
+    if not text:
+        return {"ok": False, "error": "empty_input", "domains": [], "ip_cidrs": [], "invalid": []}
+
+    domains: list[str] = []
+    ip_cidrs: list[str] = []
+    invalid: list[str] = []
+    candidates: list[str] = []
+
+    if fmt == "json" or (fmt == "auto" and text.startswith("{")):
+        try:
+            obj = json.loads(text)
+            if isinstance(obj, dict):
+                candidates.extend(str(x) for x in (obj.get("domains") or []))
+                candidates.extend(str(x) for x in (obj.get("ip_cidrs") or []))
+            elif isinstance(obj, list):
+                candidates.extend(str(x) for x in obj)
+        except ValueError as exc:
+            return {"ok": False, "error": f"invalid_json:{exc}", "domains": [], "ip_cidrs": [], "invalid": [text[:64]]}
+    else:
+        for line in text.splitlines():
+            s = line.strip()
+            if not s or s.startswith("#"):
+                continue
+            candidates.append(s)
+
+    dom_re = re.compile(r"^[a-zA-Z0-9*._-]+\.[a-zA-Z]{2,}$")
+    cidr_re = re.compile(r"^(?:\d{1,3}\.){3}\d{1,3}(?:/\d{1,2})?$|^[0-9a-fA-F:]+(?:/\d{1,3})?$")
+    for item in candidates:
+        s = item.strip()
+        if cidr_re.match(s) and ("." in s or ":" in s):
+            if s not in ip_cidrs:
+                ip_cidrs.append(s)
+        elif dom_re.match(s) and " " not in s:
+            if s not in domains:
+                domains.append(s)
+        else:
+            invalid.append(s)
+
+    return {
+        "ok": len(invalid) == 0 and (len(domains) > 0 or len(ip_cidrs) > 0),
+        "domains": domains,
+        "ip_cidrs": ip_cidrs,
+        "invalid": invalid,
+        "total_valid": len(domains) + len(ip_cidrs),
+    }
+
+
+def compute_subscription_usage_summary(sub_obj: dict[str, Any] | None, now_ts: int | None = None) -> dict[str, Any]:
+    """OPT-278-03: Compute remaining traffic percentage and expiration countdown days."""
+    s = sub_obj if isinstance(sub_obj, dict) else {}
+    now = int(now_ts if now_ts is not None else time.time())
+    up = max(0, int(s.get("upload") or 0))
+    down = max(0, int(s.get("download") or 0))
+    total = max(0, int(s.get("total") or 0))
+    expire = int(s.get("expire") or 0)
+
+    used = up + down
+    rem_pct = round(max(0.0, min(100.0, ((total - used) / total) * 100.0)), 1) if total > 0 else None
+    days_left = max(0, int((expire - now) // 86400)) if expire > 0 else None
+    return {
+        "has_quota": total > 0,
+        "used_bytes": used,
+        "total_bytes": total,
+        "remaining_pct": rem_pct,
+        "expire_ts": expire,
+        "days_left": days_left,
+    }
+
+
+def compute_next_schedule_preview(
+    interval_hours: float = 6.0,
+    last_run_ts: int = 0,
+    now_ts: int | None = None,
+) -> dict[str, Any]:
+    """OPT-278-09: Preview next scheduled execution timestamp based on system clock."""
+    now = int(now_ts if now_ts is not None else time.time())
+    iv_s = max(60, int(float(interval_hours or 6.0) * 3600))
+    base = int(last_run_ts or 0) if int(last_run_ts or 0) > 0 else now
+    next_ts = base + iv_s
+    while next_ts <= now:
+        next_ts += iv_s
+    return {
+        "interval_hours": float(interval_hours or 6.0),
+        "last_run_ts": int(last_run_ts or 0),
+        "next_run_ts": next_ts,
+        "in_seconds": max(0, next_ts - now),
+        "ntp_synced": now >= 1700000000,
+    }
+
+
+def check_bypass_multi_subnet_forwarding(
+    ops: dict[str, Any] | None = None,
+    network_cfg_text: str | None = None,
+) -> dict[str, Any]:
+    """OPT-278-10: Detect multi-VLAN/Guest LAN interfaces in single-arm bypass mode."""
+    cfg = ops if isinstance(ops, dict) else {}
+    topo = str(cfg.get("topology_mode") or "auto").lower()
+    if topo not in ("bypass", "onearm"):
+        return {"ok": True, "checked": False, "multi_subnet": False, "subnets": [], "message": ""}
+
+    raw_net = network_cfg_text
+    if raw_net is None:
+        net_p = Path("/etc/config/network")
+        raw_net = net_p.read_text(encoding="utf-8", errors="ignore") if net_p.is_file() else ""
+
+    ifaces = re.findall(r"config\s+interface\s+['\"]?([a-zA-Z0-9_]+)['\"]?", raw_net)
+    lan_like = [i for i in ifaces if i.lower() not in ("loopback", "wan", "wan6")]
+    multi = len(lan_like) > 1
+    msg = (
+        f"旁路由单臂模式下检测到多个局域网/Guest 子网接口 ({', '.join(lan_like)})，请核对防火墙区域转发（Forwarding）策略以确保跨网段放行。"
+        if multi else ""
+    )
+    return {
+        "ok": True,
+        "checked": True,
+        "multi_subnet": multi,
+        "subnets": lan_like,
+        "message": msg,
     }
