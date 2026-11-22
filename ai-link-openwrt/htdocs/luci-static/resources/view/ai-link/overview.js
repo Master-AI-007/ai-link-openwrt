@@ -49,7 +49,7 @@ return view.extend({
 				}).catch(function() { return ''; });
 			}).catch(function() { return ''; });
 		}
-		var currentVer = String(uci.get('ai-link', 'global', 'app_version') || '2.7.6');
+		var currentVer = String(uci.get('ai-link', 'global', 'app_version') || '2.7.7');
 		var unlockBtnHtml = ' <button type="button" id="luci-btn-unlock-panel" style="padding:2px 8px; border-radius:5px; border:1px solid rgba(56,189,248,0.35); background:rgba(14,116,144,0.25); color:#7dd3fc; font-size:11px; cursor:pointer;">🔓 解锁状态</button>';
 		var pwdFieldHtml = pwdIsCustom
 			? '<span style="font-size:12px; color:#94a3b8; display:inline-flex; align-items:center; gap:6px;">面板密码: <code id="luci-panel-pwd-mask" style="background:#0f172a; padding:2px 7px; border-radius:5px; color:#e2e8f0; border:1px solid rgba(148,163,184,0.2);">已自定义 · 不回显</code>' + unlockBtnHtml + ' <span style="font-size:11px; color:#64748b;">（忘记可执行 ai-link password 重置）</span></span>'
@@ -488,33 +488,37 @@ return view.extend({
 				});
 			};
 
-			bindBtn('#luci-btn-svc-start', function() { svcRun('start', '启动服务'); });
-			bindBtn('#luci-btn-svc-stop', function() {
+			bindBtn('#luci-btn-svc-start', function(ev) { withLuciActionLock(ev && ev.currentTarget || mapEl.querySelector('#luci-btn-svc-start'), function() { return svcRun('start', '启动服务'); }); });
+			bindBtn('#luci-btn-svc-stop', function(ev) {
 				if (!window.confirm('确认停止 AI-LINK 服务？\n\n· 守护进程与 sing-box 内核都会结束\n· 面板 :' + resolveLuciPanelPort(port) + ' 将无法访问\n· 网络会恢复为纯直连（不影响正常上网）\n\n停止后可在本页「▶ 启动服务」随时恢复。')) return;
-				svcRun('stop', '停止服务');
+				withLuciActionLock(ev && ev.currentTarget || mapEl.querySelector('#luci-btn-svc-stop'), function() { return svcRun('stop', '停止服务'); });
 			});
-			bindBtn('#luci-btn-svc-restart', function() { svcRun('restart', '重启服务'); });
-			bindBtn('#luci-btn-svc-boot', function() {
+			bindBtn('#luci-btn-svc-restart', function(ev) { withLuciActionLock(ev && ev.currentTarget || mapEl.querySelector('#luci-btn-svc-restart'), function() { return svcRun('restart', '重启服务'); }); });
+			bindBtn('#luci-btn-svc-boot', function(ev) {
 				var bootNow = svcLast.boot === '1';
-				svcRun(bootNow ? 'disable' : 'enable', bootNow ? '关闭开机自启' : '开启开机自启');
+				withLuciActionLock(ev && ev.currentTarget || mapEl.querySelector('#luci-btn-svc-boot'), function() { return svcRun(bootNow ? 'disable' : 'enable', bootNow ? '关闭开机自启' : '开启开机自启'); });
 			});
 
-			bindBtn('#luci-btn-toggle-proxy', function() {
-				var targetEnable = !currentState.enabled;
-				showMsg(targetEnable ? '正在开启透明代理、挂载 nftables 规则与 dnsmasq 7874 上游...' : '正在暂停透明代理、清理 nftables 与 dnsmasq 7874 上游并恢复局域网直连...', false);
-				callApi(targetEnable ? '/restore_proxy' : '/recover_direct', 'POST', {}).then(function(r) {
-					showMsg(r && r.ok ? (targetEnable ? '✅ 已开启 AI-LINK 透明代理服务！' : '✅ 已切回纯直连模式，nftables 与 DNS 转发已卸载！') : '操作失败', !(r && r.ok));
-					refreshStatus();
-					svcRefresh();
+			bindBtn('#luci-btn-toggle-proxy', function(ev) {
+				withLuciActionLock(ev && ev.currentTarget || mapEl.querySelector('#luci-btn-toggle-proxy'), function() {
+					var targetEnable = !currentState.enabled;
+					showMsg(targetEnable ? '正在开启透明代理、挂载 nftables 规则与 dnsmasq 7874 上游...' : '正在暂停透明代理、清理 nftables 与 dnsmasq 7874 上游并恢复局域网直连...', false);
+					return callApi(targetEnable ? '/restore_proxy' : '/recover_direct', 'POST', {}).then(function(r) {
+						showMsg(r && r.ok ? (targetEnable ? '✅ 已开启 AI-LINK 透明代理服务！' : '✅ 已切回纯直连模式，nftables 与 DNS 转发已卸载！') : '操作失败', !(r && r.ok));
+						refreshStatus();
+						svcRefresh();
+					});
 				});
 			});
 
-			bindBtn('#luci-btn-restart-core', function() {
-				showMsg('🔄 正在重新生成配置并热重载 Sing-box 代理内核与 nftables 规则...', false);
-				callApi('/ops/control', 'POST', { action: 'restart_core' }).then(function(r) {
-					showMsg(r && r.ok ? ('✅ Sing-box 内核已重载 (PID: ' + (r.core_pid || 'running') + ')') : '内核重载失败', !(r && r.ok));
-					refreshStatus();
-					svcRefresh();
+			bindBtn('#luci-btn-restart-core', function(ev) {
+				withLuciActionLock(ev && ev.currentTarget || mapEl.querySelector('#luci-btn-restart-core'), function() {
+					showMsg('🔄 正在重新生成配置并热重载 Sing-box 代理内核与 nftables 规则...', false);
+					return callApi('/ops/control', 'POST', { action: 'restart_core' }).then(function(r) {
+						showMsg(r && r.ok ? ('✅ Sing-box 内核已重载 (PID: ' + (r.core_pid || 'running') + ')') : '内核重载失败', !(r && r.ok));
+						refreshStatus();
+						svcRefresh();
+					});
 				});
 			});
 
@@ -630,15 +634,14 @@ return view.extend({
 				});
 			});
 
-			bindBtn('#luci-btn-ota-check', function() {
+			bindBtn('#luci-btn-ota-check', function(ev) { withLuciActionLock(ev && ev.currentTarget || mapEl.querySelector('#luci-btn-ota-check'), function() {
 				var btn = mapEl.querySelector('#luci-btn-ota-check');
 				var applyBtn = mapEl.querySelector('#luci-btn-ota-apply');
 				var sub = mapEl.querySelector('#luci-ota-sub');
 				var notes = mapEl.querySelector('#luci-ota-notes');
 				if (!btn) return;
-				btn.disabled = true;
 				btn.textContent = '⏳ 检查中...';
-				callApi('/system/update/check?force=1', 'GET').then(function(r) {
+				return callApi('/system/update/check?force=1', 'GET').then(function(r) {
 					btn.disabled = false;
 					btn.textContent = '🔍 检查更新';
 					if (!r || !r.ok) {
@@ -684,19 +687,18 @@ return view.extend({
 					btn.textContent = '🔍 检查更新';
 					showMsg('❌ 版本检查请求失败', true);
 				});
-			});
+			}); });
 
-			bindBtn('#luci-btn-ota-apply', function() {
+			bindBtn('#luci-btn-ota-apply', function(ev) { withLuciActionLock(ev && ev.currentTarget || mapEl.querySelector('#luci-btn-ota-apply'), function() {
 				var applyBtn = mapEl.querySelector('#luci-btn-ota-apply');
-				if (!applyBtn || applyBtn.disabled) return;
+				if (!applyBtn) return;
 				var targetTxt = applyBtn.textContent.replace('⬆️ 立即更新到 ', '').trim();
 				if (!window.confirm('确认在线升级 AI-LINK 插件？\n\n目标版本：' + targetTxt +
 					'\n\n· 升级约需 1-3 分钟，期间面板与代理会短暂中断\n' +
 					'· 节点、订阅、分流规则、面板密码等配置会自动备份并完整保留\n' +
 					'· 若升级后健康检查失败，会自动回滚到当前版本\n\n是否继续？')) return;
-				applyBtn.disabled = true;
 				applyBtn.textContent = '⏳ 正在启动升级...';
-				callApi('/system/update/apply', 'POST', {}).then(function(r) {
+				return callApi('/system/update/apply', 'POST', {}).then(function(r) {
 					if (!r || !r.ok) {
 						applyBtn.disabled = false;
 						applyBtn.textContent = '⬆️ 重试更新';
@@ -712,7 +714,7 @@ return view.extend({
 					applyBtn.textContent = '⬆️ 重试更新';
 					showMsg('❌ 升级请求发送失败', true);
 				});
-			});
+			}); });
 
 			setTimeout(function() {
 				callApi('/system/update/status', 'GET').then(function(r) {

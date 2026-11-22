@@ -1,19 +1,32 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.7.6",
+  "latest": "2.7.7",
   "release_date": "2026-11-22",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.7.6",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.7.7",
   "highlights": [
-    "升版至 v2.7.6（PKG_RELEASE 51 / r51）：P0 缺陷根治与 10 项全栈架构增强闭环（P0-1, P0-2, OPT-276-01 ~ OPT-276-10）",
-    "P0-1 自动节点卡片跨订阅筛选穿透与 CF1 串标根治（移除硬编码 scope_source='ALL' 与 new_clean 兜底，严控越权）",
-    "P0-2 Games 等预设/自定义分流组直连自锁死循环根治（重构 _normalize_group_shunt_params 与 /api/shunt/update）",
-    "OPT-276-01 诊断子模块实质迁入 ailink_diag.py（主守护进程进一步精简解耦）",
-    "OPT-276-02 LuCI 页面操作并发锁与前端防抖（withLuciActionLock 守卫）",
-    "OPT-276-03 自动节点池加权选路与区域最低保障模型（Stage 7.49 闭环）",
-    "真机零补发 run_all 15/15、混沌 112/112（新增 Stage 7.49）、门禁双布局 21/21、design-lint 18/18、11 行指纹 11/11、自检 10/10 + 负向检出"
+    "升版至 v2.7.7（PKG_RELEASE 52 / r52）：OPT-277-01 ~ OPT-277-10 全栈架构增强闭环",
+    "OPT-277-01~02 overview.js 接入 withLuciActionLock 守卫包裹 8 大按钮，彻底杜绝连续点击竞态",
+    "OPT-277-03 独立纯函数诊断子模块 ailink_diag.py 扩容至 568 行，主进程进一步解耦精简",
+    "OPT-277-04 autoPagedLargeList 千条节点超大列表分页渲染优化与搜索联动",
+    "OPT-277-05~10 后端状态诊断、配置迁移兼容、鉴权防爆破限流与多网段旁路由指引",
+    "真机零补发 run_all 15/15、混沌 113/113（新增 Stage 7.50）、双布局 22/22、design-lint 18/18、自检 10/10 + 负向检出"
   ],
   "changelog": [
+    {
+      "version": "2.7.7",
+      "date": "2026-11-22",
+      "type": "feature",
+      "title": "OPT-277-01 ~ OPT-277-10 全栈架构增强与高并发防抖闭环 (r52)",
+      "items": [
+        "正常升版至 `v2.7.7`（`PKG_RELEASE:=52` / `r52`），增量基准为线上 `v2.7.6`（Release #454080557 / `9f36a99` / 部署 `1428e04b`）；现网设备可正常接收 OTA 升级提示",
+        "`OPT-277-01~02`：`overview.js` 全面接入 `withLuciActionLock` 守卫包裹 8 大核心控制按钮，杜绝连点竞态",
+        "`OPT-277-03`：独立诊断子模块 `ailink_diag.py` 扩容至 568 行，主守护进程进一步精简解耦",
+        "`OPT-277-04`：`autoPagedLargeList` 增强，提升千级节点超大订阅渲染流畅度与搜索联动",
+        "`OPT-277-05~10`：状态诊断接口增强、鉴权防爆破限流与多网段旁路由指引",
+        "真机验收：`INSTALL_RC=0`、自检 10/10、负向 `RC=1` 泄漏检出有效、服务自愈全 1、零补发 `run_all 15/15`、混沌 113/113（新增 Stage 7.50）、门禁双布局 22/22、改 1 字节精确转红、UI 六页三视口零溢出、出网 200/200/204/200 全通"
+      ]
+    },
     {
       "version": "2.7.6",
       "date": "2026-11-22",
@@ -827,13 +840,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.7.6/AI-LINK-v2.7.6.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.7.7/AI-LINK-v2.7.7.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.7.6.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.7.7.tar.gz"
       ],
-      "size": 1233898,
-      "md5": "a6947d11e5e0dbcaeb47a5e861e8dc49",
-      "sha256": "91cd16a8a625d3539fce3a04b091de7a23c7d85ce27dda4c6d51a1b52c8a095f"
+      "size": 1242662,
+      "md5": "a12fdc2f98fd416715268d385f8d73b9",
+      "sha256": "c083c9f1a7aeb1077a47dc9ab32faff78a2725262dcac60003b110aa836b9f12"
     }
   }
 }

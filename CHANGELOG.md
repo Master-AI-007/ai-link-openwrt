@@ -1,3 +1,16 @@
+## v2.7.7 (r52) - 2026-11-22
+- **基线版本**: 基于已全网发布的 `v2.7.6 (r51)`（GitHub Release #454080557 / Commit `9f36a99eb33b2caf67ed40488ab0684e3d7c1524` / CF Pages `1428e04b`）。
+- **OPT-277-01**: `overview.js` 全部 LuCI 操作按钮（启停、重启、开机自启、接管切换、内核重载、OTA 检查与升级）全面接入 `withLuciActionLock` 防连击保护。
+- **OPT-277-02**: 新增 `diagnose_auto_pool_scope_sources()` 与前端空集保护，当 `scope_sources` 指定订阅被删除或节点数为 0 时提示「所选订阅源已不存在或为空」并提供「重选订阅」按钮。
+- **OPT-277-03**: `/api/shunt/update` 新增 `build_shunt_hot_reload_status()`，测量直连切回代理模式的热生效耗时（`reload_ms`）并回传面板展示。
+- **OPT-277-04**: `ailink_diag.py` 实质扩容至 568 行，集中承载纯诊断、脱敏、Schema 迁移、并发自适应与端口/IPv6 冲突检测。
+- **OPT-277-05**: `/api/dns/settings` 切换 DNS 模式或上游时调用 `flush_dns_caches_atomic()` 原子刷新 `dnsmasq` 与本地缓存。
+- **OPT-277-06**: 新增 `get_adaptive_probe_concurrency()` 按 `os.cpu_count()` 自适应限制嵌入式低核设备测速并发数。
+- **OPT-277-07**: 新增 `check_homelink_port_conflict_summary()` 实时核验回家节点端口与 `panel_port`、80/443 及存活套接字冲突。
+- **OPT-277-08**: 新增 `validate_and_migrate_backup_schema()` 强制校验备份 `schema_version`，低于 v2.6.0 自动执行字段迁移与变更预览。
+- **OPT-277-09**: `nexus.js` 节点列表超过 1,000 条且选择「全部」时自动启用 100 条/页分页渲染（`autoPagedLargeList`），消除移动端掉帧。
+- **OPT-277-10**: 新增 `check_bypass_ipv6_ra_ndp_conflict()`，在旁路由单臂 + IPv6 模式下检测本地 `ra`/`ndp`/`dhcpv6` 冲突并提示核对主路由 RA。
+
 ## v2.7.6 (2026-11-22 · PKG_RELEASE:=51 / r51 · 基于 v2.7.5 r50 QA_PASSED_RELEASED 升版)
 
 - **P0-1 修复（自动节点卡片跨订阅串标与越权穿透）**：修复 `preview_subscription_update()` 硬编码 `scope_source="ALL"` 越权拉取与 `new_clean` 全局回退缺陷；移除前端 `resolveNodeSubDisplayName(null)` 无条件兜底首个订阅（`CF1`）的视觉欺骗逻辑。

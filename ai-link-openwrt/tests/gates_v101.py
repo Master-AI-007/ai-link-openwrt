@@ -602,6 +602,30 @@ def opt276_release_gate():
 
 check("OPT-276-01~10 & P0-1/P0-2 v2.7.6 全量生产调用链与修复门禁", opt276_release_gate)
 
+
+
+def opt277_release_gate():
+    _src = DAEMON.read_text(encoding="utf-8", errors="replace")
+    _diag = (ROOT / "root/usr/share/ai-link/ailink_diag.py").read_text(encoding="utf-8", errors="replace")
+    _diag_lines = len(_diag.splitlines())
+    _syms = [
+        "validate_and_migrate_backup_schema",
+        "diagnose_auto_pool_scope_sources",
+        "get_adaptive_probe_concurrency",
+        "flush_dns_caches_atomic",
+        "check_homelink_port_conflict_summary",
+        "check_bypass_ipv6_ra_ndp_conflict",
+        "build_shunt_hot_reload_status",
+    ]
+    _missing = [s for s in _syms if _src.count(s) < 2]
+    _ov = (ROOT / "htdocs/luci-static/resources/view/ai-link/overview.js").read_text(encoding="utf-8", errors="replace")
+    _ov_locks = _ov.count("withLuciActionLock(")
+    _nx = (ROOT / "root/usr/share/ai-link/webui/nexus.js").read_text(encoding="utf-8", errors="replace")
+    _ok = (len(_missing) == 0) and (_diag_lines >= 500) and (_ov_locks >= 8) and ("autoPagedLargeList" in _nx) and ("所选订阅源已不存在或为空" in _nx)
+    return _ok, f"missing={_missing}, diag_lines={_diag_lines}, ov_locks={_ov_locks}"
+
+check("OPT-277-01~10 v2.7.7 全量生产调用链、LuCI锁与分页/诊断门禁", opt277_release_gate)
+
 fails = [r for r in results if not r[1]]
 print(f" 合计 {len(results)} 项，通过 {len(results) - len(fails)}，失败 {len(fails)}")
 if fails:

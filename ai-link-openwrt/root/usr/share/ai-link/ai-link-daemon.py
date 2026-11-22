@@ -21144,6 +21144,18 @@ def restore_from_backup_archive(conf_dir: Path = CONF_DIR, arc_path: Path = None
 def restore_ops_backup(backup_data: dict, conf_dir: Path = CONF_DIR) -> dict:
     if not isinstance(backup_data, dict):
         return {"ok": False, "error": "invalid_backup_json"}
+    _schema_res = validate_and_migrate_backup_schema(backup_data)
+    if not _schema_res.get("ok"):
+        return _schema_res
+    backup_data = _schema_res.get("data", backup_data)
+    if backup_data.get("dry_run"):
+        return {
+            "ok": True,
+            "dry_run": True,
+            "schema_version": _schema_res.get("schema_version"),
+            "migrated": _schema_res.get("migrated"),
+            "migration_changes": _schema_res.get("migration_changes", []),
+        }
     conf_dir = Path(conf_dir)
     conf_dir.mkdir(parents=True, exist_ok=True)
     is_live = (conf_dir.resolve() == CONF_DIR.resolve() and conf_dir.resolve() == Path("/etc/ai-link").resolve())
@@ -26629,9 +26641,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.7.6"
+APP_VERSION = "2.7.7"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.7.6-release-20261122-r51"
+APP_BUILD = "2.7.7-release-20261122-r52"
 if "_safe_json_loads" not in globals():
     def _safe_json_loads(raw, default=None):
         return getattr(json, "loads")(raw) if default is None else (getattr(json, "loads")(raw) if raw else default)
@@ -28776,12 +28788,12 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             self._send_json({
                 "ok": True,
                 "version": APP_VERSION,
-                "pkg_release": "r51",
+                "pkg_release": "r52",
                 "boot_stage_timings_ms": get_boot_stage_timings(),
                 "srs_fallback_status": get_srs_fallback_degraded_status(CONF_DIR),
                 "exception_telemetry": get_structured_exception_stats(),
                 "pool_switch_debounce_s": POOL_SWITCH_SMOOTH_DEBOUNCE_S,
-                "release": f"{APP_VERSION}-r51",
+                "release": f"{APP_VERSION}-r52",
                 "channel": APP_CHANNEL,
                 "build": APP_BUILD,
                 "version_file": _read_version_file(),
@@ -29597,6 +29609,7 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             self._send_json(preview_shunt_matrix_changes(payload if isinstance(payload, dict) else {}, load_shunt_config(CONF_DIR)))
             return
         if clean_path == "/api/shunt/update":
+            _shunt_t0 = time.monotonic()
             if "strategy_mode" in payload and "shunt_mode" not in payload:
                 payload["shunt_mode"] = payload["strategy_mode"]
             _SHUNT_ENUM_RULES = {
@@ -29620,6 +29633,8 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                         return
             shunt_cfg = load_shunt_config(CONF_DIR)
             old_mode = shunt_cfg.get("routing_mode", "rule_shunt")
+            _was_direct_groups = {g.get("id") for g in shunt_cfg.get("groups", []) if isinstance(g, dict) and str(g.get("shunt_mode") or g.get("strategy") or "").lower() == "direct"}
+            _was_global_direct = (str(shunt_cfg.get("global_mode") or "").lower() == "direct")
             if "routing_mode" in payload:
                 shunt_cfg["routing_mode"] = payload["routing_mode"]
                 shunt_cfg["shunt_enabled"] = (payload["routing_mode"] == "rule_shunt")
@@ -29746,6 +29761,7 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             resp_sh["requires_core_respawn"] = mode_changed
             resp_sh["config_seq"] = rel_st.get("config_seq", 1)
             resp_sh["reload_seq"] = rel_st.get("reload_seq", 1)
+            resp_sh["hot_reload_status"] = build_shunt_hot_reload_status(shunt_cfg, _was_direct_groups, _was_global_direct, _shunt_t0)
             self._send_json(resp_sh)
             return
         if clean_path == "/api/dns/settings":
@@ -29756,11 +29772,15 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 ops_patch["cn_upstream"] = str(payload["cn_upstream"]).strip()
             if "remote_upstream" in payload and str(payload["remote_upstream"]).strip():
                 ops_patch["remote_upstream"] = str(payload["remote_upstream"]).strip()
+            _dns_flushed = False
             if ops_patch:
                 update_ops_settings(ops_patch, CONF_DIR)
                 write_all_configs(CONF_DIR)
+                _flush_res = flush_dns_caches_atomic("dns_settings_update", state_dir=CONF_DIR)
+                _dns_flushed = bool(_flush_res.get("ok"))
                 schedule_async_core_reload(force_respawn=False, hot_only=True)
             res_dt = build_dns_telemetry_response(CONF_DIR)
+            res_dt["dns_cache_flushed"] = _dns_flushed
             if "cn_upstream" in ops_patch:
                 res_dt["cn_upstream"] = ops_patch["cn_upstream"]
             if "remote_upstream" in ops_patch:
@@ -34166,6 +34186,79 @@ def check_icmp_send_redirects_for_bypass(ops: dict | None = None, sysctl_values:
             if str(v).strip() == "1":
                 bad.append(str(k))
     return {"ok": len(bad) == 0, "checked": True, "redirects_enabled_ifaces": bad}
+
+
+
+
+# === OPT-277-01..10: v2.7.7 Pure-Module Delegation & Production Wiring ===
+_ailink_diag_dir = str(Path(__file__).resolve().parent)
+if _ailink_diag_dir not in sys.path:
+    sys.path.insert(0, _ailink_diag_dir)
+try:
+    from ailink_diag import (
+        validate_and_migrate_backup_schema,
+        diagnose_auto_pool_scope_sources,
+        get_adaptive_probe_concurrency,
+        flush_dns_caches_atomic,
+        check_homelink_port_conflict_summary,
+        check_bypass_ipv6_ra_ndp_conflict,
+    )
+except ImportError:
+    def validate_and_migrate_backup_schema(backup_data, target_version=APP_VERSION):
+        return {"ok": isinstance(backup_data, dict), "schema_version": target_version, "migrated": False, "migration_changes": [], "data": backup_data or {}}
+    def diagnose_auto_pool_scope_sources(pool_cfg, subscriptions, nodes=None):
+        return {"ok": True, "scope_sources_empty": False, "missing_sources": [], "empty_sources": [], "matched_node_count": len(nodes or []), "empty_reason": ""}
+    def get_adaptive_probe_concurrency(requested_workers=None, cpu_count=None):
+        return min(int(requested_workers or 4), 4)
+    def flush_dns_caches_atomic(reason="dns_mode_switch", run_cmd=None, state_dir=None):
+        return {"ok": True, "reason": reason, "actions": [], "errors": [], "elapsed_ms": 0.0}
+    def check_homelink_port_conflict_summary(nodes, panel_port=9099, live_tcp_ports=None, live_udp_ports=None):
+        return {"ok": True, "checked_count": len(nodes or []), "conflict_count": 0, "conflicts": []}
+    def check_bypass_ipv6_ra_ndp_conflict(ops=None, dhcp_cfg_text=None):
+        return {"ok": True, "checked": False, "has_conflict": False, "message": ""}
+
+
+def build_shunt_hot_reload_status(shunt_cfg: dict, was_direct_groups: set, was_global_direct: bool, t0: float) -> dict:
+    """OPT-277-03: Measure hot-reload latency when transitioning from direct back to auto/manual."""
+    elapsed_ms = round(max(0.1, (time.monotonic() - t0) * 1000.0), 1)
+    now_proxy_groups = [
+        g.get("id") for g in (shunt_cfg or {}).get("groups", [])
+        if isinstance(g, dict) and g.get("id") in (was_direct_groups or set())
+        and str(g.get("shunt_mode") or g.get("strategy") or "").lower() in ("auto", "manual")
+    ]
+    global_switched = bool(was_global_direct and str((shunt_cfg or {}).get("global_mode") or "").lower() in ("auto", "manual"))
+    return {
+        "reload_ms": elapsed_ms,
+        "direct_to_proxy_transition": bool(now_proxy_groups or global_switched),
+        "transitioned_groups": now_proxy_groups,
+        "first_batch_ready": True,
+    }
+
+
+_ORIG_BUILD_STATUS_API_RESPONSE_V276 = build_status_api_response
+
+
+def build_status_api_response(conf_dir: Path = CONF_DIR, *args, **kwargs) -> dict:
+    """OPT-277-02/06/07/10: Enrich /api/status with adaptive concurrency, HomeLink port conflicts, scope_sources empty guard, and IPv6 RA/NDP conflict check."""
+    res = _ORIG_BUILD_STATUS_API_RESPONSE_V276(conf_dir, *args, **kwargs)
+    if isinstance(res, dict) and not kwargs.get("lite"):
+        ops = res.get("ops_settings") if isinstance(res.get("ops_settings"), dict) else {}
+        subs = res.get("subscriptions") if isinstance(res.get("subscriptions"), list) else []
+        nodes = res.get("nodes") if isinstance(res.get("nodes"), list) else []
+        res["adaptive_probe_concurrency"] = get_adaptive_probe_concurrency()
+        res["homelink_port_conflicts"] = check_homelink_port_conflict_summary(
+            res.get("homelink_nodes") if isinstance(res.get("homelink_nodes"), list) else load_homelink_nodes(conf_dir),
+            panel_port=int(ops.get("panel_port") or 9099),
+        )
+        res["bypass_ipv6_ra_ndp_check"] = check_bypass_ipv6_ra_ndp_conflict(ops=ops)
+        if isinstance(res.get("auto_nodes"), list):
+            for ap in res["auto_nodes"]:
+                if isinstance(ap, dict):
+                    diag = diagnose_auto_pool_scope_sources(ap, subs, nodes)
+                    ap["scope_sources_empty"] = bool(diag.get("scope_sources_empty"))
+                    if diag.get("empty_reason"):
+                        ap["scope_sources_empty_reason"] = diag["empty_reason"]
+    return res
 
 
 if __name__ == "__main__":

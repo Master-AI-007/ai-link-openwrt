@@ -1534,12 +1534,20 @@ function closeModal(forceCloseAll) {
           ? ('建池/复选验证: ' + p.service_checks.join('/').toUpperCase())
           : '纯 URL Ping 测速选优';
         const srcArr = Array.isArray(p.scope_sources) && p.scope_sources.length ? p.scope_sources : ['ALL'];
+        const missingOrEmptySrcs = srcArr.includes('ALL') ? [] : srcArr.filter(sid => {
+          if (sid === 'custom') return false;
+          const sObj = mock.subscriptions.find(s => s.id === sid || s.name === sid);
+          if (!sObj) return true;
+          const subNodes = (mock.nodes || []).filter(n => n._sub_id === sObj.id || n.sub_id === sObj.id || n.sub_name === sObj.name);
+          return subNodes.length === 0;
+        });
+        const scopeSourcesEmpty = Boolean(p.scope_sources_empty || (!srcArr.includes('ALL') && missingOrEmptySrcs.length === srcArr.length));
         const srcLabel = srcArr.includes('ALL')
           ? '全部订阅与自定义'
           : srcArr.map(sid => {
               if (sid === 'custom') return '手动节点';
               const sObj = mock.subscriptions.find(s => s.id === sid || s.name === sid);
-              return sObj ? sObj.name : sid;
+              return sObj ? sObj.name : (sid + ' (已删除)');
             }).join(' + ');
         const ctryArr = Array.isArray(p.scope_countries) && p.scope_countries.length ? p.scope_countries : ['ALL'];
         const ctryLabel = ctryArr.includes('ALL') ? '全地区' : ctryArr.join('/');
@@ -1554,9 +1562,11 @@ function closeModal(forceCloseAll) {
         const pillTxt = healthyCnt <= 0
           ? ('健康 0/' + targetCap + ' · 需重新选取')
           : ('健康 ' + healthyCnt + '/' + targetCap + ' (低于' + repThresh + '复选)');
-        const statusSummary = healthyCnt <= 0
-          ? '池内 0 个可用节点（当前退化为直连），请点击下方「重新自动选取」补充健康节点'
-          : ('日常定时 URL Ping 选最快切换 · 健康低于 ' + repThresh + ' 个自动触发复选');
+        const statusSummary = scopeSourcesEmpty
+          ? ('所选订阅源已不存在或为空（' + esc(p.scope_sources_empty_reason || missingOrEmptySrcs.join(', ') || '无有效节点') + '），请 <button class="button secondary compact" data-action="edit-auto-pool" data-pool="' + esc(p.id) + '">重选订阅</button>')
+          : (healthyCnt <= 0
+              ? '池内 0 个可用节点（当前退化为直连），请点击下方「重新自动选取」补充健康节点'
+              : ('日常定时 URL Ping 选最快切换 · 健康低于 ' + repThresh + ' 个自动触发复选'));
         const latHtml = isDirectPool
           ? '<span class="lat-badge direct">直连 WAN</span>'
           : (curMs != null && curMs > 0
@@ -2327,10 +2337,13 @@ function closeModal(forceCloseAll) {
     const allFiltered = filteredNodes();
     const pageSize = state.nodePageSize > 0 ? state.nodePageSize : allFiltered.length || 50;
     const totalPages = Math.max(1, Math.ceil(allFiltered.length / pageSize));
-    if (state.nodePage > totalPages) state.nodePage = totalPages;
+    const autoPagedLargeList = (state.nodePageSize === 0 && allFiltered.length > 1000);
+    const effPageSize = autoPagedLargeList ? 100 : pageSize;
+    const effTotalPages = effPageSize > 0 ? Math.max(1, Math.ceil(allFiltered.length / effPageSize)) : 1;
+    if (state.nodePage > effTotalPages) state.nodePage = effTotalPages;
     if (state.nodePage < 1) state.nodePage = 1;
-    const startIdx = (state.nodePage - 1) * pageSize;
-    const pageNodes = state.nodePageSize === 0 ? allFiltered : allFiltered.slice(startIdx, startIdx + pageSize);
+    const startIdx = (state.nodePage - 1) * effPageSize;
+    const pageNodes = (state.nodePageSize === 0 && !autoPagedLargeList) ? allFiltered : allFiltered.slice(startIdx, startIdx + effPageSize);
 
     const tbody = $('#probe-nodes-tbody');
     if (tbody) {
