@@ -645,6 +645,35 @@ def opt278_release_gate():
 
 check("OPT-278-01~10 v2.7.8 全量生产调用链、独立单测与前端快捷键/限流门禁", opt278_release_gate)
 
+
+
+def opt279_release_gate():
+    _src = DAEMON.read_text(encoding="utf-8", errors="replace")
+    _syms = [
+        "save_shunt_undo_snapshot",
+        "restore_shunt_undo_snapshot",
+        "evaluate_custom_doh_fallback",
+        "compute_node_jitter_stats",
+        "summarize_homelink_clients",
+        "check_disk_quota_warning",
+        "detect_flow_offloading_conflict",
+        "format_watchdog_recovery_event",
+        "detect_upstream_gateway_mac_change",
+    ]
+    _missing = [s for s in _syms if _src.count(s) < 2]
+    _nx = (ROOT / "root/usr/share/ai-link/webui/nexus.js").read_text(encoding="utf-8", errors="replace")
+    _css = (ROOT / "root/usr/share/ai-link/webui/nexus.css").read_text(encoding="utf-8", errors="replace")
+    _inst = (ROOT / "install.sh").read_text(encoding="utf-8", errors="replace")
+    _ok = (
+        len(_missing) == 0
+        and "undoShuntChange" in _nx
+        and "safe-area-inset-bottom" in _css
+        and "--sha256" in _inst
+    )
+    return _ok, f"missing={_missing}"
+
+check("OPT-279-01~10 v2.7.9 全量生产调用链、安全区适配与安装包校验门禁", opt279_release_gate)
+
 fails = [r for r in results if not r[1]]
 print(f" 合计 {len(results)} 项，通过 {len(results) - len(fails)}，失败 {len(fails)}")
 if fails:

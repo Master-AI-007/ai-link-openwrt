@@ -18,7 +18,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-DIAG_MODULE_VERSION = "2.7.8"
+DIAG_MODULE_VERSION = "2.7.9"
 
 SENSITIVE_CREDENTIAL_KEYS = (
     "panel_secret",
@@ -692,5 +692,215 @@ def check_bypass_multi_subnet_forwarding(
         "checked": True,
         "multi_subnet": multi,
         "subnets": lan_like,
+        "message": msg,
+    }
+
+
+# ---------------------------------------------------------------------------
+# v2.7.9 (r54) OPT-279-01 .. OPT-279-10 Pure Diagnostic & Helper Functions
+# ---------------------------------------------------------------------------
+_SHUNT_UNDO_MEM_SNAPSHOT: dict[str, Any] = {"ts": 0.0, "shunt": None, "reason": ""}
+
+
+def save_shunt_undo_snapshot(shunt_data: dict[str, Any], reason: str = "manual_change", now_ts: float | None = None) -> dict[str, Any]:
+    """OPT-279-01: Save an in-memory 30s TTL undo snapshot before bulk/reset shunt changes."""
+    import copy
+    now = float(now_ts if now_ts is not None else time.time())
+    _SHUNT_UNDO_MEM_SNAPSHOT["ts"] = now
+    _SHUNT_UNDO_MEM_SNAPSHOT["shunt"] = copy.deepcopy(shunt_data) if isinstance(shunt_data, dict) else {}
+    _SHUNT_UNDO_MEM_SNAPSHOT["reason"] = str(reason or "manual_change")
+    return {"ok": True, "ts": now, "ttl_s": 30, "reason": _SHUNT_UNDO_MEM_SNAPSHOT["reason"]}
+
+
+def restore_shunt_undo_snapshot(now_ts: float | None = None, ttl_s: float = 30.0) -> dict[str, Any]:
+    """OPT-279-01: Restore the shunt snapshot if within the 30s undo window."""
+    import copy
+    now = float(now_ts if now_ts is not None else time.time())
+    snap_ts = float(_SHUNT_UNDO_MEM_SNAPSHOT.get("ts") or 0.0)
+    snap_data = _SHUNT_UNDO_MEM_SNAPSHOT.get("shunt")
+    if not isinstance(snap_data, dict) or snap_ts <= 0:
+        return {"ok": False, "error": "no_snapshot", "message": "暂无可撤销的分流规则快照"}
+    age = now - snap_ts
+    if age > float(ttl_s):
+        return {"ok": False, "error": "snapshot_expired", "age_s": round(age, 1), "message": "分流规则撤销窗口（30秒）已过期"}
+    restored = copy.deepcopy(snap_data)
+    _SHUNT_UNDO_MEM_SNAPSHOT["ts"] = 0.0
+    _SHUNT_UNDO_MEM_SNAPSHOT["shunt"] = None
+    return {"ok": True, "age_s": round(age, 1), "shunt": restored, "reason": _SHUNT_UNDO_MEM_SNAPSHOT.get("reason", "")}
+
+
+def evaluate_custom_doh_fallback(
+    consecutive_timeouts: int = 0,
+    custom_doh_url: str = "",
+    threshold: int = 3,
+) -> dict[str, Any]:
+    """OPT-279-02: Trigger temporary fallback to trusted domestic DNS after >=3 custom DoH timeouts."""
+    cnt = max(0, int(consecutive_timeouts or 0))
+    active = bool(custom_doh_url and cnt >= int(threshold))
+    fallback_dns = ["223.5.5.5", "119.29.29.29"] if active else []
+    msg = (
+        f"自定义 DoH 上游 ({custom_doh_url}) 连续 {cnt} 次解析超时，已临时降级至国内可信 DNS (223.5.5.5) 防断网。"
+        if active else ""
+    )
+    return {
+        "ok": True,
+        "fallback_active": active,
+        "consecutive_timeouts": cnt,
+        "threshold": int(threshold),
+        "custom_doh_url": str(custom_doh_url or ""),
+        "fallback_dns": fallback_dns,
+        "message": msg,
+    }
+
+
+def compute_node_jitter_stats(sparkline: list[dict[str, Any]] | None) -> dict[str, Any]:
+    """OPT-279-03: Compute latency jitter (max - min) and avg over the latest 5 valid probe samples."""
+    pts = [
+        int(x.get("delay_ms"))
+        for x in (sparkline or [])
+        if isinstance(x, dict) and x.get("ok") and isinstance(x.get("delay_ms"), (int, float)) and int(x.get("delay_ms")) > 0
+    ]
+    recent = pts[-5:]
+    if not recent:
+        return {"samples": 0, "jitter_ms": 0, "avg_ms": 0, "min_ms": 0, "max_ms": 0, "high_jitter": False}
+    mn, mx = min(recent), max(recent)
+    jitter = mx - mn
+    avg = round(sum(recent) / len(recent))
+    return {
+        "samples": len(recent),
+        "jitter_ms": jitter,
+        "avg_ms": avg,
+        "min_ms": mn,
+        "max_ms": mx,
+        "high_jitter": jitter >= 80,
+    }
+
+
+def summarize_homelink_clients(peers: list[dict[str, Any]] | None, now_ts: int | None = None) -> dict[str, Any]:
+    """OPT-279-04: Summarize online HomeLink remote clients and latest handshake timestamp."""
+    now = int(now_ts if now_ts is not None else time.time())
+    items = peers if isinstance(peers, list) else []
+    online = []
+    latest_hs = 0
+    for p in items:
+        if not isinstance(p, dict):
+            continue
+        hs = int(p.get("latest_handshake_ts") or p.get("last_handshake") or 0)
+        is_on = bool(p.get("online")) or (hs > 0 and (now - hs) <= 180)
+        if hs > latest_hs:
+            latest_hs = hs
+        if is_on:
+            online.append({
+                "name": str(p.get("name") or p.get("id") or "Remote-Peer"),
+                "ip": str(p.get("ip") or ""),
+                "latest_handshake_ts": hs,
+            })
+    return {
+        "online_count": len(online),
+        "total_peers": len(items),
+        "latest_handshake_ts": latest_hs,
+        "clients": online,
+    }
+
+
+def check_disk_quota_warning(
+    paths: list[str] | None = None,
+    threshold_pct: float = 85.0,
+    usage_override: dict[str, float] | None = None,
+) -> dict[str, Any]:
+    """OPT-279-05: Warn when /etc/ai-link or /var/run/ai-link disk usage exceeds threshold_pct (default 85%)."""
+    import shutil
+    check_paths = paths or ["/etc/ai-link", "/var/run/ai-link"]
+    warnings = []
+    details = {}
+    for p in check_paths:
+        if isinstance(usage_override, dict) and p in usage_override:
+            pct = float(usage_override[p])
+        else:
+            target = Path(p)
+            probe = target if target.exists() else Path("/tmp")
+            try:
+                du = shutil.disk_usage(str(probe))
+                pct = round((du.used / du.total) * 100.0, 1) if du.total > 0 else 0.0
+            except OSError:
+                pct = 0.0
+        details[p] = pct
+        if pct >= float(threshold_pct):
+            warnings.append(f"{p} 磁盘使用率已达 {pct:.1f}%（>= {threshold_pct:.0f}%），建议清理旧 .srs 缓存或缩减日志。")
+    return {
+        "ok": len(warnings) == 0,
+        "warning_active": len(warnings) > 0,
+        "threshold_pct": float(threshold_pct),
+        "usage_pct_by_path": details,
+        "messages": warnings,
+    }
+
+
+def detect_flow_offloading_conflict(
+    firewall_conf_text: str | None = None,
+    data_plane_mode: str = "tproxy_redirect",
+) -> dict[str, Any]:
+    """OPT-279-06: Detect hardware/software flow_offloading or shortcut_fe conflicts with TProxy."""
+    raw = firewall_conf_text
+    if raw is None:
+        fw_p = Path("/etc/config/firewall")
+        raw = fw_p.read_text(encoding="utf-8", errors="ignore") if fw_p.is_file() else ""
+    flow_on = bool(re.search(r"option\s+flow_offloading(_hw)?\s+[\x27\x22]?1[\x27\x22]?", raw))
+    sfe_on = bool(re.search(r"(shortcut_fe|sfe)", raw, re.IGNORECASE)) and bool(re.search(r"[\x27\x22]?1[\x27\x22]?", raw))
+    tproxy_active = "tproxy" in str(data_plane_mode or "tproxy_redirect").lower()
+    conflict = (flow_on or sfe_on) and tproxy_active
+    msg = (
+        "检测到防火墙开启了硬件/软件流加速 (flow_offloading / SFE)，可能绕过 TProxy 透明代理导致分流失效，建议关闭流加速或切换全量 TUN 模式。"
+        if conflict else ""
+    )
+    return {
+        "ok": not conflict,
+        "conflict": conflict,
+        "flow_offloading": flow_on,
+        "shortcut_fe": sfe_on,
+        "data_plane_mode": str(data_plane_mode or ""),
+        "message": msg,
+    }
+
+
+def format_watchdog_recovery_event(
+    reason: str = "core_exit",
+    downtime_s: float = 0.0,
+    recovered_node: str = "",
+    ts: int | None = None,
+) -> dict[str, Any]:
+    """OPT-279-08: Format structured watchdog self-healing recovery event for the notification center."""
+    now = int(ts if ts is not None else time.time())
+    dt = round(max(0.0, float(downtime_s or 0.0)), 1)
+    node_str = str(recovered_node or "自动节点")
+    rsn_str = str(reason or "core_exit")
+    return {
+        "ts": now,
+        "reason": rsn_str,
+        "downtime_s": dt,
+        "recovered_node": node_str,
+        "summary": f"看门狗自愈完成：原因={rsn_str}，中断时长={dt}s，当前恢复出口={node_str}",
+    }
+
+
+def detect_upstream_gateway_mac_change(
+    current_gw_ip: str = "",
+    current_gw_mac: str = "",
+    saved_gw_mac: str = "",
+) -> dict[str, Any]:
+    """OPT-279-10: Detect upstream main-router gateway MAC address changes in bypass/onearm mode."""
+    cur = str(current_gw_mac or "").strip().lower()
+    prev = str(saved_gw_mac or "").strip().lower()
+    changed = bool(cur and prev and cur != prev)
+    msg = (
+        f"检测到上游主路由 ({current_gw_ip or 'gateway'}) MAC 地址从 {prev} 变更为 {cur}，如遇断网请刷新 ARP 缓存并核对旁路由网关配置。"
+        if changed else ""
+    )
+    return {
+        "ok": not changed,
+        "changed": changed,
+        "gateway_ip": str(current_gw_ip or ""),
+        "current_mac": cur,
+        "saved_mac": prev,
         "message": msg,
     }

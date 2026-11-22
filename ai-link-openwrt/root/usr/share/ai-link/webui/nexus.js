@@ -10836,3 +10836,21 @@ window.NexusViewRenderers = {
   formatWatchdogCircuitNoticeHtml: (...args) => (window.formatWatchdogCircuitNoticeHtml ? window.formatWatchdogCircuitNoticeHtml(...args) : '')
 };
 
+
+// OPT-279-01: 30s Shunt Rule Undo Helper
+async function undoShuntChange() {
+  try {
+    const r = await api('/api/shunt/undo', { method: 'POST', body: '{}' });
+    if (r && r.ok) {
+      toast('已撤销上次分流规则变更', 'ok');
+      if (typeof refreshStatus === 'function') refreshStatus();
+    } else {
+      toast((r && r.message) || '撤销窗口已过期', 'warn');
+    }
+    return r;
+  } catch (e) {
+    toast('撤销失败: ' + (e && e.message ? e.message : e), 'err');
+    return null;
+  }
+}
+if (typeof window !== 'undefined') window.undoShuntChange = undoShuntChange;

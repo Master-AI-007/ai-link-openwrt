@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""OPT-278-05: Standalone fast unit tests for ailink_diag.py (zero daemon import)."""
+"""OPT-278-05: Standalone fast unit tests for diag.py (zero daemon import)."""
 import pathlib
 import sys
 import tempfile
@@ -19,6 +19,30 @@ def main() -> int:
     def check(name: str, ok: bool, detail: str = ""):
         results.append((name, bool(ok), detail))
         print(f"  {'PASS' if ok else 'FAIL'}  {name}" + (f"  [{detail}]" if detail else ""))
+
+
+    # 11. OPT-279-01..10
+    snap = diag.save_shunt_undo_snapshot({"groups": [{"id": "AI"}]}, reason="test", now_ts=1000.0)
+    assert snap["ok"] is True
+    undone = diag.restore_shunt_undo_snapshot(now_ts=1010.0)
+    assert undone["ok"] is True and undone["shunt"]["groups"][0]["id"] == "AI"
+    print("  PASS  OPT-279-01 分流规则 30s 撤销快照")
+
+    doh = diag.evaluate_custom_doh_fallback(consecutive_timeouts=3, custom_doh_url="https://dns.quad9.net/dns-query")
+    assert doh["fallback_active"] is True and "223.5.5.5" in doh["fallback_dns"]
+    jit = diag.compute_node_jitter_stats([{"ok": True, "delay_ms": 50}, {"ok": True, "delay_ms": 140}])
+    assert jit["jitter_ms"] == 90 and jit["high_jitter"] is True
+    hl = diag.summarize_homelink_clients([{"name": "iPhone", "online": True, "latest_handshake_ts": 1700000100}], now_ts=1700000120)
+    assert hl["online_count"] == 1
+    dq = diag.check_disk_quota_warning(paths=["/etc/ai-link"], usage_override={"/etc/ai-link": 88.5})
+    assert dq["warning_active"] is True
+    fo = diag.detect_flow_offloading_conflict(firewall_conf_text="option flow_offloading '1'", data_plane_mode="tproxy_redirect")
+    assert fo["conflict"] is True
+    wd = diag.format_watchdog_recovery_event(reason="oom", downtime_s=3.2, recovered_node="JP-01")
+    assert "JP-01" in wd["summary"]
+    gw = diag.detect_upstream_gateway_mac_change("10.10.10.1", "aa:bb:cc:dd:ee:02", "aa:bb:cc:dd:ee:01")
+    assert gw["changed"] is True
+    print("  PASS  OPT-279-02..10 诊断与自愈纯函数套件")
 
     print("=" * 78)
     print(" AI-LINK ailink_diag 独立模块单元测试 (OPT-278-05)")

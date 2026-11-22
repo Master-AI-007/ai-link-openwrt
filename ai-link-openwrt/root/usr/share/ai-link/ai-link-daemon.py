@@ -26641,9 +26641,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.7.8"
+APP_VERSION = "2.7.9"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.7.8-release-20261122-r53"
+APP_BUILD = "2.7.9-release-20261122-r54"
 if "_safe_json_loads" not in globals():
     def _safe_json_loads(raw, default=None):
         return getattr(json, "loads")(raw) if default is None else (getattr(json, "loads")(raw) if raw else default)
@@ -29791,8 +29791,18 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             self._send_json(flush_all_dns_caches())
             return
         if clean_path == "/api/shunt/bulk_rules":
+            try:
+                save_shunt_undo_snapshot(load_shunt_config(CONF_DIR), reason="bulk_rules_import")
+            except (OSError, ValueError, TypeError) as _e_snap:
+                print(f"[ai-link] shunt_undo_snap warn: {_e_snap}", file=sys.stderr)
             res_br = parse_and_validate_bulk_shunt_rules(payload.get("raw_text") or payload.get("rules") or "", fmt=str(payload.get("format") or "auto"))
             self._send_json(res_br, status=200 if res_br.get("ok") else 400)
+            return
+        if clean_path == "/api/shunt/undo":
+            res_undo = restore_shunt_undo_snapshot()
+            if res_undo.get("ok") and isinstance(res_undo.get("shunt"), dict):
+                save_shunt_config(res_undo["shunt"], CONF_DIR)
+            self._send_json(res_undo, status=200 if res_undo.get("ok") else 400)
             return
         if clean_path == "/api/shunt/trace":
             self._send_json(trace_traffic_flow(payload, CONF_DIR))
@@ -34212,6 +34222,15 @@ try:
         compute_subscription_usage_summary,
         compute_next_schedule_preview,
         check_bypass_multi_subnet_forwarding,
+        save_shunt_undo_snapshot,
+        restore_shunt_undo_snapshot,
+        evaluate_custom_doh_fallback,
+        compute_node_jitter_stats,
+        summarize_homelink_clients,
+        check_disk_quota_warning,
+        detect_flow_offloading_conflict,
+        format_watchdog_recovery_event,
+        detect_upstream_gateway_mac_change,
     )
 except ImportError:
     def validate_and_migrate_backup_schema(backup_data, target_version=APP_VERSION):
@@ -34294,16 +34313,30 @@ _ORIG_BUILD_STATUS_API_RESPONSE_V277 = build_status_api_response
 
 
 def build_status_api_response(conf_dir: Path = CONF_DIR, *args, **kwargs) -> dict:
-    """OPT-278-03/09/10: Enrich /api/status with schedule preview, multi-subnet forwarding check & sub usage."""
+    """OPT-278 & OPT-279: Enrich /api/status with schedule preview, disk quota, flow offloading, homelink & jitter."""
     res = _ORIG_BUILD_STATUS_API_RESPONSE_V277(conf_dir, *args, **kwargs)
     if isinstance(res, dict) and not kwargs.get("lite"):
         ops = res.get("ops_settings") if isinstance(res.get("ops_settings"), dict) else {}
         res["next_schedule_preview"] = compute_next_schedule_preview(interval_hours=6.0)
         res["bypass_multi_subnet_check"] = check_bypass_multi_subnet_forwarding(ops=ops)
+        res["disk_quota_warning"] = check_disk_quota_warning()
+        res["flow_offloading_conflict"] = detect_flow_offloading_conflict(data_plane_mode=str(ops.get("data_plane_mode") or "tproxy_redirect"))
+        res["doh_fallback_alert"] = evaluate_custom_doh_fallback(consecutive_timeouts=0)
+        res["homelink_clients_summary"] = summarize_homelink_clients(res.get("homelink_peers") or [])
+        res["upstream_gw_mac_check"] = detect_upstream_gateway_mac_change()
+        res["watchdog_recovery_sample"] = format_watchdog_recovery_event(reason="healthy", downtime_s=0.0, recovered_node="")
         if isinstance(res.get("subscriptions"), list):
             for s in res["subscriptions"]:
                 if isinstance(s, dict):
                     s["usage_summary"] = compute_subscription_usage_summary(s)
+        if isinstance(res.get("auto_pools"), list):
+            for p in res["auto_pools"]:
+                if isinstance(p, dict) and isinstance(p.get("groups"), list):
+                    for grp in p["groups"]:
+                        if isinstance(grp, dict) and isinstance(grp.get("members"), list):
+                            for m in grp["members"]:
+                                if isinstance(m, dict):
+                                    m["jitter_stats"] = compute_node_jitter_stats(m.get("sparkline_20"))
     return res
 
 

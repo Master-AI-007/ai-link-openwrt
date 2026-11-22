@@ -1,3 +1,16 @@
+## v2.7.9 (2026-11-22)
+
+- **OPT-279-01**：新增 30 秒分流规则热更新撤销快照（`save_shunt_undo_snapshot` / `restore_shunt_undo_snapshot` / `/api/shunt/undo`）。
+- **OPT-279-02**：新增 T10 自定义 DoH 连续 3 次超时自动降级国内可信 DNS 告警（`evaluate_custom_doh_fallback`）。
+- **OPT-279-03**：新增自动节点池 L7 测速最近 5 次延迟抖动统计（`compute_node_jitter_stats`）。
+- **OPT-279-04**：新增 HomeLink 回家隧道在线设备数与最近握手时间汇总（`summarize_homelink_clients`）。
+- **OPT-279-05**：新增 `/etc/ai-link` 与 `/var/run/ai-link` 磁盘配额 >85% 告警联动（`check_disk_quota_warning`）。
+- **OPT-279-06**：新增防火墙流加速（`flow_offloading` / SFE）与 TProxy 冲突主动检测（`detect_flow_offloading_conflict`）。
+- **OPT-279-07**：`install.sh` 新增 `--sha256` 参数与 `.sha256` 伴随文件完整性校验。
+- **OPT-279-08**：新增看门狗熔断自愈恢复事件摘要格式化（`format_watchdog_recovery_event`）。
+- **OPT-279-09**：`nexus.css` 新增移动端底部安全区 `env(safe-area-inset-bottom)` 适配。
+- **OPT-279-10**：新增单臂旁路由上游网关 MAC 地址变化检测（`detect_upstream_gateway_mac_change`）。
+
 ## v2.7.8 (r53) - 2026-11-22
 - **基线版本**: 基于已全网发布的 `v2.7.7 (r52)`（GitHub Release #454315090 / Commit `e5df062ab002a31972083085d5a29248ec3e81ed` / CF Pages `244b1797`）。
 - **OPT-278-01**: 新增 `parse_and_validate_bulk_shunt_rules()`、`/api/shunt/bulk_rules` 与 `bulkExportShuntRules()` 支持分流规则 JSON/文本批量导入导出与语法校验。

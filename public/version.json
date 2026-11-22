@@ -1,20 +1,44 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.7.8",
+  "latest": "2.7.9",
   "release_date": "2026-11-22",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.7.8",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.7.9",
   "highlights": [
-    "升版至 v2.7.8（PKG_RELEASE 53 / r53）：OPT-278-01 ~ OPT-278-10 全栈架构增强闭环",
-    "OPT-278-01 分流规则批量导入/导出与校验接口 parse_and_validate_bulk_shunt_rules",
-    "OPT-278-02 autoPagedLargeList 分页边界修复与搜索联动",
-    "OPT-278-03 订阅流量用量与到期时间倒计时自动计算模型",
-    "OPT-278-04 鉴权 429 锁定倒计时回显与动态倒计时 startAuthLockCountdown",
-    "OPT-278-05 ailink_diag.py 扩容至 696 行，新增独立单测 test_diag_module.py",
-    "OPT-278-06~10 TProxy/TUN 链路自检、启动端口占用告警、WebUI 快捷键(/ 与 Esc)、定时任务预览与旁路由多网段冲突检测",
-    "真机零补发 run_all 15/15、混沌 114/114（新增 Stage 7.51）、双布局 23/23、design-lint 18/18、自检 10/10 + 负向检出"
+    "升版至 v2.7.9（PKG_RELEASE 54 / r54）：OPT-279-01 ~ OPT-279-10 全栈架构增强闭环",
+    "OPT-279-01 分流规则 30s 自动回滚与防失联保护",
+    "OPT-279-02 DoH 超时自适应降级与上游容灾",
+    "OPT-279-03 链路 Jitter 抖动探测与高频抖动抑制",
+    "OPT-279-04 HomeLink 回家隧道在线设备实时统计与状态感知",
+    "OPT-279-05 85% 磁盘配额预警与日志自清理",
+    "OPT-279-06 硬件 NAT 冲突自动检测与拦截",
+    "OPT-279-07 .sha256 完整性自校验接入 install.sh",
+    "OPT-279-08 Watchdog 核心自愈快照与异常摘要上报",
+    "OPT-279-09 WebUI 移动端安全区全向自适应适配",
+    "OPT-279-10 旁路由网关 MAC 变更检测与多网段告警",
+    "真机零补发 run_all 15/15、混沌 115/115（新增 Stage 7.52）、双布局 24/24、design-lint 18/18、自检 10/10 + 负向检出"
   ],
   "changelog": [
+    {
+      "version": "2.7.9",
+      "date": "2026-11-22",
+      "type": "feature",
+      "title": "OPT-279-01 ~ OPT-279-10 全栈架构增强与容灾闭环 (r54)",
+      "items": [
+        "正常升版至 `v2.7.9`（`PKG_RELEASE:=54` / `r54`），增量基准为线上 `v2.7.8`（Release #454430471 / `a5cabd9` / 部署 `26900440`）；现网设备可正常接收 OTA 升级提示",
+        "`OPT-279-01`：分流规则 30s 自动回滚与防失联机制",
+        "`OPT-279-02`：DoH 上游解析超时自适应降级至公共 DNS",
+        "`OPT-279-03`：链路 Jitter 抖动探测与高频颠簸切换抑制",
+        "`OPT-279-04`：HomeLink 回家隧道在线客户端状态与流量统计",
+        "`OPT-279-05`：85% 磁盘配额预警与历史滚动日志压缩",
+        "`OPT-279-06`：硬件 NAT 加速冲突自动拦截与提示",
+        "`OPT-279-07`：`install.sh` 引入 `.sha256` 本地快速校验",
+        "`OPT-279-08`：Watchdog 看门狗自愈摘要与异常快照上报",
+        "`OPT-279-09`：WebUI 移动端横竖屏全面支持 iPhone 安全区 `env(safe-area-inset-*)`",
+        "`OPT-279-10`：旁路由网关 MAC 漂移检测与多 VLAN 网段冲突告警",
+        "真机验收：`INSTALL_RC=0`、自检 10/10、负向 `RC=1` 泄漏检出有效、服务自愈全 1、零补发 `run_all 15/15`、混沌 115/115（新增 Stage 7.52）、门禁双布局 24/24、改 1 字节精确转红、UI 六页三视口零溢出、出网 200/200/204/200 全通"
+      ]
+    },
     {
       "version": "2.7.8",
       "date": "2026-11-22",
@@ -858,13 +882,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.7.8/AI-LINK-v2.7.8.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.7.9/AI-LINK-v2.7.9.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.7.8.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.7.9.tar.gz"
       ],
-      "size": 1248340,
-      "md5": "971807d490bb14a258434f14c092d899",
-      "sha256": "b6231102190f279e8f9e67ecd78059aa0e5a4849f07c2f9812e8f59408abe488"
+      "size": 1254363,
+      "md5": "48845906e28114ee78997148659d6d70",
+      "sha256": "11bb77e2112eed1f054f8434442dd77135129f11413ac17ad168d0fd2b39f369"
     }
   }
 }

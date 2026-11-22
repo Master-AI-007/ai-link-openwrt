@@ -12,14 +12,33 @@
 set -e
 export PYTHONDONTWRITEBYTECODE="1"
 
-VERSION="2.7.8"
+VERSION="2.7.9"
 UPGRADE_MODE=0
+EXPECTED_SHA256=""
+NEXT_IS_SHA=0
 for arg in "$@"; do
+	if [ "$NEXT_IS_SHA" = "1" ]; then
+		EXPECTED_SHA256="$arg"
+		NEXT_IS_SHA=0
+		continue
+	fi
 	case "$arg" in
 		--upgrade|-u) UPGRADE_MODE=1 ;;
+		--sha256) NEXT_IS_SHA=1 ;;
+		--sha256=*) EXPECTED_SHA256="${arg#--sha256=}" ;;
 	esac
 done
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+if [ -z "$EXPECTED_SHA256" ] && [ -f "$SCRIPT_DIR/AI-LINK-v${VERSION}.tar.gz.sha256" ]; then
+	EXPECTED_SHA256=$(awk '{print $1}' "$SCRIPT_DIR/AI-LINK-v${VERSION}.tar.gz.sha256" 2>/dev/null || true)
+fi
+if [ -n "$EXPECTED_SHA256" ] && [ -f "$SCRIPT_DIR/AI-LINK-v${VERSION}.tar.gz" ] && command -v sha256sum >/dev/null 2>&1; then
+	ACTUAL_SHA256=$(sha256sum "$SCRIPT_DIR/AI-LINK-v${VERSION}.tar.gz" | awk '{print $1}')
+	if [ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]; then
+		echo "[ERROR] 安装包 SHA-256 校验失败: 期望=$EXPECTED_SHA256 实际=$ACTUAL_SHA256" >&2
+		exit 1
+	fi
+fi
 
 echo "=================================================================="
 if [ "$UPGRADE_MODE" = "1" ]; then
