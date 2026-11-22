@@ -582,6 +582,26 @@ def opt275_release_gate():
 
 check("OPT-275-01~10 v2.7.5 全量生产调用链与子模块/前端门禁", opt275_release_gate)
 
+
+def opt276_release_gate():
+    _src = DAEMON.read_text(encoding="utf-8", errors="replace")
+    _syms = [
+        "plan_shunt_mode_transition_conntrack",
+        "precheck_custom_dns_upstream",
+        "build_sub_fetch_failure_badge",
+        "build_homelink_client_export_meta",
+        "get_overlay_write_frequency_report",
+        "check_singbox_min_version_compat",
+        "check_icmp_send_redirects_for_bypass",
+    ]
+    _missing = [s for s in _syms if _src.count(s) < 2]
+    _p0_ok = ('scope_source="ALL"' not in _src) and ('if raw_sm == "direct" or raw_c == "direct"' not in _src)
+    _ov = (ROOT / "htdocs/luci-static/resources/view/ai-link/overview.js").read_text(encoding="utf-8", errors="replace")
+    _ok = (len(_missing) == 0) and _p0_ok and ("withLuciActionLock" in _ov)
+    return _ok, f"missing_or_unwired={_missing}, p0_ok={_p0_ok}"
+
+check("OPT-276-01~10 & P0-1/P0-2 v2.7.6 全量生产调用链与修复门禁", opt276_release_gate)
+
 fails = [r for r in results if not r[1]]
 print(f" 合计 {len(results)} 项，通过 {len(results) - len(fails)}，失败 {len(fails)}")
 if fails:

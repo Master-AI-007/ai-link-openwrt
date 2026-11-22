@@ -1,24 +1,33 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.7.5",
-  "release_date": "2026-11-20",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.7.5",
+  "latest": "2.7.6",
+  "release_date": "2026-11-22",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.7.6",
   "highlights": [
-    "升版至 v2.7.5（PKG_RELEASE 50 / r50）：闭环 10 项全栈诊断拆包、并发安全与多订阅权重增强（OPT-275-01 ~ OPT-275-10）",
-    "OPT-275-01 单文件拆包里程碑化（抽离独立纯函数诊断子模块 ailink_diag.py 与 get_diag_submodule_manifest）",
-    "OPT-275-02 discover_live_unmatched_traffic mtime 缓存增加线程锁与命中计数（_DISCOVER_SHUNT_CACHE_LOCK）",
-    "OPT-275-03 sing-box 出站标签 UTF-8 字节上限截断守卫（sanitize_singbox_outbound_tag 接入 /api/status）",
-    "OPT-275-04 Fake-IP 持久化映射缓存一键清理接口（clear_fakeip_cache_entries 接入 /api/status）",
-    "OPT-275-05 自动节点池多订阅优先级加权延迟评分（score_node_with_sub_priority 接入 /api/status）",
-    "OPT-275-06 备份敏感字段脱敏二次预览清单摘要（summarize_backup_redacted_fields 接入 /api/status）",
-    "OPT-275-07 低内存环境 .gz 归档总字节配额限制（rotate_and_compress_logs_if_needed 限制 <=2MB）",
-    "OPT-275-08 多 WAN 出站接口绑定与路由核对提示（detect_multi_wan_egress_hint 接入 /api/status）",
-    "OPT-275-09 3D 星图低帧率切轻量 2D 拓扑用户偏好持久化（nexus3d.js localStorage 记录）",
-    "OPT-275-10 旁路由客户端网关与 DNS 指向配置指引文案（get_bypass_client_gateway_hint 接入 /api/status）",
-    "真机零补发 run_all 15/15、混沌 111/111（新增 Stage 7.48）、门禁双布局 20/20、design-lint 18/18、11 行指纹 11/11、自检 10/10 + 负向检出"
+    "升版至 v2.7.6（PKG_RELEASE 51 / r51）：P0 缺陷根治与 10 项全栈架构增强闭环（P0-1, P0-2, OPT-276-01 ~ OPT-276-10）",
+    "P0-1 自动节点卡片跨订阅筛选穿透与 CF1 串标根治（移除硬编码 scope_source='ALL' 与 new_clean 兜底，严控越权）",
+    "P0-2 Games 等预设/自定义分流组直连自锁死循环根治（重构 _normalize_group_shunt_params 与 /api/shunt/update）",
+    "OPT-276-01 诊断子模块实质迁入 ailink_diag.py（主守护进程进一步精简解耦）",
+    "OPT-276-02 LuCI 页面操作并发锁与前端防抖（withLuciActionLock 守卫）",
+    "OPT-276-03 自动节点池加权选路与区域最低保障模型（Stage 7.49 闭环）",
+    "真机零补发 run_all 15/15、混沌 112/112（新增 Stage 7.49）、门禁双布局 21/21、design-lint 18/18、11 行指纹 11/11、自检 10/10 + 负向检出"
   ],
   "changelog": [
+    {
+      "version": "2.7.6",
+      "date": "2026-11-22",
+      "type": "feature",
+      "title": "P0 用户缺陷根治与 10 项全栈架构增强闭环 (r51)",
+      "items": [
+        "正常升版至 `v2.7.6`（`PKG_RELEASE:=51` / `r51`），增量基准为线上 `v2.7.5`（Release #453850443 / `7efa356` / 部署 `81b5d5a6`）；现网设备可正常接收 OTA 升级提示",
+        "`P0-1`：自动节点卡片跨订阅筛选穿透与 `CF1` 串标根治，移除硬编码 `scope_source='ALL'` 与 `new_clean` 兜底",
+        "`P0-2`：`Games` 等预设/自定义分流组直连自锁死循环根治，重构 `_normalize_group_shunt_params()` 与 `/api/shunt/update` 参数清洗",
+        "`OPT-276-01`：纯函数诊断子模块实质迁入 `ailink_diag.py`，对外导出标准诊断清单",
+        "`OPT-276-02`：LuCI 页面增加 `withLuciActionLock` 并发锁保护，杜绝连点竞态",
+        "真机验收：`INSTALL_RC=0`、自检 10/10、负向 `RC=1` 泄漏检出有效、服务自愈全 1、零补发 `run_all 15/15`、混沌 112/112（新增 Stage 7.49）、门禁双布局 21/21、改 1 字节精确转红、视觉 18/18 零违规、UI 六页三视口零溢出、出网 200/200/204/200 全通"
+      ]
+    },
     {
       "version": "2.7.5",
       "date": "2026-11-20",
@@ -818,13 +827,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.7.5/AI-LINK-v2.7.5.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.7.6/AI-LINK-v2.7.6.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.7.5.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.7.6.tar.gz"
       ],
-      "size": 1230969,
-      "md5": "24c1ad91c3b670fa6b179e8d42b36379",
-      "sha256": "c6ac645796614ed1ccd12bd795221939b2a52e66b86358f719ccc7208d1c0fc0"
+      "size": 1233898,
+      "md5": "a6947d11e5e0dbcaeb47a5e861e8dc49",
+      "sha256": "91cd16a8a625d3539fce3a04b091de7a23c7d85ce27dda4c6d51a1b52c8a095f"
     }
   }
 }

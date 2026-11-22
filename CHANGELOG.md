@@ -1,3 +1,9 @@
+## v2.7.6 (2026-11-22 · PKG_RELEASE:=51 / r51 · 基于 v2.7.5 r50 QA_PASSED_RELEASED 升版)
+
+- **P0-1 修复（自动节点卡片跨订阅串标与越权穿透）**：修复 `preview_subscription_update()` 硬编码 `scope_source="ALL"` 越权拉取与 `new_clean` 全局回退缺陷；移除前端 `resolveNodeSubDisplayName(null)` 无条件兜底首个订阅（`CF1`）的视觉欺骗逻辑。
+- **P0-2 修复（自定义/预设分流组直连自锁死循环）**：重构 `_normalize_group_shunt_params()` 与 `/api/shunt/update`，以显式 `shunt_mode` 为最高优先级并清洗残留 `"direct"` 状态，前端 `nexus.js` 同步清洗 `safeCountry` 与 `manual_node`，彻底解决 `Games` 等直连预设组/自定义组无法切入自动池或手动节点的问题。
+- **OPT-276-01 ~ OPT-276-10**：实质迁入纯函数诊断逻辑至 `ailink_diag.py`、`nexus3d.js` 统一 `_PREFER_2D_KEY` 常量、新增模式切换精准 conntrack 策略、自定义 DNS 2s 预检、订阅 403/502 失败徽标保旧、HomeLink 导出元信息、`/overlay` 写频统计、`sing-box` 最低版本校验、`overview.js` 防连击锁与旁路由 ICMP `send_redirects` 巡检。
+
 ## v2.7.5 (2026-11-20 · PKG_RELEASE:=50 / r50 · 基于 v2.7.4 r49 QA_PASSED_RELEASED 升版)
 
 - **OPT-275-01**：新增独立纯函数诊断子模块 `ailink_diag.py`（`build_diag_module_manifest()`），迈出单文件拆包第一步。

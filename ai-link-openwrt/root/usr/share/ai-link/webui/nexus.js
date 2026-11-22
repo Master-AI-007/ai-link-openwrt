@@ -186,9 +186,7 @@
       }
       if (sname) return String(sname).trim();
     }
-    const subs = (typeof mock !== "undefined" && mock && Array.isArray(mock.subscriptions)) ? mock.subscriptions : [];
-    if (subs.length >= 1 && subs[0] && subs[0].name) return String(subs[0].name).trim();
-    return "机场订阅";
+    return "";
   }
 
   function formatNodeUnifiedDisplayName(nodeOrTag, subNameHint) {
@@ -198,7 +196,7 @@
       if (!rawName) return "";
       const subName = resolveNodeSubDisplayName(nodeOrTag, subNameHint);
       const countryName = extractCountryNameFromRawNodeName(rawName);
-      return subName + "丨" + countryName;
+      return subName ? (subName + "丨" + countryName) : rawName;
     }
     const str = String(nodeOrTag).replace(/\s*\|\s*(?:None|null|undefined)(?=\s*\||$)/gi, "").trim();
     if (!str) return "";
@@ -9560,10 +9558,11 @@ function closeModal(forceCloseAll) {
               toast('请选择要手动固定的具体节点', 'warn');
               return;
             }
+            const safeCountry = (country && country !== 'direct' && country !== 'block') ? country : 'JP';
             const payload = shunt_mode === 'auto'
-              ? { group_id: gid, shunt_mode: 'auto', strategy: 'auto', auto_node_id, dns_strategy, custom_dns }
+              ? { group_id: gid, shunt_mode: 'auto', strategy: 'auto', auto_node_id, country: 'ALL', manual_node: 'auto:' + auto_node_id, dns_strategy, custom_dns }
               : (shunt_mode === 'manual'
-                  ? { group_id: gid, shunt_mode: 'manual', strategy: 'manual', country, manual_node, strict_lock: true, dns_strategy, custom_dns }
+                  ? { group_id: gid, shunt_mode: 'manual', strategy: 'manual', country: safeCountry, manual_node, strict_lock: true, dns_strategy, custom_dns }
                   : { group_id: gid, shunt_mode: 'direct', strategy: 'direct', country: 'direct', manual_node: 'direct', dns_strategy, custom_dns });
             const res = await callRouterApi('/api/shunt/update', 'POST', payload);
             if (res && res.ok !== false) {

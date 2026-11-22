@@ -4,9 +4,9 @@
 
 **NEXUS 全域 3D 智能网关 · 运行在 OpenWrt 上的新一代智能分流与网络系统**
 
-[![version](https://img.shields.io/badge/version-2.7.5-6ee7f5?style=flat-square)](https://github.com/Master-AI-007/ai-link-openwrt/releases/tag/v2.7.5)
+[![version](https://img.shields.io/badge/version-2.7.6-6ee7f5?style=flat-square)](https://github.com/Master-AI-007/ai-link-openwrt/releases/tag/v2.7.6)
 [![platform](https://img.shields.io/badge/OpenWrt-23.05%20%7C%2024.10%20%7C%20ImmortalWrt-a994ff?style=flat-square)](#环境要求)
-[![core](https://img.shields.io/badge/sing--box-1.14.1-54e6b5?style=flat-square)](#技术架构)
+[![core](https://img.shields.io/badge/sing--box-1.14.4-54e6b5?style=flat-square)](#技术架构)
 [![license](https://img.shields.io/badge/license-MIT-f9a8d4?style=flat-square)](#许可与免责)
 
 [官网](https://ai-link-official.pages.dev) · [更新日志](https://ai-link-official.pages.dev/changelog) · [GitHub Releases](https://github.com/Master-AI-007/ai-link-openwrt/releases) · [使用手册](docs/manual-v1.0.0.md)
@@ -88,7 +88,7 @@ AI-LINK 集成了涵盖从底层内核到交互表现的全栈功能，功能模
 | **智能分流引擎** | 15 组策略分流 | 预置 AI (ChatGPT/Claude/Gemini/Copilot)、YouTube、TikTok、Netflix/Disney+、Google、GitHub、Microsoft、Apple、Steam/游戏平台、国内直连、黑洞拦截等 15 组专属 Shunt，支持优先级逐级匹配 |
 | | 四阶走向查询 | 输入任意域名或 IP，秒级推演其四阶命中规则、归属分流组、出站节点与最终出站 IP，排错透明直观 |
 | | 动态规则与分流降级 | 支持规则未命中兜底策略，支持外部规则源网络中断时自动退回安全规则 |
-| **内核数据面** | 高性能单内核 | 基于 sing-box 1.14.1 现代化单内核，内存占用极低，调度开销较传统架构降低 40% 以上 |
+| **内核数据面** | 高性能单内核 | 基于 sing-box 1.14.4 现代化单内核，内存占用极低，调度开销较传统架构降低 40% 以上 |
 | | 受控三模数据面 | 自由切换 `tproxy_redirect`（经典默认透明代理）、`tproxy_tcp_tun_udp`（游戏混合模式）与 `tun_full`（全量虚拟网卡 TUN 模式） |
 | | 防掉线看门狗 | `respawn` 无限重试机制 + 15 秒进程看门狗；内核异常崩溃自动重启，离线自动拆除规则与恢复上游 |
 | **3D 星图可视化** | NEXUS 3D 拓扑 | 呈现内核中枢、国内直连、海外代理、黑洞拦截四颗母星，节点为环绕卫星，连线按真实吞吐实时律动 |
@@ -192,7 +192,7 @@ nftables 防火墙 (table inet ai_link)
    ├── redirect :7891   (DNS 劫持拦截)
    └── MSS clamp / 内网保留网段直连直通
    ▼
-sing-box 1.14.1（高性能核心中枢）
+sing-box 1.14.4（高性能核心中枢）
    ├── 15 组专属 Shunt 选择器（AI / 视频 / 游戏 / GitHub / 办公 / 直连 …）
    ├── 自动节点池（多组候选池、延迟与成功率滑动综合评分、自愈秒切）
    └── 出站协议栈：VLESS-Reality / Hysteria2 / Shadowsocks / Trojan / 直连 / 黑洞 REJECT
@@ -216,10 +216,10 @@ sing-box 1.14.1（高性能核心中枢）
 最新候选构建验证指纹：
 
 ```
-AI-LINK-v2.7.5.tar.gz
-size   1,230,969 B
-md5    24c1ad91c3b670fa6b179e8d42b36379
-sha256 c6ac645796614ed1ccd12bd795221939b2a52e66b86358f719ccc7208d1c0fc0
+AI-LINK-v2.7.6.tar.gz
+size   1,233,898 B
+md5    a6947d11e5e0dbcaeb47a5e861e8dc49
+sha256 91cd16a8a625d3539fce3a04b091de7a23c7d85ce27dda4c6d51a1b52c8a095f
 ```
 
 在线清单比对地址：<https://ai-link-official.pages.dev/version.json>

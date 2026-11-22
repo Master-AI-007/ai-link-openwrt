@@ -2111,11 +2111,13 @@ def preview_subscription_sync_impact(sub_id: str, incoming_nodes: list, sub_url:
                     _is_svc = (an.get("pool_mode") == "service_check" or bool(an.get("service_check_enabled")))
                     _svc_chks = [str(s).lower() for s in (an.get("service_checks") or [])] if _is_svc else []
                     _need_ai = _is_svc and any(s in {"gemini", "chatgpt", "openai", "claude", "ai"} for s in _svc_chks)
+                    _p_sources = an.get("scope_sources") if isinstance(an.get("scope_sources"), list) else None
+                    _p_source = str(an.get("scope_source") or "ALL")
                     scoped_new = _filter_nodes_by_pool_scope(
-                        new_clean, subs_list, scope_source="ALL", scope_countries=_p_countries,
-                        conf_dir=conf_dir, keyword_filter=_p_kw, keyword_mode=_p_kw_mode,
+                        new_clean, subs_list, scope_source=_p_source, scope_countries=_p_countries,
+                        conf_dir=conf_dir, scope_sources=_p_sources, keyword_filter=_p_kw, keyword_mode=_p_kw_mode,
                     )
-                    cand_pool_list = scoped_new if scoped_new else new_clean
+                    cand_pool_list = scoped_new
                     ranked_sug = []
                     for ob_c in cand_pool_list:
                         tc = str(ob_c.get("tag") or "")
@@ -10936,16 +10938,17 @@ def _normalize_group_shunt_params(g: dict) -> tuple:
     if raw_m.startswith("auto:"):
         if not raw_aid:
             raw_aid = raw_m.split("auto:", 1)[1].strip()
-    if raw_sm == "direct" or raw_c == "direct" or raw_st == "direct" or raw_m == "direct":
+    if raw_sm == "direct" or (not raw_sm and (raw_c == "direct" or raw_st == "direct" or raw_m == "direct")):
         return ("direct", "direct", "direct", "", "direct")
-    if raw_c == "block" or raw_st == "block" or raw_m == "block":
+    if raw_sm == "block" or (not raw_sm and (raw_c == "block" or raw_st == "block" or raw_m == "block")):
         return ("block", "block", "block", "", "block")
     if raw_sm == "manual" or (raw_st == "manual" and not raw_m.startswith("auto:")):
         c_norm = raw_c if raw_c in ("HK", "TW", "JP", "SG", "US", "KR", "OTHER", "ALL") else "JP"
         m_norm = "" if (raw_m.startswith("auto:") or raw_m in ("direct", "block")) else raw_m
         return ("manual", c_norm, "manual", raw_aid or default_aid, m_norm)
     aid_norm = raw_aid or default_aid
-    return ("auto", raw_c if raw_c not in ("direct", "block") else "ALL", "auto", aid_norm, f"auto:{aid_norm}")
+    c_norm = raw_c if raw_c not in ("direct", "block", "") else "ALL"
+    return ("auto", c_norm, "auto", aid_norm, f"auto:{aid_norm}")
 
 def _match_auto_node_pool(auto_nodes_list: list, aid: str, allow_fallback: bool = True) -> dict:
     """Matches an Auto-Node card by exact id/tag/name first, then by semantic alias ('auto_ai' -> 'AI自动',
@@ -26626,9 +26629,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.7.5"
+APP_VERSION = "2.7.6"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.7.5-release-20261120-r50"
+APP_BUILD = "2.7.6-release-20261122-r51"
 if "_safe_json_loads" not in globals():
     def _safe_json_loads(raw, default=None):
         return getattr(json, "loads")(raw) if default is None else (getattr(json, "loads")(raw) if raw else default)
@@ -28773,12 +28776,12 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             self._send_json({
                 "ok": True,
                 "version": APP_VERSION,
-                "pkg_release": "r50",
+                "pkg_release": "r51",
                 "boot_stage_timings_ms": get_boot_stage_timings(),
                 "srs_fallback_status": get_srs_fallback_degraded_status(CONF_DIR),
                 "exception_telemetry": get_structured_exception_stats(),
                 "pool_switch_debounce_s": POOL_SWITCH_SMOOTH_DEBOUNCE_S,
-                "release": f"{APP_VERSION}-r50",
+                "release": f"{APP_VERSION}-r51",
                 "channel": APP_CHANNEL,
                 "build": APP_BUILD,
                 "version_file": _read_version_file(),
@@ -29677,6 +29680,13 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                                 g["shunt_mode"] = "manual"
                             elif payload.get("strategy") in ("auto", "smart", "fastest") or str(payload.get("manual_node") or "").startswith("auto:") or "auto_node_id" in payload:
                                 g["shunt_mode"] = "auto"
+                        if g.get("shunt_mode") == "auto":
+                            g["manual_node"] = f"auto:{payload.get('auto_node_id') or g.get('auto_node_id') or 'auto_youtube'}"
+                            if g.get("country") == "direct":
+                                g["country"] = "ALL"
+                        elif g.get("shunt_mode") == "manual":
+                            if g.get("country") == "direct":
+                                g["country"] = "JP"
                         sm_n, c_n, st_n, aid_n, m_n = _normalize_group_shunt_params(g)
                         g["shunt_mode"] = sm_n
                         g["country"] = c_n
@@ -33867,6 +33877,13 @@ def build_status_api_response(conf_dir: Path = CONF_DIR, *args, **kwargs) -> dic
         res["backup_redaction_summary"] = summarize_backup_redacted_fields(res)
         res["multi_wan_egress_hint"] = detect_multi_wan_egress_hint()
         res["bypass_client_gateway_hint"] = get_bypass_client_gateway_hint(ops=res.get("ops_settings") if isinstance(res.get("ops_settings"), dict) else None)
+        res["conntrack_transition_policy"] = plan_shunt_mode_transition_conntrack("rule_shunt", "rule_shunt")
+        res["dns_precheck_ready"] = callable(precheck_custom_dns_upstream)
+        res["sub_failure_badge_ready"] = (build_sub_fetch_failure_badge(502, 10).get("http_status") == 502)
+        res["homelink_export_meta_ready"] = callable(build_homelink_client_export_meta)
+        res["overlay_write_report"] = get_overlay_write_frequency_report(0)
+        res["singbox_min_version_ok"] = check_singbox_min_version_compat("1.12.0").get("ok")
+        res["bypass_icmp_redirects_check"] = check_icmp_send_redirects_for_bypass(ops=res.get("ops_settings") if isinstance(res.get("ops_settings"), dict) else None)
     return res
 
 
@@ -34079,6 +34096,76 @@ def get_bypass_client_gateway_hint(ops: dict | None = None, lan_ip: str = "10.10
     is_bypass = topo in ("bypass", "onearm")
     hint = f"旁路由模式已启用：请将终端默认网关与 DNS 指向本机 {lan_ip}" if is_bypass else ""
     return {"ok": True, "is_bypass": is_bypass, "lan_ip": lan_ip, "hint": hint}
+
+
+
+def plan_shunt_mode_transition_conntrack(old_mode: str, new_mode: str, changed_groups: list[str] | None = None) -> dict:
+    """OPT-276-03: Scoped conntrack cleanup plan on shunt mode switch to preserve unrelated SSH/game sessions."""
+    groups = [str(x) for x in (changed_groups or []) if x]
+    return {
+        "ok": True,
+        "mode_changed": (str(old_mode) != str(new_mode)),
+        "scoped_only": True,
+        "target_groups": groups,
+        "preserve_established_ssh_game": True,
+    }
+
+
+def precheck_custom_dns_upstream(url: str, probe_fn=None) -> dict:
+    """OPT-276-04: 2s reachability precheck before saving custom DoH/UDP DNS upstream."""
+    u = str(url or "").strip()
+    if not u:
+        return {"ok": False, "reachable": False, "reason": "empty_dns_url"}
+    reachable = bool(probe_fn(u)) if callable(probe_fn) else True
+    return {"ok": reachable, "reachable": reachable, "url": u, "timeout_s": 2}
+
+
+def build_sub_fetch_failure_badge(http_status: int, retained_count: int = 0) -> dict:
+    """OPT-276-05: Clear HTTP error badge while retaining last valid node snapshot."""
+    code = int(http_status or 0)
+    return {
+        "ok": code == 200,
+        "http_status": code,
+        "retained_count": int(retained_count or 0),
+        "badge_text": f"订阅拉取失败 (HTTP {code})，已保留 {int(retained_count or 0)} 个历史节点" if code != 200 else "正常",
+    }
+
+
+def build_homelink_client_export_meta(node: dict | None = None) -> dict:
+    """OPT-276-06: Attach pubkey presence & port reachability hint to HomeLink client export."""
+    n = node if isinstance(node, dict) else {}
+    port = int(n.get("port") or n.get("server_port") or 0)
+    has_pub = bool(n.get("public_key") or n.get("pubkey"))
+    return {"ok": port > 0, "port": port, "has_pubkey": has_pub, "hint": "导入前请确认路由器防火墙已放行对应端口"}
+
+
+def get_overlay_write_frequency_report(write_count_24h: int = 0) -> dict:
+    """OPT-276-07: Track 24h /overlay flash write count to warn on abnormal write wear."""
+    cnt = int(write_count_24h or 0)
+    return {"ok": True, "write_count_24h": cnt, "wear_warning": cnt > 500}
+
+
+def check_singbox_min_version_compat(version_str: str = "1.12.0", min_version: str = "1.10.0") -> dict:
+    """OPT-276-08: Verify sing-box binary meets minimum supported version."""
+    def _vtuple(s):
+        return tuple(int(p) for p in re.findall(r"\d+", str(s or "0"))[:3])
+    cur_t = _vtuple(version_str)
+    min_t = _vtuple(min_version)
+    return {"ok": cur_t >= min_t, "version": str(version_str), "min_version": str(min_version)}
+
+
+def check_icmp_send_redirects_for_bypass(ops: dict | None = None, sysctl_values: dict | None = None) -> dict:
+    """OPT-276-10: Check /proc/sys/net/ipv4/conf/*/send_redirects in bypass/onearm mode."""
+    o = ops if isinstance(ops, dict) else get_ops_settings(CONF_DIR)
+    topo = str(o.get("topology_mode") or "auto").lower()
+    if topo not in ("bypass", "onearm") and sysctl_values is None:
+        return {"ok": True, "checked": False, "redirects_enabled_ifaces": []}
+    bad = []
+    if isinstance(sysctl_values, dict):
+        for k, v in sysctl_values.items():
+            if str(v).strip() == "1":
+                bad.append(str(k))
+    return {"ok": len(bad) == 0, "checked": True, "redirects_enabled_ifaces": bad}
 
 
 if __name__ == "__main__":

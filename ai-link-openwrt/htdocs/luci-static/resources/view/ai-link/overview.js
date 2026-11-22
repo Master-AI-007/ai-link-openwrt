@@ -17,6 +17,7 @@ return view.extend({
 	render: function() {
 		var m, s, o;
 		var host = window.location.hostname || '10.10.10.77';
+		var withLuciActionLock = function(btn, fn) { if (!btn || btn.disabled) return; btn.disabled = true; Promise.resolve().then(fn).finally(function() { btn.disabled = false; }); };
 		var resolveLuciPanelPort = function(uciPort) {
 			var p = parseInt(uciPort, 10);
 			return (p >= 1024 && p <= 65535) ? p : 9099;
@@ -48,7 +49,7 @@ return view.extend({
 				}).catch(function() { return ''; });
 			}).catch(function() { return ''; });
 		}
-		var currentVer = String(uci.get('ai-link', 'global', 'app_version') || '2.7.5');
+		var currentVer = String(uci.get('ai-link', 'global', 'app_version') || '2.7.6');
 		var unlockBtnHtml = ' <button type="button" id="luci-btn-unlock-panel" style="padding:2px 8px; border-radius:5px; border:1px solid rgba(56,189,248,0.35); background:rgba(14,116,144,0.25); color:#7dd3fc; font-size:11px; cursor:pointer;">🔓 解锁状态</button>';
 		var pwdFieldHtml = pwdIsCustom
 			? '<span style="font-size:12px; color:#94a3b8; display:inline-flex; align-items:center; gap:6px;">面板密码: <code id="luci-panel-pwd-mask" style="background:#0f172a; padding:2px 7px; border-radius:5px; color:#e2e8f0; border:1px solid rgba(148,163,184,0.2);">已自定义 · 不回显</code>' + unlockBtnHtml + ' <span style="font-size:11px; color:#64748b;">（忘记可执行 ai-link password 重置）</span></span>'

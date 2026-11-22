@@ -1550,7 +1550,7 @@
             btn.setAttribute("aria-label", "切换轻量 2D 拓扑");
             btn.textContent = "切换轻量 2D 拓扑";
             btn.addEventListener("click", () => {
-              try { if (window.localStorage) window.localStorage.setItem("ailink_prefer_2d_topology", "1"); } catch (_e) {}
+              const _PREFER_2D_KEY = "ailink_prefer_2d_topology"; try { if (window.localStorage) window.localStorage.setItem(_PREFER_2D_KEY, "1"); } catch (_e) {}
               this.stopLoop();
               if (typeof window.showPage === "function") window.showPage("overview");
               btn.remove();
