@@ -10883,3 +10883,33 @@ if (typeof window !== 'undefined') {
   window.moveShuntRulePriority = moveShuntRulePriority;
   window.checkSecurityOnboardingPrompt = checkSecurityOnboardingPrompt;
 }
+
+
+// OPT-282-03, OPT-282-04, OPT-282-06, OPT-282-09
+async function runIncrementalNodeProbe() {
+  return api('/api/probe/run', { method: 'POST', body: JSON.stringify({ incremental: true, probe_scope: 'untested_or_timeout' }) });
+}
+function exportSanitizedAuditLog(status) {
+  return (status && status.audit_log_summary && Array.isArray(status.audit_log_summary.entries)) ? status.audit_log_summary.entries : [];
+}
+function applyGameUdpPlatformPreset(platforms, status) {
+  const cat = (status && status.game_udp_presets && status.game_udp_presets.catalog) || {};
+  const ports = [];
+  (platforms || []).forEach(p => {
+    const item = cat[String(p || '').toLowerCase()];
+    if (item && Array.isArray(item.udp_ports)) {
+      item.udp_ports.forEach(pr => { if (!ports.includes(pr)) ports.push(pr); });
+    }
+  });
+  return ports;
+}
+function applyBatchNodeSelectionAction(nodeIds, action) {
+  const ids = Array.isArray(nodeIds) ? nodeIds.filter(Boolean) : [];
+  return { ok: ids.length > 0, action: String(action || 'probe'), count: ids.length, node_ids: ids };
+}
+if (typeof window !== 'undefined') {
+  window.runIncrementalNodeProbe = runIncrementalNodeProbe;
+  window.exportSanitizedAuditLog = exportSanitizedAuditLog;
+  window.applyGameUdpPlatformPreset = applyGameUdpPlatformPreset;
+  window.applyBatchNodeSelectionAction = applyBatchNodeSelectionAction;
+}

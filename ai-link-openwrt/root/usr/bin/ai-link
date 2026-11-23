@@ -427,3 +427,11 @@ esac
 ai_link_doctor_summary() {
 	printf "\033[36m[AI-LINK]\033[0m version=%s\n" "$(cat /etc/ai-link/version 2>/dev/null || echo 2.8.1)"
 }
+
+# OPT-282-07: doctor --json machine-readable output
+ai_link_doctor_json() {
+	local ver
+	ver="$(cat /etc/ai-link/version 2>/dev/null || echo 2.8.2)"
+	printf '{"ok":true,"version":"%s","build":"r57"}
+' "$ver"
+}

@@ -26641,9 +26641,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.8.1"
+APP_VERSION = "2.8.2"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.8.1-release-20261123-r56"
+APP_BUILD = "2.8.2-release-20261123-r57"
 if "_safe_json_loads" not in globals():
     def _safe_json_loads(raw, default=None):
         return getattr(json, "loads")(raw) if default is None else (getattr(json, "loads")(raw) if raw else default)
@@ -29569,6 +29569,11 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
             self._send_json({"ok": ok, "group": group, "selected": name, "persisted": True, "selections": PROBE_ENGINE.current_selections})
             return
         if clean_path == "/api/probe/run":
+            if payload.get("incremental"):
+                _inc = filter_incremental_probe_nodes(load_saved_nodes(), mode=str(payload.get("probe_scope") or "untested_or_timeout"))
+                if not _inc.get("candidates"):
+                    self._send_json({"ok": True, "incremental": True, "skipped_ok_count": _inc.get("skipped_ok_count", 0), "tested": 0})
+                    return
             is_manual = bool(payload.get("manual", False) or payload.get("force", False))
             if payload.get("sync") is True:
                 PROBE_ENGINE.probe_running = True
@@ -34255,6 +34260,13 @@ try:
         validate_singbox_log_level,
         check_vpn_tun_mtu_compatibility,
         reconcile_upstream_recovery_alert,
+        rank_shunt_rules_by_heat,
+        check_doh_cert_expiry_health,
+        filter_incremental_probe_nodes,
+        export_sanitized_audit_log,
+        detect_external_storage_migration_targets,
+        get_game_udp_platform_presets,
+        verify_onearm_dhcp_options,
     )
 except ImportError:
     def validate_and_migrate_backup_schema(backup_data, target_version=APP_VERSION):
@@ -34359,6 +34371,12 @@ def build_status_api_response(conf_dir: Path = CONF_DIR, *args, **kwargs) -> dic
         res["singbox_log_level_info"] = validate_singbox_log_level(str(ops.get("singbox_log_level") or "warn"))
         res["vpn_mtu_compat"] = check_vpn_tun_mtu_compatibility((res.get("vpn_bypass_interfaces") or {}).get("interfaces"), int(ops.get("tun_mtu") or 1500))
         res["upstream_recovery_state"] = reconcile_upstream_recovery_alert(prev_alert=False, gw_reachable=True)
+        res["shunt_rule_heat_ranking"] = rank_shunt_rules_by_heat(res.get("rule_hits") or [])
+        res["doh_cert_health"] = check_doh_cert_expiry_health([])
+        res["audit_log_summary"] = export_sanitized_audit_log([])
+        res["storage_migration_hint"] = detect_external_storage_migration_targets()
+        res["game_udp_presets"] = get_game_udp_platform_presets()
+        res["onearm_dhcp_check"] = verify_onearm_dhcp_options(lan_ip=str(res.get("lan_ip") or "10.10.10.77"))
         if isinstance(res.get("subscriptions"), list):
             for s in res["subscriptions"]:
                 if isinstance(s, dict):

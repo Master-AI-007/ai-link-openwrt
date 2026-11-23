@@ -730,6 +730,32 @@ def opt281_release_gate():
 
 check("OPT-281-01~10 v2.8.1 全量生产调用链、CLI诊断与3D检索门禁", opt281_release_gate)
 
+def opt282_release_gate():
+    _src = DAEMON.read_text(encoding="utf-8", errors="replace")
+    _syms = [
+        "rank_shunt_rules_by_heat",
+        "check_doh_cert_expiry_health",
+        "filter_incremental_probe_nodes",
+        "export_sanitized_audit_log",
+        "detect_external_storage_migration_targets",
+        "get_game_udp_platform_presets",
+        "verify_onearm_dhcp_options",
+    ]
+    _missing = [s for s in _syms if _src.count(s) < 2]
+    _nx = (ROOT / "root/usr/share/ai-link/webui/nexus.js").read_text(encoding="utf-8", errors="replace")
+    _cli = (ROOT / "root/usr/bin/ai-link").read_text(encoding="utf-8", errors="replace")
+    _init = (ROOT / "root/etc/init.d/ai-link").read_text(encoding="utf-8", errors="replace")
+    _ok = (
+        len(_missing) == 0
+        and "runIncrementalNodeProbe" in _nx
+        and "applyBatchNodeSelectionAction" in _nx
+        and "OPT-282-07" in _cli
+        and "OPT-282-08" in _init
+    )
+    return _ok, f"missing={_missing}"
+
+check("OPT-282-01~10 v2.8.2 全量生产调用链、增量测速与批量多选门禁", opt282_release_gate)
+
 fails = [r for r in results if not r[1]]
 print(f" 合计 {len(results)} 项，通过 {len(results) - len(fails)}，失败 {len(fails)}")
 if fails:

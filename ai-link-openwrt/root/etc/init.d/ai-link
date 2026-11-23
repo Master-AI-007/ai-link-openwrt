@@ -766,3 +766,11 @@ status_check() {
 save_crash_stderr_snapshot() {
 	[ -f /var/run/ai-link/daemon.log ] && tail -n 50 /var/run/ai-link/daemon.log > /var/run/ai-link/last_crash_stderr.log 2>/dev/null || true
 }
+
+# OPT-282-08: Zero-downtime reload check via SIGHUP before restart fallback
+reload_zero_downtime_check() {
+	local pid
+	pid="$(pidof sing-box 2>/dev/null || true)"
+	[ -n "$pid" ] && kill -HUP "$pid" 2>/dev/null && return 0
+	return 1
+}

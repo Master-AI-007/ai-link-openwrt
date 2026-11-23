@@ -12,13 +12,14 @@ import copy
 import json
 import os
 import re
+import shutil
 import socket
 import subprocess
 import time
 from pathlib import Path
 from typing import Any
 
-DIAG_MODULE_VERSION = "2.8.1"
+DIAG_MODULE_VERSION = "2.8.2"
 
 SENSITIVE_CREDENTIAL_KEYS = (
     "panel_secret",
@@ -1098,3 +1099,157 @@ def reconcile_upstream_recovery_alert(prev_alert: bool = False, gw_reachable: bo
         "auto_cleared": cleared,
         "recovered_s": round(max(0.0, float(recovered_s or 0.0)), 1),
     }
+
+
+# ==============================================================================
+# OPT-282-01 ~ OPT-282-10 (v2.8.2 r57)
+# ==============================================================================
+
+def rank_shunt_rules_by_heat(hit_records: list[dict[str, Any]] | dict[str, Any] | None = None, rules: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    """OPT-282-01: Rank shunt rules by hit count and last_hit_ts descending."""
+    counts: dict[str, dict[str, Any]] = {}
+    if isinstance(hit_records, dict):
+        for k, v in hit_records.items():
+            cnt = int(v.get("hits", 0) if isinstance(v, dict) else (v or 0))
+            ts = int(v.get("last_hit_ts", 0) if isinstance(v, dict) else 0)
+            counts[str(k)] = {"rule_id": str(k), "hits": cnt, "last_hit_ts": ts, "stale": cnt <= 0}
+    elif isinstance(hit_records, list):
+        for item in hit_records:
+            if not isinstance(item, dict):
+                continue
+            rid = str(item.get("rule_id") or item.get("group") or item.get("tag") or "").strip()
+            if not rid:
+                continue
+            cnt = int(item.get("hits", item.get("count", 0)) or 0)
+            ts = int(item.get("last_hit_ts", item.get("ts", 0)) or 0)
+            cur = counts.setdefault(rid, {"rule_id": rid, "hits": 0, "last_hit_ts": 0, "stale": True})
+            cur["hits"] += cnt
+            cur["last_hit_ts"] = max(cur["last_hit_ts"], ts)
+            cur["stale"] = cur["hits"] <= 0
+    for r in (rules or []):
+        rid = str((r or {}).get("id") or (r or {}).get("rule_id") or "").strip()
+        if rid and rid not in counts:
+            counts[rid] = {"rule_id": rid, "hits": 0, "last_hit_ts": 0, "stale": True}
+    ranked = sorted(counts.values(), key=lambda x: (x["hits"], x["last_hit_ts"], x["rule_id"]), reverse=True)
+    return {"ok": True, "count": len(ranked), "ranked": ranked, "stale_count": sum(1 for x in ranked if x["stale"])}
+
+
+def check_doh_cert_expiry_health(upstreams: list[dict[str, Any]] | None = None, warn_days: int = 14) -> dict[str, Any]:
+    """OPT-282-02: Inspect DoH/DoT upstream TLS certificate remaining days."""
+    items = []
+    warnings = []
+    threshold = max(1, int(warn_days or 14))
+    for u in (upstreams or []):
+        if not isinstance(u, dict):
+            continue
+        tag = str(u.get("tag") or u.get("url") or u.get("server") or "unknown")
+        days = u.get("days_remaining")
+        if days is None:
+            continue
+        d_val = int(days)
+        expired = d_val <= 0
+        expiring = 0 < d_val <= threshold
+        entry = {"tag": tag, "days_remaining": d_val, "expired": expired, "expiring_soon": expiring}
+        items.append(entry)
+        if expired or expiring:
+            warnings.append(entry)
+    return {"ok": len(warnings) == 0, "checked": len(items), "warn_days": threshold, "warnings": warnings, "items": items}
+
+
+def filter_incremental_probe_nodes(nodes: list[dict[str, Any]] | None = None, mode: str = "untested_or_timeout") -> dict[str, Any]:
+    """OPT-282-03: Filter only untested or timed-out/dead nodes for incremental probe."""
+    all_nodes = [n for n in (nodes or []) if isinstance(n, dict)]
+    candidates = []
+    skipped_ok = 0
+    for n in all_nodes:
+        st = str(n.get("state") or "untested").lower()
+        delay = int(n.get("delay_ms", -1) if n.get("delay_ms") is not None else -1)
+        if mode == "untested_only":
+            include = st in ("untested", "") or delay < 0
+        else:
+            include = st in ("untested", "dead", "timeout", "") or delay <= 0
+        if include:
+            candidates.append(n)
+        else:
+            skipped_ok += 1
+    return {
+        "ok": True,
+        "mode": mode,
+        "total_count": len(all_nodes),
+        "candidate_count": len(candidates),
+        "skipped_ok_count": skipped_ok,
+        "candidates": candidates,
+    }
+
+
+def export_sanitized_audit_log(events: list[dict[str, Any]] | None = None, limit: int = 200) -> dict[str, Any]:
+    """OPT-282-04: Export sanitized :9099 API audit log entries with secrets masked."""
+    secret_keys = ("token", "password", "secret", "authorization", "api_key", "cookie")
+    out = []
+    for ev in list(events or [])[-max(1, int(limit or 200)):]:
+        if not isinstance(ev, dict):
+            continue
+        clean = {}
+        for k, v in ev.items():
+            kl = str(k).lower()
+            if any(sk in kl for sk in secret_keys):
+                clean[k] = "***"
+            else:
+                clean[k] = v
+        out.append(clean)
+    return {"ok": True, "count": len(out), "entries": out}
+
+
+def detect_external_storage_migration_targets(mounts: list[dict[str, Any]] | None = None, min_free_mb: int = 128) -> dict[str, Any]:
+    """OPT-282-05: Detect writable external USB/Overlay mounts for cache.db & .srs migration."""
+    candidates = []
+    if mounts is None:
+        mounts = []
+        for path in ("/mnt/sda1", "/mnt/sdb1", "/mnt/usb", "/overlay"):
+            p = Path(path)
+            if p.exists() and p.is_dir():
+                try:
+                    st = shutil.disk_usage(p)
+                    mounts.append({"path": path, "free_mb": round(st.free / (1024 * 1024), 1), "writable": os.access(p, os.W_OK)})
+                except OSError:
+                    pass
+    for m in mounts:
+        if not isinstance(m, dict):
+            continue
+        free_mb = float(m.get("free_mb", 0) or 0)
+        writable = bool(m.get("writable", True))
+        path = str(m.get("path") or "")
+        if path and writable and free_mb >= float(min_free_mb):
+            candidates.append({"path": path, "free_mb": round(free_mb, 1), "writable": True})
+    candidates.sort(key=lambda x: x["free_mb"], reverse=True)
+    rec = candidates[0]["path"] if candidates else ""
+    return {"ok": True, "migration_ready": bool(rec), "recommended_target": rec, "candidates": candidates}
+
+
+def get_game_udp_platform_presets(selected_platforms: list[str] | None = None) -> dict[str, Any]:
+    """OPT-282-06: Return one-click UDP direct presets for Steam, Battle.net, PSN, and Switch."""
+    catalog = {
+        "steam": {"label": "Steam", "udp_ports": ["27000-27050", "3478", "4379-4380"]},
+        "battlenet": {"label": "Battle.net", "udp_ports": ["1119", "3724", "6112-6120", "22885"]},
+        "psn": {"label": "PlayStation Network", "udp_ports": ["3478-3479", "3658", "9305-9308"]},
+        "switch": {"label": "Nintendo Switch", "udp_ports": ["45000-65535", "3478-3479"]},
+    }
+    sel = [str(p).strip().lower() for p in (selected_platforms or []) if str(p).strip().lower() in catalog]
+    merged_ports: list[str] = []
+    for p in sel:
+        for port_rng in catalog[p]["udp_ports"]:
+            if port_rng not in merged_ports:
+                merged_ports.append(port_rng)
+    return {"ok": True, "catalog": catalog, "selected": sel, "merged_udp_ports": merged_ports}
+
+
+def verify_onearm_dhcp_options(lan_ip: str = "10.10.10.77", lease_gateway: str = "", lease_dns: str = "") -> dict[str, Any]:
+    """OPT-282-10: Verify LAN client DHCP Option 3 (Gateway) and Option 6 (DNS) match bypass router IP."""
+    target = str(lan_ip or "").strip()
+    gw = str(lease_gateway or target).strip()
+    dns = str(lease_dns or target).strip()
+    opt3_ok = bool(target and gw == target)
+    opt6_ok = bool(target and dns == target)
+    ok = opt3_ok and opt6_ok
+    msg = "" if ok else f"请将主路由 DHCP Option 3(网关) 与 Option 6(DNS) 指向旁路由 {target}（当前 GW={gw or '未获取'}, DNS={dns or '未获取'}）"
+    return {"ok": ok, "lan_ip": target, "option3_ok": opt3_ok, "option6_ok": opt6_ok, "lease_gateway": gw, "lease_dns": dns, "message": msg}

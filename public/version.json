@@ -1,24 +1,45 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.8.1",
+  "latest": "2.8.2",
   "release_date": "2026-11-23",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.8.1",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.8.2",
   "highlights": [
-    "升版至 v2.8.1（PKG_RELEASE 56 / r56）：OPT-281-01 ~ OPT-281-10 全栈架构增强闭环",
-    "OPT-281-01 分流规则批量导入/导出与校验 (bulk_rules)",
-    "OPT-281-02 大列表分页边界修复 (effTotalPages 对齐)",
-    "OPT-281-03 节点订阅流量配额与到期倒计时汇总计算",
-    "OPT-281-04 控制台鉴权 429 锁定状态秒级倒计时回显",
-    "OPT-281-05 ailink_diag 独立模块轻量级单测并接入回归套件",
-    "OPT-281-06 TProxy / TUN 切换一键双链路快速探测自检",
-    "OPT-281-07 init.d 启动阶段端口冲突预检与告警记录",
-    "OPT-281-08 WebUI 全局快捷键 (/ 聚焦搜索、Esc 关闭抽屉/弹窗)",
-    "OPT-281-09 定时任务下次执行时间戳推算与状态面板预览",
-    "OPT-281-10 旁路由多网段/多VLAN/访客网转发冲突检测",
-    "真机零补发 run_all 15/15、混沌 117/117（覆盖 Stage 7.54）、双布局门禁 25/25、design-lint 18/18、自检 10/10 + 负向检出有效"
+    "升版至 v2.8.2（PKG_RELEASE 57 / r57）：OPT-282-01 ~ OPT-282-10 全栈架构增强闭环",
+    "OPT-282-01 分流规则命中热度排序与高频规则自适应提权",
+    "OPT-282-02 DoH / DoT 证书有效期预警与异常告警",
+    "OPT-282-03 节点订阅增量测速（仅测速新节点与故障节点）",
+    "OPT-282-04 API 脱敏审计日志导出与敏感字段过滤",
+    "OPT-282-05 外置存储迁移引导与挂载点容量健康检测",
+    "OPT-282-06 游戏平台 UDP 直连预设与端口范围快速配置",
+    "OPT-282-07 CLI ai-link doctor --json 结构化诊断输出",
+    "OPT-282-08 init.d reload 零断流热重载与配置校验兜底",
+    "OPT-282-09 节点列表批量多选（批量测速、启用/禁用）",
+    "OPT-282-10 旁路由 DHCP Option 3/6 校验向导与网关一致性检查",
+    "真机零补发 run_all 15/15、混沌 118/118、双布局门禁 27/27、design-lint 18/18、自检 10/10 + 负向检出有效"
   ],
   "changelog": [
+    {
+      "version": "2.8.2",
+      "date": "2026-11-23",
+      "type": "feature",
+      "title": "OPT-282-01 ~ OPT-282-10 全栈架构增强与稳定性闭环 (r57)",
+      "items": [
+        "正常升版至 `v2.8.2`（`PKG_RELEASE:=57` / `r57`），增量基准为线上 `v2.8.1`（Release #454919689 / `4d20df1` / 部署 `6aa20c0d`）；现网设备可正常接收 OTA 升级提示",
+        "`OPT-282-01`：分流规则命中热度排序与高频规则自适应提权",
+        "`OPT-282-02`：DoH / DoT 证书有效期预警与异常告警",
+        "`OPT-282-03`：节点订阅增量测速（仅测速新节点与故障节点）",
+        "`OPT-282-04`：API 脱敏审计日志导出与敏感字段过滤",
+        "`OPT-282-05`：外置存储迁移引导与挂载点容量健康检测",
+        "`OPT-282-06`：游戏平台 UDP 直连预设与端口范围快速配置",
+        "`OPT-282-07`：CLI `ai-link doctor --json` 结构化诊断输出",
+        "`OPT-282-08`：`init.d reload` 零断流热重载与配置校验兜底",
+        "`OPT-282-09`：节点列表批量多选（批量测速、启用/禁用）",
+        "`OPT-282-10`：旁路由 DHCP Option 3/6 校验向导与网关一致性检查",
+        "闭环修复：`LOCAL-282-01`（`ailink_diag.py` 补充 `import shutil` 并补齐无 mock 实测）",
+        "真机验收：`INSTALL_RC=0`、自检 10/10、负向 `RC=1` 泄漏检出有效、服务自愈全 1、零补发 `run_all 15/15`、混沌 118/118、门禁双布局 27/27、改 1 字节精确转红、UI 六页三视口零溢出、出网 200/200/204/200 全通"
+      ]
+    },
     {
       "version": "2.8.1",
       "date": "2026-11-23",
@@ -922,13 +943,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.8.1/AI-LINK-v2.8.1.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.8.2/AI-LINK-v2.8.2.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.8.1.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.8.2.tar.gz"
       ],
-      "size": 1261619,
-      "md5": "5c8015f28646e58209ff41e7a9b6a2ba",
-      "sha256": "e33bd63cb3a2bea36fc1bc52a746b44c3293fd15d6b2119555b0cb3daaebbf39"
+      "size": 1266272,
+      "md5": "f80a9294385a9b595233dc02ea1dfd96",
+      "sha256": "971e1cf4da76211630fa94823c9666842ec70e38f232d86cd66be2c8a49e2a91"
     }
   }
 }

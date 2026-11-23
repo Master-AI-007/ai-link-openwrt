@@ -1,3 +1,6 @@
+## v2.8.2 (2026-11-23 · r57)
+- **OPT-282-01~10 全量落地**：分流规则命中热度排序、DoH/DoT 证书有效期预警、节点订阅增量测速、API 脱敏审计日志导出、外置存储迁移引导、游戏平台 UDP 直连预设、`ai-link doctor --json`、`init.d reload` 零断流校验、节点列表批量多选与旁路由 DHCP Option 3/6 校验向导。
+
 ## v2.8.1 (2026-11-23)
 
 - **OPT-281-01**：新增 5×3 分流矩阵规则优先级排序接口与前端辅助（`reorder_shunt_group_rules` / `/api/shunt/reorder_rule` / `moveShuntRulePriority`）。

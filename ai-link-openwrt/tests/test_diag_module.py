@@ -123,6 +123,35 @@ def main() -> int:
     ms = diag.check_bypass_multi_subnet_forwarding({"topology_mode": "bypass"}, "config interface 'lan'\nconfig interface 'guest'\n")
     check("OPT-278-09/10 调度预览与多网段旁路检测", sched.get("next_run_ts") == 1000 + 6 * 3600 and ms.get("multi_subnet") is True, f"next={sched.get('next_run_ts')}, subnets={ms.get('subnets')}")
 
+    # 11. OPT-282-01~06, 10
+    hr = diag.rank_shunt_rules_by_heat([{"rule_id": "AI", "hits": 42, "last_hit_ts": 2000}], [{"id": "EmptyRule"}])
+    dc = diag.check_doh_cert_expiry_health([{"tag": "cf", "days_remaining": 7}], warn_days=14)
+    ip_res = diag.filter_incremental_probe_nodes([{"tag": "ok1", "state": "ok", "delay_ms": 50}, {"tag": "u1", "state": "untested", "delay_ms": -1}])
+    al = diag.export_sanitized_audit_log([{"action": "save", "token": "secret123"}])
+    sm = diag.detect_external_storage_migration_targets([{"path": "/mnt/sda1", "free_mb": 2048, "writable": True}])
+    gp = diag.get_game_udp_platform_presets(["steam", "battlenet"])
+    dh = diag.verify_onearm_dhcp_options("10.10.10.77", "10.10.10.77", "10.10.10.1")
+    check(
+        "OPT-282-01~10 诊断模块全套能力校验",
+        hr["ranked"][0]["rule_id"] == "AI"
+        and len(dc["warnings"]) == 1
+        and ip_res["candidate_count"] == 1
+        and al["entries"][0]["token"] == "***"
+        and sm["recommended_target"] == "/mnt/sda1"
+        and "27000-27050" in gp["merged_udp_ports"]
+        and dh["ok"] is False and dh["option3_ok"] is True and dh["option6_ok"] is False,
+    )
+
+    # 12. LOCAL-282-01 real no-mock call (mounts=None + real existing temp path)
+    sm_nomock = diag.detect_external_storage_migration_targets(mounts=None)
+    with tempfile.TemporaryDirectory() as _td_sm:
+        sm_real = diag.detect_external_storage_migration_targets([{"path": _td_sm, "free_mb": 256, "writable": True}])
+    check(
+        "LOCAL-282-01 外置存储探测无 mock 实测 (mounts=None + shutil.disk_usage)",
+        sm_nomock.get("ok") is True and sm_real.get("recommended_target") != "",
+        f"nomock={sm_nomock}, real={sm_real}",
+    )
+
     fails = [r for r in results if not r[1]]
     print("=" * 78)
     print(f" 合计 {len(results)} 项，通过 {len(results) - len(fails)}，失败 {len(fails)}")
