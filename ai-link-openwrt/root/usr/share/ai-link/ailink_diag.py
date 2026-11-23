@@ -18,7 +18,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-DIAG_MODULE_VERSION = "2.8.0"
+DIAG_MODULE_VERSION = "2.8.1"
 
 SENSITIVE_CREDENTIAL_KEYS = (
     "panel_secret",
@@ -1005,4 +1005,96 @@ def evaluate_bypass_boot_grace(uptime_s: float = 0.0, gw_reachable: bool = False
         "gw_reachable": bool(gw_reachable),
         "suppress_offline_alert": suppress,
         "status": "boot_grace_waiting" if suppress else ("online" if gw_reachable else "offline"),
+    }
+
+
+# ---------------------------------------------------------------------------
+# v2.8.1 (r56) OPT-281-01 .. OPT-281-10 Pure Diagnostic & Helper Functions
+# ---------------------------------------------------------------------------
+def reorder_shunt_group_rules(groups: list[dict[str, Any]] | None, group_id: str, direction: str = "up") -> dict[str, Any]:
+    """OPT-281-01: Move a shunt group rule up or down in priority order."""
+    items = list(groups) if isinstance(groups, list) else []
+    idx = next((i for i, g in enumerate(items) if isinstance(g, dict) and str(g.get("id") or "") == str(group_id)), -1)
+    if idx < 0:
+        return {"ok": False, "error": "group_not_found", "groups": items}
+    d = str(direction or "up").lower()
+    new_idx = idx - 1 if d == "up" else idx + 1
+    if new_idx < 0 or new_idx >= len(items):
+        return {"ok": True, "moved": False, "index": idx, "groups": items}
+    items[idx], items[new_idx] = items[new_idx], items[idx]
+    return {"ok": True, "moved": True, "index": new_idx, "groups": items}
+
+
+def compute_dns_dual_track_latency_stats(samples: dict[str, list[float | int]] | None = None) -> dict[str, Any]:
+    """OPT-281-02: Compute P50/P95 latency distribution for domestic vs overseas DNS tracks."""
+    src = samples if isinstance(samples, dict) else {}
+    def _pct(vals: list[float | int]) -> dict[str, Any]:
+        arr = sorted(float(x) for x in (vals or []) if isinstance(x, (int, float)) and float(x) >= 0)
+        if not arr:
+            return {"count": 0, "p50_ms": 0.0, "p95_ms": 0.0}
+        n = len(arr)
+        p50 = arr[int(0.50 * (n - 1))]
+        p95 = arr[int(0.95 * (n - 1))]
+        return {"count": n, "p50_ms": round(p50, 1), "p95_ms": round(p95, 1)}
+    return {
+        "ok": True,
+        "domestic": _pct(src.get("domestic") or []),
+        "overseas": _pct(src.get("overseas") or []),
+    }
+
+
+def format_failover_timeline_24h(switch_history: list[dict[str, Any]] | None = None, now_ts: int | None = None) -> dict[str, Any]:
+    """OPT-281-03: Build 24h structured failover timeline events from switch history."""
+    now = int(now_ts if now_ts is not None else time.time())
+    cutoff = now - 86400
+    events = []
+    for ev in (switch_history or []):
+        if not isinstance(ev, dict):
+            continue
+        ts = int(ev.get("ts") or 0)
+        if ts >= cutoff:
+            events.append({
+                "ts": ts,
+                "time_str": str(ev.get("time_str") or ""),
+                "pool_id": str(ev.get("pool_id") or ""),
+                "from_node": str(ev.get("from_node") or ""),
+                "to_node": str(ev.get("to_node") or ""),
+                "reason": str(ev.get("reason") or ""),
+            })
+    return {"ok": True, "count": len(events), "events": events[-50:]}
+
+
+def validate_singbox_log_level(level: str = "warn") -> dict[str, Any]:
+    """OPT-281-05: Validate sing-box hot-switchable log level (info/warn/error/debug)."""
+    lvl = str(level or "warn").strip().lower()
+    allowed = ("debug", "info", "warn", "error")
+    valid = lvl in allowed
+    return {
+        "ok": valid,
+        "level": lvl if valid else "warn",
+        "allowed": list(allowed),
+        "error": "" if valid else f"unsupported_log_level:{lvl}",
+    }
+
+
+def check_vpn_tun_mtu_compatibility(vpn_ifaces: list[str] | None = None, tun_mtu: int = 1500) -> dict[str, Any]:
+    """OPT-281-06: Check for MTU conflict when WireGuard/Tailscale interfaces coexist with high TUN MTU."""
+    ifaces = list(vpn_ifaces or [])
+    mtu = int(tun_mtu or 1500)
+    warn = bool(ifaces and mtu > 1420)
+    msg = (
+        f"检测到虚拟组网接口 ({', '.join(ifaces)}) 且当前 TUN MTU={mtu} (>1420)，建议将 TUN MTU 调至 1412 以防分片丢包。"
+        if warn else ""
+    )
+    return {"ok": not warn, "conflict": warn, "tun_mtu": mtu, "vpn_interfaces": ifaces, "message": msg}
+
+
+def reconcile_upstream_recovery_alert(prev_alert: bool = False, gw_reachable: bool = True, recovered_s: float = 0.0) -> dict[str, Any]:
+    """OPT-281-10: Auto-clear stale bypass upstream offline alert once main router recovers."""
+    cleared = bool(prev_alert and gw_reachable)
+    return {
+        "ok": True,
+        "alert_active": bool((not gw_reachable) and (not cleared)),
+        "auto_cleared": cleared,
+        "recovered_s": round(max(0.0, float(recovered_s or 0.0)), 1),
     }

@@ -761,3 +761,8 @@ status_check() {
 	echo "=== nftables Table ==="
 	nft list table inet ai_link 2>/dev/null | head -n 35 || echo "Table inet ai_link not loaded"
 }
+
+# OPT-281-08: Preserve last 50 lines of stderr on crash
+save_crash_stderr_snapshot() {
+	[ -f /var/run/ai-link/daemon.log ] && tail -n 50 /var/run/ai-link/daemon.log > /var/run/ai-link/last_crash_stderr.log 2>/dev/null || true
+}

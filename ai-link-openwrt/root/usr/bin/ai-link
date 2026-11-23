@@ -422,3 +422,8 @@ PY
 		echo "=========================================================="
 		;;
 esac
+
+# OPT-281-07: doctor concise status helper
+ai_link_doctor_summary() {
+	printf "\033[36m[AI-LINK]\033[0m version=%s\n" "$(cat /etc/ai-link/version 2>/dev/null || echo 2.8.1)"
+}

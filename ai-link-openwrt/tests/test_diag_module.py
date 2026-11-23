@@ -61,6 +61,19 @@ def main() -> int:
     assert bg["suppress_offline_alert"] is True
     print("  PASS  OPT-280-01..10 路由导出/隐私/冷却/峰值/VPN白名单/开机宽限")
 
+
+    # 13. OPT-281-01..10
+    ro = diag.reorder_shunt_group_rules([{"id": "A"}, {"id": "B"}], "B", "up")
+    assert ro["moved"] is True and ro["groups"][0]["id"] == "B"
+    dns_dt = diag.compute_dns_dual_track_latency_stats({"domestic": [10, 20, 30], "overseas": [80, 120, 200]})
+    assert dns_dt["domestic"]["p50_ms"] == 20.0 and dns_dt["overseas"]["p95_ms"] >= 120.0
+    tl = diag.format_failover_timeline_24h([{"ts": 2000, "pool_id": "auto_ai", "from_node": "N1", "to_node": "N2"}], now_ts=2500)
+    assert tl["count"] == 1
+    assert diag.validate_singbox_log_level("info")["ok"] is True
+    assert diag.check_vpn_tun_mtu_compatibility(["wg0"], 1500)["conflict"] is True
+    assert diag.reconcile_upstream_recovery_alert(prev_alert=True, gw_reachable=True)["auto_cleared"] is True
+    print("  PASS  OPT-281-01..10 排序/DNS分布/时间线/日志级别/MTU/恢复自愈")
+
     print("=" * 78)
     print(" AI-LINK ailink_diag 独立模块单元测试 (OPT-278-05)")
     print("=" * 78)

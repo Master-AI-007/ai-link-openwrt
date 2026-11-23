@@ -26641,9 +26641,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.8.0"
+APP_VERSION = "2.8.1"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.8.0-release-20261123-r55"
+APP_BUILD = "2.8.1-release-20261123-r56"
 if "_safe_json_loads" not in globals():
     def _safe_json_loads(raw, default=None):
         return getattr(json, "loads")(raw) if default is None else (getattr(json, "loads")(raw) if raw else default)
@@ -29797,6 +29797,14 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 print(f"[ai-link] shunt_undo_snap warn: {_e_snap}", file=sys.stderr)
             res_br = parse_and_validate_bulk_shunt_rules(payload.get("raw_text") or payload.get("rules") or "", fmt=str(payload.get("format") or "auto"))
             self._send_json(res_br, status=200 if res_br.get("ok") else 400)
+            return
+        if clean_path == "/api/shunt/reorder_rule":
+            sh_cur = load_shunt_config(CONF_DIR)
+            res_rr = reorder_shunt_group_rules(sh_cur.get("groups"), str(payload.get("group_id") or ""), str(payload.get("direction") or "up"))
+            if res_rr.get("ok") and res_rr.get("moved"):
+                sh_cur["groups"] = res_rr["groups"]
+                save_shunt_config(sh_cur, CONF_DIR)
+            self._send_json(res_rr, status=200 if res_rr.get("ok") else 400)
             return
         if clean_path == "/api/shunt/export_singbox_rules":
             self._send_json(export_shunt_to_singbox_route_rules(load_shunt_config(CONF_DIR)))
@@ -34239,9 +34247,15 @@ try:
     compute_node_cooldown_progress,
     record_disk_peak_usage,
     get_vpn_bypass_interfaces,
-    verify_ipk_conffiles_preservation,
-    evaluate_bypass_boot_grace,
-)
+        verify_ipk_conffiles_preservation,
+        evaluate_bypass_boot_grace,
+        reorder_shunt_group_rules,
+        compute_dns_dual_track_latency_stats,
+        format_failover_timeline_24h,
+        validate_singbox_log_level,
+        check_vpn_tun_mtu_compatibility,
+        reconcile_upstream_recovery_alert,
+    )
 except ImportError:
     def validate_and_migrate_backup_schema(backup_data, target_version=APP_VERSION):
         return {"ok": isinstance(backup_data, dict), "schema_version": target_version, "migrated": False, "migration_changes": [], "data": backup_data or {}}
@@ -34340,6 +34354,11 @@ def build_status_api_response(conf_dir: Path = CONF_DIR, *args, **kwargs) -> dic
         res["vpn_bypass_interfaces"] = get_vpn_bypass_interfaces()
         res["bypass_boot_grace"] = evaluate_bypass_boot_grace(uptime_s=60.0, gw_reachable=True)
         res["ipk_conffiles_check"] = verify_ipk_conffiles_preservation()
+        res["dns_dual_track_stats"] = compute_dns_dual_track_latency_stats()
+        res["failover_timeline_24h"] = format_failover_timeline_24h(res.get("switch_history") or [])
+        res["singbox_log_level_info"] = validate_singbox_log_level(str(ops.get("singbox_log_level") or "warn"))
+        res["vpn_mtu_compat"] = check_vpn_tun_mtu_compatibility((res.get("vpn_bypass_interfaces") or {}).get("interfaces"), int(ops.get("tun_mtu") or 1500))
+        res["upstream_recovery_state"] = reconcile_upstream_recovery_alert(prev_alert=False, gw_reachable=True)
         if isinstance(res.get("subscriptions"), list):
             for s in res["subscriptions"]:
                 if isinstance(s, dict):

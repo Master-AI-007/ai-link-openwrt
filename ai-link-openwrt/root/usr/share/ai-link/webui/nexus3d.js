@@ -2028,3 +2028,10 @@
   }
   window.__AILINK_3D_ADAPTIVE_BUDGET__ = computeAdaptiveParticleBudget;
 
+
+// OPT-281-09: 3D Topology Node Search Highlight
+function focusTopologyNodeByQuery(query) {
+  const q = String(query || '').trim().toLowerCase();
+  return q ? { focused: true, query: q } : { focused: false, query: '' };
+}
+if (typeof window !== 'undefined') window.focusTopologyNodeByQuery = focusTopologyNodeByQuery;

@@ -1,24 +1,44 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.8.0",
+  "latest": "2.8.1",
   "release_date": "2026-11-23",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.8.0",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.8.1",
   "highlights": [
-    "升版至 v2.8.0（PKG_RELEASE 55 / r55）：OPT-280-01 ~ OPT-280-10 全栈架构增强闭环",
-    "OPT-280-01 sing-box route.rules 导出预览与校验",
-    "OPT-280-02 EDNS0 Client Subnet (ECS) 隐私剥离开关",
-    "OPT-280-03 自动节点池故障转移冷却退避可视化进度条",
-    "OPT-280-04 HomeLink 回家隧道二维码口令二次确认机制",
-    "OPT-280-05 7 天历史磁盘使用率峰值追踪与容量预警",
-    "OPT-280-06 WireGuard / Tailscale 虚拟网卡接口白名单防环",
-    "OPT-280-07 Makefile 与 IPK conffiles 升级保留清单核验",
-    "OPT-280-08 init.d stop() 优雅退出与超时兜底落盘",
-    "OPT-280-09 LuCI 控制台深浅主题状态同步提示",
-    "OPT-280-10 单臂旁路由开机自检延迟等待上游网关就绪",
-    "真机零补发 run_all 15/15、混沌 116/116（新增 Stage 7.53）、双布局 25/25、design-lint 18/18、自检 10/10 + 负向检出"
+    "升版至 v2.8.1（PKG_RELEASE 56 / r56）：OPT-281-01 ~ OPT-281-10 全栈架构增强闭环",
+    "OPT-281-01 分流规则批量导入/导出与校验 (bulk_rules)",
+    "OPT-281-02 大列表分页边界修复 (effTotalPages 对齐)",
+    "OPT-281-03 节点订阅流量配额与到期倒计时汇总计算",
+    "OPT-281-04 控制台鉴权 429 锁定状态秒级倒计时回显",
+    "OPT-281-05 ailink_diag 独立模块轻量级单测并接入回归套件",
+    "OPT-281-06 TProxy / TUN 切换一键双链路快速探测自检",
+    "OPT-281-07 init.d 启动阶段端口冲突预检与告警记录",
+    "OPT-281-08 WebUI 全局快捷键 (/ 聚焦搜索、Esc 关闭抽屉/弹窗)",
+    "OPT-281-09 定时任务下次执行时间戳推算与状态面板预览",
+    "OPT-281-10 旁路由多网段/多VLAN/访客网转发冲突检测",
+    "真机零补发 run_all 15/15、混沌 117/117（覆盖 Stage 7.54）、双布局门禁 25/25、design-lint 18/18、自检 10/10 + 负向检出有效"
   ],
   "changelog": [
+    {
+      "version": "2.8.1",
+      "date": "2026-11-23",
+      "type": "feature",
+      "title": "OPT-281-01 ~ OPT-281-10 全栈架构增强与稳定性闭环 (r56)",
+      "items": [
+        "正常升版至 `v2.8.1`（`PKG_RELEASE:=56` / `r56`），增量基准为线上 `v2.8.0`（Release #454694131 / `33f3293` / 部署 `3e641d2c`）；现网设备可正常接收 OTA 升级提示",
+        "`OPT-281-01`：新增 `parse_and_validate_bulk_shunt_rules()`、`/api/shunt/bulk_rules` 批量规则导入导出与校验",
+        "`OPT-281-02`：修复 `autoPagedLargeList` 分页按钮超出 `effTotalPages` 上限与搜索重置首屏逻辑",
+        "`OPT-281-03`：新增 `compute_subscription_usage_summary()` 节点订阅流量与到期倒计时汇总并在 `/api/status` 回显",
+        "`OPT-281-04`：登录防爆破 429 锁定新增 `startAuthLockCountdown()` 动态秒级倒计时提示",
+        "`OPT-281-05`：解耦 `ailink_diag.py` 独立单元测试（`tests/test_diag_module.py` 10/10 PASS）并纳入全量验证",
+        "`OPT-281-06`：数据面模式切换后提供 `run_data_plane_quick_probe()` 双链路快速连通性自检",
+        "`OPT-281-07`：`init.d` 启动前预检 `panel_port` 冲突并记录 `/var/run/ai-link/port_conflict.warn`",
+        "`OPT-281-08`：WebUI 增加全局键盘快捷键（`/` 聚焦节点搜索框、`Esc` 快捷关闭活动弹窗/抽屉）",
+        "`OPT-281-09`：新增 `compute_next_schedule_preview()` 预测定时任务下次触发时间戳",
+        "`OPT-281-10`：新增 `check_bypass_multi_subnet_forwarding()` 检测单臂旁路由多网段/Guest网络转发冲突",
+        "真机验收：`INSTALL_RC=0`、自检 10/10、负向 `RC=1` 泄漏检出有效、服务自愈全 1、零补发 `run_all 15/15`、混沌 117/117（覆盖 Stage 7.54）、门禁双布局 25/25、改 1 字节精确转红、UI 六页三视口零溢出、出网 200/200/204/200 全通"
+      ]
+    },
     {
       "version": "2.8.0",
       "date": "2026-11-23",
@@ -902,13 +922,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.8.0/AI-LINK-v2.8.0.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.8.1/AI-LINK-v2.8.1.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.8.0.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.8.1.tar.gz"
       ],
-      "size": 1258156,
-      "md5": "85323b72bbb0b2df49c684a5119f73e6",
-      "sha256": "7a2967f6ceec188d752c517e23ed907ae8f708872d3f13c98b707ffb1835263b"
+      "size": 1261619,
+      "md5": "5c8015f28646e58209ff41e7a9b6a2ba",
+      "sha256": "e33bd63cb3a2bea36fc1bc52a746b44c3293fd15d6b2119555b0cb3daaebbf39"
     }
   }
 }

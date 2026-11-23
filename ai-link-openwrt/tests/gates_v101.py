@@ -702,6 +702,34 @@ def opt280_release_gate():
 
 check("OPT-280-01~10 v2.8.0 全量生产调用链、优雅停机与 conffiles 保留门禁", opt280_release_gate)
 
+
+
+def opt281_release_gate():
+    _src = DAEMON.read_text(encoding="utf-8", errors="replace")
+    _syms = [
+        "reorder_shunt_group_rules",
+        "compute_dns_dual_track_latency_stats",
+        "format_failover_timeline_24h",
+        "validate_singbox_log_level",
+        "check_vpn_tun_mtu_compatibility",
+        "reconcile_upstream_recovery_alert",
+    ]
+    _missing = [s for s in _syms if _src.count(s) < 2]
+    _nx = (ROOT / "root/usr/share/ai-link/webui/nexus.js").read_text(encoding="utf-8", errors="replace")
+    _n3d = (ROOT / "root/usr/share/ai-link/webui/nexus3d.js").read_text(encoding="utf-8", errors="replace")
+    _cli = (ROOT / "root/usr/bin/ai-link").read_text(encoding="utf-8", errors="replace")
+    _init = (ROOT / "root/etc/init.d/ai-link").read_text(encoding="utf-8", errors="replace")
+    _ok = (
+        len(_missing) == 0
+        and "moveShuntRulePriority" in _nx
+        and "focusTopologyNodeByQuery" in _n3d
+        and "OPT-281-07" in _cli
+        and "OPT-281-08" in _init
+    )
+    return _ok, f"missing={_missing}"
+
+check("OPT-281-01~10 v2.8.1 全量生产调用链、CLI诊断与3D检索门禁", opt281_release_gate)
+
 fails = [r for r in results if not r[1]]
 print(f" 合计 {len(results)} 项，通过 {len(results) - len(fails)}，失败 {len(fails)}")
 if fails:

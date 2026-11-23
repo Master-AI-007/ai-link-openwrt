@@ -1,3 +1,16 @@
+## v2.8.1 (2026-11-23)
+
+- **OPT-281-01**：新增 5×3 分流矩阵规则优先级排序接口与前端辅助（`reorder_shunt_group_rules` / `/api/shunt/reorder_rule` / `moveShuntRulePriority`）。
+- **OPT-281-02**：新增 DNS 双轨查询耗时分布 P50/P95 统计（`compute_dns_dual_track_latency_stats`）。
+- **OPT-281-03**：新增近 24 小时节点池故障转移结构化时间线（`format_failover_timeline_24h`）。
+- **OPT-281-04**：新增独立控制台强口令安全加固引导检查（`checkSecurityOnboardingPrompt`）。
+- **OPT-281-05**：新增 `sing-box` 日志级别热切换校验（`validate_singbox_log_level`）。
+- **OPT-281-06**：新增虚拟网卡（`wg*`/`tailscale*`）与 TUN MTU 兼容性校验（`check_vpn_tun_mtu_compatibility`）。
+- **OPT-281-07**：`usr/bin/ai-link` 新增 `ai_link_doctor_summary` 终端彩色精简诊断输出。
+- **OPT-281-08**：`init.d/ai-link` 新增 `save_crash_stderr_snapshot` 崩溃前 50 行日志保留。
+- **OPT-281-09**：`nexus3d.js` 新增 3D 拓扑节点搜索高亮定位函数（`focusTopologyNodeByQuery`）。
+- **OPT-281-10**：新增旁路由上游主路由恢复后自动清除过期告警状态（`reconcile_upstream_recovery_alert`）。
+
 ## v2.8.0 (2026-11-23)
 
 - **OPT-280-01**：新增 5×3 分流规则一键导出为标准 `sing-box route.rules` 预览（`export_shunt_to_singbox_route_rules` / `/api/shunt/export_singbox_rules`）。

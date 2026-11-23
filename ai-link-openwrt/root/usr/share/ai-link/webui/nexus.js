@@ -10870,3 +10870,16 @@ if (typeof window !== 'undefined') {
   window.exportSingboxRouteRulesPreview = exportSingboxRouteRulesPreview;
   window.confirmHomeLinkQrReveal = confirmHomeLinkQrReveal;
 }
+
+// OPT-281-01 & OPT-281-04: Rule Reorder & Security Onboarding Prompt
+async function moveShuntRulePriority(groupId, direction) {
+  return api('/api/shunt/reorder_rule', { method: 'POST', body: JSON.stringify({ group_id: groupId, direction: direction || 'up' }) });
+}
+function checkSecurityOnboardingPrompt(status) {
+  const ops = (status && status.ops_settings) || {};
+  return ops.require_lan_auth === false;
+}
+if (typeof window !== 'undefined') {
+  window.moveShuntRulePriority = moveShuntRulePriority;
+  window.checkSecurityOnboardingPrompt = checkSecurityOnboardingPrompt;
+}
