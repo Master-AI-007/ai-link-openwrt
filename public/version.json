@@ -1,24 +1,44 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.8.2",
+  "latest": "2.8.3",
   "release_date": "2026-11-23",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.8.2",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.8.3",
   "highlights": [
-    "升版至 v2.8.2（PKG_RELEASE 57 / r57）：OPT-282-01 ~ OPT-282-10 全栈架构增强闭环",
-    "OPT-282-01 分流规则命中热度排序与高频规则自适应提权",
-    "OPT-282-02 DoH / DoT 证书有效期预警与异常告警",
-    "OPT-282-03 节点订阅增量测速（仅测速新节点与故障节点）",
-    "OPT-282-04 API 脱敏审计日志导出与敏感字段过滤",
-    "OPT-282-05 外置存储迁移引导与挂载点容量健康检测",
-    "OPT-282-06 游戏平台 UDP 直连预设与端口范围快速配置",
-    "OPT-282-07 CLI ai-link doctor --json 结构化诊断输出",
-    "OPT-282-08 init.d reload 零断流热重载与配置校验兜底",
-    "OPT-282-09 节点列表批量多选（批量测速、启用/禁用）",
-    "OPT-282-10 旁路由 DHCP Option 3/6 校验向导与网关一致性检查",
-    "真机零补发 run_all 15/15、混沌 118/118、双布局门禁 27/27、design-lint 18/18、自检 10/10 + 负向检出有效"
+    "升版至 v2.8.3（PKG_RELEASE 58 / r58）：OPT-283-11 ~ OPT-283-20 全栈稳定性增强与防回归门禁闭环",
+    "OPT-283-11 全模块未定义全局符号静态审计与防遗漏引用",
+    "OPT-283-12 --self-test 严格隔离沙箱与防真实目录污染",
+    "OPT-283-13 导出分流规则合法标签校验与防注入",
+    "OPT-283-14 DNS 热切换提示与平滑刷新",
+    "OPT-283-15 一键解除节点冷却与快速重置",
+    "OPT-283-16 恢复前配置一致性预检",
+    "OPT-283-17 外置存储低空间预警与阈值提示",
+    "OPT-283-18 升级前自动清理旧版本无用缓存",
+    "OPT-283-19 节点批量多选底部悬浮操作栏优化",
+    "OPT-283-20 旁路由 mDNS 组播穿透提示与健康检查",
+    "真机零补发 run_all 15/15、混沌 119/119、双布局门禁 28/28、design-lint 14/14、自检 10/10 + 负向检出有效"
   ],
   "changelog": [
+    {
+      "version": "2.8.3",
+      "date": "2026-11-23",
+      "type": "feature",
+      "title": "OPT-283-11 ~ OPT-283-20 全栈架构稳定性增强与质量门禁闭环 (r58)",
+      "items": [
+        "正常升版至 `v2.8.3`（`PKG_RELEASE:=58` / `r58`），增量基准为线上 `v2.8.2`（Release #455426850 / `a0f9c78` / 部署 `80fb6ceb`）；现网设备可正常接收 OTA 升级提示",
+        "`OPT-283-11`：全模块未定义全局符号静态审计与防遗漏引用",
+        "`OPT-283-12`：`--self-test` 严格隔离沙箱与防真实目录污染",
+        "`OPT-283-13`：导出分流规则合法标签校验与防注入",
+        "`OPT-283-14`：DNS 热切换提示与平滑刷新",
+        "`OPT-283-15`：一键解除节点冷却与快速重置",
+        "`OPT-283-16`：恢复前配置一致性预检",
+        "`OPT-283-17`：外置存储低空间预警与阈值提示",
+        "`OPT-283-18`：升级前自动清理旧版本无用缓存",
+        "`OPT-283-19`：节点批量多选底部悬浮操作栏优化",
+        "`OPT-283-20`：旁路由 mDNS 组播穿透提示与健康检查",
+        "真机验收：`INSTALL_RC=0`、自检 10/10、负向 `RC=1` 泄漏检出有效、服务自愈全 1、零补发 `run_all 15/15`、混沌 119/119、门禁双布局 28/28、改 1 字节精确转红、UI 六页三视口零溢出、出网 200/200/204/200 全通"
+      ]
+    },
     {
       "version": "2.8.2",
       "date": "2026-11-23",
@@ -943,13 +963,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.8.2/AI-LINK-v2.8.2.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.8.3/AI-LINK-v2.8.3.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.8.2.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.8.3.tar.gz"
       ],
-      "size": 1266272,
-      "md5": "f80a9294385a9b595233dc02ea1dfd96",
-      "sha256": "971e1cf4da76211630fa94823c9666842ec70e38f232d86cd66be2c8a49e2a91"
+      "size": 1269585,
+      "md5": "19fd5624542758e0236da0550f1d1b8b",
+      "sha256": "3c3f1331d44265f57f7e88b0527b94a1c450c6829f5cee6f3ed1a84321dd9a48"
     }
   }
 }

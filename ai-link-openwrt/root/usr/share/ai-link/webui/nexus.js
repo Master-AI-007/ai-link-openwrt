@@ -10913,3 +10913,19 @@ if (typeof window !== 'undefined') {
   window.applyGameUdpPlatformPreset = applyGameUdpPlatformPreset;
   window.applyBatchNodeSelectionAction = applyBatchNodeSelectionAction;
 }
+
+
+// OPT-283-14 & OPT-283-19: DNS Hot-Switch Banner & Sticky Batch Action Bar
+function showDnsHotSwitchNotice(msg) {
+  if (typeof showToast === 'function') {
+    showToast(msg || 'DNS 缓存已刷新，新连接生效', 'info');
+  }
+}
+function updateBatchFloatingActionBar(selectedIds) {
+  const count = Array.isArray(selectedIds) ? selectedIds.length : 0;
+  return { visible: count > 0, count, sticky: true };
+}
+if (typeof window !== 'undefined') {
+  window.showDnsHotSwitchNotice = showDnsHotSwitchNotice;
+  window.updateBatchFloatingActionBar = updateBatchFloatingActionBar;
+}

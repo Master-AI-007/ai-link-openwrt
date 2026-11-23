@@ -26641,9 +26641,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.8.2"
+APP_VERSION = "2.8.3"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.8.2-release-20261123-r57"
+APP_BUILD = "2.8.3-release-20261123-r58"
 if "_safe_json_loads" not in globals():
     def _safe_json_loads(raw, default=None):
         return getattr(json, "loads")(raw) if default is None else (getattr(json, "loads")(raw) if raw else default)
@@ -29802,6 +29802,11 @@ class AILinkRequestHandler(SimpleHTTPRequestHandler):
                 print(f"[ai-link] shunt_undo_snap warn: {_e_snap}", file=sys.stderr)
             res_br = parse_and_validate_bulk_shunt_rules(payload.get("raw_text") or payload.get("rules") or "", fmt=str(payload.get("format") or "auto"))
             self._send_json(res_br, status=200 if res_br.get("ok") else 400)
+            return
+        if clean_path == "/api/auto_nodes/reset_cooldowns":
+            _ps = load_node_probe_store()
+            _rc = reset_all_node_cooldowns(_ps)
+            self._send_json(_rc)
             return
         if clean_path == "/api/shunt/reorder_rule":
             sh_cur = load_shunt_config(CONF_DIR)
@@ -34267,6 +34272,12 @@ try:
         detect_external_storage_migration_targets,
         get_game_udp_platform_presets,
         verify_onearm_dhcp_options,
+        audit_all_python_undefined_globals,
+        validate_exported_route_rules_tags,
+        reset_all_node_cooldowns,
+        precheck_restored_config_consistency,
+        check_external_storage_low_space_warning,
+        check_bypass_mdns_multicast_hint,
     )
 except ImportError:
     def validate_and_migrate_backup_schema(backup_data, target_version=APP_VERSION):
@@ -34377,6 +34388,11 @@ def build_status_api_response(conf_dir: Path = CONF_DIR, *args, **kwargs) -> dic
         res["storage_migration_hint"] = detect_external_storage_migration_targets()
         res["game_udp_presets"] = get_game_udp_platform_presets()
         res["onearm_dhcp_check"] = verify_onearm_dhcp_options(lan_ip=str(res.get("lan_ip") or "10.10.10.77"))
+        res["restore_consistency_precheck"] = precheck_restored_config_consistency(ops)
+        res["storage_low_space_warning"] = check_external_storage_low_space_warning(str(ops.get("external_storage_path") or ""))
+        res["bypass_mdns_hint"] = check_bypass_mdns_multicast_hint(ops)
+        res["route_export_tag_check"] = validate_exported_route_rules_tags([], [])
+        res["py_symbol_audit"] = audit_all_python_undefined_globals([str(Path(__file__).resolve().parent / "ailink_diag.py")])
         if isinstance(res.get("subscriptions"), list):
             for s in res["subscriptions"]:
                 if isinstance(s, dict):

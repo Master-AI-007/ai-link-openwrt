@@ -19,7 +19,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-DIAG_MODULE_VERSION = "2.8.2"
+DIAG_MODULE_VERSION = "2.8.3"
 
 SENSITIVE_CREDENTIAL_KEYS = (
     "panel_secret",
@@ -1253,3 +1253,105 @@ def verify_onearm_dhcp_options(lan_ip: str = "10.10.10.77", lease_gateway: str =
     ok = opt3_ok and opt6_ok
     msg = "" if ok else f"请将主路由 DHCP Option 3(网关) 与 Option 6(DNS) 指向旁路由 {target}（当前 GW={gw or '未获取'}, DNS={dns or '未获取'}）"
     return {"ok": ok, "lan_ip": target, "option3_ok": opt3_ok, "option6_ok": opt6_ok, "lease_gateway": gw, "lease_dns": dns, "message": msg}
+
+
+# ==============================================================================
+# OPT-283-11 ~ OPT-283-20 (v2.8.3 r58)
+# ==============================================================================
+
+def audit_all_python_undefined_globals(py_paths: list[str] | None = None) -> dict[str, Any]:
+    """OPT-283-11: Scan all Python modules using symtable to catch missing imports/undefined globals."""
+    import builtins
+    import symtable
+    issues = []
+    checked = 0
+    for p_str in (py_paths or []):
+        p = Path(p_str)
+        if not p.is_file():
+            continue
+        checked += 1
+        src = p.read_text(encoding="utf-8", errors="replace")
+        st = symtable.symtable(src, str(p), "exec")
+        top_defs = {
+            s.get_name() for s in st.get_symbols()
+            if s.is_assigned() or s.is_imported() or s.is_parameter() or s.is_global()
+        } | set(dir(builtins))
+        def _walk(tbl):
+            for s in tbl.get_symbols():
+                if s.is_global() and not s.is_assigned() and s.get_name() not in top_defs:
+                    issues.append({"file": p.name, "scope": tbl.get_name(), "symbol": s.get_name()})
+            for ch in tbl.get_children():
+                _walk(ch)
+        _walk(st)
+    return {"ok": len(issues) == 0, "checked_files": checked, "issue_count": len(issues), "issues": issues}
+
+
+def validate_exported_route_rules_tags(rules: list[dict[str, Any]] | None = None, declared_rule_sets: list[str] | None = None) -> dict[str, Any]:
+    """OPT-283-13: Validate that exported route.rules only reference declared rule_set tags."""
+    declared = set(str(x) for x in (declared_rule_sets or []))
+    dangling = []
+    for idx, r in enumerate(rules or []):
+        if not isinstance(r, dict):
+            continue
+        rs = r.get("rule_set")
+        if isinstance(rs, str):
+            rs_list = [rs]
+        elif isinstance(rs, list):
+            rs_list = [str(x) for x in rs]
+        else:
+            rs_list = []
+        for tag in rs_list:
+            if tag not in declared:
+                dangling.append({"rule_index": idx, "tag": tag})
+    return {"ok": len(dangling) == 0, "checked_rules": len(rules or []), "dangling_count": len(dangling), "dangling": dangling}
+
+
+def reset_all_node_cooldowns(probe_store: dict[str, Any] | None = None) -> dict[str, Any]:
+    """OPT-283-15: Clear rate_limited_until, quarantine_until and consecutive_fail across all nodes."""
+    store = probe_store if isinstance(probe_store, dict) else {}
+    cleared = 0
+    for rec in store.values():
+        if not isinstance(rec, dict):
+            continue
+        had = bool(rec.get("rate_limited_until") or rec.get("quarantine_until") or rec.get("consecutive_fail"))
+        rec["rate_limited_until"] = 0
+        rec["quarantine_until"] = 0
+        rec["consecutive_fail"] = 0
+        if had:
+            cleared += 1
+    return {"ok": True, "cleared_count": cleared, "total_records": len(store)}
+
+
+def precheck_restored_config_consistency(ops: dict[str, Any] | None = None) -> dict[str, Any]:
+    """OPT-283-16: Verify post-restore ops_settings consistency and report active flags."""
+    cfg = ops if isinstance(ops, dict) else {}
+    warnings = []
+    if cfg.get("ipv6_proxy") and not cfg.get("ipv6_leak_guard"):
+        warnings.append("已开启 IPv6 代理但未开启 IPv6 防泄漏守卫")
+    if cfg.get("data_plane_mode") == "tun_full" and int(cfg.get("tun_mtu") or 1500) > 1492:
+        warnings.append("全量 TUN 模式下建议将 MTU 调整为 <= 1492")
+    return {"ok": len(warnings) == 0, "warnings": warnings, "data_plane_mode": str(cfg.get("data_plane_mode") or "tproxy_redirect")}
+
+
+def check_external_storage_low_space_warning(mount_path: str = "", free_mb: float | None = None, warn_threshold_mb: float = 50.0) -> dict[str, Any]:
+    """OPT-283-17: Warn when migrated external storage mount drops below 50 MB free space."""
+    if not mount_path:
+        return {"ok": True, "warning": False, "mount_path": "", "free_mb": 0.0, "message": ""}
+    if free_mb is None:
+        p = Path(mount_path)
+        if p.exists():
+            free_mb = round(shutil.disk_usage(p).free / (1024 * 1024), 1)
+        else:
+            free_mb = 0.0
+    low = float(free_mb) < float(warn_threshold_mb)
+    msg = f"外置存储 {mount_path} 剩余空间仅 {free_mb:.1f} MB (< {warn_threshold_mb:.0f} MB)，建议清理旧日志或缓存。" if low else ""
+    return {"ok": not low, "warning": low, "mount_path": mount_path, "free_mb": round(float(free_mb), 1), "message": msg}
+
+
+def check_bypass_mdns_multicast_hint(ops: dict[str, Any] | None = None, mdns_enabled: bool = False) -> dict[str, Any]:
+    """OPT-283-20: Remind bypass-mode users about mDNS/IGMP forwarding for LAN casting/HomeKit."""
+    cfg = ops if isinstance(ops, dict) else {}
+    is_bypass = str(cfg.get("topology_mode") or "auto").lower() in ("bypass", "onearm")
+    hint = bool(is_bypass and not mdns_enabled)
+    msg = "当前为单臂/旁路由模式，如需跨网段使用 AirPlay 投屏或 HomeKit，请确认主路由或本机已开启 mDNS/IGMP 代理。" if hint else ""
+    return {"ok": True, "bypass_mode": is_bypass, "hint_active": hint, "message": msg}

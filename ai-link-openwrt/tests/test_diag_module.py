@@ -152,6 +152,18 @@ def main() -> int:
         f"nomock={sm_nomock}, real={sm_real}",
     )
 
+    # 13. OPT-283-11~20
+    au = diag.audit_all_python_undefined_globals([str(pathlib.Path(__file__).resolve().parent.parent / "root/usr/share/ai-link/ailink_diag.py")])
+    vr = diag.validate_exported_route_rules_tags([{"rule_set": ["geoip-cn"]}], ["geoip-cn"])
+    rc_res = diag.reset_all_node_cooldowns({"n1": {"rate_limited_until": 9999, "quarantine_until": 9999, "consecutive_fail": 3}})
+    pc = diag.precheck_restored_config_consistency({"ipv6_proxy": True, "ipv6_leak_guard": False})
+    ls = diag.check_external_storage_low_space_warning("/mnt/sda1", free_mb=32.0, warn_threshold_mb=50.0)
+    mdns = diag.check_bypass_mdns_multicast_hint({"topology_mode": "bypass"}, mdns_enabled=False)
+    check(
+        "OPT-283-11~20 全模块符号审计与诊断能力校验",
+        au["ok"] is True and vr["ok"] is True and rc_res["cleared_count"] == 1 and pc["ok"] is False and ls["warning"] is True and mdns["hint_active"] is True,
+    )
+
     fails = [r for r in results if not r[1]]
     print("=" * 78)
     print(f" 合计 {len(results)} 项，通过 {len(results) - len(fails)}，失败 {len(fails)}")

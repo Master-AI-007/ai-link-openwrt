@@ -756,6 +756,36 @@ def opt282_release_gate():
 
 check("OPT-282-01~10 v2.8.2 全量生产调用链、增量测速与批量多选门禁", opt282_release_gate)
 
+def opt283_release_gate():
+    _src = DAEMON.read_text(encoding="utf-8", errors="replace")
+    _syms = [
+        "audit_all_python_undefined_globals",
+        "validate_exported_route_rules_tags",
+        "reset_all_node_cooldowns",
+        "precheck_restored_config_consistency",
+        "check_external_storage_low_space_warning",
+        "check_bypass_mdns_multicast_hint",
+    ]
+    _missing = [s for s in _syms if _src.count(s) < 2]
+    _nx = (ROOT / "root/usr/share/ai-link/webui/nexus.js").read_text(encoding="utf-8", errors="replace")
+    _ins = (ROOT / "install.sh").read_text(encoding="utf-8", errors="replace")
+    # OPT-283-11: Static undefined global check across ailink_diag.py as well
+    import importlib.util as _iu
+    _sp = _iu.spec_from_file_location("_diag_gate", str(ROOT / "root/usr/share/ai-link/ailink_diag.py"))
+    _dm = _iu.module_from_spec(_sp)
+    _sp.loader.exec_module(_dm)
+    _au = _dm.audit_all_python_undefined_globals([str(ROOT / "root/usr/share/ai-link/ailink_diag.py"), str(DAEMON)])
+    _ok = (
+        len(_missing) == 0
+        and _au.get("ok") is True
+        and "showDnsHotSwitchNotice" in _nx
+        and "updateBatchFloatingActionBar" in _nx
+        and "OPT-283-18" in _ins
+    )
+    return _ok, f"missing={_missing}, undef={_au.get('issues')}"
+
+check("OPT-283-11~20 v2.8.3 全模块符号门禁、路由标签校验与状态增强", opt283_release_gate)
+
 fails = [r for r in results if not r[1]]
 print(f" 合计 {len(results)} 项，通过 {len(results) - len(fails)}，失败 {len(fails)}")
 if fails:

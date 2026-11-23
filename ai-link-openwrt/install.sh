@@ -12,7 +12,7 @@
 set -e
 export PYTHONDONTWRITEBYTECODE="1"
 
-VERSION="2.8.2"
+VERSION="2.8.3"
 UPGRADE_MODE=0
 EXPECTED_SHA256=""
 NEXT_IS_SHA=0
@@ -464,3 +464,6 @@ if [ -f /root/ai-link-final-backup/etc-ai-link.tgz ]; then
 fi
 echo "  🖥️ 硬件平台环境 : ${NORM_ARCH} · ${LIBC_TYPE} · ${PKG_MGR}"
 echo "=================================================================="
+
+# OPT-283-18: Clean stale cache directory on upgrade
+rm -rf /tmp/ai-link-old-cache 2>/dev/null || true
