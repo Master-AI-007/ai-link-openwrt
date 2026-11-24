@@ -12,7 +12,7 @@
 set -e
 export PYTHONDONTWRITEBYTECODE="1"
 
-VERSION="2.8.4"
+VERSION="2.8.5"
 UPGRADE_MODE=0
 EXPECTED_SHA256=""
 NEXT_IS_SHA=0
@@ -468,5 +468,6 @@ echo "=================================================================="
 # OPT-283-18: Clean stale cache directory on upgrade
 rm -rf /tmp/ai-link-old-cache 2>/dev/null || true
 
-# OPT-284-07: Persist non-interactive install trace
-echo "[$(date +%Y-%m-%dT%H:%M:%S)] install.sh completed (v2.8.4-r61)" >> /tmp/ai-link-install.log 2>/dev/null || true
+# OPT-285-06 & OPT-284-07: Cap /tmp/ai-link-install.log at 500 lines and persist install trace
+[ -f /tmp/ai-link-install.log ] && tail -n 500 /tmp/ai-link-install.log > /tmp/ai-link-install.log.tmp 2>/dev/null && mv -f /tmp/ai-link-install.log.tmp /tmp/ai-link-install.log 2>/dev/null || true
+echo "[$(date +%Y-%m-%dT%H:%M:%S)] install.sh completed (v2.8.5-r62)" >> /tmp/ai-link-install.log 2>/dev/null || true

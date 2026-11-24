@@ -26641,9 +26641,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.8.4"
+APP_VERSION = "2.8.5"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.8.4-release-20261124-r61"
+APP_BUILD = "2.8.5-release-20261124-r62"
 if "_safe_json_loads" not in globals():
     def _safe_json_loads(raw, default=None):
         return getattr(json, "loads")(raw) if default is None else (getattr(json, "loads")(raw) if raw else default)
@@ -34286,6 +34286,13 @@ try:
         recommend_tun_mtu_from_wan_mtu,
         summarize_init_boot_phases,
         check_gateway_arp_static_binding,
+        check_dnsmasq_doh_port_conflict,
+        demote_l7_failed_node_weight,
+        verify_homelink_key_permissions,
+        verify_srs_and_cache_integrity,
+        get_ipv6_mss_clamp_recommendation,
+        format_init_status_summary,
+        check_bypass_game_nat_guidance,
     )
 except ImportError:
     def validate_and_migrate_backup_schema(backup_data, target_version=APP_VERSION):
@@ -34408,6 +34415,13 @@ def build_status_api_response(conf_dir: Path = CONF_DIR, *args, **kwargs) -> dic
         res["tun_mtu_recommendation"] = recommend_tun_mtu_from_wan_mtu(1500)
         res["init_boot_phases"] = summarize_init_boot_phases({})
         res["gateway_arp_hint"] = check_gateway_arp_static_binding()
+        res["dns_port_conflict_check"] = check_dnsmasq_doh_port_conflict()
+        res["l7_soft_demote_policy"] = demote_l7_failed_node_weight({"l7_consecutive_fail": 0})
+        res["homelink_key_perm_check"] = verify_homelink_key_permissions([])
+        res["srs_cache_integrity"] = verify_srs_and_cache_integrity([])
+        res["ipv6_mss_clamp_hint"] = get_ipv6_mss_clamp_recommendation(ops)
+        res["init_status_summary"] = format_init_status_summary(os.getpid(), 0)
+        res["bypass_game_nat_hint"] = check_bypass_game_nat_guidance(ops)
         res["py_symbol_audit"] = audit_all_python_undefined_globals([str(Path(__file__).resolve().parent / "ailink_diag.py")])
         if isinstance(res.get("subscriptions"), list):
             for s in res["subscriptions"]:

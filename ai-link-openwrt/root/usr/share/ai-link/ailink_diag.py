@@ -19,7 +19,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-DIAG_MODULE_VERSION = "2.8.4"
+DIAG_MODULE_VERSION = "2.8.5"
 
 SENSITIVE_CREDENTIAL_KEYS = (
     "panel_secret",
@@ -1487,3 +1487,84 @@ def check_gateway_arp_static_binding(gateway_ip: str = "", arp_entries: list[dic
     dev = str(matched[0].get("dev") or "br-lan") if matched else "br-lan"
     hint = "" if is_static else f"ip neigh replace {gw} lladdr {mac} dev {dev} nud permanent"
     return {"ok": True, "gateway_ip": gw, "static_bound": is_static, "command_hint": hint}
+
+
+# ==============================================================================
+# OPT-285-13 ~ OPT-285-20 (v2.8.5 r62)
+# ==============================================================================
+
+def check_dnsmasq_doh_port_conflict(dnsmasq_port: int = 53, doh_port: int = 7874) -> dict[str, Any]:
+    """OPT-285-13: Detect port collision between dnsmasq and sing-box DNS/DoH listener."""
+    dp = int(dnsmasq_port or 53)
+    hp = int(doh_port or 7874)
+    conflict = (dp == hp)
+    msg = f"检测到 dnsmasq ({dp}) 与 AI-LINK DNS ({hp}) 端口冲突，请调整监听端口。" if conflict else ""
+    return {"ok": not conflict, "conflict": conflict, "dnsmasq_port": dp, "doh_port": hp, "message": msg}
+
+
+def demote_l7_failed_node_weight(node_rec: dict[str, Any] | None = None) -> dict[str, Any]:
+    """OPT-285-14: Soft-demote transient L7 probe failures instead of immediate pool eviction."""
+    rec = dict(node_rec or {})
+    fails = int(rec.get("l7_consecutive_fail") or 0) + 1
+    penalty_ms = min(2000, fails * 250)
+    evict = fails >= 5
+    return {"ok": True, "l7_consecutive_fail": fails, "penalty_ms": penalty_ms, "evict": evict}
+
+
+def verify_homelink_key_permissions(key_paths: list[str] | None = None) -> dict[str, Any]:
+    """OPT-285-15: Verify HomeLink private key files enforce 0600 permissions."""
+    insecure = []
+    checked = 0
+    for kp in (key_paths or []):
+        p = Path(kp)
+        if not p.is_file():
+            continue
+        checked += 1
+        mode = p.stat().st_mode & 0o777
+        if mode != 0o600:
+            insecure.append({"path": str(p), "mode": oct(mode)})
+    return {"ok": len(insecure) == 0, "checked": checked, "insecure_files": insecure}
+
+
+def verify_srs_and_cache_integrity(file_paths: list[str] | None = None) -> dict[str, Any]:
+    """OPT-285-16: Verify .srs magic/non-empty integrity and .json/.db readability."""
+    corrupted = []
+    checked = 0
+    for fp in (file_paths or []):
+        p = Path(fp)
+        if not p.is_file():
+            continue
+        checked += 1
+        data = p.read_bytes()
+        if len(data) == 0:
+            corrupted.append({"path": p.name, "reason": "empty_file"})
+        elif p.suffix == ".srs" and not data.startswith(b"SRS"):
+            corrupted.append({"path": p.name, "reason": "invalid_srs_magic"})
+    return {"ok": len(corrupted) == 0, "checked": checked, "corrupted": corrupted}
+
+
+def get_ipv6_mss_clamp_recommendation(ops: dict[str, Any] | None = None, wan_mtu: int = 1500) -> dict[str, Any]:
+    """OPT-285-17: Recommend IPv6 TCP MSS clamping on PPPoE dual-stack links."""
+    cfg = ops if isinstance(ops, dict) else {}
+    v6_on = bool(cfg.get("ipv6_proxy"))
+    pppoe = int(wan_mtu or 1500) <= 1492
+    clamp_mss = max(1220, int(wan_mtu or 1500) - 60)
+    recommend = bool(v6_on and pppoe and not cfg.get("tcp_mss_clamp", True))
+    return {"ok": True, "recommend_enable": recommend, "target_v6_mss": clamp_mss}
+
+
+def format_init_status_summary(pid: int = 0, rss_kb: int = 0) -> dict[str, Any]:
+    """OPT-285-18: Format daemon PID and RSS memory summary for init.d status."""
+    p = int(pid or 0)
+    rss_mb = round(float(rss_kb or 0) / 1024.0, 2)
+    return {"ok": True, "pid": p, "rss_kb": int(rss_kb or 0), "rss_mb": rss_mb, "summary": f"pid={p} rss={rss_mb}MB"}
+
+
+def check_bypass_game_nat_guidance(ops: dict[str, Any] | None = None, nat_type: str = "unknown") -> dict[str, Any]:
+    """OPT-285-20: Provide FullCone/UPnP NAT guidance for bypass-mode console/PC gamers."""
+    cfg = ops if isinstance(ops, dict) else {}
+    is_bypass = str(cfg.get("topology_mode") or "auto").lower() in ("bypass", "onearm")
+    nt = str(nat_type or "unknown").lower()
+    hint = bool(is_bypass and nt in ("symmetric", "strict", "moderate"))
+    msg = "当前旁路由游戏 NAT 为受限类型，建议在主路由为本机 IP 开启 DMZ 或 FullCone NAT/UPnP 映射。" if hint else ""
+    return {"ok": True, "bypass_mode": is_bypass, "nat_type": nt, "hint_active": hint, "message": msg}

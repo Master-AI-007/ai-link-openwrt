@@ -181,6 +181,19 @@ def main() -> int:
         shd["conflict_count"] == 1 and ecs["dnssec_enabled"] is True and pol["fail_threshold"] == 5 and pol["cooldown_seconds"] == 30 and hla["alert"] is True and trd["warning"] is True and mtu_rec["recommended_tun_mtu"] == 1412 and boot["total_boot_ms"] == 600.0 and "nud permanent" in arp["command_hint"],
     )
 
+    # 15. OPT-285-11~20
+    dpc = diag.check_dnsmasq_doh_port_conflict(53, 7874)
+    dem = diag.demote_l7_failed_node_weight({"l7_consecutive_fail": 1})
+    kp = diag.verify_homelink_key_permissions([])
+    srs_chk = diag.verify_srs_and_cache_integrity([])
+    mss6 = diag.get_ipv6_mss_clamp_recommendation({"ipv6_proxy": True, "tcp_mss_clamp": False}, wan_mtu=1492)
+    iss = diag.format_init_status_summary(1234, 20480)
+    nat_h = diag.check_bypass_game_nat_guidance({"topology_mode": "bypass"}, nat_type="symmetric")
+    check(
+        "OPT-285-11~20 端口冲突/L7降权/权限/完整性/IPv6-MSS/NAT 诊断校验",
+        dpc["ok"] is True and dem["penalty_ms"] == 500 and kp["ok"] is True and srs_chk["ok"] is True and mss6["recommend_enable"] is True and iss["rss_mb"] == 20.0 and nat_h["hint_active"] is True,
+    )
+
     fails = [r for r in results if not r[1]]
     print("=" * 78)
     print(f" 合计 {len(results)} 项，通过 {len(results) - len(fails)}，失败 {len(fails)}")

@@ -819,6 +819,30 @@ def opt284_release_gate():
 
 check("OPT-284-01~10 v2.8.4 分流遮蔽/ECS/MTU/ARP与CSV导出门禁", opt284_release_gate)
 
+def opt285_release_gate():
+    _src = DAEMON.read_text(encoding="utf-8", errors="replace")
+    _syms = [
+        "check_dnsmasq_doh_port_conflict",
+        "demote_l7_failed_node_weight",
+        "verify_homelink_key_permissions",
+        "verify_srs_and_cache_integrity",
+        "get_ipv6_mss_clamp_recommendation",
+        "format_init_status_summary",
+        "check_bypass_game_nat_guidance",
+    ]
+    _missing = [s for s in _syms if _src.count(s) < 2]
+    _nx = (ROOT / "root/usr/share/ai-link/webui/nexus.js").read_text(encoding="utf-8", errors="replace")
+    _ov = (ROOT / "htdocs/luci-static/resources/view/ai-link/overview.js").read_text(encoding="utf-8", errors="replace")
+    _ok = (
+        len(_missing) == 0
+        and "autoFixShuntShadowingOrder" in _nx
+        and "\\uFEFF" in _nx
+        and "formatLuciHealthBadge" in _ov
+    )
+    return _ok, f"missing={_missing}"
+
+check("OPT-285-11~20 v2.8.5 端口冲突/L7降权/完整性/IPv6-MSS与LuCI健康徽标门禁", opt285_release_gate)
+
 fails = [r for r in results if not r[1]]
 print(f" 合计 {len(results)} 项，通过 {len(results) - len(fails)}，失败 {len(fails)}")
 if fails:

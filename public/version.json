@@ -1,24 +1,44 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.8.4",
+  "latest": "2.8.5",
   "release_date": "2026-11-24",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.8.4",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.8.5",
   "highlights": [
-    "升版至 v2.8.4（PKG_RELEASE 61 / r61）：OPT-284-01 ~ OPT-284-10 全栈网络优化与生产稳健性闭环",
-    "OPT-284-01 5×3 分流矩阵规则冲突/遮蔽自动排序建议与检测",
-    "OPT-284-02 Fake-IP / DNS 双轨上游 ECS 与 DNSSEC 状态徽标",
-    "OPT-284-03 自动节点池跨区域兜底切换防抖冷却时间可配置",
-    "OPT-284-04 HomeLink 回家隧道断线重连告警通知",
-    "OPT-284-05 路由器闪存 /overlay 与 /tmp 剩余空间趋势预测",
-    "OPT-284-06 流加速与 MTU 自适应检测支持 PPPoE 1492/1480 与 Jumbo Frame",
-    "OPT-284-07 install.sh 与 uninstall.sh 非交互式静默模式日志落盘",
-    "OPT-284-08 init.d 服务启动耗时分段计时",
-    "OPT-284-09 WebUI 节点延迟测速结果支持 CSV 导出",
-    "OPT-284-10 单臂旁路由主路由网关 ARP 静态绑定检测",
-    "真机零补发 run_all 15/15、混沌 120/120、双布局门禁 29/29、design-lint 14/14、自检 10/10 + 负向检出有效"
+    "升版至 v2.8.5（PKG_RELEASE 62 / r62）：OPT-285-11 ~ OPT-285-20 全栈增强与网络深度排查闭环",
+    "OPT-285-11 同步对齐单份 tests/ 与 13 夹具交接包规范布局",
+    "OPT-285-12 nexus.js autoFixShuntShadowingOrder() 分流遮蔽一键重排生效",
+    "OPT-285-13 ailink_diag.py check_dnsmasq_doh_port_conflict() DNS/DoH 端口冲突自检",
+    "OPT-285-14 ailink_diag.py demote_l7_failed_node_weight() L7 瞬时失败降权防误剔除",
+    "OPT-285-15 ailink_diag.py verify_homelink_key_permissions() 密钥 0600 权限校验",
+    "OPT-285-16 ailink_diag.py verify_srs_and_cache_integrity() .srs/缓存完整性头校验",
+    "OPT-285-17 ailink_diag.py get_ipv6_mss_clamp_recommendation() PPPoE 双栈 IPv6 MSS 联动",
+    "OPT-285-18 ailink_diag.py format_init_status_summary() init.d status PID/RSS 摘要",
+    "OPT-285-19 overview.js formatLuciHealthBadge() LuCI 首页健康状态徽标",
+    "OPT-285-20 ailink_diag.py check_bypass_game_nat_guidance() 旁路由游戏 NAT/UPnP 排查指引",
+    "真机零补发 run_all 15/15、混沌 121/121、双布局门禁 30/30、design-lint 18/18、自检 10/10 + 负向检出有效"
   ],
   "changelog": [
+    {
+      "version": "2.8.5",
+      "date": "2026-11-24",
+      "type": "feature",
+      "title": "OPT-285-11 ~ OPT-285-20 全栈增强与网络深度排查闭环 (r62)",
+      "items": [
+        "正常升版至 `v2.8.5`（`PKG_RELEASE:=62` / `r62`），增量基准为线上 `v2.8.4`（Release #456402031 / `2300461` / 部署 `ab5d6c52`）；现网设备可正常接收 OTA 升级提示",
+        "`OPT-285-11`：`ai_link_v2_8_5.md` 同步对齐单份 tests/ 与 13 夹具交接包规范布局",
+        "`OPT-285-12`：`nexus.js` `autoFixShuntShadowingOrder()` 分流遮蔽一键重排生效",
+        "`OPT-285-13`：`ailink_diag.py` `check_dnsmasq_doh_port_conflict()` DNS/DoH 端口冲突自检",
+        "`OPT-285-14`：`ailink_diag.py` `demote_l7_failed_node_weight()` L7 瞬时失败降权防误剔除",
+        "`OPT-285-15`：`ailink_diag.py` `verify_homelink_key_permissions()` 密钥 0600 权限校验",
+        "`OPT-285-16`：`ailink_diag.py` `verify_srs_and_cache_integrity()` .srs/缓存完整性头校验",
+        "`OPT-285-17`：`ailink_diag.py` `get_ipv6_mss_clamp_recommendation()` PPPoE 双栈 IPv6 MSS 联动",
+        "`OPT-285-18`：`ailink_diag.py` `format_init_status_summary()` init.d status PID/RSS 摘要",
+        "`OPT-285-19`：`overview.js` `formatLuciHealthBadge()` LuCI 首页健康状态徽标",
+        "`OPT-285-20`：`ailink_diag.py` `check_bypass_game_nat_guidance()` 旁路由游戏 NAT/UPnP 排查指引",
+        "真机验收：`INSTALL_RC=0`、自检 10/10、负向 `RC=1` 泄漏检出有效、服务自愈全 1、零补发 `run_all 15/15`、混沌 121/121、门禁双布局 30/30、改 1 字节精确转红、UI 六页三视口零溢出、出网 200/200/204/200 全通"
+      ]
+    },
     {
       "version": "2.8.4",
       "date": "2026-11-24",
@@ -983,13 +1003,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.8.4/AI-LINK-v2.8.4.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.8.5/AI-LINK-v2.8.5.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.8.4.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.8.5.tar.gz"
       ],
-      "size": 1273938,
-      "md5": "883a5f62ed7e8ce6f6fc873b8eb9f8f2",
-      "sha256": "759d37d396d540b517ea80173b1f11ccddda06aa3262f0f5c53803b96284e46d"
+      "size": 1276350,
+      "md5": "cb1ab167c288bd8bfbcd38fa45be52e6",
+      "sha256": "8da07d7e98fe841d2b097d33cf6f8a96f489af6942fd55fb827e1515bd504a56"
     }
   }
 }

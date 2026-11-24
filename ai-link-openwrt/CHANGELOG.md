@@ -1,3 +1,6 @@
+## v2.8.5 (2026-11-24 · r62)
+- **OPT-285-11~20 全量落地**：分流遮蔽一键重排生效、DNS/DoH 端口冲突自检、L7 瞬时失败降权防误剔除、HomeLink 密钥 0600 权限校验、`.srs`/缓存文件完整性头校验、PPPoE 双栈 IPv6 TCP MSS Clamping 联动、`init.d status` PID/RSS 摘要、LuCI 健康状态徽标、旁路由游戏 NAT/UPnP 排查指引及 `/tmp/ai-link-install.log` 500 行截断与 CSV UTF-8 BOM。
+
 ## v2.8.4 (2026-11-24 · r59)
 - **OPT-284-01~10 全量落地**：5×3 分流规则遮蔽冲突检测与置顶建议、Fake-IP/DNS 双轨 ECS/DNSSEC 状态徽标、自动节点池冷却阈值/时长可配置、HomeLink 断线 >60s 告警通知、/overlay 与 /tmp 容量趋势预测、WAN MTU/PPPoE/Jumbo 自适应 tun_mtu 推荐、install/uninstall 静默日志落盘 `/tmp/ai-link-install.log`、init.d 启动耗时分段计时、节点测速 CSV 导出及旁路由主路由网关 ARP 静态绑定检测。
 

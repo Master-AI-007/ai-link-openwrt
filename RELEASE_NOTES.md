@@ -1,22 +1,22 @@
-# AI-LINK v2.8.4 正式发布说明
+# AI-LINK v2.8.5 正式发布说明
 
-`v2.8.4 (r61)` 在 `v2.8.3` 稳定线上基准（Release #455695540 / `bb2df22`）基础上，完成 OPT-284-01 ~ OPT-284-10 10 项全栈网络优化、稳健性增强与防回归质量门禁闭环：
+`v2.8.5 (r62)` 在 `v2.8.4` 稳定线上基准（Release #456402031 / `2300461`）基础上，完成 OPT-285-11 ~ OPT-285-20 10 项全栈增强、深度网络冲突排查与防回归质量门禁闭环：
 
 ### 核心特性与架构增强
-- **5×3 分流矩阵规则冲突/遮蔽自动排序建议与检测（OPT-284-01）**：智能诊断分流规则间的拓扑覆盖与遮蔽死规则，并给出推荐的优先级排序；
-- **Fake-IP / DNS 双轨上游 ECS 与 DNSSEC 状态徽标（OPT-284-02）**：在控制面板直观显示上游 DNS 的 EDNS Client Subnet 与 DNSSEC 鉴权支持状态；
-- **自动节点池跨区域兜底切换防抖冷却可配置（OPT-284-03）**：节点池跨区域故障转移支持独立冷却防抖周期，避免短时网络波动引发频繁跨境切换；
-- **HomeLink 回家隧道断线重连告警通知（OPT-284-04）**：隧道链路异常断开与重连重试支持控制台持久化告警与通知；
-- **路由器闪存 /overlay 与 /tmp 空间趋势预测（OPT-284-05）**：基于历史写入速率动态推演闪存可用空间，防止日志爆炸或临时文件耗尽空间；
-- **流加速与 MTU 自适应检测（OPT-284-06）**：针对 PPPoE 1492/1480 与 Jumbo Frame 环境自动校准 MSS 与 MTU，最大化 TCP 吞吐；
-- **安装与卸载脚本非交互静默模式日志落盘（OPT-284-07）**：静默部署时全流程操作自动记录于系统持久化日志；
-- **init.d 服务启动耗时分段计时（OPT-284-08）**：系统服务各初始化阶段耗时精准采集，加速冷启动与自愈流程；
-- **WebUI 节点延迟测速 CSV 导出（OPT-284-09）**：控制面板支持将全部节点历史连通性、延迟、吞吐数据导出为 CSV 表格；
-- **单臂旁路由主路由网关 ARP 静态绑定检测（OPT-284-10）**：智能提示主路由 MAC 与 ARP 漂移防护状态，提升旁路由稳定性；
-- **混沌仿真套件全面扩充**：新增 Stage 7.57，混沌工程用例增至 **120/120** 项全绿通过。
+- **ai_link_v2_8_5.md 同步对齐单份 tests/ 与 13 夹具交接包规范布局（OPT-285-11）**：规范交接包测试夹具布局，消除冗余测试目录；
+- **nexus.js autoFixShuntShadowingOrder() 分流遮蔽一键重排生效（OPT-285-12）**：前端控制台支持一键自动修复分流规则拓扑遮蔽顺序；
+- **ailink_diag.py check_dnsmasq_doh_port_conflict() DNS/DoH 端口冲突自检（OPT-285-13）**：网络医生深度探测本地 dnsmasq 与 DoH 监听端口占用冲突；
+- **ailink_diag.py demote_l7_failed_node_weight() L7 瞬时失败降权防误剔除（OPT-285-14）**：L7 握手瞬态失败采取优雅降权而非立即剔除，避免节点震荡；
+- **ailink_diag.py verify_homelink_key_permissions() 密钥 0600 权限校验（OPT-285-15）**：强化 HomeLink 密钥安全性，校验文件权限为严格 0600；
+- **ailink_diag.py verify_srs_and_cache_integrity() .srs/缓存完整性头校验（OPT-285-16）**：验证预编译规则集与本地缓存头部完整性；
+- **ailink_diag.py get_ipv6_mss_clamp_recommendation() PPPoE 双栈 IPv6 MSS 联动（OPT-285-17）**：智能推导双栈环境下的最优 IPv6 MSS 钳制值；
+- **ailink_diag.py format_init_status_summary() init.d status PID/RSS 摘要（OPT-285-18）**：系统状态命令输出核心进程 PID、物理内存 RSS 与运行摘要；
+- **overview.js formatLuciHealthBadge() LuCI 首页健康状态徽标（OPT-285-19）**：在 LuCI 系统首页直接呈现 AI-LINK 核心健康状态徽标；
+- **ailink_diag.py check_bypass_game_nat_guidance() 旁路由游戏 NAT/UPnP 排查指引（OPT-285-20）**：针对旁路由游戏主机 NAT 类型与 UPnP 穿透提供全自动诊断排查指南；
+- **混沌仿真套件全面扩充**：新增 Stage 7.58，混沌工程用例增至 **121/121** 项全绿通过。
 
 ### 全量验证数据
-真机 `10.10.10.77` 原始包零补发 `run_all 15/15 PASS / RC=0`、混沌 **120/120 PASS**、发布门禁双布局 `29/29`、Aster Design `14/14`、指纹表 11 项全量匹配（改 1 字节即转红）；生产态自检 10 连跑通过且负向泄露检出有效（LOCAL-284-01 彻底解决）；`INSTALL_RC=0`、重启后服务自愈稳定；UI 六页三视口零溢出；设备侧出网 200/200/204/200 全通。
+真机 `10.10.10.77` 原始包零补发 `run_all 15/15 PASS / RC=0`、混沌 **121/121 PASS**、发布门禁双布局 `30/30`、Aster Design `18/18`、指纹表 11 项全量匹配（改 1 字节即转红）；生产态自检 10 连跑通过且负向泄露检出有效；`INSTALL_RC=0`、重启后服务自愈稳定；UI 六页三视口零溢出；设备侧出网 200/200/204/200 全通。
 
 ---
 
@@ -35,7 +35,7 @@ curl -fsSL https://ai-link-official.pages.dev/install.sh | sh
 ## 包指纹
 
 ```
-AI-LINK-v2.8.4.tar.gz   1,273,938 B
-md5     883a5f62ed7e8ce6f6fc873b8eb9f8f2
-sha256  759d37d396d540b517ea80173b1f11ccddda06aa3262f0f5c53803b96284e46d
+AI-LINK-v2.8.5.tar.gz   1,276,350 B
+md5     cb1ab167c288bd8bfbcd38fa45be52e6
+sha256  8da07d7e98fe841d2b097d33cf6f8a96f489af6942fd55fb827e1515bd504a56
 ```

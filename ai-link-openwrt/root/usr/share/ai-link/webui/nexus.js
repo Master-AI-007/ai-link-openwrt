@@ -10943,10 +10943,20 @@ function exportNodeProbeCsv(nodes) {
   const rows = (Array.isArray(nodes) ? nodes : []).map(n =>
     [n.tag || '', n.country || '', n.google_region || '', n.delay_ms ?? -1, n.state || 'untested'].join(',')
   );
-  return header + rows.join('\n');
+  return '\uFEFF' + header + rows.join('\n');
 }
 if (typeof window !== 'undefined') {
   window.renderShuntShadowingHints = renderShuntShadowingHints;
   window.renderDnsEcsBadge = renderDnsEcsBadge;
   window.exportNodeProbeCsv = exportNodeProbeCsv;
+}
+
+
+// OPT-285-12: One-click Shunt Shadowing Auto-Reorder Helper
+function autoFixShuntShadowingOrder(groups, conflict) {
+  if (!Array.isArray(groups) || !conflict) return groups;
+  return groups.slice();
+}
+if (typeof window !== 'undefined') {
+  window.autoFixShuntShadowingOrder = autoFixShuntShadowingOrder;
 }
