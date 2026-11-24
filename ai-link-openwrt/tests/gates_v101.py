@@ -786,6 +786,39 @@ def opt283_release_gate():
 
 check("OPT-283-11~20 v2.8.3 全模块符号门禁、路由标签校验与状态增强", opt283_release_gate)
 
+def opt284_release_gate():
+    _src = DAEMON.read_text(encoding="utf-8", errors="replace")
+    _syms = [
+        "detect_shunt_rule_shadowing",
+        "get_dns_ecs_dnssec_status",
+        "normalize_pool_cooldown_policy",
+        "check_homelink_tunnel_downtime_alert",
+        "predict_storage_exhaustion_trend",
+        "recommend_tun_mtu_from_wan_mtu",
+        "summarize_init_boot_phases",
+        "check_gateway_arp_static_binding",
+    ]
+    _missing = [s for s in _syms if _src.count(s) < 2]
+    _nx = (ROOT / "root/usr/share/ai-link/webui/nexus.js").read_text(encoding="utf-8", errors="replace")
+    _ins = (ROOT / "install.sh").read_text(encoding="utf-8", errors="replace")
+    _unins = (ROOT / "uninstall.sh").read_text(encoding="utf-8", errors="replace")
+    _unins_root = (ROOT / "root/usr/share/ai-link/uninstall.sh").read_text(encoding="utf-8", errors="replace")
+    _unins_sync = (_unins == _unins_root)
+    _unins_log_before_exit = ("OPT-284-07" in _unins and "exit 0" in _unins and _unins.index("OPT-284-07") < _unins.rindex("exit 0"))
+    _ok = (
+        len(_missing) == 0
+        and "renderShuntShadowingHints" in _nx
+        and "renderDnsEcsBadge" in _nx
+        and "exportNodeProbeCsv" in _nx
+        and "OPT-284-07" in _ins
+        and "OPT-284-07" in _unins
+        and _unins_sync
+        and _unins_log_before_exit
+    )
+    return _ok, f"missing={_missing}"
+
+check("OPT-284-01~10 v2.8.4 分流遮蔽/ECS/MTU/ARP与CSV导出门禁", opt284_release_gate)
+
 fails = [r for r in results if not r[1]]
 print(f" 合计 {len(results)} 项，通过 {len(results) - len(fails)}，失败 {len(fails)}")
 if fails:

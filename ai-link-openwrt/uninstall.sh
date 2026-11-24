@@ -151,4 +151,7 @@ if pgrep -f "ai-link-dae[m]on.py" >/dev/null 2>&1 || nft list table inet ai_link
 fi
 
 echo "[AI-LINK] ✅ 卸载完成（进程=0, nft=0, 备份=/root/ai-link-final-backup/etc-ai-link.tgz）。"
+# OPT-284-07: Persist non-interactive uninstall trace (must execute before exit 0)
+echo "[$(date +%Y-%m-%dT%H:%M:%S)] uninstall.sh completed (v2.8.4-r61)" >> /tmp/ai-link-install.log 2>/dev/null || true
 exit 0
+

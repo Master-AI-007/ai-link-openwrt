@@ -10929,3 +10929,24 @@ if (typeof window !== 'undefined') {
   window.showDnsHotSwitchNotice = showDnsHotSwitchNotice;
   window.updateBatchFloatingActionBar = updateBatchFloatingActionBar;
 }
+
+
+// OPT-284-01, OPT-284-02 & OPT-284-09: Shunt Shadowing Hints, DNS ECS/DNSSEC Badge & Node Probe CSV Export
+function renderShuntShadowingHints(conflicts) {
+  return Array.isArray(conflicts) ? conflicts.map(c => c.suggestion || '') : [];
+}
+function renderDnsEcsBadge(statusObj) {
+  return (statusObj && statusObj.badge_label) ? String(statusObj.badge_label) : 'ECS剥离:开启 · DNSSEC:关闭';
+}
+function exportNodeProbeCsv(nodes) {
+  const header = 'tag,country,google_region,delay_ms,state\n';
+  const rows = (Array.isArray(nodes) ? nodes : []).map(n =>
+    [n.tag || '', n.country || '', n.google_region || '', n.delay_ms ?? -1, n.state || 'untested'].join(',')
+  );
+  return header + rows.join('\n');
+}
+if (typeof window !== 'undefined') {
+  window.renderShuntShadowingHints = renderShuntShadowingHints;
+  window.renderDnsEcsBadge = renderDnsEcsBadge;
+  window.exportNodeProbeCsv = exportNodeProbeCsv;
+}

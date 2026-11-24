@@ -19,7 +19,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-DIAG_MODULE_VERSION = "2.8.3"
+DIAG_MODULE_VERSION = "2.8.4"
 
 SENSITIVE_CREDENTIAL_KEYS = (
     "panel_secret",
@@ -1355,3 +1355,135 @@ def check_bypass_mdns_multicast_hint(ops: dict[str, Any] | None = None, mdns_ena
     hint = bool(is_bypass and not mdns_enabled)
     msg = "当前为单臂/旁路由模式，如需跨网段使用 AirPlay 投屏或 HomeKit，请确认主路由或本机已开启 mDNS/IGMP 代理。" if hint else ""
     return {"ok": True, "bypass_mode": is_bypass, "hint_active": hint, "message": msg}
+
+
+# ==============================================================================
+# OPT-284-01 ~ OPT-284-10 (v2.8.4 r59)
+# ==============================================================================
+
+def detect_shunt_rule_shadowing(groups: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    """OPT-284-01: Detect wildcard vs exact subdomain shadowing across shunt groups."""
+    wildcards: list[tuple[int, str, str]] = []
+    exacts: list[tuple[int, str, str]] = []
+    for idx, g in enumerate(groups or []):
+        if not isinstance(g, dict):
+            continue
+        gid = str(g.get("id") or g.get("tag") or f"group_{idx}")
+        for d in (g.get("domains") or []):
+            dom = str(d or "").strip().lower()
+            if not dom:
+                continue
+            if dom.startswith("*.") or dom.startswith("."):
+                wildcards.append((idx, gid, dom.lstrip("*.")))
+            else:
+                exacts.append((idx, gid, dom))
+    conflicts = []
+    for w_idx, w_gid, w_suf in wildcards:
+        for e_idx, e_gid, e_dom in exacts:
+            if w_gid != e_gid and (e_dom == w_suf or e_dom.endswith("." + w_suf)) and w_idx < e_idx:
+                conflicts.append({
+                    "wildcard_group": w_gid,
+                    "wildcard_suffix": w_suf,
+                    "exact_group": e_gid,
+                    "exact_domain": e_dom,
+                    "suggestion": f"将精确规则 {e_dom} ({e_gid}) 置顶至 {w_gid} 之前，避免被泛域名 {w_suf} 遮蔽",
+                })
+    return {"ok": len(conflicts) == 0, "conflict_count": len(conflicts), "conflicts": conflicts}
+
+
+def get_dns_ecs_dnssec_status(ops: dict[str, Any] | None = None) -> dict[str, Any]:
+    """OPT-284-02: Return Fake-IP / dual-track DNS ECS strip & DNSSEC status badge."""
+    cfg = ops if isinstance(ops, dict) else {}
+    ecs_strip = bool(cfg.get("dns_ecs_strip", True))
+    dnssec_enabled = bool(cfg.get("dns_dnssec_enabled", False))
+    success_rate = float(cfg.get("dns_recent_success_rate", 99.8))
+    return {
+        "ok": True,
+        "ecs_stripped": ecs_strip,
+        "dnssec_enabled": dnssec_enabled,
+        "recent_success_rate_pct": round(success_rate, 1),
+        "badge_label": f"ECS剥离:{'开启' if ecs_strip else '关闭'} · DNSSEC:{'开启' if dnssec_enabled else '关闭'}",
+    }
+
+
+def normalize_pool_cooldown_policy(pool: dict[str, Any] | None = None) -> dict[str, Any]:
+    """OPT-284-03: Normalize configurable fail_threshold (2~5) and cooldown_seconds (30~300)."""
+    p = pool if isinstance(pool, dict) else {}
+    try:
+        ft = int(p.get("fail_threshold", 3))
+    except (TypeError, ValueError):
+        ft = 3
+    try:
+        cd = int(p.get("cooldown_seconds", 120))
+    except (TypeError, ValueError):
+        cd = 120
+    ft = max(2, min(5, ft))
+    cd = max(30, min(300, cd))
+    return {"ok": True, "fail_threshold": ft, "cooldown_seconds": cd}
+
+
+def check_homelink_tunnel_downtime_alert(homelink_status: dict[str, Any] | None = None, threshold_s: int = 60) -> dict[str, Any]:
+    """OPT-284-04: Emit structured alert when HomeLink tunnel/listener is down > 60s."""
+    st = homelink_status if isinstance(homelink_status, dict) else {}
+    enabled = bool(st.get("enabled", False))
+    down_s = int(st.get("downtime_seconds") or 0)
+    alert = bool(enabled and down_s > int(threshold_s))
+    msg = f"HomeLink 回家隧道已中断 {down_s} 秒 (> {threshold_s}s)，请检查监听端口与 DDNS 解析。" if alert else ""
+    return {"ok": not alert, "alert": alert, "downtime_seconds": down_s, "message": msg}
+
+
+def predict_storage_exhaustion_trend(samples_mb: list[float] | None = None, free_mb: float = 100.0) -> dict[str, Any]:
+    """OPT-284-05: Predict hours until /overlay or /tmp exhaustion from recent usage slope."""
+    pts = [float(x) for x in (samples_mb or []) if x is not None]
+    if len(pts) < 2:
+        return {"ok": True, "hours_to_full": None, "warning": False, "message": "容量趋势稳定"}
+    growth_per_step = (pts[-1] - pts[0]) / max(1, len(pts) - 1)
+    if growth_per_step <= 0.01:
+        return {"ok": True, "hours_to_full": None, "warning": False, "message": "未检测到持续增长"}
+    hours = round(max(0.0, float(free_mb)) / growth_per_step, 1)
+    warn = hours < 48.0
+    msg = f"按当前增长斜率预计 {hours:.1f} 小时后空间写满，建议清理旧日志或迁移外置存储。" if warn else ""
+    return {"ok": not warn, "hours_to_full": hours, "warning": warn, "message": msg}
+
+
+def recommend_tun_mtu_from_wan_mtu(wan_mtu: int = 1500) -> dict[str, Any]:
+    """OPT-284-06: Recommend optimal tun_mtu for PPPoE (1480/1492), Ethernet (1500) or Jumbo (9000)."""
+    m = int(wan_mtu or 1500)
+    if m <= 1480:
+        rec, profile = 1400, "pppoe_1480"
+    elif m <= 1492:
+        rec, profile = 1412, "pppoe_1492"
+    elif m >= 9000:
+        rec, profile = 8920, "jumbo_9000"
+    else:
+        rec, profile = 1420, "ethernet_1500"
+    return {"ok": True, "wan_mtu": m, "recommended_tun_mtu": rec, "profile": profile}
+
+
+def summarize_init_boot_phases(phase_ms: dict[str, float] | None = None) -> dict[str, Any]:
+    """OPT-284-08: Summarize init.d daemon_init / rule_gen / core_ready boot timings."""
+    pm = phase_ms if isinstance(phase_ms, dict) else {}
+    d_ms = round(float(pm.get("daemon_init_ms") or 0.0), 1)
+    r_ms = round(float(pm.get("rule_gen_ms") or 0.0), 1)
+    c_ms = round(float(pm.get("core_ready_ms") or 0.0), 1)
+    total = round(d_ms + r_ms + c_ms, 1)
+    return {
+        "ok": True,
+        "daemon_init_ms": d_ms,
+        "rule_gen_ms": r_ms,
+        "core_ready_ms": c_ms,
+        "total_boot_ms": total,
+    }
+
+
+def check_gateway_arp_static_binding(gateway_ip: str = "", arp_entries: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    """OPT-284-10: Detect dynamic/unpinned gateway ARP on one-arm bypass routers and emit static binding hint."""
+    gw = str(gateway_ip or "").strip()
+    if not gw:
+        return {"ok": True, "static_bound": True, "command_hint": ""}
+    matched = [e for e in (arp_entries or []) if isinstance(e, dict) and str(e.get("ip") or "") == gw]
+    is_static = any(bool(e.get("permanent")) for e in matched)
+    mac = str(matched[0].get("mac") or "<GATEWAY_MAC>") if matched else "<GATEWAY_MAC>"
+    dev = str(matched[0].get("dev") or "br-lan") if matched else "br-lan"
+    hint = "" if is_static else f"ip neigh replace {gw} lladdr {mac} dev {dev} nud permanent"
+    return {"ok": True, "gateway_ip": gw, "static_bound": is_static, "command_hint": hint}

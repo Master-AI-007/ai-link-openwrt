@@ -164,6 +164,23 @@ def main() -> int:
         au["ok"] is True and vr["ok"] is True and rc_res["cleared_count"] == 1 and pc["ok"] is False and ls["warning"] is True and mdns["hint_active"] is True,
     )
 
+    # 14. OPT-284-01~10
+    shd = diag.detect_shunt_rule_shadowing([
+        {"id": "G1", "domains": ["*.google.com"]},
+        {"id": "G2", "domains": ["dl.google.com"]},
+    ])
+    ecs = diag.get_dns_ecs_dnssec_status({"dns_ecs_strip": True, "dns_dnssec_enabled": True})
+    pol = diag.normalize_pool_cooldown_policy({"fail_threshold": 9, "cooldown_seconds": 10})
+    hla = diag.check_homelink_tunnel_downtime_alert({"enabled": True, "downtime_seconds": 120}, threshold_s=60)
+    trd = diag.predict_storage_exhaustion_trend([10.0, 20.0, 30.0], free_mb=100.0)
+    mtu_rec = diag.recommend_tun_mtu_from_wan_mtu(1492)
+    boot = diag.summarize_init_boot_phases({"daemon_init_ms": 100, "rule_gen_ms": 200, "core_ready_ms": 300})
+    arp = diag.check_gateway_arp_static_binding("10.10.10.1", [{"ip": "10.10.10.1", "mac": "aa:bb:cc:dd:ee:ff", "permanent": False}])
+    check(
+        "OPT-284-01~10 分流遮蔽/ECS/冷却/容量/MTU/ARP 诊断能力校验",
+        shd["conflict_count"] == 1 and ecs["dnssec_enabled"] is True and pol["fail_threshold"] == 5 and pol["cooldown_seconds"] == 30 and hla["alert"] is True and trd["warning"] is True and mtu_rec["recommended_tun_mtu"] == 1412 and boot["total_boot_ms"] == 600.0 and "nud permanent" in arp["command_hint"],
+    )
+
     fails = [r for r in results if not r[1]]
     print("=" * 78)
     print(f" 合计 {len(results)} 项，通过 {len(results) - len(fails)}，失败 {len(fails)}")

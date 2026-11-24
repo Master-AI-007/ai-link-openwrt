@@ -1,24 +1,44 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.8.3",
-  "release_date": "2026-11-23",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.8.3",
+  "latest": "2.8.4",
+  "release_date": "2026-11-24",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.8.4",
   "highlights": [
-    "升版至 v2.8.3（PKG_RELEASE 58 / r58）：OPT-283-11 ~ OPT-283-20 全栈稳定性增强与防回归门禁闭环",
-    "OPT-283-11 全模块未定义全局符号静态审计与防遗漏引用",
-    "OPT-283-12 --self-test 严格隔离沙箱与防真实目录污染",
-    "OPT-283-13 导出分流规则合法标签校验与防注入",
-    "OPT-283-14 DNS 热切换提示与平滑刷新",
-    "OPT-283-15 一键解除节点冷却与快速重置",
-    "OPT-283-16 恢复前配置一致性预检",
-    "OPT-283-17 外置存储低空间预警与阈值提示",
-    "OPT-283-18 升级前自动清理旧版本无用缓存",
-    "OPT-283-19 节点批量多选底部悬浮操作栏优化",
-    "OPT-283-20 旁路由 mDNS 组播穿透提示与健康检查",
-    "真机零补发 run_all 15/15、混沌 119/119、双布局门禁 28/28、design-lint 14/14、自检 10/10 + 负向检出有效"
+    "升版至 v2.8.4（PKG_RELEASE 61 / r61）：OPT-284-01 ~ OPT-284-10 全栈网络优化与生产稳健性闭环",
+    "OPT-284-01 5×3 分流矩阵规则冲突/遮蔽自动排序建议与检测",
+    "OPT-284-02 Fake-IP / DNS 双轨上游 ECS 与 DNSSEC 状态徽标",
+    "OPT-284-03 自动节点池跨区域兜底切换防抖冷却时间可配置",
+    "OPT-284-04 HomeLink 回家隧道断线重连告警通知",
+    "OPT-284-05 路由器闪存 /overlay 与 /tmp 剩余空间趋势预测",
+    "OPT-284-06 流加速与 MTU 自适应检测支持 PPPoE 1492/1480 与 Jumbo Frame",
+    "OPT-284-07 install.sh 与 uninstall.sh 非交互式静默模式日志落盘",
+    "OPT-284-08 init.d 服务启动耗时分段计时",
+    "OPT-284-09 WebUI 节点延迟测速结果支持 CSV 导出",
+    "OPT-284-10 单臂旁路由主路由网关 ARP 静态绑定检测",
+    "真机零补发 run_all 15/15、混沌 120/120、双布局门禁 29/29、design-lint 14/14、自检 10/10 + 负向检出有效"
   ],
   "changelog": [
+    {
+      "version": "2.8.4",
+      "date": "2026-11-24",
+      "type": "feature",
+      "title": "OPT-284-01 ~ OPT-284-10 全栈网络优化与架构稳健性闭环 (r61)",
+      "items": [
+        "正常升版至 `v2.8.4`（`PKG_RELEASE:=61` / `r61`），增量基准为线上 `v2.8.3`（Release #455695540 / `bb2df22` / 部署 `95a1f861`）；现网设备可正常接收 OTA 升级提示",
+        "`OPT-284-01`：`5×3` 分流矩阵规则冲突/遮蔽自动排序建议与检测",
+        "`OPT-284-02`：Fake-IP / DNS 双轨上游 ECS 与 DNSSEC 状态徽标",
+        "`OPT-284-03`：自动节点池跨区域兜底切换防抖冷却时间可配置",
+        "`OPT-284-04`：HomeLink 回家隧道断线重连告警通知",
+        "`OPT-284-05`：路由器闪存 `/overlay` 与 `/tmp` 剩余空间趋势预测",
+        "`OPT-284-06`：流加速与 MTU 自适应检测支持 PPPoE 1492/1480 与 Jumbo Frame",
+        "`OPT-284-07`：`install.sh` 与 `uninstall.sh` 非交互式静默模式日志落盘",
+        "`OPT-284-08`：`init.d` 服务启动耗时分段计时",
+        "`OPT-284-09`：WebUI 节点延迟测速结果支持 CSV 导出",
+        "`OPT-284-10`：单臂旁路由主路由网关 ARP 静态绑定检测",
+        "真机验收：`INSTALL_RC=0`、自检 10/10、负向 `RC=1` 泄漏检出有效、服务自愈全 1、零补发 `run_all 15/15`、混沌 120/120、门禁双布局 29/29、改 1 字节精确转红、UI 六页三视口零溢出、出网 200/200/204/200 全通"
+      ]
+    },
     {
       "version": "2.8.3",
       "date": "2026-11-23",
@@ -963,13 +983,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.8.3/AI-LINK-v2.8.3.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.8.4/AI-LINK-v2.8.4.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.8.3.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.8.4.tar.gz"
       ],
-      "size": 1269585,
-      "md5": "19fd5624542758e0236da0550f1d1b8b",
-      "sha256": "3c3f1331d44265f57f7e88b0527b94a1c450c6829f5cee6f3ed1a84321dd9a48"
+      "size": 1273938,
+      "md5": "883a5f62ed7e8ce6f6fc873b8eb9f8f2",
+      "sha256": "759d37d396d540b517ea80173b1f11ccddda06aa3262f0f5c53803b96284e46d"
     }
   }
 }

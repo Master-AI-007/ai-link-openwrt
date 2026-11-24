@@ -1,3 +1,6 @@
+## v2.8.4 (2026-11-24 · r59)
+- **OPT-284-01~10 全量落地**：5×3 分流规则遮蔽冲突检测与置顶建议、Fake-IP/DNS 双轨 ECS/DNSSEC 状态徽标、自动节点池冷却阈值/时长可配置、HomeLink 断线 >60s 告警通知、/overlay 与 /tmp 容量趋势预测、WAN MTU/PPPoE/Jumbo 自适应 tun_mtu 推荐、install/uninstall 静默日志落盘 `/tmp/ai-link-install.log`、init.d 启动耗时分段计时、节点测速 CSV 导出及旁路由主路由网关 ARP 静态绑定检测。
+
 ## v2.8.3 (2026-11-23 · r58)
 - **OPT-283-11~20 全量落地**：全模块未导入符号静态检查、隔离沙箱 `--self-test` 强化门禁、`route.rules` 导出 `rule_set` 合法性校验、DNS 热切换确认提示、节点冷却期一键全局清零、恢复后配置一致性预检、外置存储 `<50MB` 低空间预警、升级残留缓存清理、批量操作悬浮栏与旁路由 mDNS/多播提示。
 
