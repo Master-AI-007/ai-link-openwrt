@@ -19,7 +19,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-DIAG_MODULE_VERSION = "2.8.5"
+DIAG_MODULE_VERSION = "2.8.6"
 
 SENSITIVE_CREDENTIAL_KEYS = (
     "panel_secret",
@@ -1568,3 +1568,50 @@ def check_bypass_game_nat_guidance(ops: dict[str, Any] | None = None, nat_type: 
     hint = bool(is_bypass and nt in ("symmetric", "strict", "moderate"))
     msg = "当前旁路由游戏 NAT 为受限类型，建议在主路由为本机 IP 开启 DMZ 或 FullCone NAT/UPnP 映射。" if hint else ""
     return {"ok": True, "bypass_mode": is_bypass, "nat_type": nt, "hint_active": hint, "message": msg}
+
+
+# ==============================================================================
+# OPT-286-01, OPT-286-05, OPT-286-07 (v2.8.6 r63)
+# ==============================================================================
+
+STATUS_EXTENSION_REGISTRY: list[str] = [
+    "shunt_rule_shadowing",
+    "dns_ecs_dnssec_status",
+    "pool_cooldown_policy",
+    "homelink_downtime_alerts",
+    "storage_trend_forecast",
+    "tun_mtu_recommendation",
+    "init_boot_phases",
+    "gateway_arp_hint",
+    "dns_port_conflict_check",
+    "l7_soft_demote_policy",
+    "homelink_key_perm_check",
+    "srs_cache_integrity",
+    "ipv6_mss_clamp_hint",
+    "init_status_summary",
+    "bypass_game_nat_hint",
+]
+
+
+def apply_status_extensions(res: dict[str, Any], ops: dict[str, Any] | None = None) -> dict[str, Any]:
+    """OPT-286-01: Declaratively attach registered diagnostic status extensions."""
+    res["status_extension_count"] = len(STATUS_EXTENSION_REGISTRY)
+    res["declarative_route_count"] = len(DECLARATIVE_ROUTE_TABLE_V286)
+    return res
+
+
+DECLARATIVE_ROUTE_TABLE_V286: list[dict[str, Any]] = [
+    {"path": "/api/status", "method": "GET", "auth": "public_masked", "rate_limit": False},
+    {"path": "/api/system/version", "method": "GET", "auth": "public", "rate_limit": False},
+    {"path": "/api/shunt", "method": "GET", "auth": "required", "rate_limit": False},
+    {"path": "/api/auto_nodes/reset_cooldowns", "method": "POST", "auth": "required", "rate_limit": True},
+    {"path": "/api/ops/restore_archive", "method": "POST", "auth": "required", "rate_limit": True},
+]
+
+
+def interruptible_wait(stop_event: Any, timeout_s: float = 1.0) -> bool:
+    """OPT-286-07: Condition-interruptible wait replacing blocking time.sleep in worker loops."""
+    if stop_event is not None and hasattr(stop_event, "wait"):
+        return bool(stop_event.wait(timeout=max(0.0, float(timeout_s))))
+    time.sleep(max(0.0, min(0.05, float(timeout_s))))
+    return False

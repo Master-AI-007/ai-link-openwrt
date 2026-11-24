@@ -10960,3 +10960,39 @@ function autoFixShuntShadowingOrder(groups, conflict) {
 if (typeof window !== 'undefined') {
   window.autoFixShuntShadowingOrder = autoFixShuntShadowingOrder;
 }
+
+
+// OPT-286-03 & OPT-286-06: Managed AbortController & Interval Lifecycle Pool
+const _ailinkAbortControllers = new Map();
+function createManagedAbortController(key) {
+  if (_ailinkAbortControllers.has(key)) {
+    try { _ailinkAbortControllers.get(key).abort(); } catch (_) {}
+  }
+  const ac = (typeof AbortController !== 'undefined') ? new AbortController() : { signal: undefined, abort() {} };
+  _ailinkAbortControllers.set(key, ac);
+  return ac;
+}
+function cleanupManagedAbortControllers() {
+  for (const ac of _ailinkAbortControllers.values()) {
+    try { ac.abort(); } catch (_) {}
+  }
+  _ailinkAbortControllers.clear();
+}
+const NexusIntervalPool = {
+  _timers: [],
+  register(fn, ms) {
+    const id = setInterval(fn, ms);
+    this._timers.push(id);
+    return id;
+  },
+  clearAll() {
+    while (this._timers.length) {
+      clearInterval(this._timers.pop());
+    }
+  }
+};
+if (typeof window !== 'undefined') {
+  window.createManagedAbortController = createManagedAbortController;
+  window.cleanupManagedAbortControllers = cleanupManagedAbortControllers;
+  window.NexusIntervalPool = NexusIntervalPool;
+}

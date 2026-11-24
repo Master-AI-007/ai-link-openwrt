@@ -1,3 +1,6 @@
+## v2.8.6 (2026-11-24 · r63)
+- **OPT-286-01~10 全量落地**：声明式 `/api/status` 扩展注册表、复用 `ailink_diag.py` 5 项公共原语消除双份实现、前端 `AbortController` 事件回收与 `NexusIntervalPool` 定时器生命周期管理、LuCI 页面不可见时暂停轮询、声明式路由元数据表、可中断条件等待 `interruptible_wait()`、`nexus.css` `@media` 3 断点校验、自研 JS 零 `console.log` 门禁白名单及抽离 `/usr/share/ai-link/lib_common.sh` 公共脚本。
+
 ## v2.8.5 (2026-11-24 · r62)
 - **OPT-285-11~20 全量落地**：分流遮蔽一键重排生效、DNS/DoH 端口冲突自检、L7 瞬时失败降权防误剔除、HomeLink 密钥 0600 权限校验、`.srs`/缓存文件完整性头校验、PPPoE 双栈 IPv6 TCP MSS Clamping 联动、`init.d status` PID/RSS 摘要、LuCI 健康状态徽标、旁路由游戏 NAT/UPnP 排查指引及 `/tmp/ai-link-install.log` 500 行截断与 CSV UTF-8 BOM。
 

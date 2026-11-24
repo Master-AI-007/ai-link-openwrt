@@ -843,6 +843,35 @@ def opt285_release_gate():
 
 check("OPT-285-11~20 v2.8.5 端口冲突/L7降权/完整性/IPv6-MSS与LuCI健康徽标门禁", opt285_release_gate)
 
+def opt286_release_gate():
+    _src = DAEMON.read_text(encoding="utf-8", errors="replace")
+    _syms = [
+        "apply_status_extensions",
+        "interruptible_wait",
+        "deduplicate_outbound_tags",
+        "classify_probe_failure_reason",
+        "redact_sensitive_dict",
+        "check_storage_headroom_pure",
+        "is_port_listening_local",
+    ]
+    _missing = [s for s in _syms if _src.count(s) < 2]
+    _nx = (ROOT / "root/usr/share/ai-link/webui/nexus.js").read_text(encoding="utf-8", errors="replace")
+    _ov = (ROOT / "htdocs/luci-static/resources/view/ai-link/overview.js").read_text(encoding="utf-8", errors="replace")
+    _lib = (ROOT / "root/usr/share/ai-link/lib_common.sh").is_file()
+    # OPT-286-09: Explicit first-party JS zero console.log check (excluding assets/*.min.js)
+    _first_party_console_logs = _nx.count("console.log(")
+    _ok = (
+        len(_missing) == 0
+        and _lib
+        and "createManagedAbortController" in _nx
+        and "NexusIntervalPool" in _nx
+        and "isLuciPageVisible" in _ov
+        and _first_party_console_logs == 0
+    )
+    return _ok, f"missing={_missing}, lib={_lib}, console_log={_first_party_console_logs}"
+
+check("OPT-286-01~10 v2.8.6 状态注册表/公共原语复用/生命周期与零console.log门禁", opt286_release_gate)
+
 fails = [r for r in results if not r[1]]
 print(f" 合计 {len(results)} 项，通过 {len(results) - len(fails)}，失败 {len(fails)}")
 if fails:

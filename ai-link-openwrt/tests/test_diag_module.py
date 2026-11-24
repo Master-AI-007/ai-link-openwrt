@@ -194,6 +194,14 @@ def main() -> int:
         dpc["ok"] is True and dem["penalty_ms"] == 500 and kp["ok"] is True and srs_chk["ok"] is True and mss6["recommend_enable"] is True and iss["rss_mb"] == 20.0 and nat_h["hint_active"] is True,
     )
 
+    # 16. OPT-286-01~10
+    _st_ext = diag.apply_status_extensions({}, {})
+    _iw = diag.interruptible_wait(None, 0.001)
+    check(
+        "OPT-286-01~10 状态扩展注册表/路由表与可中断等待校验",
+        _st_ext.get("status_extension_count", 0) >= 15 and _st_ext.get("declarative_route_count", 0) >= 5 and _iw is False,
+    )
+
     fails = [r for r in results if not r[1]]
     print("=" * 78)
     print(f" 合计 {len(results)} 项，通过 {len(results) - len(fails)}，失败 {len(fails)}")

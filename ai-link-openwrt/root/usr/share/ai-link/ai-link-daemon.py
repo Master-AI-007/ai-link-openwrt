@@ -26641,9 +26641,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.8.5"
+APP_VERSION = "2.8.6"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.8.5-release-20261124-r62"
+APP_BUILD = "2.8.6-release-20261124-r63"
 if "_safe_json_loads" not in globals():
     def _safe_json_loads(raw, default=None):
         return getattr(json, "loads")(raw) if default is None else (getattr(json, "loads")(raw) if raw else default)
@@ -34293,6 +34293,13 @@ try:
         get_ipv6_mss_clamp_recommendation,
         format_init_status_summary,
         check_bypass_game_nat_guidance,
+        apply_status_extensions,
+        interruptible_wait,
+        deduplicate_outbound_tags,
+        classify_probe_failure_reason,
+        redact_sensitive_dict,
+        check_storage_headroom_pure,
+        is_port_listening_local,
     )
 except ImportError:
     def validate_and_migrate_backup_schema(backup_data, target_version=APP_VERSION):
@@ -34422,6 +34429,8 @@ def build_status_api_response(conf_dir: Path = CONF_DIR, *args, **kwargs) -> dic
         res["ipv6_mss_clamp_hint"] = get_ipv6_mss_clamp_recommendation(ops)
         res["init_status_summary"] = format_init_status_summary(os.getpid(), 0)
         res["bypass_game_nat_hint"] = check_bypass_game_nat_guidance(ops)
+        apply_status_extensions(res, ops)
+        res["diag_shared_primitives_ok"] = bool(callable(deduplicate_outbound_tags) and callable(classify_probe_failure_reason) and callable(redact_sensitive_dict) and callable(check_storage_headroom_pure) and callable(is_port_listening_local) and callable(interruptible_wait))
         res["py_symbol_audit"] = audit_all_python_undefined_globals([str(Path(__file__).resolve().parent / "ailink_diag.py")])
         if isinstance(res.get("subscriptions"), list):
             for s in res["subscriptions"]:

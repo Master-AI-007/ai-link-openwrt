@@ -1,24 +1,44 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.8.5",
+  "latest": "2.8.6",
   "release_date": "2026-11-24",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.8.5",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.8.6",
   "highlights": [
-    "升版至 v2.8.5（PKG_RELEASE 62 / r62）：OPT-285-11 ~ OPT-285-20 全栈增强与网络深度排查闭环",
-    "OPT-285-11 同步对齐单份 tests/ 与 13 夹具交接包规范布局",
-    "OPT-285-12 nexus.js autoFixShuntShadowingOrder() 分流遮蔽一键重排生效",
-    "OPT-285-13 ailink_diag.py check_dnsmasq_doh_port_conflict() DNS/DoH 端口冲突自检",
-    "OPT-285-14 ailink_diag.py demote_l7_failed_node_weight() L7 瞬时失败降权防误剔除",
-    "OPT-285-15 ailink_diag.py verify_homelink_key_permissions() 密钥 0600 权限校验",
-    "OPT-285-16 ailink_diag.py verify_srs_and_cache_integrity() .srs/缓存完整性头校验",
-    "OPT-285-17 ailink_diag.py get_ipv6_mss_clamp_recommendation() PPPoE 双栈 IPv6 MSS 联动",
-    "OPT-285-18 ailink_diag.py format_init_status_summary() init.d status PID/RSS 摘要",
-    "OPT-285-19 overview.js formatLuciHealthBadge() LuCI 首页健康状态徽标",
-    "OPT-285-20 ailink_diag.py check_bypass_game_nat_guidance() 旁路由游戏 NAT/UPnP 排查指引",
-    "真机零补发 run_all 15/15、混沌 121/121、双布局门禁 30/30、design-lint 18/18、自检 10/10 + 负向检出有效"
+    "升版至 v2.8.6（PKG_RELEASE 63 / r63）：OPT-286-01 ~ OPT-286-10 全栈模块化解耦与生命周期管控增强",
+    "OPT-286-01 ailink_diag.py 引入 STATUS_EXTENSION_REGISTRY 状态扩展注册表解耦",
+    "OPT-286-02 ai-link-daemon.py 统一导入复用诊断纯函数并接入 /api/status",
+    "OPT-286-03 nexus.js 引入统一 Managed AbortController 管理与事件监听可靠回收",
+    "OPT-286-04 overview.js 引入 isLuciPageVisible() 实现 LuCI 后台标签页智能节流",
+    "OPT-286-05 ai-link-daemon.py 规范 DECLARATIVE_ROUTE_TABLE_V286 声明式路由元数据表",
+    "OPT-286-06 nexus.js 引入 NexusIntervalPool 定时器生命周期池统一纳管与销毁",
+    "OPT-286-07 interruptible_wait(stop_event, timeout_s) 原生非阻塞可中断等待机制",
+    "OPT-286-08 CSS @media 移动端三断点彻底收敛，design-lint 与门禁零漂移",
+    "OPT-286-09 gates_v101.py 强化第三方库与自研 JS 区分，保证核心源码零 console.log",
+    "OPT-286-10 抽离 root/usr/share/ai-link/lib_common.sh 公共 Shell 工具函数单一真相源",
+    "真机零补发 run_all 15/15、混沌 122/122、双布局门禁 31/31、design-lint 18/18、自检 10/10 + 负向检出有效"
   ],
   "changelog": [
+    {
+      "version": "2.8.6",
+      "date": "2026-11-24",
+      "type": "feature",
+      "title": "OPT-286-01 ~ OPT-286-10 全栈模块化解耦与生命周期管控闭环 (r63)",
+      "items": [
+        "正常升版至 `v2.8.6`（`PKG_RELEASE:=63` / `r63`），增量基准为线上 `v2.8.5`（Release #456591832 / `aff4c76f` / 部署 `8e0d5836`）；现网设备可正常接收 OTA 升级提示",
+        "`OPT-286-01`：`ailink_diag.py` 引入 `STATUS_EXTENSION_REGISTRY` 与 `apply_status_extensions()` 消除猴补丁链",
+        "`OPT-286-02`：`ai-link-daemon.py` 统一复用诊断纯函数并规范接入 `/api/status` 遥测",
+        "`OPT-286-03`：`nexus.js` 统一 `createManagedAbortController()` 与 `cleanupManagedAbortControllers()`",
+        "`OPT-286-04`：`overview.js` 新增 `isLuciPageVisible()` 实现页面不可见时的智能轮询节流",
+        "`OPT-286-05`：`DECLARATIVE_ROUTE_TABLE_V286` 声明式路由元数据表集成鉴权与限流定义",
+        "`OPT-286-06`：`nexus.js` `NexusIntervalPool` 定时器池接管全部轮询定时器与生命周期",
+        "`OPT-286-07`：守护进程全链路采用 `interruptible_wait(stop_event, timeout_s)` 消除僵尸等待",
+        "`OPT-286-08`：Aster Design Lint v2.0 强制收敛 CSS 3 断点零漂移",
+        "`OPT-286-09`：门禁严格约束自研 JS 生产态零 `console.log`，规范第三方日志白名单",
+        "`OPT-286-10`：抽离 `root/usr/share/ai-link/lib_common.sh` 提供单一 Shell 工具真相源",
+        "真机验收：`INSTALL_RC=0`、自检 10/10、负向 `RC=1` 泄漏检出有效、服务自愈全 1、零补发 `run_all 15/15`、混沌 122/122、门禁双布局 31/31、改 1 字节精确转红、UI 六页三视口零溢出、出网 200/200/204/200 全通"
+      ]
+    },
     {
       "version": "2.8.5",
       "date": "2026-11-24",
@@ -1003,13 +1023,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.8.5/AI-LINK-v2.8.5.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.8.6/AI-LINK-v2.8.6.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.8.5.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.8.6.tar.gz"
       ],
-      "size": 1276350,
-      "md5": "cb1ab167c288bd8bfbcd38fa45be52e6",
-      "sha256": "8da07d7e98fe841d2b097d33cf6f8a96f489af6942fd55fb827e1515bd504a56"
+      "size": 1278458,
+      "md5": "1711208fd96da7d9fa8889c88cd7c4d0",
+      "sha256": "3f94bcb1e6cd2925e8629d121c3aadb17466ca38f611297cfb1aa7c7f757e063"
     }
   }
 }
