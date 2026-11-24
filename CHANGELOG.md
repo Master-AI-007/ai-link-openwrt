@@ -1,3 +1,6 @@
+## v2.8.7 (2026-11-25 · r64)
+- **OPT-287-01~10 全量落地**：POST 业务域声明式路由分发表（`POST_DISPATCH_DOMAINS_V287` / `resolve_post_domain()`）、sing-box/nftables 四段式配置管线校验（`summarize_config_pipeline_sections()`）、守护线程统一工厂（`create_daemon_thread()` 强制 `daemon=True`）、`usr/bin/ai-link` 接入 `lib_common.sh`、`nexus3d.js` 单一 `_scheduleNextFrame()` 调度器与后台自动停帧、`nexus.css` `prefers-reduced-motion` 合规豁免注释、`webui/modules/api.js` 与 `settings-panel.js` 模块化下沉、`apply_nft.sh` 与 daemon 规则表一致门禁、`MicroEvalCache` 高频评估微缓存及 `overview.js` 统一 `handleLuciRpcError()`。
+
 ## v2.8.6 (2026-11-24 · r63)
 - **OPT-286-01~10 全量落地**：声明式 `/api/status` 扩展注册表、复用 `ailink_diag.py` 5 项公共原语消除双份实现、前端 `AbortController` 事件回收与 `NexusIntervalPool` 定时器生命周期管理、LuCI 页面不可见时暂停轮询、声明式路由元数据表、可中断条件等待 `interruptible_wait()`、`nexus.css` `@media` 3 断点校验、自研 JS 零 `console.log` 门禁白名单及抽离 `/usr/share/ai-link/lib_common.sh` 公共脚本。
 

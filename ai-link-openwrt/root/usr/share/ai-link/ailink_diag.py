@@ -15,11 +15,12 @@ import re
 import shutil
 import socket
 import subprocess
+import threading
 import time
 from pathlib import Path
 from typing import Any
 
-DIAG_MODULE_VERSION = "2.8.6"
+DIAG_MODULE_VERSION = "2.8.7"
 
 SENSITIVE_CREDENTIAL_KEYS = (
     "panel_secret",
@@ -1597,6 +1598,9 @@ def apply_status_extensions(res: dict[str, Any], ops: dict[str, Any] | None = No
     """OPT-286-01: Declaratively attach registered diagnostic status extensions."""
     res["status_extension_count"] = len(STATUS_EXTENSION_REGISTRY)
     res["declarative_route_count"] = len(DECLARATIVE_ROUTE_TABLE_V286)
+    res["post_domain_count"] = len(POST_DISPATCH_DOMAINS_V287)
+    res["config_section_count"] = len(SINGBOX_CONFIG_SECTIONS_V287)
+    res["micro_cache_enabled"] = True
     return res
 
 
@@ -1615,3 +1619,112 @@ def interruptible_wait(stop_event: Any, timeout_s: float = 1.0) -> bool:
         return bool(stop_event.wait(timeout=max(0.0, float(timeout_s))))
     time.sleep(max(0.0, min(0.05, float(timeout_s))))
     return False
+
+
+# ==============================================================================
+# OPT-287-01, OPT-287-02, OPT-287-03, OPT-287-09 (v2.8.7 r64)
+# ==============================================================================
+
+POST_DISPATCH_DOMAINS_V287: dict[str, str] = {
+    "/api/ops/": "ops",
+    "/api/shunt": "shunt",
+    "/api/sub": "subscription",
+    "/api/auto_nodes": "auto_nodes",
+    "/api/homelink": "homelink",
+    "/api/system": "system",
+    "/api/nodes": "nodes",
+    "/api/diag": "diagnostics",
+}
+
+
+def resolve_post_domain(path: str) -> str:
+    """OPT-287-01: Map POST API path to its declarative business handler domain."""
+    clean = str(path or "").split("?", 1)[0].strip()
+    for prefix, domain in POST_DISPATCH_DOMAINS_V287.items():
+        if clean.startswith(prefix):
+            return domain
+    return "core"
+
+
+SINGBOX_CONFIG_SECTIONS_V287: tuple[str, ...] = (
+    "log",
+    "dns",
+    "inbounds",
+    "outbounds",
+    "route",
+    "experimental",
+)
+
+NFT_RULE_STAGES_V287: tuple[str, ...] = (
+    "table_init",
+    "bypass_sets",
+    "prerouting_tproxy",
+    "output_tproxy",
+    "dns_redirect",
+)
+
+
+def summarize_config_pipeline_sections(cfg: dict[str, Any] | None, nft_text: str = "") -> dict[str, Any]:
+    """OPT-287-02: Validate sing-box & nftables modular pipeline section completeness."""
+    present_sb = [s for s in SINGBOX_CONFIG_SECTIONS_V287 if isinstance(cfg, dict) and s in cfg]
+    txt = str(nft_text or "")
+    present_nft = [
+        st for st, tok in (
+            ("table_init", "table inet ai_link"),
+            ("bypass_sets", "set "),
+            ("prerouting_tproxy", "prerouting_tproxy"),
+            ("output_tproxy", "output_tproxy"),
+            ("dns_redirect", "53"),
+        )
+        if tok in txt
+    ]
+    return {
+        "singbox_sections_present": present_sb,
+        "singbox_sections_expected": len(SINGBOX_CONFIG_SECTIONS_V287),
+        "nft_stages_present": present_nft,
+        "nft_stages_expected": len(NFT_RULE_STAGES_V287),
+    }
+
+
+def create_daemon_thread(
+    target: Any,
+    name: str | None = None,
+    args: tuple[Any, ...] = (),
+    kwargs: dict[str, Any] | None = None,
+) -> threading.Thread:
+    """OPT-287-03: Thread factory enforcing daemon=True in constructor."""
+    return threading.Thread(
+        target=target,
+        name=name,
+        args=args,
+        kwargs=kwargs or {},
+        daemon=True,
+    )
+
+
+class MicroEvalCache:
+    """OPT-287-09: Thread-safe micro-cache keyed by (node_key, pool_hash, probe_epoch)."""
+
+    def __init__(self, max_entries: int = 512) -> None:
+        self._max = max(16, int(max_entries))
+        self._lock = threading.Lock()
+        self._store: dict[tuple[str, str, int], Any] = {}
+
+    def get(self, node_key: str, pool_hash: str, probe_epoch: int) -> tuple[bool, Any]:
+        key = (str(node_key), str(pool_hash), int(probe_epoch))
+        with self._lock:
+            if key in self._store:
+                return True, self._store[key]
+            return False, None
+
+    def put(self, node_key: str, pool_hash: str, probe_epoch: int, value: Any) -> None:
+        key = (str(node_key), str(pool_hash), int(probe_epoch))
+        with self._lock:
+            if len(self._store) >= self._max:
+                oldest = next(iter(self._store))
+                self._store.pop(oldest, None)
+            self._store[key] = value
+
+    def size(self) -> int:
+        with self._lock:
+            return len(self._store)

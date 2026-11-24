@@ -32,3 +32,12 @@
   });
   window.renderDiagRedactionBadge = renderDiagRedactionBadge;
 
+
+// OPT-287-07: Settings panel header & status badge helpers
+function formatSettingsStatusBadge(enabled, labelOn, labelOff) {
+  return enabled ? String(labelOn || '已启用') : String(labelOff || '未启用');
+}
+if (typeof window !== 'undefined') {
+  window.NexusModules = window.NexusModules || {};
+  window.NexusModules.settingsPanel = Object.assign(window.NexusModules.settingsPanel || {}, { formatSettingsStatusBadge: formatSettingsStatusBadge });
+}

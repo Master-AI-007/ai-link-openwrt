@@ -202,6 +202,26 @@ def main() -> int:
         _st_ext.get("status_extension_count", 0) >= 15 and _st_ext.get("declarative_route_count", 0) >= 5 and _iw is False,
     )
 
+    # 17. OPT-287-01~09 ailink_diag primitives
+    _sec = diag.summarize_config_pipeline_sections(
+        {"log": {}, "dns": {}, "inbounds": [], "outbounds": [], "route": {}, "experimental": {}},
+        "table inet ai_link { set x {} chain prerouting_tproxy {} chain output_tproxy {} dport 53 }",
+    )
+    _th = diag.create_daemon_thread(lambda: None, name="t287")
+    _mc = diag.MicroEvalCache(32)
+    _mc.put("n1", "h1", 1, {"ms": 42})
+    _hit, _val = _mc.get("n1", "h1", 1)
+    check(
+        "OPT-287-01~09 POST域分发/配置管线/线程工厂与微缓存校验",
+        diag.resolve_post_domain("/api/shunt/save") == "shunt"
+        and diag.resolve_post_domain("/api/ops/settings") == "ops"
+        and len(_sec["singbox_sections_present"]) == 6
+        and len(_sec["nft_stages_present"]) == 5
+        and _th.daemon is True
+        and _hit is True
+        and _val["ms"] == 42,
+    )
+
     fails = [r for r in results if not r[1]]
     print("=" * 78)
     print(f" 合计 {len(results)} 项，通过 {len(results) - len(fails)}，失败 {len(fails)}")

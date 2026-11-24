@@ -4,7 +4,7 @@
 
 **NEXUS 全域 3D 智能网关 · 运行在 OpenWrt 上的新一代智能分流与网络系统**
 
-[![version](https://img.shields.io/badge/version-2.8.6-6ee7f5?style=flat-square)](https://github.com/Master-AI-007/ai-link-openwrt/releases/tag/v2.8.6)
+[![version](https://img.shields.io/badge/version-2.8.7-6ee7f5?style=flat-square)](https://github.com/Master-AI-007/ai-link-openwrt/releases/tag/v2.8.7)
 [![platform](https://img.shields.io/badge/OpenWrt-23.05%20%7C%2024.10%20%7C%20ImmortalWrt-a994ff?style=flat-square)](#环境要求)
 [![core](https://img.shields.io/badge/sing--box-1.14.4-54e6b5?style=flat-square)](#技术架构)
 [![license](https://img.shields.io/badge/license-MIT-f9a8d4?style=flat-square)](#许可与免责)
@@ -216,10 +216,10 @@ sing-box 1.14.4（高性能核心中枢）
 最新候选构建验证指纹：
 
 ```
-AI-LINK-v2.8.6.tar.gz
-size   1,278,458 B
-md5    1711208fd96da7d9fa8889c88cd7c4d0
-sha256 3f94bcb1e6cd2925e8629d121c3aadb17466ca38f611297cfb1aa7c7f757e063
+AI-LINK-v2.8.7.tar.gz
+size   1,281,614 B
+md5    057f1f6777ffe11678a6a96cfabce48d
+sha256 338f07b9b7164194bf8a746191dd07359f7986b1a98b6f00798928ba7ee7b50f
 ```
 
 在线清单比对地址：<https://ai-link-official.pages.dev/version.json>

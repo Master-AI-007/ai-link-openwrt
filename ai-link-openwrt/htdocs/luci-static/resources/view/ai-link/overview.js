@@ -49,7 +49,7 @@ return view.extend({
 				}).catch(function() { return ''; });
 			}).catch(function() { return ''; });
 		}
-		var currentVer = String(uci.get('ai-link', 'global', 'app_version') || '2.8.6');
+		var currentVer = String(uci.get('ai-link', 'global', 'app_version') || '2.8.7');
 		var unlockBtnHtml = ' <button type="button" id="luci-btn-unlock-panel" style="padding:2px 8px; border-radius:5px; border:1px solid rgba(56,189,248,0.35); background:rgba(14,116,144,0.25); color:#7dd3fc; font-size:11px; cursor:pointer;">🔓 解锁状态</button>';
 		var pwdFieldHtml = pwdIsCustom
 			? '<span style="font-size:12px; color:#94a3b8; display:inline-flex; align-items:center; gap:6px;">面板密码: <code id="luci-panel-pwd-mask" style="background:#0f172a; padding:2px 7px; border-radius:5px; color:#e2e8f0; border:1px solid rgba(148,163,184,0.2);">已自定义 · 不回显</code>' + unlockBtnHtml + ' <span style="font-size:11px; color:#64748b;">（忘记可执行 ai-link password 重置）</span></span>'
@@ -740,3 +740,14 @@ function formatLuciHealthBadge(st) { return (st && st.core_running) ? '核心在
 
 // OPT-286-04: Pause LuCI background polling when tab is hidden
 function isLuciPageVisible() { return (typeof document === 'undefined') ? true : document.visibilityState !== 'hidden'; }
+
+// OPT-287-10: Unified LuCI RPC error handler for 401 auth expiry & offline daemon
+function handleLuciRpcError(err, ctx) {
+  var msg = (err && err.message) ? String(err.message) : String(err || 'unknown error');
+  var isAuth = /401|unauth|token/i.test(msg);
+  return {
+    context: String(ctx || 'luci-rpc'),
+    authExpired: isAuth,
+    message: isAuth ? '面板鉴权已失效，请重新输入访问密码或刷新 LuCI 会话' : ('后台服务暂不可达：' + msg)
+  };
+}

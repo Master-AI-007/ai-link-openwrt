@@ -969,7 +969,7 @@ td small { display: block; margin-top: 4px; color: var(--dim); font-size: 12px; 
   .search-box { width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) {
-  *, *:before, *:after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+  *, *:before, *:after { scroll-behavior: auto !important; /* @ds-exception important 理由：无障碍 prefers-reduced-motion 强制降动效 到期：2027-12-31 */ animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
 /* === AI-LINK NEXUS Full-Feature Production Extensions === */
 .hidden { display: none; }

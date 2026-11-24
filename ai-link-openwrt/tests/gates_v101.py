@@ -872,6 +872,28 @@ def opt286_release_gate():
 
 check("OPT-286-01~10 v2.8.6 状态注册表/公共原语复用/生命周期与零console.log门禁", opt286_release_gate)
 
+
+def opt287_release_gate():
+    _src = DAEMON.read_text(encoding="utf-8", errors="replace")
+    _nft_sh = (ROOT / "root/usr/share/ai-link/nftables/apply_nft.sh").read_text(encoding="utf-8", errors="replace")
+    _bin = (ROOT / "root/usr/bin/ai-link").read_text(encoding="utf-8", errors="replace")
+    _n3d = (ROOT / "root/usr/share/ai-link/webui/nexus3d.js").read_text(encoding="utf-8", errors="replace")
+    _ov = (ROOT / "htdocs/luci-static/resources/view/ai-link/overview.js").read_text(encoding="utf-8", errors="replace")
+    _syms = ["resolve_post_domain", "summarize_config_pipeline_sections", "create_daemon_thread", "MicroEvalCache"]
+    _missing = [s for s in _syms if _src.count(s) < 2]
+    # OPT-287-08: apply_nft.sh fallback and daemon generate_nft_rules_file share inet ai_link & tproxy chain names
+    _nft_consistent = ("inet ai_link" in _src and "inet ai_link" in _nft_sh and "prerouting_tproxy" in _src and "output_tproxy" in _src)
+    _ok = (
+        len(_missing) == 0
+        and _nft_consistent
+        and "lib_common.sh" in _bin
+        and "_scheduleNextFrame" in _n3d
+        and "handleLuciRpcError" in _ov
+    )
+    return _ok, f"missing={_missing}, nft_consistent={_nft_consistent}"
+
+check("OPT-287-01~10 v2.8.7 POST域分发/线程工厂/lib_common收敛/3D单调度与nft门禁", opt287_release_gate)
+
 fails = [r for r in results if not r[1]]
 print(f" 合计 {len(results)} 项，通过 {len(results) - len(fails)}，失败 {len(fails)}")
 if fails:

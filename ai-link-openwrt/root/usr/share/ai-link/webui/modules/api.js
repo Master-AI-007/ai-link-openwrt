@@ -32,3 +32,20 @@
   });
   window.computeAdaptivePollIntervalMs = computeAdaptivePollIntervalMs;
 
+
+// OPT-287-07: API URL & error normalization helpers
+function buildApiUrl(path, queryObj) {
+  var base = String(path || '/api/status');
+  if (!queryObj || typeof queryObj !== 'object') return base;
+  var pairs = Object.keys(queryObj).filter(function (k) { return queryObj[k] !== undefined && queryObj[k] !== null; })
+    .map(function (k) { return encodeURIComponent(k) + '=' + encodeURIComponent(String(queryObj[k])); });
+  return pairs.length ? (base + (base.indexOf('?') >= 0 ? '&' : '?') + pairs.join('&')) : base;
+}
+function parseApiError(payload, fallback) {
+  if (payload && typeof payload === 'object') return String(payload.error || payload.message || fallback || '请求失败');
+  return String(fallback || '请求失败');
+}
+if (typeof window !== 'undefined') {
+  window.NexusModules = window.NexusModules || {};
+  window.NexusModules.api = Object.assign(window.NexusModules.api || {}, { buildApiUrl: buildApiUrl, parseApiError: parseApiError });
+}

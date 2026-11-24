@@ -26641,9 +26641,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.8.6"
+APP_VERSION = "2.8.7"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.8.6-release-20261124-r63"
+APP_BUILD = "2.8.7-release-20261125-r64"
 if "_safe_json_loads" not in globals():
     def _safe_json_loads(raw, default=None):
         return getattr(json, "loads")(raw) if default is None else (getattr(json, "loads")(raw) if raw else default)
@@ -34300,6 +34300,10 @@ try:
         redact_sensitive_dict,
         check_storage_headroom_pure,
         is_port_listening_local,
+        resolve_post_domain,
+        summarize_config_pipeline_sections,
+        create_daemon_thread,
+        MicroEvalCache,
     )
 except ImportError:
     def validate_and_migrate_backup_schema(backup_data, target_version=APP_VERSION):
@@ -34431,6 +34435,7 @@ def build_status_api_response(conf_dir: Path = CONF_DIR, *args, **kwargs) -> dic
         res["bypass_game_nat_hint"] = check_bypass_game_nat_guidance(ops)
         apply_status_extensions(res, ops)
         res["diag_shared_primitives_ok"] = bool(callable(deduplicate_outbound_tags) and callable(classify_probe_failure_reason) and callable(redact_sensitive_dict) and callable(check_storage_headroom_pure) and callable(is_port_listening_local) and callable(interruptible_wait))
+        res["diag_v287_primitives_ok"] = bool(callable(resolve_post_domain) and callable(summarize_config_pipeline_sections) and callable(create_daemon_thread) and callable(MicroEvalCache))
         res["py_symbol_audit"] = audit_all_python_undefined_globals([str(Path(__file__).resolve().parent / "ailink_diag.py")])
         if isinstance(res.get("subscriptions"), list):
             for s in res["subscriptions"]:

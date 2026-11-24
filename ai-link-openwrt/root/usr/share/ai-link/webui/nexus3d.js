@@ -327,11 +327,11 @@
         }
         if (this.isSoftwareWebGL && !this.dragging) {
           this._swTimer = setTimeout(() => {
-            if (this._loopRunning) this._rafId = requestAnimationFrame(this._tickBound);
+            this._scheduleNextFrame();
           }, 180);
           return;
         }
-        this._rafId = requestAnimationFrame(this._tickBound);
+        this._scheduleNextFrame();
       };
       this._listen(document, "visibilitychange", () => {
         if (document.hidden) this.stopLoop();
@@ -1569,6 +1569,11 @@
         return;
       }
       this._loopRunning = true;
+      this._scheduleNextFrame();
+    }
+    _scheduleNextFrame() {
+      if (!this._loopRunning) return;
+      if (typeof document !== 'undefined' && document.hidden) return;
       this._rafId = requestAnimationFrame(this._tickBound);
     }
     stopLoop() {
