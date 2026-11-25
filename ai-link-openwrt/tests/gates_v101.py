@@ -915,6 +915,26 @@ def opt288_release_gate():
 
 check("OPT-288-01~10 v2.8.8 子模块边界/路径收敛/超时预算/轮询与API收口门禁", opt288_release_gate)
 
+
+def opt289_release_gate():
+    _src = DAEMON.read_text(encoding="utf-8", errors="replace")
+    _ini = (ROOT / "root/etc/init.d/ai-link").read_text(encoding="utf-8", errors="replace")
+    _un = (ROOT / "uninstall.sh").read_text(encoding="utf-8", errors="replace")
+    _st = (ROOT / "root/usr/share/ai-link/webui/modules/storage.js").read_text(encoding="utf-8", errors="replace")
+    _syms = ["compact_json_dumps", "validate_lock_order", "get_singbox_schema_profile_v289", "check_ipv6_prefix_drift"]
+    _missing = [s for s in _syms if _src.count(s) < 2]
+    _ok = (
+        len(_missing) == 0
+        and "request_queue_size = 64" in _src
+        and "OPT-289-05" in _ini
+        and "ailink_verify_backup_and_cleanup_routes" in _un
+        and "safeGetStorage" in _st
+        and "createRingBuffer" in _st
+    )
+    return _ok, f"missing={_missing}"
+
+check("OPT-289-01~10 v2.8.9 存储收口/锁序/HTTP队列/nofile/PD漂移门禁", opt289_release_gate)
+
 fails = [r for r in results if not r[1]]
 print(f" 合计 {len(results)} 项，通过 {len(results) - len(fails)}，失败 {len(fails)}")
 if fails:

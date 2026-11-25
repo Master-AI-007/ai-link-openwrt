@@ -234,6 +234,24 @@ def main() -> int:
         and len(getattr(diag, "__all__", [])) >= 20,
     )
 
+    # 19. OPT-289-02~10 ailink_diag primitives & multi-gen migration idempotency
+    _cj = diag.compact_json_dumps({"a": 1, "b": "测试"})
+    _lo_ok = diag.validate_lock_order(["config_lock", "probe_lock"])
+    _lo_bad = diag.validate_lock_order(["ledger_lock", "config_lock"])
+    _sb16 = diag.get_singbox_schema_profile_v289("1.16.0")
+    _pd = diag.check_ipv6_prefix_drift("240e:1234::/60", "240e:5678::/60")
+    _m1 = diag.validate_and_migrate_backup_schema({"proxy_enabled": True})
+    _m2 = diag.validate_and_migrate_backup_schema(_m1.get("payload", {}))
+    check(
+        "OPT-289-02~10 紧凑序列化/锁序校验/1.16+Schema/PD漂移与跨代迁移幂等校验",
+        _cj == '{"a":1,"b":"测试"}'
+        and _lo_ok is True
+        and _lo_bad is False
+        and _sb16.get("forward_compat_1_16_plus") is True
+        and _pd.get("drifted") is True
+        and _m2.get("payload") == _m1.get("payload"),
+    )
+
     fails = [r for r in results if not r[1]]
     print("=" * 78)
     print(f" 合计 {len(results)} 项，通过 {len(results) - len(fails)}，失败 {len(fails)}")

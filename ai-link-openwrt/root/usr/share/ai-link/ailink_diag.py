@@ -20,7 +20,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-DIAG_MODULE_VERSION = "2.8.8"
+DIAG_MODULE_VERSION = "2.8.9"
 
 SENSITIVE_CREDENTIAL_KEYS = (
     "panel_secret",
@@ -1603,6 +1603,7 @@ def apply_status_extensions(res: dict[str, Any], ops: dict[str, Any] | None = No
     res["micro_cache_enabled"] = True
     res["submodule_boundary_count"] = len(DAEMON_SUBMODULE_BOUNDARIES_V288)
     res["diag_exports_count"] = len(__all__)
+    res["lock_hierarchy_count"] = len(LOCK_HIERARCHY_V289)
     return res
 
 
@@ -1779,6 +1780,65 @@ def get_http_timeout_budget(profile: str = "default") -> float:
     return float(budgets.get(str(profile or "default"), 10.0))
 
 
+
+
+# ==============================================================================
+# OPT-289-02, OPT-289-03, OPT-289-09, OPT-289-10 (v2.8.9 r66)
+# ==============================================================================
+
+LOCK_HIERARCHY_V289: tuple[str, ...] = (
+    "config_lock",
+    "probe_lock",
+    "coordinator_lock",
+    "ledger_lock",
+)
+
+
+def compact_json_dumps(obj: Any) -> str:
+    """OPT-289-02: Compact hot-path JSON serializer reducing embedded GC churn."""
+    return json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
+
+
+def validate_lock_order(acquired: list[str] | tuple[str, ...]) -> bool:
+    """OPT-289-03: Verify lock acquisition sequence respects LOCK_HIERARCHY_V289."""
+    rank = {name: idx for idx, name in enumerate(LOCK_HIERARCHY_V289)}
+    last_idx = -1
+    for name in acquired:
+        idx = rank.get(str(name), -1)
+        if idx >= 0:
+            if idx < last_idx:
+                return False
+            last_idx = idx
+    return True
+
+
+def get_singbox_schema_profile_v289(version_str: str) -> dict[str, Any]:
+    """OPT-289-09: Forward-compatible sing-box schema matrix (1.11 ~ 1.16+)."""
+    m = re.search(r"(\d+)\.(\d+)", str(version_str or "1.14"))
+    major, minor = (int(m.group(1)), int(m.group(2))) if m else (1, 14)
+    ver_num = (major, minor)
+    return {
+        "version": f"{major}.{minor}",
+        "inject_dns_mode_disabled": ver_num >= (1, 14),
+        "use_multi_queue": ver_num >= (1, 15),
+        "omit_deprecated_stack": ver_num >= (1, 15),
+        "forward_compat_1_16_plus": ver_num >= (1, 16),
+    }
+
+
+def check_ipv6_prefix_drift(current_prefix: str, applied_prefix: str) -> dict[str, Any]:
+    """OPT-289-10: Detect LAN IPv6 PD prefix drift for bypass-router nft hot-reload."""
+    cur = str(current_prefix or "").strip()
+    app = str(applied_prefix or "").strip()
+    drifted = bool(cur and app and cur != app)
+    return {
+        "drifted": drifted,
+        "current_prefix": cur,
+        "applied_prefix": app,
+        "needs_nft_reload": drifted,
+    }
+
+
 __all__ = [
     # Static checks & path/config primitives
     "DIAG_MODULE_VERSION",
@@ -1804,4 +1864,9 @@ __all__ = [
     "MicroEvalCache",
     # Status registry
     "apply_status_extensions",
+    "LOCK_HIERARCHY_V289",
+    "compact_json_dumps",
+    "validate_lock_order",
+    "get_singbox_schema_profile_v289",
+    "check_ipv6_prefix_drift",
 ]

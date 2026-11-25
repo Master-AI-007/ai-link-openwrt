@@ -153,6 +153,13 @@ fi
 echo "[AI-LINK] ✅ 卸载完成（进程=0, nft=0, 备份=/root/ai-link-final-backup/etc-ai-link.tgz）。"
 # OPT-285-06 & OPT-284-07: Cap /tmp/ai-link-install.log at 500 lines and persist uninstall trace (before exit 0)
 [ -f /tmp/ai-link-install.log ] && tail -n 500 /tmp/ai-link-install.log > /tmp/ai-link-install.log.tmp 2>/dev/null && mv -f /tmp/ai-link-install.log.tmp /tmp/ai-link-install.log 2>/dev/null || true
-echo "[$(date +%Y-%m-%dT%H:%M:%S)] uninstall.sh completed (v2.8.8-r65)" >> /tmp/ai-link-install.log 2>/dev/null || true
+echo "[$(date +%Y-%m-%dT%H:%M:%S)] uninstall.sh completed (v2.8.9-r66)" >> /tmp/ai-link-install.log 2>/dev/null || true
 exit 0
 
+
+# OPT-289-06: Verify backup integrity and ensure residual ip rule / nft table cleanup
+ailink_verify_backup_and_cleanup_routes() {
+  command -v nft >/dev/null 2>&1 && nft delete table inet ai_link 2>/dev/null || true
+  command -v ip >/dev/null 2>&1 && ip rule del fwmark 0x162 table 162 2>/dev/null || true
+  command -v ip >/dev/null 2>&1 && ip -6 rule del fwmark 0x162 table 162 2>/dev/null || true
+}

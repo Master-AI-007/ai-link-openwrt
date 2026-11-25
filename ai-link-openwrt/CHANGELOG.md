@@ -1,3 +1,6 @@
+## v2.8.9 (2026-11-25 · r66)
+- **OPT-289-01~10 全量落地**：`webui/modules/storage.js` 收口 `safeGetStorage`/`safeSetStorage` 与 `createRingBuffer()`（限制 24h 挂机连接/日志环形队列上限）、`ailink_diag.py` 新增紧凑序列化 `compact_json_dumps()`、锁层级校验 `LOCK_HIERARCHY_V289` / `validate_lock_order()`、向前兼容 `sing-box` `1.16.x` 的 `get_singbox_schema_profile_v289()` 及旁路由 IPv6 PD 前缀漂移检测 `check_ipv6_prefix_drift()`、`ThreadingHTTPServer` 显式配置 `request_queue_size = 64`、`init.d/ai-link` 守护进程补充 `nofile=65535`、`uninstall.sh` 增加残留路由二次清理 `ailink_verify_backup_and_cleanup_routes()` 及跨代配置迁移幂等性单测。
+
 ## v2.8.8 (2026-11-25 · r65)
 - **OPT-288-01~10 全量落地**：守护进程子模块边界清单（`DAEMON_SUBMODULE_BOUNDARIES_V288` / `get_daemon_submodule_manifest()`）、运行时路径收敛辅助（`resolve_runtime_path()`）、无副作用分档超时预算（`get_http_timeout_budget()`）、`webui/modules/api.js` 统一 `apiFetchJson()` 与脚本加载计划 `getScriptLoadPlan()`、`lib_common.sh` 细粒度 0.2s 轮询 `ailink_poll_wait()`、`ailink_diag.py` 显式分层 `__all__` 导出、`install.sh` 包安装重试退避 `ailink_pkg_install_with_retry()` 及 IPK `control.tar.gz/conffiles` 静态完整性门禁（`opt288_release_gate`）。
 

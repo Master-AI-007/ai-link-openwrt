@@ -50,3 +50,33 @@
     keys: safeStorageKeys
   };
 })();
+
+// OPT-289-01 & OPT-289-08: Quota-safe storage helpers & bounded RingBuffer
+function safeGetStorage(key, fallback) {
+  try {
+    if (typeof localStorage === 'undefined') return fallback;
+    var v = localStorage.getItem(String(key));
+    return v === null ? fallback : v;
+  } catch (_) { return fallback; }
+}
+function safeSetStorage(key, val) {
+  try {
+    if (typeof localStorage !== 'undefined') localStorage.setItem(String(key), String(val));
+    return true;
+  } catch (_) { return false; }
+}
+function createRingBuffer(maxLen) {
+  var cap = Math.max(8, Number(maxLen) || 200);
+  var buf = [];
+  return {
+    push: function (item) { buf.push(item); if (buf.length > cap) buf.shift(); },
+    items: function () { return buf.slice(); },
+    size: function () { return buf.length; }
+  };
+}
+if (typeof window !== 'undefined') {
+  window.NexusModules = window.NexusModules || {};
+  window.NexusModules.storage = Object.assign(window.NexusModules.storage || {}, {
+    safeGetStorage: safeGetStorage, safeSetStorage: safeSetStorage, createRingBuffer: createRingBuffer
+  });
+}
