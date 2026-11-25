@@ -1,3 +1,6 @@
+## v2.9.1 (2026-11-26 · r68)
+- **OPT-291-01~10 全量落地**：`ailink_diag.py` 新增模块级预编译正则 `_V291_RE_*`、结构化日志原语 `emit_structured_log()`、OpenWrt Python 子包依赖核验 `check_openwrt_python_subpkgs()`、防 Zip Bomb 受限解压 `safe_decompress_limited()`、混合模式 IPv6 UDP 隔离校验 `verify_hybrid_ipv6_udp_isolation()` 及 `/overlay` 低水位日志降级判定 `should_degrade_overlay_log()`；`webui/modules/storage.js` 新增 `safeJsonParse()`；`apply_nft.sh` 增加 `nft -f` 失败上下文落盘；`overview.js` 具名化 4 处轮询延迟常量；`tests/check_panel_js.py` 永久固化 `aria-label`/`role="dialog"` 无障碍门禁。
+
 ## v2.9.0 (2026-11-25 · r67)
 - **OPT-290-01~10 全量落地**：`webui/modules/storage.js` 新增统一 XSS 转义与安全注入原语 `escapeHtmlStr()` / `safeSetHtml()`；`install.sh` 新增 `trap ailink_install_cleanup EXIT INT TERM` 异常清理钩子；`ailink_diag.py` 新增 `chmod_secret_0600()`、`audit_uci_json_ssot_alignment()`、`atomic_temp_file()` 与多网段防回环体检 `check_multi_subnet_loop_guard()`；`overview.js` 新增 `safeFsRead()` 容错；`nexus3d.js` 补充 `verifyDisposeLifecycle()` 生命周期配对审计；`gates_v101.py` 与 `check_panel_js.py` 永久固化零危险调用（`eval/exec/pickle/shell=True`）与零原生弹窗（`window.alert/confirm/prompt`）门禁。
 

@@ -1,15 +1,26 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.9.0",
-  "release_date": "2026-11-25",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.9.0",
+  "latest": "2.9.1",
+  "release_date": "2026-11-26",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.9.1",
   "highlights": [
-    "升版至 v2.9.0（PKG_RELEASE 67 / r67）：OPT-290-01 ~ OPT-290-10 全链路稳定性强化与架构治理闭环",
-    "OPT-290-01 ~ OPT-290-10 全栈模块健壮性与守护治理",
-    "物理机零补发 run_all 15/15、混沌 126/126、双布局门禁 36/36、自检 10/10 + 负向检出有效"
+    "升版至 v2.9.1（PKG_RELEASE 68 / r68）：OPT-291-01 ~ OPT-291-10 全链路稳定性强化与架构治理闭环",
+    "OPT-291-01 ~ OPT-291-10 全栈模块健壮性与守护治理",
+    "物理机零补发 run_all 15/15、混沌 127/127、双布局门禁 37/37、自检 10/10 + 负向检出有效"
   ],
   "changelog": [
+    {
+      "version": "2.9.1",
+      "date": "2026-11-26",
+      "type": "feature",
+      "title": "OPT-291-01 ~ OPT-291-10 全链路稳定性强化与架构治理闭环 (r68)",
+      "items": [
+        "正常升版至 `v2.9.1`（`PKG_RELEASE:=68` / `r68`），增量基准为线上 `v2.9.0`（Release #458257650 / `8fb4cf71`）；现网设备可正常接收 OTA 升级提示",
+        "`OPT-291-01 ~ OPT-291-10`：模块级预编译正则加速、emit_structured_log 结构化日志、safeJsonParse 安全解析、nft_last_error 异常上下文捕获、zip 炸弹防御、无障碍门禁与 IPv6/UDP 隔离",
+        "真机验收：`INSTALL_RC=0`、自检 10/10、负向 `RC=1` 泄漏检出有效、服务自愈全 1、零补发 `run_all 15/15`、混沌 127/127、门禁双布局、改 1 字节精确转红、UI 六页三视口零溢出、出网 200/200/204/200 全通"
+      ]
+    },
     {
       "version": "2.9.0",
       "date": "2026-11-25",
@@ -1067,13 +1078,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.9.0/AI-LINK-v2.9.0.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.9.1/AI-LINK-v2.9.1.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.9.0.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.9.1.tar.gz"
       ],
-      "size": 1289340,
-      "md5": "27935e800f280d1b3b4017d8507c451d",
-      "sha256": "3961236daa03e3d16bc24797baf95457c1a8ac653702ef6d378ca25e76514291"
+      "size": 1292085,
+      "md5": "e20597fbd77bf4698ba1a51802b633c1",
+      "sha256": "3ad096163236c31e90b36623c4713961a7b31644b54d62a06a943a1e3ef7c81f"
     }
   }
 }

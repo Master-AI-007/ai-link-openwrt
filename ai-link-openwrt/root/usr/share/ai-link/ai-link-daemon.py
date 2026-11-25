@@ -26642,9 +26642,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.9.0"
+APP_VERSION = "2.9.1"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.9.0-release-20261125-r67"
+APP_BUILD = "2.9.1-release-20261126-r68"
 if "_safe_json_loads" not in globals():
     def _safe_json_loads(raw, default=None):
         return getattr(json, "loads")(raw) if default is None else (getattr(json, "loads")(raw) if raw else default)
@@ -34316,6 +34316,11 @@ try:
         audit_uci_json_ssot_alignment,
         atomic_temp_file,
         check_multi_subnet_loop_guard,
+        emit_structured_log,
+        check_openwrt_python_subpkgs,
+        safe_decompress_limited,
+        verify_hybrid_ipv6_udp_isolation,
+        should_degrade_overlay_log,
     )
 except ImportError:
     def validate_and_migrate_backup_schema(backup_data, target_version=APP_VERSION):
@@ -34451,6 +34456,7 @@ def build_status_api_response(conf_dir: Path = CONF_DIR, *args, **kwargs) -> dic
         res["diag_v288_primitives_ok"] = bool(callable(get_daemon_submodule_manifest) and callable(resolve_runtime_path) and callable(get_http_timeout_budget))
         res["diag_v289_primitives_ok"] = bool(callable(compact_json_dumps) and callable(validate_lock_order) and callable(get_singbox_schema_profile_v289) and callable(check_ipv6_prefix_drift))
         res["diag_v290_primitives_ok"] = bool(callable(chmod_secret_0600) and callable(audit_uci_json_ssot_alignment) and callable(atomic_temp_file) and callable(check_multi_subnet_loop_guard))
+        res["diag_v291_primitives_ok"] = bool(callable(emit_structured_log) and callable(check_openwrt_python_subpkgs) and callable(safe_decompress_limited) and callable(verify_hybrid_ipv6_udp_isolation) and callable(should_degrade_overlay_log))
         res["py_symbol_audit"] = audit_all_python_undefined_globals([str(Path(__file__).resolve().parent / "ailink_diag.py")])
         if isinstance(res.get("subscriptions"), list):
             for s in res["subscriptions"]:

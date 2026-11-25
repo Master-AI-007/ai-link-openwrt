@@ -12,6 +12,7 @@ import copy
 from contextlib import contextmanager
 import json
 import tempfile
+import zlib
 import os
 import re
 import shutil
@@ -22,7 +23,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-DIAG_MODULE_VERSION = "2.9.0"
+DIAG_MODULE_VERSION = "2.9.1"
 
 SENSITIVE_CREDENTIAL_KEYS = (
     "panel_secret",
@@ -1607,6 +1608,7 @@ def apply_status_extensions(res: dict[str, Any], ops: dict[str, Any] | None = No
     res["diag_exports_count"] = len(__all__)
     res["lock_hierarchy_count"] = len(LOCK_HIERARCHY_V289)
     res["v290_primitives_ready"] = True
+    res["v291_primitives_ready"] = True
     return res
 
 
@@ -1906,6 +1908,79 @@ def check_multi_subnet_loop_guard(
     }
 
 
+
+
+# ==============================================================================
+# OPT-291-01, OPT-291-02, OPT-291-05, OPT-291-07, OPT-291-09, OPT-291-10 (v2.9.1 r68)
+# ==============================================================================
+
+_V291_RE_IPV4 = re.compile(r"^(?:\d{1,3}\.){3}\d{1,3}$")
+_V291_RE_DOMAIN = re.compile(r"^(?=.{1,253}$)(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,63}$")
+_V291_RE_LOG_TS = re.compile(r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}")
+
+
+def emit_structured_log(level: str, msg: str) -> str:
+    """OPT-291-02: Format structured timestamped daemon log line."""
+    lvl = str(level or "INFO").upper()
+    ts = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime())
+    return f"[{ts}] [{lvl}] {str(msg or '').strip()}"
+
+
+def check_openwrt_python_subpkgs() -> dict[str, Any]:
+    """OPT-291-05: Verify required Python stdlib modules on minimal OpenWrt builds."""
+    required = ("json", "logging", "email", "ssl", "zlib", "gzip", "hashlib", "sqlite3")
+    available = {}
+    for mod in required:
+        try:
+            __import__(mod)
+            available[mod] = True
+        except Exception:
+            available[mod] = False
+    return {"all_ok": all(available.values()), "modules": available}
+
+
+def safe_decompress_limited(raw_bytes: bytes, max_bytes: int = 16 * 1024 * 1024) -> bytes:
+    """OPT-291-07: Streaming zlib/gzip decompression with Zip Bomb size ceiling."""
+    if not raw_bytes:
+        return b""
+    decomp = zlib.decompressobj(16 + zlib.MAX_WBITS)
+    chunks = []
+    total = 0
+    step = 65536
+    for i in range(0, len(raw_bytes), step):
+        out = decomp.decompress(raw_bytes[i : i + step], max_bytes - total + 1)
+        total += len(out)
+        if total > max_bytes:
+            raise ValueError(f"decompressed payload exceeds limit ({max_bytes} bytes)")
+        chunks.append(out)
+    tail = decomp.flush()
+    total += len(tail)
+    if total > max_bytes:
+        raise ValueError(f"decompressed payload exceeds limit ({max_bytes} bytes)")
+    chunks.append(tail)
+    return b"".join(chunks)
+
+
+def verify_hybrid_ipv6_udp_isolation(
+    data_plane_mode: str,
+    has_v6_udp_tun_rule: bool,
+    has_v6_direct_bypass: bool,
+) -> dict[str, Any]:
+    """OPT-291-09: Verify hybrid tproxy_tcp_tun_udp IPv6 UDP game packet isolation."""
+    mode = str(data_plane_mode or "")
+    is_hybrid = mode == "tproxy_tcp_tun_udp"
+    isolated = (not is_hybrid) or (bool(has_v6_udp_tun_rule) and bool(has_v6_direct_bypass))
+    return {"mode": mode, "is_hybrid": is_hybrid, "isolated_ok": isolated}
+
+
+def should_degrade_overlay_log(free_mb: float, threshold_mb: float = 2.0) -> bool:
+    """OPT-291-10: Degrade disk logging to RAM ring buffer when /overlay free < threshold."""
+    try:
+        return float(free_mb) < float(threshold_mb)
+    except Exception:
+        return True
+
+
 __all__ = [
     # Static checks & path/config primitives
     "DIAG_MODULE_VERSION",
@@ -1941,4 +2016,9 @@ __all__ = [
     "audit_uci_json_ssot_alignment",
     "atomic_temp_file",
     "check_multi_subnet_loop_guard",
+    "emit_structured_log",
+    "check_openwrt_python_subpkgs",
+    "safe_decompress_limited",
+    "verify_hybrid_ipv6_udp_isolation",
+    "should_degrade_overlay_log",
 ]

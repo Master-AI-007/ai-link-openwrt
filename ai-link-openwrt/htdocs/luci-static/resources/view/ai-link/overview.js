@@ -29,6 +29,11 @@ return view.extend({
 		var uciSecret = pwdIsCustom ? '' : (uciSecretRaw || '请见 /etc/ai-link/initial_password 或执行 ai-link password');
 		var luciToken = (function() { try { return String(localStorage.getItem('ailink_panel_token') || ''); } catch(e) { return ''; } })();
 		// OPT-290-06: ENOENT & empty-content tolerant fs.read wrapper
+		// OPT-291-06: Named polling/retry delay constants
+		var OV_DELAY_SHORT_MS = 300;
+		var OV_DELAY_STEP_MS = 1500;
+		var OV_DELAY_RELOAD_MS = 2000;
+		var OV_DELAY_REFRESH_MS = 2500;
 		function safeFsRead(path) {
 			return Promise.resolve().then(function() {
 				return fs.read(path);
@@ -56,7 +61,7 @@ return view.extend({
 				}).catch(function() { return ''; });
 			}).catch(function() { return ''; });
 		}
-		var currentVer = String(uci.get('ai-link', 'global', 'app_version') || '2.9.0');
+		var currentVer = String(uci.get('ai-link', 'global', 'app_version') || '2.9.1');
 		var unlockBtnHtml = ' <button type="button" id="luci-btn-unlock-panel" style="padding:2px 8px; border-radius:5px; border:1px solid rgba(56,189,248,0.35); background:rgba(14,116,144,0.25); color:#7dd3fc; font-size:11px; cursor:pointer;">🔓 解锁状态</button>';
 		var pwdFieldHtml = pwdIsCustom
 			? '<span style="font-size:12px; color:#94a3b8; display:inline-flex; align-items:center; gap:6px;">面板密码: <code id="luci-panel-pwd-mask" style="background:#0f172a; padding:2px 7px; border-radius:5px; color:#e2e8f0; border:1px solid rgba(148,163,184,0.2);">已自定义 · 不回显</code>' + unlockBtnHtml + ' <span style="font-size:11px; color:#64748b;">（忘记可执行 ai-link password 重置）</span></span>'
@@ -477,17 +482,17 @@ return view.extend({
 					if (code !== 0 && errTxt) {
 						showMsg('❌ ' + label + '失败（退出码 ' + code + '）：' + errTxt.slice(0, 200), true);
 					}
-					return new Promise(function(res) { setTimeout(res, 1500); });
+					return new Promise(function(res) { setTimeout(res, OV_DELAY_STEP_MS); });
 				}).then(function() {
 					return svcRefresh();
 				}).then(function() {
-					return new Promise(function(res) { setTimeout(res, 2000); });
+					return new Promise(function(res) { setTimeout(res, OV_DELAY_RELOAD_MS); });
 				}).then(function() {
 					return svcRefresh();
 				}).then(function() {
 					svcBusy = false;
 					svcRefresh();
-					setTimeout(function() { refreshStatus(); }, 2500);
+					setTimeout(function() { refreshStatus(); }, OV_DELAY_REFRESH_MS);
 				}).catch(function(e) {
 					svcBusy = false;
 					showMsg('❌ ' + label + '请求失败：' + (e && e.message ? e.message : e), true);
@@ -538,7 +543,7 @@ return view.extend({
 				elBtn.textContent = pwdVisible ? '隐藏' : '查看';
 			});
 
-			setTimeout(function() { svcRefresh(); }, 300);
+			setTimeout(function() { svcRefresh(); }, OV_DELAY_SHORT_MS);
 			setInterval(function() { if (!svcBusy) svcRefresh(); }, 5000);
 
 			// ================= OTA 在线更新模块 =================

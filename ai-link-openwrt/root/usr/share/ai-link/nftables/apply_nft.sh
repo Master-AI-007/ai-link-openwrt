@@ -113,6 +113,8 @@ if command -v nft >/dev/null 2>&1; then
 		logger -t "ai-link" "ERROR: apply_nft.sh failed (rc=$NFT_RC): $NFT_ERR"
 		echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ERROR] 防火墙规则挂载失败 (rc=$NFT_RC): $NFT_ERR" >> "$LOG_FILE" 2>/dev/null || true
 		write_nft_status "false" "$NFT_RC" "防火墙规则应用失败 (rc=$NFT_RC): $NFT_ERR"
+		# OPT-291-04: Persist nft -f failure context before exiting
+		printf "%s rc=%s %s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" "$NFT_RC" "$NFT_ERR" > "${AI_LINK_RUN_DIR:-/var/run/ai-link}/nft_last_error.log" 2>/dev/null || true
 		exit $NFT_RC
 	else
 		if nft list chain inet fw4 forward >/dev/null 2>&1; then

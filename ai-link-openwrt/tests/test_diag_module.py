@@ -264,6 +264,24 @@ def main() -> int:
         _mode_ok and _chmod_ok and _ssot.get("aligned_count") == 2 and _vlan.get("loop_guard_ok") is True,
     )
 
+    # 21. OPT-291-02/05/07/09/10 structured log, subpkgs, zip-bomb guard, hybrid v6, overlay degrade
+    import gzip as _gz291
+    _log291 = diag.emit_structured_log("info", "v291 ok")
+    _sub291 = diag.check_openwrt_python_subpkgs()
+    _gzb = _gz291.compress(b"A" * 2048)
+    _dec_ok = diag.safe_decompress_limited(_gzb, max_bytes=4096) == b"A" * 2048
+    _bomb_blocked = False
+    try:
+        diag.safe_decompress_limited(_gzb, max_bytes=512)
+    except ValueError:
+        _bomb_blocked = True
+    _hyb = diag.verify_hybrid_ipv6_udp_isolation("tproxy_tcp_tun_udp", True, True)
+    _ovl = diag.should_degrade_overlay_log(1.2, 2.0) and (not diag.should_degrade_overlay_log(12.0, 2.0))
+    check(
+        "OPT-291-02/05/07/09/10 结构化日志/子包依赖/ZipBomb防护/混合v6隔离与overlay降级校验",
+        "[INFO] v291 ok" in _log291 and _sub291.get("all_ok") is True and _dec_ok and _bomb_blocked and _hyb.get("isolated_ok") is True and _ovl,
+    )
+
     fails = [r for r in results if not r[1]]
     print("=" * 78)
     print(f" 合计 {len(results)} 项，通过 {len(results) - len(fails)}，失败 {len(fails)}")

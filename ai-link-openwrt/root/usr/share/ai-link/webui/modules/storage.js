@@ -103,3 +103,18 @@ if (typeof window !== 'undefined') {
     escapeHtmlStr: escapeHtmlStr, safeSetHtml: safeSetHtml
   });
 }
+
+// OPT-291-03: Exception-safe JSON.parse helper
+function safeJsonParse(raw, fallback) {
+  try {
+    if (raw === null || raw === undefined || raw === '') return fallback;
+    return JSON.parse(String(raw));
+  } catch (_) { return fallback; }
+}
+if (typeof window !== 'undefined') {
+  window.safeJsonParse = safeJsonParse;
+  window.NexusModules = window.NexusModules || {};
+  window.NexusModules.storage = Object.assign(window.NexusModules.storage || {}, {
+    safeJsonParse: safeJsonParse
+  });
+}

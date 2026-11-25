@@ -48,5 +48,14 @@ if _native_popups:
 else:
     print("  [PASS] OPT-290-09 zero window.alert/confirm/prompt verified")
 
+# OPT-291-08: Accessibility aria-label & role="dialog" completeness gate
+_aria_cnt = len(re.findall(r'aria-label\s*=', src))
+_dlg_cnt = len(re.findall(r'role\s*=\s*["\']dialog["\']', src))
+if _aria_cnt < 40 or _dlg_cnt < 1:
+    fails += 1
+    print(f"  [FAIL] OPT-291-08 accessibility attributes insufficient: aria-label={_aria_cnt}, dialog={_dlg_cnt}")
+else:
+    print(f"  [PASS] OPT-291-08 accessibility attributes verified (aria-label={_aria_cnt}, dialog={_dlg_cnt})")
+
 print(f"\n失败 {fails} 个")
 sys.exit(1 if fails else 0)
