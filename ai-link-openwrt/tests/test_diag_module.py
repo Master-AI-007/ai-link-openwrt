@@ -222,6 +222,18 @@ def main() -> int:
         and _val["ms"] == 42,
     )
 
+    # 18. OPT-288-01~08 ailink_diag primitives & __all__
+    _man = diag.get_daemon_submodule_manifest()
+    _rp = diag.resolve_runtime_path("conf", "shunt.json", conf_dir="/tmp/c")
+    _tb = diag.get_http_timeout_budget("probe_fast")
+    check(
+        "OPT-288-01~08 子模块清单/路径收敛/超时预算与__all__导出校验",
+        _man.get("module_count", 0) >= 5
+        and _rp == "/tmp/c/shunt.json"
+        and _tb == 4.0
+        and len(getattr(diag, "__all__", [])) >= 20,
+    )
+
     fails = [r for r in results if not r[1]]
     print("=" * 78)
     print(f" 合计 {len(results)} 项，通过 {len(results) - len(fails)}，失败 {len(fails)}")

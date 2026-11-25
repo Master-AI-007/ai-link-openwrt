@@ -20,7 +20,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-DIAG_MODULE_VERSION = "2.8.7"
+DIAG_MODULE_VERSION = "2.8.8"
 
 SENSITIVE_CREDENTIAL_KEYS = (
     "panel_secret",
@@ -1601,6 +1601,8 @@ def apply_status_extensions(res: dict[str, Any], ops: dict[str, Any] | None = No
     res["post_domain_count"] = len(POST_DISPATCH_DOMAINS_V287)
     res["config_section_count"] = len(SINGBOX_CONFIG_SECTIONS_V287)
     res["micro_cache_enabled"] = True
+    res["submodule_boundary_count"] = len(DAEMON_SUBMODULE_BOUNDARIES_V288)
+    res["diag_exports_count"] = len(__all__)
     return res
 
 
@@ -1728,3 +1730,78 @@ class MicroEvalCache:
     def size(self) -> int:
         with self._lock:
             return len(self._store)
+
+
+# ==============================================================================
+# OPT-288-01, OPT-288-02, OPT-288-03, OPT-288-08 (v2.8.8 r65)
+# ==============================================================================
+
+DAEMON_SUBMODULE_BOUNDARIES_V288: dict[str, str] = {
+    "subscription_parsers": "ailink_diag",
+    "config_pipeline": "ailink_diag",
+    "status_extensions": "ailink_diag",
+    "runtime_probes": "ailink_diag",
+    "core_http_daemon": "ai-link-daemon",
+}
+
+
+def get_daemon_submodule_manifest() -> dict[str, Any]:
+    """OPT-288-01: Expose logical submodule boundaries for cold-start memory budgeting."""
+    return {
+        "module_count": len(DAEMON_SUBMODULE_BOUNDARIES_V288),
+        "boundaries": dict(DAEMON_SUBMODULE_BOUNDARIES_V288),
+    }
+
+
+def resolve_runtime_path(
+    kind: str,
+    filename: str,
+    conf_dir: str = "/etc/ai-link",
+    run_dir: str = "/var/run/ai-link",
+    tmp_dir: str = "/tmp",
+) -> str:
+    """OPT-288-02: Centralize CONF_DIR / RUN_DIR / TMP_DIR path resolution."""
+    base_map = {"conf": conf_dir, "run": run_dir, "tmp": tmp_dir}
+    base = str(base_map.get(str(kind or "conf"), conf_dir)).rstrip("/") or "/tmp"
+    clean_name = str(filename or "").lstrip("/")
+    return f"{base}/{clean_name}" if clean_name else base
+
+
+def get_http_timeout_budget(profile: str = "default") -> float:
+    """OPT-288-03: Explicit per-client HTTP/socket timeout budget without global setdefaulttimeout."""
+    budgets = {
+        "probe_fast": 4.0,
+        "subscription_sync": 20.0,
+        "ota_download": 45.0,
+        "sse_poll": 30.0,
+        "default": 10.0,
+    }
+    return float(budgets.get(str(profile or "default"), 10.0))
+
+
+__all__ = [
+    # Static checks & path/config primitives
+    "DIAG_MODULE_VERSION",
+    "STATUS_EXTENSION_REGISTRY",
+    "DECLARATIVE_ROUTE_TABLE_V286",
+    "POST_DISPATCH_DOMAINS_V287",
+    "SINGBOX_CONFIG_SECTIONS_V287",
+    "NFT_RULE_STAGES_V287",
+    "DAEMON_SUBMODULE_BOUNDARIES_V288",
+    "deduplicate_outbound_tags",
+    "classify_probe_failure_reason",
+    "redact_sensitive_dict",
+    "check_storage_headroom_pure",
+    "resolve_post_domain",
+    "summarize_config_pipeline_sections",
+    "resolve_runtime_path",
+    "get_http_timeout_budget",
+    "get_daemon_submodule_manifest",
+    # Runtime probes & concurrency primitives
+    "is_port_listening_local",
+    "interruptible_wait",
+    "create_daemon_thread",
+    "MicroEvalCache",
+    # Status registry
+    "apply_status_extensions",
+]

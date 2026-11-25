@@ -8,7 +8,7 @@ export PYTHONDONTWRITEBYTECODE="1"
 [ -f /usr/share/ai-link/lib_common.sh ] && . /usr/share/ai-link/lib_common.sh 2>/dev/null || true
 PANEL_PORT=$(uci -q get ai-link.global.panel_port 2>/dev/null || echo "9099")
 APP_VER=$(cat /etc/ai-link/version 2>/dev/null | head -n1 | awk '{print $1}' || true)
-[ -z "$APP_VER" ] && APP_VER="2.8.7"
+[ -z "$APP_VER" ] && APP_VER="2.8.8"
 PANEL_PWD_CUSTOM=$(uci -q get ai-link.global.panel_pwd_customized || echo "")
 # N-P0-2: Read panel_auth.json customized flag & /etc/ai-link/initial_password as single source of truth
 AUTH_CUST=$(python3 -B - <<'PY' 2>/dev/null

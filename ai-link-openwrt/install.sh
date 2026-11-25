@@ -12,7 +12,7 @@
 set -e
 export PYTHONDONTWRITEBYTECODE="1"
 
-VERSION="2.8.7"
+VERSION="2.8.8"
 UPGRADE_MODE=0
 EXPECTED_SHA256=""
 NEXT_IS_SHA=0
@@ -470,7 +470,20 @@ rm -rf /tmp/ai-link-old-cache 2>/dev/null || true
 
 # OPT-285-06 & OPT-284-07: Cap /tmp/ai-link-install.log at 500 lines and persist install trace
 [ -f /tmp/ai-link-install.log ] && tail -n 500 /tmp/ai-link-install.log > /tmp/ai-link-install.log.tmp 2>/dev/null && mv -f /tmp/ai-link-install.log.tmp /tmp/ai-link-install.log 2>/dev/null || true
-echo "[$(date +%Y-%m-%dT%H:%M:%S)] install.sh completed (v2.8.7-r64)" >> /tmp/ai-link-install.log 2>/dev/null || true
+echo "[$(date +%Y-%m-%dT%H:%M:%S)] install.sh completed (v2.8.8-r65)" >> /tmp/ai-link-install.log 2>/dev/null || true
 
 # OPT-286-10: Source shared lib_common.sh if present
 [ -f /usr/share/ai-link/lib_common.sh ] && . /usr/share/ai-link/lib_common.sh 2>/dev/null || true
+
+# OPT-288-09: Package install helper with retry backoff and mirror hint
+ailink_pkg_install_with_retry() {
+  local pkg_cmd="$1"
+  local _try=1
+  while [ "$_try" -le 3 ]; do
+    if sh -c "$pkg_cmd"; then return 0; fi
+    echo "[AI-LINK] Package install attempt ${_try}/3 failed; check opkg/apk mirror or network and retrying..."
+    sleep $_try
+    _try=$((_try + 1))
+  done
+  return 1
+}

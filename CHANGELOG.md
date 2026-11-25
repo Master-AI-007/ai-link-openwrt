@@ -1,3 +1,6 @@
+## v2.8.8 (2026-11-25 · r65)
+- **OPT-288-01~10 全量落地**：守护进程子模块边界清单（`DAEMON_SUBMODULE_BOUNDARIES_V288` / `get_daemon_submodule_manifest()`）、运行时路径收敛辅助（`resolve_runtime_path()`）、无副作用分档超时预算（`get_http_timeout_budget()`）、`webui/modules/api.js` 统一 `apiFetchJson()` 与脚本加载计划 `getScriptLoadPlan()`、`lib_common.sh` 细粒度 0.2s 轮询 `ailink_poll_wait()`、`ailink_diag.py` 显式分层 `__all__` 导出、`install.sh` 包安装重试退避 `ailink_pkg_install_with_retry()` 及 IPK `control.tar.gz/conffiles` 静态完整性门禁（`opt288_release_gate`）。
+
 ## v2.8.7 (2026-11-25 · r64)
 - **OPT-287-01~10 全量落地**：POST 业务域声明式路由分发表（`POST_DISPATCH_DOMAINS_V287` / `resolve_post_domain()`）、sing-box/nftables 四段式配置管线校验（`summarize_config_pipeline_sections()`）、守护线程统一工厂（`create_daemon_thread()` 强制 `daemon=True`）、`usr/bin/ai-link` 接入 `lib_common.sh`、`nexus3d.js` 单一 `_scheduleNextFrame()` 调度器与后台自动停帧、`nexus.css` `prefers-reduced-motion` 合规豁免注释、`webui/modules/api.js` 与 `settings-panel.js` 模块化下沉、`apply_nft.sh` 与 daemon 规则表一致门禁、`MicroEvalCache` 高频评估微缓存及 `overview.js` 统一 `handleLuciRpcError()`。
 

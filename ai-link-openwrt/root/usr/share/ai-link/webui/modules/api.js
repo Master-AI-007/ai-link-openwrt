@@ -49,3 +49,20 @@ if (typeof window !== 'undefined') {
   window.NexusModules = window.NexusModules || {};
   window.NexusModules.api = Object.assign(window.NexusModules.api || {}, { buildApiUrl: buildApiUrl, parseApiError: parseApiError });
 }
+
+// OPT-288-04 & OPT-288-05: Unified JSON fetch wrapper & script load plan
+async function apiFetchJson(url, opts, timeoutMs) {
+  var resp = await fetchWithAbort(url, opts, timeoutMs);
+  if (!resp || !resp.ok) {
+    var code = resp ? resp.status : 0;
+    throw new Error(code === 401 ? '401 Unauthorized' : ('HTTP ' + code));
+  }
+  return await resp.json();
+}
+function getScriptLoadPlan() {
+  return { critical: ['nexus.js', 'modules/api.js', 'modules/storage.js'], deferred: ['assets/three.min.js', 'static/qrcode.min.js'] };
+}
+if (typeof window !== 'undefined') {
+  window.NexusModules = window.NexusModules || {};
+  window.NexusModules.api = Object.assign(window.NexusModules.api || {}, { apiFetchJson: apiFetchJson, getScriptLoadPlan: getScriptLoadPlan });
+}

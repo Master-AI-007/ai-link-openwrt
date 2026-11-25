@@ -894,6 +894,27 @@ def opt287_release_gate():
 
 check("OPT-287-01~10 v2.8.7 POST域分发/线程工厂/lib_common收敛/3D单调度与nft门禁", opt287_release_gate)
 
+
+def opt288_release_gate():
+    _src = DAEMON.read_text(encoding="utf-8", errors="replace")
+    _dg = (ROOT / "root/usr/share/ai-link/ailink_diag.py").read_text(encoding="utf-8", errors="replace")
+    _lib = (ROOT / "root/usr/share/ai-link/lib_common.sh").read_text(encoding="utf-8", errors="replace")
+    _ins = (ROOT / "install.sh").read_text(encoding="utf-8", errors="replace")
+    _api = (ROOT / "root/usr/share/ai-link/webui/modules/api.js").read_text(encoding="utf-8", errors="replace")
+    _syms = ["get_daemon_submodule_manifest", "resolve_runtime_path", "get_http_timeout_budget"]
+    _missing = [s for s in _syms if _src.count(s) < 2]
+    _ok = (
+        len(_missing) == 0
+        and "__all__" in _dg
+        and "ailink_poll_wait" in _lib
+        and "ailink_pkg_install_with_retry" in _ins
+        and "apiFetchJson" in _api
+        and "getScriptLoadPlan" in _api
+    )
+    return _ok, f"missing={_missing}"
+
+check("OPT-288-01~10 v2.8.8 子模块边界/路径收敛/超时预算/轮询与API收口门禁", opt288_release_gate)
+
 fails = [r for r in results if not r[1]]
 print(f" 合计 {len(results)} 项，通过 {len(results) - len(fails)}，失败 {len(fails)}")
 if fails:

@@ -774,3 +774,5 @@ reload_zero_downtime_check() {
 	[ -n "$pid" ] && kill -HUP "$pid" 2>/dev/null && return 0
 	return 1
 }
+
+# OPT-288-07: Fine-grained ailink_poll_wait available via /usr/share/ai-link/lib_common.sh

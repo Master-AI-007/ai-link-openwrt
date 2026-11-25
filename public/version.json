@@ -1,24 +1,26 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.8.7",
+  "latest": "2.8.8",
   "release_date": "2026-11-25",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.8.7",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.8.8",
   "highlights": [
-    "升版至 v2.8.7（PKG_RELEASE 64 / r64）：OPT-287-01 ~ OPT-287-10 架构解耦与配置管线全栈增强",
-    "OPT-287-01 ailink_diag.py 新增 POST 业务域分发并接入 ai-link-daemon.py",
-    "OPT-287-02 配置管线分层，提供 sing-box 与 nftables 阶段汇总摘要",
-    "OPT-287-03 create_daemon_thread() 工厂强制守护线程构造，根除悬挂线程",
-    "OPT-287-04 usr/bin/ai-link 统一接入 lib_common.sh 单一真相源",
-    "OPT-287-05 nexus3d.js 统一单帧渲染调度，后台标签页自动休眠省电",
-    "OPT-287-06 nexus.css 样式深度清理，严格合规 @ds-exception 门禁",
-    "OPT-287-07 前端模块化下沉，扩展 api.js 与 settings-panel.js",
-    "OPT-287-08 gates_v101.py 强化 apply_nft.sh 与守护进程链一致性门禁",
-    "OPT-287-09 MicroEvalCache 节点评估微缓存降低高频测速计算开销",
-    "OPT-287-10 LuCI RPC 统一异常错误处理与安全返回",
-    "真机零补发 run_all 15/15、混沌 123/123、双布局门禁 32/32、design-lint 14/14、自检 10/10 + 负向检出有效"
+    "升版至 v2.8.8（PKG_RELEASE 65 / r65）：OPT-288-01 ~ OPT-288-10 全链路稳定性强化与架构治理闭环",
+    "OPT-288-01 ~ OPT-288-10 全栈模块健壮性与守护治理",
+    "物理机零补发 run_all 15/15、混沌 124/124、双布局门禁 33/33、design-lint 18/18、自检 10/10 + 负向检出有效"
   ],
   "changelog": [
+    {
+      "version": "2.8.8",
+      "date": "2026-11-25",
+      "type": "feature",
+      "title": "OPT-288-01 ~ OPT-288-10 全链路稳定性强化与架构治理闭环 (r65)",
+      "items": [
+        "正常升版至 `v2.8.8`（`PKG_RELEASE:=65` / `r65`），增量基准为线上 `v2.8.7`（Release #457477573 / `dcef11ae` / 部署 `18cbe386`）；现网设备可正常接收 OTA 升级提示",
+        "`OPT-288-01 ~ OPT-288-10`：全栈模块健全性增强、配置分层管线与守护进程治理闭环",
+        "真机验收：`INSTALL_RC=0`、自检 10/10、负向 `RC=1` 泄漏检出有效、服务自愈全 1、零补发 `run_all 15/15`、混沌 124/124、门禁双布局 33/33、改 1 字节精确转红、UI 六页三视口零溢出、出网 200/200/204/200 全通"
+      ]
+    },
     {
       "version": "2.8.7",
       "date": "2026-11-25",
@@ -1043,13 +1045,13 @@
   ],
   "packages": {
     "full": {
-      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.8.7/AI-LINK-v2.8.7.tar.gz",
+      "url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/download/v2.8.8/AI-LINK-v2.8.8.tar.gz",
       "mirrors": [
-        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.8.7.tar.gz"
+        "https://ai-link-official.pages.dev/pkg/AI-LINK-v2.8.8.tar.gz"
       ],
-      "size": 1281614,
-      "md5": "057f1f6777ffe11678a6a96cfabce48d",
-      "sha256": "338f07b9b7164194bf8a746191dd07359f7986b1a98b6f00798928ba7ee7b50f"
+      "size": 1283849,
+      "md5": "4fd00ee665d2bd23429e92cf2ff6845e",
+      "sha256": "db92b78bf4f2a8dec15993f4758acd114eeacf12174c8a4a28f79a3d1755686f"
     }
   }
 }
