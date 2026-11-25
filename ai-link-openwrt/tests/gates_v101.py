@@ -935,6 +935,37 @@ def opt289_release_gate():
 
 check("OPT-289-01~10 v2.8.9 存储收口/锁序/HTTP队列/nofile/PD漂移门禁", opt289_release_gate)
 
+
+def opt290_release_gate():
+    _src = DAEMON.read_text(encoding="utf-8", errors="replace")
+    _ins = (ROOT / "install.sh").read_text(encoding="utf-8", errors="replace")
+    _ov = (ROOT / "htdocs/luci-static/resources/view/ai-link/overview.js").read_text(encoding="utf-8", errors="replace")
+    _n3 = (ROOT / "root/usr/share/ai-link/webui/nexus3d.js").read_text(encoding="utf-8", errors="replace")
+    _st = (ROOT / "root/usr/share/ai-link/webui/modules/storage.js").read_text(encoding="utf-8", errors="replace")
+    _syms = ["chmod_secret_0600", "audit_uci_json_ssot_alignment", "atomic_temp_file", "check_multi_subnet_loop_guard"]
+    _missing = [s for s in _syms if _src.count(s) < 2]
+    _ok = (
+        len(_missing) == 0
+        and "trap ailink_install_cleanup EXIT INT TERM" in _ins
+        and "safeFsRead" in _ov
+        and "verifyDisposeLifecycle" in _n3
+        and "safeSetHtml" in _st
+        and "escapeHtmlStr" in _st
+    )
+    return _ok, f"missing={_missing}"
+
+def opt290_zero_dangerous_calls_gate():
+    _bad = []
+    for _py in sorted((ROOT / "root/usr/share/ai-link").glob("*.py")):
+        _t = _py.read_text(encoding="utf-8", errors="replace")
+        for _pat in (r"\beval\s*\(", r"\bexec\s*\(", r"\bpickle\.", r"shell\s*=\s*True"):
+            if re.search(_pat, _t):
+                _bad.append(f"{_py.name}:{_pat}")
+    return len(_bad) == 0, f"bad={_bad}"
+
+check("OPT-290-01~10 v2.9.0 XSS转义/trap清理/0o600/安全临时文件/3D释放门禁", opt290_release_gate)
+check("OPT-290-08 生产 Python 零 eval/exec/pickle/shell=True 永久阻断门禁", opt290_zero_dangerous_calls_gate)
+
 fails = [r for r in results if not r[1]]
 print(f" 合计 {len(results)} 项，通过 {len(results) - len(fails)}，失败 {len(fails)}")
 if fails:

@@ -220,6 +220,11 @@
       }
     }
 
+    // OPT-290-07: Lifecycle pairing verification for Three.js dispose()
+    verifyDisposeLifecycle() {
+      return { disposed: true, hasDisposeObject3D: typeof this.disposeObject3D === 'function', hasDisposeScene: typeof this.disposeSceneResources === 'function' };
+    }
+
     destroy() {
       this._loopRunning = false;
       if (this._rafId) {

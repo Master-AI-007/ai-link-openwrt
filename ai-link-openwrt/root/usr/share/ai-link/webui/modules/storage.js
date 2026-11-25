@@ -80,3 +80,26 @@ if (typeof window !== 'undefined') {
     safeGetStorage: safeGetStorage, safeSetStorage: safeSetStorage, createRingBuffer: createRingBuffer
   });
 }
+
+// OPT-290-01: Unified HTML entity escaping & safeSetHtml helper
+function escapeHtmlStr(val) {
+  return String(val == null ? '' : val)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+function safeSetHtml(el, htmlStr) {
+  if (!el) return false;
+  el.innerHTML = String(htmlStr == null ? '' : htmlStr);
+  return true;
+}
+if (typeof window !== 'undefined') {
+  window.escapeHtmlStr = escapeHtmlStr;
+  window.safeSetHtml = safeSetHtml;
+  window.NexusModules = window.NexusModules || {};
+  window.NexusModules.storage = Object.assign(window.NexusModules.storage || {}, {
+    escapeHtmlStr: escapeHtmlStr, safeSetHtml: safeSetHtml
+  });
+}

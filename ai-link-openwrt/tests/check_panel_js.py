@@ -30,5 +30,23 @@ for i, (attrs, body) in enumerate(blocks):
     if r.returncode != 0:
         print((r.stderr or "")[:1200])
 
+# OPT-290-09: Permanent gate against native window.alert/confirm/prompt
+_native_popups = []
+_js_targets = [
+    HTML,
+    ROOT / "root/usr/share/ai-link/webui/nexus.js",
+    ROOT / "root/usr/share/ai-link/webui/nexus3d.js",
+] + sorted((ROOT / "root/usr/share/ai-link/webui/modules").glob("*.js"))
+for _jp in _js_targets:
+    if _jp.is_file():
+        _jt = _jp.read_text(encoding="utf-8", errors="replace")
+        if re.search(r"\bwindow\.(?:alert|confirm|prompt)\s*\(", _jt):
+            _native_popups.append(_jp.name)
+if _native_popups:
+    fails += 1
+    print(f"  [FAIL] OPT-290-09 native popup found in: {_native_popups}")
+else:
+    print("  [PASS] OPT-290-09 zero window.alert/confirm/prompt verified")
+
 print(f"\n失败 {fails} 个")
 sys.exit(1 if fails else 0)

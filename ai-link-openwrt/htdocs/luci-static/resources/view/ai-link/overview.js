@@ -28,9 +28,15 @@ return view.extend({
 		var pwdIsCustom = (pwdCustFlag === '1') || (uciSecretRaw !== '' && (uciSecretRaw === '__custom__' || /^sha256:/i.test(uciSecretRaw) || uciSecretRaw !== 'ai-link-2026'));
 		var uciSecret = pwdIsCustom ? '' : (uciSecretRaw || '请见 /etc/ai-link/initial_password 或执行 ai-link password');
 		var luciToken = (function() { try { return String(localStorage.getItem('ailink_panel_token') || ''); } catch(e) { return ''; } })();
+		// OPT-290-06: ENOENT & empty-content tolerant fs.read wrapper
+		function safeFsRead(path) {
+			return Promise.resolve().then(function() {
+				return fs.read(path);
+			}).catch(function() { return ''; });
+		}
 		function ensureLuciToken(forceReload) {
 			if (luciToken && !forceReload) return Promise.resolve(luciToken);
-			return Promise.resolve(fs.read('/etc/ai-link/panel_token')).then(function(r) {
+			return safeFsRead('/etc/ai-link/panel_token').then(function(r) {
 				var raw = (typeof r === 'string') ? r : ((r && r.data) ? r.data : '');
 				var t = String(raw || '').trim().split(/\s+/)[0] || '';
 				if (t) {
@@ -38,9 +44,10 @@ return view.extend({
 					try { localStorage.setItem('ailink_panel_token', luciToken); } catch(e) {}
 					return luciToken;
 				}
-				return Promise.resolve(fs.read('/var/run/ai-link/luci_bridge_token.json')).then(function(rb) {
+				return safeFsRead('/var/run/ai-link/luci_bridge_token.json').then(function(rb) {
 					var bRaw = (typeof rb === 'string') ? rb : ((rb && rb.data) ? rb.data : '');
-					var bObj = JSON.parse(String(bRaw || '{}'));
+					var bObj = {};
+					try { bObj = bRaw ? JSON.parse(String(bRaw)) : {}; } catch(_) { bObj = {}; }
 					if (bObj && bObj.token) {
 						luciToken = String(bObj.token).trim();
 						return luciToken;
@@ -49,7 +56,7 @@ return view.extend({
 				}).catch(function() { return ''; });
 			}).catch(function() { return ''; });
 		}
-		var currentVer = String(uci.get('ai-link', 'global', 'app_version') || '2.8.9');
+		var currentVer = String(uci.get('ai-link', 'global', 'app_version') || '2.9.0');
 		var unlockBtnHtml = ' <button type="button" id="luci-btn-unlock-panel" style="padding:2px 8px; border-radius:5px; border:1px solid rgba(56,189,248,0.35); background:rgba(14,116,144,0.25); color:#7dd3fc; font-size:11px; cursor:pointer;">🔓 解锁状态</button>';
 		var pwdFieldHtml = pwdIsCustom
 			? '<span style="font-size:12px; color:#94a3b8; display:inline-flex; align-items:center; gap:6px;">面板密码: <code id="luci-panel-pwd-mask" style="background:#0f172a; padding:2px 7px; border-radius:5px; color:#e2e8f0; border:1px solid rgba(148,163,184,0.2);">已自定义 · 不回显</code>' + unlockBtnHtml + ' <span style="font-size:11px; color:#64748b;">（忘记可执行 ai-link password 重置）</span></span>'

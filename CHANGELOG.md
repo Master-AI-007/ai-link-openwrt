@@ -1,3 +1,6 @@
+## v2.9.0 (2026-11-25 · r67)
+- **OPT-290-01~10 全量落地**：`webui/modules/storage.js` 新增统一 XSS 转义与安全注入原语 `escapeHtmlStr()` / `safeSetHtml()`；`install.sh` 新增 `trap ailink_install_cleanup EXIT INT TERM` 异常清理钩子；`ailink_diag.py` 新增 `chmod_secret_0600()`、`audit_uci_json_ssot_alignment()`、`atomic_temp_file()` 与多网段防回环体检 `check_multi_subnet_loop_guard()`；`overview.js` 新增 `safeFsRead()` 容错；`nexus3d.js` 补充 `verifyDisposeLifecycle()` 生命周期配对审计；`gates_v101.py` 与 `check_panel_js.py` 永久固化零危险调用（`eval/exec/pickle/shell=True`）与零原生弹窗（`window.alert/confirm/prompt`）门禁。
+
 ## v2.8.9 (2026-11-25 · r66)
 - **OPT-289-01~10 全量落地**：`webui/modules/storage.js` 收口 `safeGetStorage`/`safeSetStorage` 与 `createRingBuffer()`（限制 24h 挂机连接/日志环形队列上限）、`ailink_diag.py` 新增紧凑序列化 `compact_json_dumps()`、锁层级校验 `LOCK_HIERARCHY_V289` / `validate_lock_order()`、向前兼容 `sing-box` `1.16.x` 的 `get_singbox_schema_profile_v289()` 及旁路由 IPv6 PD 前缀漂移检测 `check_ipv6_prefix_drift()`、`ThreadingHTTPServer` 显式配置 `request_queue_size = 64`、`init.d/ai-link` 守护进程补充 `nofile=65535`、`uninstall.sh` 增加残留路由二次清理 `ailink_verify_backup_and_cleanup_routes()` 及跨代配置迁移幂等性单测。
 

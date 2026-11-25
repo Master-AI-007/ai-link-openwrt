@@ -9,7 +9,9 @@ memory footprint on embedded OpenWrt routers while preserving 100% API compatibi
 from __future__ import annotations
 
 import copy
+from contextlib import contextmanager
 import json
+import tempfile
 import os
 import re
 import shutil
@@ -20,7 +22,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-DIAG_MODULE_VERSION = "2.8.9"
+DIAG_MODULE_VERSION = "2.9.0"
 
 SENSITIVE_CREDENTIAL_KEYS = (
     "panel_secret",
@@ -1604,6 +1606,7 @@ def apply_status_extensions(res: dict[str, Any], ops: dict[str, Any] | None = No
     res["submodule_boundary_count"] = len(DAEMON_SUBMODULE_BOUNDARIES_V288)
     res["diag_exports_count"] = len(__all__)
     res["lock_hierarchy_count"] = len(LOCK_HIERARCHY_V289)
+    res["v290_primitives_ready"] = True
     return res
 
 
@@ -1839,6 +1842,70 @@ def check_ipv6_prefix_drift(current_prefix: str, applied_prefix: str) -> dict[st
     }
 
 
+
+
+# ==============================================================================
+# OPT-290-03, OPT-290-04, OPT-290-05, OPT-290-10 (v2.9.0 r67)
+# ==============================================================================
+
+SECRET_FILE_MODE_0600 = 0o600
+
+
+def chmod_secret_0600(file_path: str | Path) -> bool:
+    """OPT-290-03: Enforce strict 0o600 permissions on sensitive key/token files."""
+    p = Path(file_path)
+    if not p.exists():
+        return False
+    os.chmod(p, SECRET_FILE_MODE_0600)
+    return True
+
+
+def audit_uci_json_ssot_alignment(uci_text: str, ssot_keys: set[str] | list[str]) -> dict[str, Any]:
+    """OPT-290-04: Audit UCI default options against JSON SSOT key set."""
+    uci_opts = set(re.findall(r"^\s*option\s+([A-Za-z0-9_]+)\s+", str(uci_text or ""), flags=re.M))
+    ssot = set(str(k) for k in (ssot_keys or []))
+    return {
+        "uci_option_count": len(uci_opts),
+        "ssot_key_count": len(ssot),
+        "aligned_count": len(uci_opts & ssot),
+        "uci_only_count": len(uci_opts - ssot),
+    }
+
+
+@contextmanager
+def atomic_temp_file(dir_path: str | Path, prefix: str = "ailink_", suffix: str = ".tmp"):
+    """OPT-290-05: Secure mkstemp context manager with 0o600 mode and auto-cleanup."""
+    d = Path(dir_path)
+    d.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=prefix, suffix=suffix, dir=str(d))
+    tmp_p = Path(tmp_name)
+    try:
+        os.chmod(tmp_p, SECRET_FILE_MODE_0600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            yield fh, tmp_p
+    except Exception:
+        tmp_p.unlink(missing_ok=True)
+        raise
+
+
+def check_multi_subnet_loop_guard(
+    subnets: list[str] | tuple[str, ...],
+    dnsmasq_ifaces: list[str] | tuple[str, ...],
+    ip_rules: list[str] | tuple[str, ...],
+) -> dict[str, Any]:
+    """OPT-290-10: Bypass-router multi-VLAN (Guest/IoT) dnsmasq & ip rule loop guard."""
+    subs = [str(s).strip() for s in (subnets or []) if str(s).strip()]
+    ifaces = [str(i).strip() for i in (dnsmasq_ifaces or []) if str(i).strip()]
+    rules = [str(r).strip() for r in (ip_rules or []) if str(r).strip()]
+    has_tproxy_rule = any("0x162" in r or "162" in r for r in rules)
+    return {
+        "subnet_count": len(subs),
+        "iface_count": len(ifaces),
+        "has_tproxy_rule": has_tproxy_rule,
+        "loop_guard_ok": bool(subs and ifaces and has_tproxy_rule),
+    }
+
+
 __all__ = [
     # Static checks & path/config primitives
     "DIAG_MODULE_VERSION",
@@ -1869,4 +1936,9 @@ __all__ = [
     "validate_lock_order",
     "get_singbox_schema_profile_v289",
     "check_ipv6_prefix_drift",
+    "SECRET_FILE_MODE_0600",
+    "chmod_secret_0600",
+    "audit_uci_json_ssot_alignment",
+    "atomic_temp_file",
+    "check_multi_subnet_loop_guard",
 ]

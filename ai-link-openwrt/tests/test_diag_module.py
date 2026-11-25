@@ -252,6 +252,18 @@ def main() -> int:
         and _m2.get("payload") == _m1.get("payload"),
     )
 
+    # 20. OPT-290-03/04/05/10 chmod_0600, UCI/SSOT alignment, atomic_temp_file, multi-subnet loop guard
+    with diag.atomic_temp_file(tempfile.gettempdir(), prefix="v290_", suffix=".json") as (fh, tf_p):
+        fh.write('{"ok":true}')
+    _mode_ok = (tf_p.stat().st_mode & 0o777) == 0o600
+    _chmod_ok = diag.chmod_secret_0600(tf_p)
+    _ssot = diag.audit_uci_json_ssot_alignment("option app_version '2.9.0'\noption enabled '1'\n", {"app_version", "enabled"})
+    _vlan = diag.check_multi_subnet_loop_guard(["192.168.10.0/24", "192.168.20.0/24"], ["br-lan", "br-iot"], ["32760: from all fwmark 0x162 lookup 162"])
+    check(
+        "OPT-290-03/04/05/10 0o600权限/UCI对齐/原子临时文件与多VLAN防回环校验",
+        _mode_ok and _chmod_ok and _ssot.get("aligned_count") == 2 and _vlan.get("loop_guard_ok") is True,
+    )
+
     fails = [r for r in results if not r[1]]
     print("=" * 78)
     print(f" 合计 {len(results)} 项，通过 {len(results) - len(fails)}，失败 {len(fails)}")
