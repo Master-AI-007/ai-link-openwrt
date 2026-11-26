@@ -297,6 +297,20 @@ def main() -> int:
         _el >= 0.0 and _fut == 42 and _env_bad == "def" and _cs.get("checked_files") == 0 and _qr.get("lan_only_warning") is True and _ipr.get("has_conflict") is True,
     )
 
+    # 23. OPT-293-01/03/04/05/08 secrets token, socket ctx, cross_fs_atomic_move, stream_file_hashes, domain map
+    _tok = diag.secure_token_hex(16)
+    _sock_false = diag.probe_tcp_socket_safe("127.0.0.1", 1, timeout=0.05)
+    _src293 = pathlib.Path(tempfile.gettempdir()) / f"v293_src_{_tok}.txt"
+    _dst293 = pathlib.Path(tempfile.gettempdir()) / f"v293_dst_{_tok}.txt"
+    _src293.write_text("v293-stream-test", encoding="utf-8")
+    diag.cross_fs_atomic_move(_src293, _dst293)
+    _sh293 = diag.stream_file_hashes(_dst293)
+    _dst293.unlink(missing_ok=True)
+    check(
+        "OPT-293-01/03/04/05/08 secrets令牌/Socket释放/跨FS原子移动/流式分块哈希与三域映射校验",
+        len(_tok) == 32 and _sock_false is False and _sh293.get("size") == 16 and len(diag.DIAG_DOMAIN_MAP_V293) == 3,
+    )
+
     fails = [r for r in results if not r[1]]
     print("=" * 78)
     print(f" 合计 {len(results)} 项，通过 {len(results) - len(fails)}，失败 {len(fails)}")

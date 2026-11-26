@@ -1,3 +1,12 @@
+## v2.9.3 (2026-11-26 · r70)
+- **OPT-293-01~10 全量落地**：`ailink_diag.py` 新增加密安全随机数 `secure_token_hex()`、带上下文管理与超时的 `probe_tcp_socket_safe()`、跨文件系统原子移动 `cross_fs_atomic_move()`、64KB 流式分块哈希 `stream_file_hashes()` 与三域模块映射 `DIAG_DOMAIN_MAP_V293`；`nexus3d.js` 预分配 `_tmpVec3`/`_tmpColor`/`_tmpMat4` 降低帧循环 GC；`webui/modules/storage.js` 新增视图切换请求中止控制器 `createViewAbortManager()`；`tests/gates_v101.py` 固化 `#!/bin/sh` POSIX ash 静态门禁；`tests/v242_deep_chaos_simulation.py` 新增 `Stage 7.66` 黑洞与游戏白名单双命中优先级确定性混沌测试。
+
+## v2.9.2 (2026-11-26 · r69)
+- **OPT-292-01~10 全量落地**：`ailink_diag.py` 新增单调时钟相对计时原语 `monotonic_elapsed_s()` / `monotonic_deadline_expired()`、受控线程池工厂 `create_bounded_executor()`、环境变量白名单读取 `get_whitelisted_env()`、安全文件删除 `safe_unlink()`、冷启动加载耗时遥测 `measure_cold_start_storage_ms()`、HomeLink 二维码拓扑警告 `check_homelink_qr_topology_warning()` 与单臂旁路由 `ip rule pref` 冲突自检 `check_ip_rule_pref_conflict()`；`webui/modules/storage.js` 新增 HTTP 非安全上下文降级剪贴板复制 `safeCopyText()`；`lib_common.sh` 新增 `uci_get_bool()`；`overview.js` 增加轮询并发去重锁 `_ovPollInFlight`。
+
+## v2.9.1 (2026-11-26 · r68)
+- **OPT-291-01~10 全量落地**：`ailink_diag.py` 新增模块级预编译正则 `_V291_RE_*`、结构化日志原语 `emit_structured_log()`、OpenWrt Python 子包依赖核验 `check_openwrt_python_subpkgs()`、防 Zip Bomb 受限解压 `safe_decompress_limited()`、混合模式 IPv6 UDP 隔离校验 `verify_hybrid_ipv6_udp_isolation()` 及 `/overlay` 低水位日志降级判定 `should_degrade_overlay_log()`；`webui/modules/storage.js` 新增 `safeJsonParse()`；`apply_nft.sh` 增加 `nft -f` 失败上下文落盘；`overview.js` 具名化 4 处轮询延迟常量；`tests/check_panel_js.py` 永久固化 `aria-label`/`role="dialog"` 无障碍门禁。
+
 ## v2.9.0 (2026-11-25 · r67)
 - **OPT-290-01~10 全量落地**：`webui/modules/storage.js` 新增统一 XSS 转义与安全注入原语 `escapeHtmlStr()` / `safeSetHtml()`；`install.sh` 新增 `trap ailink_install_cleanup EXIT INT TERM` 异常清理钩子；`ailink_diag.py` 新增 `chmod_secret_0600()`、`audit_uci_json_ssot_alignment()`、`atomic_temp_file()` 与多网段防回环体检 `check_multi_subnet_loop_guard()`；`overview.js` 新增 `safeFsRead()` 容错；`nexus3d.js` 补充 `verifyDisposeLifecycle()` 生命周期配对审计；`gates_v101.py` 与 `check_panel_js.py` 永久固化零危险调用（`eval/exec/pickle/shell=True`）与零原生弹窗（`window.alert/confirm/prompt`）门禁。
 

@@ -13,6 +13,11 @@ from contextlib import contextmanager
 import json
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
+import errno
+import hashlib
+import secrets
+import shutil
+import socket
 import zlib
 import os
 import re
@@ -24,7 +29,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-DIAG_MODULE_VERSION = "2.9.2"
+DIAG_MODULE_VERSION = "2.9.3"
 
 SENSITIVE_CREDENTIAL_KEYS = (
     "panel_secret",
@@ -1611,6 +1616,7 @@ def apply_status_extensions(res: dict[str, Any], ops: dict[str, Any] | None = No
     res["v290_primitives_ready"] = True
     res["v291_primitives_ready"] = True
     res["v292_primitives_ready"] = True
+    res["v293_primitives_ready"] = True
     return res
 
 
@@ -2073,6 +2079,72 @@ def check_ip_rule_pref_conflict(rules: list[str] | tuple[str, ...], target_pref:
     return {"conflict_count": len(conflicts), "conflicts": conflicts, "has_conflict": len(conflicts) > 0}
 
 
+
+
+# ==============================================================================
+# OPT-293-01, 03, 04, 05, 08 (v2.9.3 r70)
+# ==============================================================================
+
+DIAG_DOMAIN_MAP_V293: dict[str, tuple[str, ...]] = {
+    "network_plane": ("check_ipv6_prefix_drift", "check_multi_subnet_loop_guard", "verify_hybrid_ipv6_udp_isolation", "check_ip_rule_pref_conflict"),
+    "node_pool": ("measure_cold_start_storage_ms", "get_singbox_schema_profile_v289", "compact_json_dumps"),
+    "security": ("chmod_secret_0600", "atomic_temp_file", "safe_decompress_limited", "secure_token_hex", "cross_fs_atomic_move"),
+}
+
+
+def secure_token_hex(nbytes: int = 16) -> str:
+    """OPT-293-01: Cryptographically secure token generator via secrets."""
+    return secrets.token_hex(max(8, min(int(nbytes or 16), 64)))
+
+
+def probe_tcp_socket_safe(host: str, port: int, timeout: float = 2.0) -> bool:
+    """OPT-293-03: Context-managed TCP socket probe guaranteeing FD release."""
+    try:
+        with socket.create_connection((str(host), int(port)), timeout=float(timeout)) as _sock:
+            return _sock is not None
+    except Exception:
+        return False
+
+
+def cross_fs_atomic_move(src: str | Path, dst: str | Path) -> Path:
+    """OPT-293-04: Atomic move handling EXDEV across tmpfs (/tmp) and overlayfs (/etc)."""
+    src_p = Path(src)
+    dst_p = Path(dst)
+    dst_p.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.replace(src_p, dst_p)
+    except OSError as exc:
+        if exc.errno != errno.EXDEV:
+            raise
+        tmp_dst = dst_p.with_name(f".{dst_p.name}.tmp.{secrets.token_hex(4)}")
+        try:
+            shutil.copy2(src_p, tmp_dst)
+            os.replace(tmp_dst, dst_p)
+            src_p.unlink(missing_ok=True)
+        except Exception:
+            tmp_dst.unlink(missing_ok=True)
+            raise
+    return dst_p
+
+
+def stream_file_hashes(file_path: str | Path, chunk_size: int = 65536) -> dict[str, Any]:
+    """OPT-293-05: Streaming 64KB chunk MD5/SHA256 avoiding peak RAM spikes."""
+    p = Path(file_path)
+    h_md5 = hashlib.md5()
+    h_sha = hashlib.sha256()
+    size = 0
+    step = max(4096, int(chunk_size or 65536))
+    with p.open("rb") as fh:
+        while True:
+            blk = fh.read(step)
+            if not blk:
+                break
+            size += len(blk)
+            h_md5.update(blk)
+            h_sha.update(blk)
+    return {"size": size, "md5": h_md5.hexdigest(), "sha256": h_sha.hexdigest()}
+
+
 __all__ = [
     # Static checks & path/config primitives
     "DIAG_MODULE_VERSION",
@@ -2122,4 +2194,9 @@ __all__ = [
     "measure_cold_start_storage_ms",
     "check_homelink_qr_topology_warning",
     "check_ip_rule_pref_conflict",
+    "DIAG_DOMAIN_MAP_V293",
+    "secure_token_hex",
+    "probe_tcp_socket_safe",
+    "cross_fs_atomic_move",
+    "stream_file_hashes",
 ]

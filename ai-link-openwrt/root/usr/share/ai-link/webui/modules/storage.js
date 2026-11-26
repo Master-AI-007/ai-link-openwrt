@@ -144,3 +144,29 @@ if (typeof window !== 'undefined') {
     safeCopyText: safeCopyText
   });
 }
+
+// OPT-293-09: View-switch AbortController manager
+function createViewAbortManager() {
+  var controllers = [];
+  return {
+    acquire: function () {
+      if (typeof AbortController === 'undefined') return null;
+      var c = new AbortController();
+      controllers.push(c);
+      return c;
+    },
+    abortAll: function () {
+      for (var i = 0; i < controllers.length; i++) {
+        try { controllers[i].abort(); } catch (_) {}
+      }
+      controllers = [];
+    }
+  };
+}
+if (typeof window !== 'undefined') {
+  window.createViewAbortManager = createViewAbortManager;
+  window.NexusModules = window.NexusModules || {};
+  window.NexusModules.storage = Object.assign(window.NexusModules.storage || {}, {
+    createViewAbortManager: createViewAbortManager
+  });
+}

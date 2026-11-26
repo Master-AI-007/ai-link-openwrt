@@ -1002,6 +1002,28 @@ def opt292_release_gate():
 
 check("OPT-292-01~10 v2.9.2 单调时钟/线程池/环境变量白名单/剪贴板降级/轮询去重门禁", opt292_release_gate)
 
+
+def opt293_release_gate():
+    _src = DAEMON.read_text(encoding="utf-8", errors="replace")
+    _n3 = (ROOT / "root/usr/share/ai-link/webui/nexus3d.js").read_text(encoding="utf-8", errors="replace")
+    _st = (ROOT / "root/usr/share/ai-link/webui/modules/storage.js").read_text(encoding="utf-8", errors="replace")
+    _syms = ["DIAG_DOMAIN_MAP_V293", "secure_token_hex", "probe_tcp_socket_safe", "cross_fs_atomic_move", "stream_file_hashes"]
+    _missing = [s for s in _syms if _src.count(s) < 2]
+    _bashisms = []
+    for _sh in ("install.sh", "root/etc/init.d/ai-link", "root/usr/share/ai-link/nftables/apply_nft.sh"):
+        _t = (ROOT / _sh).read_text(encoding="utf-8", errors="replace")
+        if re.search(r"(?:^|\s)\[\[\s|\bfunction\s+\w+\s*\(\)", _t, flags=re.M):
+            _bashisms.append(_sh)
+    _ok = (
+        len(_missing) == 0
+        and len(_bashisms) == 0
+        and "_tmpVec3" in _n3
+        and "createViewAbortManager" in _st
+    )
+    return _ok, f"missing={_missing}, bashisms={_bashisms}"
+
+check("OPT-293-01~10 v2.9.3 secrets/POSIX-ash门禁/跨FS原子移动/流式哈希/3D对象复用门禁", opt293_release_gate)
+
 fails = [r for r in results if not r[1]]
 print(f" 合计 {len(results)} 项，通过 {len(results) - len(fails)}，失败 {len(fails)}")
 if fails:

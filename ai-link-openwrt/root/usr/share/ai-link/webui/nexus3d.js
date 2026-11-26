@@ -264,6 +264,10 @@
         this.renderer = null;
       }
       this.scene = new THREE.Scene();
+      // OPT-293-02: Pre-allocated reusable math scratch objects to avoid per-frame GC
+      this._tmpVec3 = (typeof THREE !== 'undefined' && THREE.Vector3) ? new THREE.Vector3() : null;
+      this._tmpColor = (typeof THREE !== 'undefined' && THREE.Color) ? new THREE.Color() : null;
+      this._tmpMat4 = (typeof THREE !== 'undefined' && THREE.Matrix4) ? new THREE.Matrix4() : null;
       this.scene.fog = new THREE.FogExp2(0x03060f, .0108);
       this.camera = new THREE.PerspectiveCamera(42, 1, .1, 200);
       this.world = new THREE.Group();

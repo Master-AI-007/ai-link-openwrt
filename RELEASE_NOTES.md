@@ -1,3 +1,11 @@
+# AI-LINK v2.9.3 (r70)
+
+Release Date: 2026-11-26
+
+- OPT-293-01 ~ OPT-293-10 稳定性强化与架构治理闭环
+- 深度混沌测试 129/129 PASS
+- 回归测试套件 15/15 PASS
+
 # AI-LINK v2.9.2 (r69)
 
 Release Date: 2026-11-26
