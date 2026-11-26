@@ -984,6 +984,24 @@ def opt291_release_gate():
 
 check("OPT-291-01~10 v2.9.1 safeJsonParse/nft报错落盘/ZipBomb防护/常量具名化门禁", opt291_release_gate)
 
+
+def opt292_release_gate():
+    _src = DAEMON.read_text(encoding="utf-8", errors="replace")
+    _lc = (ROOT / "root/usr/share/ai-link/lib_common.sh").read_text(encoding="utf-8", errors="replace")
+    _ov = (ROOT / "htdocs/luci-static/resources/view/ai-link/overview.js").read_text(encoding="utf-8", errors="replace")
+    _st = (ROOT / "root/usr/share/ai-link/webui/modules/storage.js").read_text(encoding="utf-8", errors="replace")
+    _syms = ["monotonic_elapsed_s", "create_bounded_executor", "get_whitelisted_env", "safe_unlink", "measure_cold_start_storage_ms", "check_homelink_qr_topology_warning", "check_ip_rule_pref_conflict"]
+    _missing = [s for s in _syms if _src.count(s) < 2]
+    _ok = (
+        len(_missing) == 0
+        and "uci_get_bool" in _lc
+        and "_ovPollInFlight" in _ov
+        and "safeCopyText" in _st
+    )
+    return _ok, f"missing={_missing}"
+
+check("OPT-292-01~10 v2.9.2 单调时钟/线程池/环境变量白名单/剪贴板降级/轮询去重门禁", opt292_release_gate)
+
 fails = [r for r in results if not r[1]]
 print(f" 合计 {len(results)} 项，通过 {len(results) - len(fails)}，失败 {len(fails)}")
 if fails:

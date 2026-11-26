@@ -12,6 +12,7 @@ import copy
 from contextlib import contextmanager
 import json
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 import zlib
 import os
 import re
@@ -23,7 +24,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-DIAG_MODULE_VERSION = "2.9.1"
+DIAG_MODULE_VERSION = "2.9.2"
 
 SENSITIVE_CREDENTIAL_KEYS = (
     "panel_secret",
@@ -1609,6 +1610,7 @@ def apply_status_extensions(res: dict[str, Any], ops: dict[str, Any] | None = No
     res["lock_hierarchy_count"] = len(LOCK_HIERARCHY_V289)
     res["v290_primitives_ready"] = True
     res["v291_primitives_ready"] = True
+    res["v292_primitives_ready"] = True
     return res
 
 
@@ -1981,6 +1983,96 @@ def should_degrade_overlay_log(free_mb: float, threshold_mb: float = 2.0) -> boo
         return True
 
 
+
+
+# ==============================================================================
+# OPT-292-01, 02, 03, 04, 08, 09, 10 (v2.9.2 r69)
+# ==============================================================================
+
+ALLOWED_ENV_KEYS_V292: frozenset[str] = frozenset({
+    "AI_LINK_CONF_DIR",
+    "AI_LINK_RUN_DIR",
+    "AI_LINK_LOG_DIR",
+    "AI_LINK_BIN_DIR",
+    "PYTHONDONTWRITEBYTECODE",
+    "PATH",
+    "HOME",
+})
+
+
+def monotonic_elapsed_s(start_mono: float) -> float:
+    """OPT-292-01: Monotonic clock elapsed seconds immune to NTP jumps."""
+    return max(0.0, time.monotonic() - float(start_mono))
+
+
+def monotonic_deadline_expired(deadline_mono: float) -> bool:
+    """OPT-292-01: Check whether a monotonic deadline has expired."""
+    return time.monotonic() >= float(deadline_mono)
+
+
+def create_bounded_executor(max_workers: int = 4, prefix: str = "ailink-pool") -> ThreadPoolExecutor:
+    """OPT-292-02: Bounded ThreadPoolExecutor with explicit thread_name_prefix."""
+    workers = max(1, min(int(max_workers or 4), 8))
+    return ThreadPoolExecutor(max_workers=workers, thread_name_prefix=str(prefix or "ailink-pool"))
+
+
+def get_whitelisted_env(name: str, default: str = "") -> str:
+    """OPT-292-03: Read environment variable only if present in ALLOWED_ENV_KEYS_V292."""
+    key = str(name or "")
+    if key not in ALLOWED_ENV_KEYS_V292:
+        return default
+    return os.environ.get(key, default)
+
+
+def safe_unlink(file_path: str | Path) -> bool:
+    """OPT-292-04: Exception-safe file unlink with missing_ok=True."""
+    try:
+        Path(file_path).unlink(missing_ok=True)
+        return True
+    except Exception:
+        return False
+
+
+def measure_cold_start_storage_ms(paths: list[str | Path] | tuple[str | Path, ...]) -> dict[str, Any]:
+    """OPT-292-08: Measure cache.db & .srs cold-start stat/read latency via time.monotonic()."""
+    t0 = time.monotonic()
+    checked = 0
+    total_bytes = 0
+    for p in (paths or []):
+        pp = Path(p)
+        if pp.is_file():
+            checked += 1
+            total_bytes += pp.stat().st_size
+    return {
+        "checked_files": checked,
+        "total_bytes": total_bytes,
+        "elapsed_ms": round((time.monotonic() - t0) * 1000.0, 2),
+    }
+
+
+def check_homelink_qr_topology_warning(public_host: str) -> dict[str, Any]:
+    """OPT-292-09: Warn when HomeLink QR code is generated without a public domain/host."""
+    host = str(public_host or "").strip()
+    is_lan_only = (not host) or host.startswith(("10.", "192.168.", "127."))
+    return {
+        "public_host": host,
+        "lan_only_warning": is_lan_only,
+        "message": "仅限局域网内扫码访问（未配置公网域名）" if is_lan_only else "已配置公网出口地址",
+    }
+
+
+def check_ip_rule_pref_conflict(rules: list[str] | tuple[str, ...], target_pref: int = 100) -> dict[str, Any]:
+    """OPT-292-10: Detect third-party ip rule priority preemption near target_pref."""
+    conflicts = []
+    for r in (rules or []):
+        m = re.match(r"^\s*(\d+)\s*:", str(r))
+        if m:
+            pref = int(m.group(1))
+            if pref <= int(target_pref) and "0x162" not in str(r) and "162" not in str(r):
+                conflicts.append(str(r).strip())
+    return {"conflict_count": len(conflicts), "conflicts": conflicts, "has_conflict": len(conflicts) > 0}
+
+
 __all__ = [
     # Static checks & path/config primitives
     "DIAG_MODULE_VERSION",
@@ -2021,4 +2113,13 @@ __all__ = [
     "safe_decompress_limited",
     "verify_hybrid_ipv6_udp_isolation",
     "should_degrade_overlay_log",
+    "ALLOWED_ENV_KEYS_V292",
+    "monotonic_elapsed_s",
+    "monotonic_deadline_expired",
+    "create_bounded_executor",
+    "get_whitelisted_env",
+    "safe_unlink",
+    "measure_cold_start_storage_ms",
+    "check_homelink_qr_topology_warning",
+    "check_ip_rule_pref_conflict",
 ]

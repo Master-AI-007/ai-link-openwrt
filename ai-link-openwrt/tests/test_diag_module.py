@@ -282,6 +282,21 @@ def main() -> int:
         "[INFO] v291 ok" in _log291 and _sub291.get("all_ok") is True and _dec_ok and _bomb_blocked and _hyb.get("isolated_ok") is True and _ovl,
     )
 
+    # 22. OPT-292-01..10 monotonic, bounded executor, env whitelist, safe_unlink, cold-start, QR, ip rule pref
+    import time as _t292
+    _m0 = _t292.monotonic()
+    _el = diag.monotonic_elapsed_s(_m0)
+    with diag.create_bounded_executor(2, "t292") as _ex:
+        _fut = _ex.submit(lambda: 42).result(timeout=2)
+    _env_bad = diag.get_whitelisted_env("UNSAFE_VAR", "def")
+    _cs = diag.measure_cold_start_storage_ms([])
+    _qr = diag.check_homelink_qr_topology_warning("192.168.1.1")
+    _ipr = diag.check_ip_rule_pref_conflict(["50: from all lookup 200", "162: from all fwmark 0x162 lookup 162"], 100)
+    check(
+        "OPT-292-01..10 单调时钟/有界线程池/环境变量白名单/安全删除/QR提示与pref冲突自检",
+        _el >= 0.0 and _fut == 42 and _env_bad == "def" and _cs.get("checked_files") == 0 and _qr.get("lan_only_warning") is True and _ipr.get("has_conflict") is True,
+    )
+
     fails = [r for r in results if not r[1]]
     print("=" * 78)
     print(f" 合计 {len(results)} 项，通过 {len(results) - len(fails)}，失败 {len(fails)}")

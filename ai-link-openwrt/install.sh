@@ -19,7 +19,7 @@ ailink_install_cleanup() {
 }
 trap ailink_install_cleanup EXIT INT TERM
 
-VERSION="2.9.1"
+VERSION="2.9.2"
 UPGRADE_MODE=0
 EXPECTED_SHA256=""
 NEXT_IS_SHA=0
@@ -477,7 +477,7 @@ rm -rf /tmp/ai-link-old-cache 2>/dev/null || true
 
 # OPT-285-06 & OPT-284-07: Cap /tmp/ai-link-install.log at 500 lines and persist install trace
 [ -f /tmp/ai-link-install.log ] && tail -n 500 /tmp/ai-link-install.log > /tmp/ai-link-install.log.tmp 2>/dev/null && mv -f /tmp/ai-link-install.log.tmp /tmp/ai-link-install.log 2>/dev/null || true
-echo "[$(date +%Y-%m-%dT%H:%M:%S)] install.sh completed (v2.9.1-r68)" >> /tmp/ai-link-install.log 2>/dev/null || true
+echo "[$(date +%Y-%m-%dT%H:%M:%S)] install.sh completed (v2.9.2-r69)" >> /tmp/ai-link-install.log 2>/dev/null || true
 
 # OPT-286-10: Source shared lib_common.sh if present
 [ -f /usr/share/ai-link/lib_common.sh ] && . /usr/share/ai-link/lib_common.sh 2>/dev/null || true

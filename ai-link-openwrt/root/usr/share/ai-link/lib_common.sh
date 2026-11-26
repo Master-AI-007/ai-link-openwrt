@@ -22,3 +22,13 @@ ailink_poll_wait() {
   done
   return 1
 }
+
+# OPT-292-06: Shared boolean UCI reader
+uci_get_bool() {
+  local val
+  val="$(ailink_uci_get "$1" "${2:-0}")"
+  case "$val" in
+    1|true|yes|on|enabled) echo "1" ;;
+    *) echo "0" ;;
+  esac
+}

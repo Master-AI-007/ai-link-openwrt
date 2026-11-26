@@ -118,3 +118,29 @@ if (typeof window !== 'undefined') {
     safeJsonParse: safeJsonParse
   });
 }
+
+// OPT-292-05: HTTP non-secure context fallback clipboard copy
+function safeCopyText(text) {
+  var s = String(text == null ? '' : text);
+  if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+    return navigator.clipboard.writeText(s).then(function () { return true; }).catch(function () { return false; });
+  }
+  try {
+    if (typeof document !== 'undefined') {
+      var ta = document.createElement('textarea');
+      ta.value = s; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      var ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return Promise.resolve(!!ok);
+    }
+  } catch (_) {}
+  return Promise.resolve(false);
+}
+if (typeof window !== 'undefined') {
+  window.safeCopyText = safeCopyText;
+  window.NexusModules = window.NexusModules || {};
+  window.NexusModules.storage = Object.assign(window.NexusModules.storage || {}, {
+    safeCopyText: safeCopyText
+  });
+}
