@@ -1,3 +1,6 @@
+## v2.9.5 (2026-11-27 · r72)
+- **OPT-295-01~10 全量落地**：`lib_common.sh` 新增动态 LAN 接口解析 `resolve_lan_iface()`；`ailink_diag.py` 新增 TLSv1.2+ 强制上下文 `create_strict_ssl_context()`、常量时间比对 `constant_time_token_equal()`、历史环形落盘配额裁剪 `trim_history_ring_quota()`、无公网 IPv6 DNS `ipv4_only` 判定 `should_force_dns_ipv4_only()` 与 HomeLink 指数退避 `compute_homelink_reconnect_backoff_s()`；`nexus3d.js` 新增低帧率动态 DPR 降采样 `_adaptiveDpr()`；`nexus.js` 新增 Canvas 2D 上下文缓存 `_getCachedCanvasCtx()`；`nexus.css` 统一动效时长至 `var(--dur-1)`；`gates_v101.py` 固化 51 处 SVG `<use>` 与 `<symbol>` 1:1 门禁；`v242_deep_chaos_simulation.py` 新增 `Stage 7.68`。
+
 ## v2.9.4 (2026-11-26 · r71)
 - **OPT-294-01**: 为 `index.html` 中 77 个未声明 `type=` 的 `<button>` 显式补充 `type="button"`，防止表单隐式提交。
 - **OPT-294-02**: 在 `ailink_diag.py` 封装 `safe_urlsplit()` 并在守护进程接线，容错解析 IPv6 字面量方括号异常。

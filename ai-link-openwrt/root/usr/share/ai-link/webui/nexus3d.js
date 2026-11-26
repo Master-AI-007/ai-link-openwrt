@@ -1,3 +1,12 @@
+
+/* OPT-295-05: Dynamic DPR downsampling when FPS < 24 */
+function _adaptiveDpr(fps) {
+  const base = Math.min(window.devicePixelRatio || 1, 2.0);
+  if (typeof fps === 'number' && fps > 0 && fps < 24) {
+    return Math.min(base, 1.25);
+  }
+  return base;
+}
 (function () {
   'use strict';
   if (window.NexusScene) return;

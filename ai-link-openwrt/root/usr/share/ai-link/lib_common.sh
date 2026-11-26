@@ -32,3 +32,11 @@ uci_get_bool() {
     *) echo "0" ;;
   esac
 }
+
+# OPT-295-01: Dynamic LAN interface resolution (UCI/ubus fallback, zero hardcode)
+resolve_lan_iface() {
+	local dev
+	dev="$(uci -q get network.lan.device 2>/dev/null || uci -q get network.lan.ifname 2>/dev/null || true)"
+	[ -n "$dev" ] && printf '%s\n' "${dev%% *}" && return 0
+	printf 'br-lan\n'
+}

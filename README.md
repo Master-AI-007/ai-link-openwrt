@@ -4,7 +4,7 @@
 
 **NEXUS 全域 3D 智能网关 · 运行在 OpenWrt 上的新一代智能分流与网络系统**
 
-[![version](https://img.shields.io/badge/version-2.9.4-6ee7f5?style=flat-square)](https://github.com/Master-AI-007/ai-link-openwrt/releases/tag/v2.9.4)
+[![version](https://img.shields.io/badge/version-2.9.5-6ee7f5?style=flat-square)](https://github.com/Master-AI-007/ai-link-openwrt/releases/tag/v2.9.5)
 [![platform](https://img.shields.io/badge/OpenWrt-23.05%20%7C%2024.10%20%7C%20ImmortalWrt-a994ff?style=flat-square)](#环境要求)
 [![core](https://img.shields.io/badge/sing--box-1.14.4-54e6b5?style=flat-square)](#技术架构)
 [![license](https://img.shields.io/badge/license-MIT-f9a8d4?style=flat-square)](#许可与免责)

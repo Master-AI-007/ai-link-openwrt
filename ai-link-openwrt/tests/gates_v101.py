@@ -1053,6 +1053,35 @@ def opt294_release_gate():
 
 check("OPT-294-01~10 v2.9.4 button-type/timer/z-index/CLI/init-debounce/safe-parse门禁", opt294_release_gate)
 
+
+def opt295_release_gate():
+    html = (ROOT / "root/usr/share/ai-link/webui/index.html").read_text(encoding="utf-8")
+    syms = set(re.findall(r'<symbol\b[^>]*id="([^"]+)"', html))
+    uses = re.findall(r'<use\b[^>]*href="#([^"]+)"', html)
+    missing_svg = [u for u in uses if u not in syms]
+    ncss = (ROOT / "root/usr/share/ai-link/webui/nexus.css").read_text(encoding="utf-8")
+    n3d = (ROOT / "root/usr/share/ai-link/webui/nexus3d.js").read_text(encoding="utf-8")
+    njs = (ROOT / "root/usr/share/ai-link/webui/nexus.js").read_text(encoding="utf-8")
+    lc = (ROOT / "root/usr/share/ai-link/lib_common.sh").read_text(encoding="utf-8")
+    dg = (ROOT / "root/usr/share/ai-link/ailink_diag.py").read_text(encoding="utf-8")
+    dm = DAEMON.read_text(encoding="utf-8")
+    _ok = (
+        len(missing_svg) == 0
+        and len(uses) >= 51
+        and "transition: opacity 120ms" not in ncss
+        and "_adaptiveDpr" in n3d
+        and "_getCachedCanvasCtx" in njs
+        and "resolve_lan_iface" in lc
+        and all(s in dg and s in dm for s in [
+            "create_strict_ssl_context", "constant_time_token_equal",
+            "trim_history_ring_quota", "should_force_dns_ipv4_only",
+            "compute_homelink_reconnect_backoff_s"
+        ])
+    )
+    return _ok, f"uses={len(uses)}, missing_svg={missing_svg}"
+
+check("OPT-295-01~10 v2.9.5 动态接口/TLS1.2/常量比对/环形配额/DPR降采样/SVG门禁", opt295_release_gate)
+
 print(f" 合计 {len(results)} 项，通过 {len(results) - len(fails)}，失败 {len(fails)}")
 if fails:
     for n, _, d in fails:

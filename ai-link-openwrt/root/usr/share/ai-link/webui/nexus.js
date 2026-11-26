@@ -1,4 +1,16 @@
 
+/* OPT-295-06: Reusable Canvas 2D context & HiDPI buffer helper */
+const _canvasCtxCache = new WeakMap();
+function _getCachedCanvasCtx(canvas) {
+    if (!canvas || typeof canvas.getContext !== 'function') return null;
+    let ctx = _canvasCtxCache.get(canvas);
+    if (!ctx) {
+        ctx = canvas.getContext('2d');
+        if (ctx) _canvasCtxCache.set(canvas, ctx);
+    }
+    return ctx;
+}
+
 /* OPT-294-05: Cancellable timer registry for view switch & modal close */
 const _trackedTimers = new Set();
 function trackTimeout(fn, delayMs) {

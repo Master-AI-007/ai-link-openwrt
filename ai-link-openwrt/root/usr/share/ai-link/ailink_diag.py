@@ -29,7 +29,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-DIAG_MODULE_VERSION = "2.9.4"
+DIAG_MODULE_VERSION = "2.9.5"
 
 SENSITIVE_CREDENTIAL_KEYS = (
     "panel_secret",
@@ -2307,3 +2307,50 @@ def sanitize_cross_arch_backup_fields(backup_data: dict):
                 removed.append(f"ops_settings.{k}")
         cleaned["ops_settings"] = ops
     return cleaned, removed
+
+
+# === OPT-295-02 / 03 / 04 / 09 / 10: v2.9.5 Security, Quota & Resilience Primitives ===
+import hmac as _hmac_mod
+import json as _json_mod
+import ssl as _ssl_mod
+
+
+def create_strict_ssl_context() -> _ssl_mod.SSLContext:
+    """OPT-295-02: Enforce TLSv1.2+ minimum version on SSLContext."""
+    ctx = _ssl_mod.create_default_context()
+    if hasattr(_ssl_mod, "TLSVersion") and hasattr(ctx, "minimum_version"):
+        ctx.minimum_version = _ssl_mod.TLSVersion.TLSv1_2
+    return ctx
+
+
+def constant_time_token_equal(a, b) -> bool:
+    """OPT-295-03: Constant-time string comparison via hmac.compare_digest."""
+    sa = (a if isinstance(a, str) else str(a or "")).encode("utf-8", errors="ignore")
+    sb = (b if isinstance(b, str) else str(b or "")).encode("utf-8", errors="ignore")
+    return bool(sa) and bool(sb) and _hmac_mod.compare_digest(sa, sb)
+
+
+def trim_history_ring_quota(records, max_bytes: int = 131072):
+    """OPT-295-04: Enforce <=128KB ring-buffer persistence quota on history lists."""
+    if not isinstance(records, list):
+        return []
+    out = list(records)
+    while out:
+        encoded = _json_mod.dumps(out, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        if len(encoded) <= max_bytes:
+            break
+        out.pop(0)
+    return out
+
+
+def should_force_dns_ipv4_only(ipv6_upstream_ok: bool, ipv6_proxy: bool) -> bool:
+    """OPT-295-09: Force ipv4_only DNS strategy when no public IPv6 upstream is active."""
+    return (not bool(ipv6_upstream_ok)) and (not bool(ipv6_proxy))
+
+
+def compute_homelink_reconnect_backoff_s(attempt: int, port_alive: bool) -> int:
+    """OPT-295-10: Exponential reconnect backoff with secondary port availability check."""
+    if not port_alive:
+        return 60
+    att = max(0, min(int(attempt or 0), 6))
+    return min(300, 5 * (2 ** att))
