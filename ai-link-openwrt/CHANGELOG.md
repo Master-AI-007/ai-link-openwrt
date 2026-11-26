@@ -1,3 +1,15 @@
+## v2.9.4 (2026-11-26 · r71)
+- **OPT-294-01**: 为 `index.html` 中 77 个未声明 `type=` 的 `<button>` 显式补充 `type="button"`，防止表单隐式提交。
+- **OPT-294-02**: 在 `ailink_diag.py` 封装 `safe_urlsplit()` 并在守护进程接线，容错解析 IPv6 字面量方括号异常。
+- **OPT-294-03**: 在 `ailink_diag.py` 封装 `safe_b64_decode()`，自动补齐 `=` padding 并兼容 URL-safe 字符集。
+- **OPT-294-04**: 在 `ailink_diag.py` 封装 `safe_ip_address()` / `safe_ip_network()`，容错前导空白与 `%iface` 链路本地后缀。
+- **OPT-294-05**: 在 `nexus.js` 新增可取消定时器追踪器（`trackTimeout` / `clearTrackedTimers`），视图切换与弹窗关闭时自动清理。
+- **OPT-294-06**: 在 `gates_v101.py` 增设 `nexus.css` `z-index` 分层表校验与封顶断言。
+- **OPT-294-07**: 在 `/usr/bin/ai-link` 新增 `cli_usage_error()` 缺参用法提示与标准退出码规范化。
+- **OPT-294-08**: 在 `init.d/ai-link` `service_triggers` 增设接口热插拔 3s 合并防抖（`debounce_reload_trigger`）。
+- **OPT-294-09**: 在 `ailink_diag.py` 新增 `check_fakeip_cidr_conflict()` 预检 `198.18.0.0/15` 与本地网桥/Docker 网段冲突。
+- **OPT-294-10**: 在 `ailink_diag.py` 新增 `sanitize_cross_arch_backup_fields()` 并接入备份迁移/恢复流程。
+
 ## v2.9.3 (2026-11-26 · r70)
 - **OPT-293-01~10 全量落地**：`ailink_diag.py` 新增加密安全随机数 `secure_token_hex()`、带上下文管理与超时的 `probe_tcp_socket_safe()`、跨文件系统原子移动 `cross_fs_atomic_move()`、64KB 流式分块哈希 `stream_file_hashes()` 与三域模块映射 `DIAG_DOMAIN_MAP_V293`；`nexus3d.js` 预分配 `_tmpVec3`/`_tmpColor`/`_tmpMat4` 降低帧循环 GC；`webui/modules/storage.js` 新增视图切换请求中止控制器 `createViewAbortManager()`；`tests/gates_v101.py` 固化 `#!/bin/sh` POSIX ash 静态门禁；`tests/v242_deep_chaos_simulation.py` 新增 `Stage 7.66` 黑洞与游戏白名单双命中优先级确定性混沌测试。
 

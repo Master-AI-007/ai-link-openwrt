@@ -26642,9 +26642,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.9.3"
+APP_VERSION = "2.9.4"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.9.3-release-20261126-r70"
+APP_BUILD = "2.9.4-release-20261126-r71"
 if "_safe_json_loads" not in globals():
     def _safe_json_loads(raw, default=None):
         return getattr(json, "loads")(raw) if default is None else (getattr(json, "loads")(raw) if raw else default)
@@ -34333,6 +34333,12 @@ try:
         probe_tcp_socket_safe,
         cross_fs_atomic_move,
         stream_file_hashes,
+        safe_urlsplit,
+        safe_b64_decode,
+        safe_ip_address,
+        safe_ip_network,
+        check_fakeip_cidr_conflict,
+        sanitize_cross_arch_backup_fields,
     )
 except ImportError:
     def validate_and_migrate_backup_schema(backup_data, target_version=APP_VERSION):
@@ -34471,6 +34477,8 @@ def build_status_api_response(conf_dir: Path = CONF_DIR, *args, **kwargs) -> dic
         res["diag_v291_primitives_ok"] = bool(callable(emit_structured_log) and callable(check_openwrt_python_subpkgs) and callable(safe_decompress_limited) and callable(verify_hybrid_ipv6_udp_isolation) and callable(should_degrade_overlay_log))
         res["diag_v292_primitives_ok"] = bool(callable(monotonic_elapsed_s) and callable(create_bounded_executor) and callable(get_whitelisted_env) and callable(safe_unlink) and callable(measure_cold_start_storage_ms) and callable(check_homelink_qr_topology_warning) and callable(check_ip_rule_pref_conflict))
         res["diag_v293_primitives_ok"] = bool(isinstance(DIAG_DOMAIN_MAP_V293, dict) and callable(secure_token_hex) and callable(probe_tcp_socket_safe) and callable(cross_fs_atomic_move) and callable(stream_file_hashes))
+        res["diag_v294_primitives_ok"] = bool(callable(safe_urlsplit) and callable(safe_b64_decode) and callable(safe_ip_address) and callable(safe_ip_network) and callable(check_fakeip_cidr_conflict) and callable(sanitize_cross_arch_backup_fields))
+        res["fakeip_conflict_check"] = check_fakeip_cidr_conflict("198.18.0.0/15")
         res["py_symbol_audit"] = audit_all_python_undefined_globals([str(Path(__file__).resolve().parent / "ailink_diag.py")])
         if isinstance(res.get("subscriptions"), list):
             for s in res["subscriptions"]:

@@ -1025,6 +1025,34 @@ def opt293_release_gate():
 check("OPT-293-01~10 v2.9.3 secrets/POSIX-ash门禁/跨FS原子移动/流式哈希/3D对象复用门禁", opt293_release_gate)
 
 fails = [r for r in results if not r[1]]
+
+def opt294_release_gate():
+    html = (ROOT / "root/usr/share/ai-link/webui/index.html").read_text(encoding="utf-8")
+    btns = re.findall(r"<button\b[^>]*>", html)
+    no_type = [b for b in btns if not re.search(r"\btype\s*=", b, re.I)]
+    ncss = (ROOT / "root/usr/share/ai-link/webui/nexus.css").read_text(encoding="utf-8")
+    zvals = re.findall(r"z-index\s*:\s*([^;]+);", ncss)
+    bad_z = [z for z in zvals if not z.strip().startswith("var(--z-")]
+    njs = (ROOT / "root/usr/share/ai-link/webui/nexus.js").read_text(encoding="utf-8")
+    cli = (ROOT / "root/usr/bin/ai-link").read_text(encoding="utf-8")
+    init_t = (ROOT / "root/etc/init.d/ai-link").read_text(encoding="utf-8")
+    dg = (ROOT / "root/usr/share/ai-link/ailink_diag.py").read_text(encoding="utf-8")
+    dm = DAEMON.read_text(encoding="utf-8")
+    _ok = (
+        len(no_type) == 0
+        and len(bad_z) == 0
+        and "clearTrackedTimers" in njs and "trackTimeout" in njs
+        and "cli_usage_error" in cli
+        and "debounce_reload_trigger" in init_t
+        and all(s in dg and s in dm for s in [
+            "safe_urlsplit", "safe_b64_decode", "safe_ip_address",
+            "check_fakeip_cidr_conflict", "sanitize_cross_arch_backup_fields"
+        ])
+    )
+    return _ok, f"no_type={len(no_type)}, bad_z={len(bad_z)}"
+
+check("OPT-294-01~10 v2.9.4 button-type/timer/z-index/CLI/init-debounce/safe-parse门禁", opt294_release_gate)
+
 print(f" 合计 {len(results)} 项，通过 {len(results) - len(fails)}，失败 {len(fails)}")
 if fails:
     for n, _, d in fails:

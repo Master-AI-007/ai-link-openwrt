@@ -608,6 +608,21 @@ reload_service() {
 	fi
 }
 
+# OPT-294-08: 3s coalescing debounce for interface hotplug service_triggers
+debounce_reload_trigger() {
+	local ts_file="/var/run/ai-link/trigger_debounce.ts"
+	local now prev
+	now="$(date +%s 2>/dev/null || echo 0)"
+	prev="$(cat "$ts_file" 2>/dev/null || echo 0)"
+	if [ $((now - prev)) -lt 3 ]; then
+		return 0
+	fi
+	mkdir -p /var/run/ai-link
+	printf '%s
+' "$now" > "$ts_file"
+	reload_zero_downtime_check || reload_service
+}
+
 service_triggers() {
 	procd_add_reload_trigger "ai-link"
 }

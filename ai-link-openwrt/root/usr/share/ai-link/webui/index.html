@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="color-scheme" content="dark">
   <title>AI-LINK NEXUS · 全域 3D 智能网关指挥舱</title>
-  <link rel="icon" type="image/svg+xml" href="./favicon.svg?v=2.9.3-8b1d6b14">
-  <link rel="alternate icon" href="./favicon.ico?v=2.9.3-218c306e">
-  <link rel="apple-touch-icon" href="./apple-touch-icon.png?v=2.9.3-89c068d7">
-  <link rel="stylesheet" href="./nexus.css?v=2.9.3-808259ae">
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg?v=2.9.4-8b1d6b14">
+  <link rel="alternate icon" href="./favicon.ico?v=2.9.4-218c306e">
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png?v=2.9.4-89c068d7">
+  <link rel="stylesheet" href="./nexus.css?v=2.9.4-808259ae">
 </head>
 <body>
   <a class="skip-link" href="#main-stage">跳至主内容</a>
@@ -55,18 +55,18 @@
 
   <div class="app-shell">
     <aside class="rail">
-      <button class="brand" data-page-link="galaxy" aria-label="返回全域星图">
+      <button class="brand" data-page-link="galaxy" aria-label="返回全域星图" type="button">
         <svg><use href="#i-logo"/></svg>
         <span>NEXUS</span>
       </button>
       <nav class="main-nav" aria-label="主导航">
-        <button class="nav-item active" data-page-link="galaxy" data-tab="topology"><svg><use href="#i-galaxy"/></svg><span>星图</span><i></i></button>
-        <button class="nav-item" data-page-link="overview" data-tab="overview"><svg><use href="#i-overview"/></svg><span>概览</span><i></i></button>
-        <button class="nav-item" data-page-link="shunt" data-tab="shunt"><svg><use href="#i-shunt"/></svg><span>分流</span><i></i></button>
-        <button class="nav-item" data-page-link="homelink" data-tab="homelink"><svg><use href="#i-home"/></svg><span>回家</span><i></i></button>
-        <button class="nav-item" data-page-link="dns" data-tab="dns"><svg><use href="#i-shield"/></svg><span>护盾</span><i></i></button>
-        <button class="nav-item" data-page-link="nodes" data-tab="nodes"><svg><use href="#i-nodes"/></svg><span>节点</span><i></i></button>
-        <button class="nav-item" data-page-link="settings" data-tab="settings"><svg><use href="#i-settings"/></svg><span>设置</span><i></i></button>
+        <button class="nav-item active" data-page-link="galaxy" data-tab="topology" type="button"><svg><use href="#i-galaxy"/></svg><span>星图</span><i></i></button>
+        <button class="nav-item" data-page-link="overview" data-tab="overview" type="button"><svg><use href="#i-overview"/></svg><span>概览</span><i></i></button>
+        <button class="nav-item" data-page-link="shunt" data-tab="shunt" type="button"><svg><use href="#i-shunt"/></svg><span>分流</span><i></i></button>
+        <button class="nav-item" data-page-link="homelink" data-tab="homelink" type="button"><svg><use href="#i-home"/></svg><span>回家</span><i></i></button>
+        <button class="nav-item" data-page-link="dns" data-tab="dns" type="button"><svg><use href="#i-shield"/></svg><span>护盾</span><i></i></button>
+        <button class="nav-item" data-page-link="nodes" data-tab="nodes" type="button"><svg><use href="#i-nodes"/></svg><span>节点</span><i></i></button>
+        <button class="nav-item" data-page-link="settings" data-tab="settings" type="button"><svg><use href="#i-settings"/></svg><span>设置</span><i></i></button>
       </nav>
       <div class="rail-foot"><span class="live-dot"></span><small>CORE ONLINE</small><b>01</b></div>
     </aside>
@@ -74,7 +74,7 @@
     <div class="workspace">
       <header class="topbar">
         <div class="page-heading">
-          <span class="eyebrow">AI-LINK / NEXUS 3D · <span class="version-chip">v2.9.3</span></span>
+          <span class="eyebrow">AI-LINK / NEXUS 3D · <span class="version-chip">v2.9.4</span></span>
           <h1 id="page-title">全域星图</h1>
         </div>
         <div class="global-route u-cursor-pointer" data-page-link="shunt" aria-label="点击进入分流与出口编排">
@@ -88,22 +88,22 @@
           <div><small>实时上行</small><b id="top-up">24 KB/s</b></div>
         </div>
         <div class="quick-actions">
-          <button id="btn-top-sync-sub" class="button ghost compact" data-action="sync" aria-label="更新订阅"><svg><use href="#i-refresh"/></svg><span>更新订阅</span></button>
-          <button id="btn-top-probe-now" class="button ghost compact" data-action="probe-all" aria-label="全量体检"><svg><use href="#i-probe"/></svg><span>全量体检</span></button>
-          <button id="btn-top-network-doctor" class="button ghost compact" data-action="network-doctor" aria-label="8 项全链路网络健康体检与一键自动修复"><svg><use href="#i-doctor"/></svg><span>网络医生</span></button>
-          <button id="btn-top-topology-wizard" class="button ghost compact" data-action="topology-wizard" aria-label="拓扑自动识别与 3 步快速接入向导"><svg><use href="#i-compass"/></svg><span>接入向导</span></button>
-          <span class="topbar-divider" aria-hidden="true"></span><button id="btn-top-recover" class="button ghost danger-text compact" data-action="recover" aria-label="直连恢复"><svg><use href="#i-direct"/></svg><span>直连恢复</span></button>
+          <button id="btn-top-sync-sub" class="button ghost compact" data-action="sync" aria-label="更新订阅" type="button"><svg><use href="#i-refresh"/></svg><span>更新订阅</span></button>
+          <button id="btn-top-probe-now" class="button ghost compact" data-action="probe-all" aria-label="全量体检" type="button"><svg><use href="#i-probe"/></svg><span>全量体检</span></button>
+          <button id="btn-top-network-doctor" class="button ghost compact" data-action="network-doctor" aria-label="8 项全链路网络健康体检与一键自动修复" type="button"><svg><use href="#i-doctor"/></svg><span>网络医生</span></button>
+          <button id="btn-top-topology-wizard" class="button ghost compact" data-action="topology-wizard" aria-label="拓扑自动识别与 3 步快速接入向导" type="button"><svg><use href="#i-compass"/></svg><span>接入向导</span></button>
+          <span class="topbar-divider" aria-hidden="true"></span><button id="btn-top-recover" class="button ghost danger-text compact" data-action="recover" aria-label="直连恢复" type="button"><svg><use href="#i-direct"/></svg><span>直连恢复</span></button>
         </div>
       </header>
 
       <div id="nexus-alerts" class="nexus-alerts">
         <div id="core-offline-alert-banner" class="alert-banner danger hidden">
           <span>检测到 sing-box 代理内核未运行，已触发防断网黑洞保护并回退直连</span>
-          <button id="btn-restart-core-banner" class="button primary compact" data-action="restart-core">立即重启内核</button>
+          <button id="btn-restart-core-banner" class="button primary compact" data-action="restart-core" type="button">立即重启内核</button>
         </div>
         <div id="bypass-alert-banner" class="alert-banner amber hidden">
           <span>当前处于「临时宽带直连恢复」状态（已暂停透明代理，随时可一键恢复）</span>
-          <button id="btn-restore-proxy-banner" class="button primary compact" data-action="restore-proxy">一键恢复透明代理</button>
+          <button id="btn-restore-proxy-banner" class="button primary compact" data-action="restore-proxy" type="button">一键恢复透明代理</button>
         </div>
       </div>
 
@@ -153,7 +153,7 @@
             <aside class="inspector open" id="inspector">
               <div class="inspector-head">
                 <div><span class="eyebrow" id="inspector-kicker">KERNEL HUB · LAN TERMINALS</span><h3 id="inspector-title">内核中枢 · 局域网终端列表</h3></div>
-                <button class="icon-button" id="inspector-close" aria-label="收起检查器"><svg><use href="#i-close"/></svg></button>
+                <button class="icon-button" id="inspector-close" aria-label="收起检查器" type="button"><svg><use href="#i-close"/></svg></button>
               </div>
               <div class="inspector-tabs" id="inspector-tabs">
                 <span role="tab" tabindex="0" class="active" data-inspector-tab="core">内核</span>
@@ -188,17 +188,17 @@
                 </div>
               </div>
               <div class="inspector-actions">
-                <button class="button secondary" data-action="probe-selected"><svg><use href="#i-probe"/></svg>立即探测</button>
-                <button class="button primary" data-action="set-exit"><svg><use href="#i-surge"/></svg>设为出口</button>
+                <button class="button secondary" data-action="probe-selected" type="button"><svg><use href="#i-probe"/></svg>立即探测</button>
+                <button class="button primary" data-action="set-exit" type="button"><svg><use href="#i-surge"/></svg>设为出口</button>
               </div>
             </aside>
 
             <div class="control-dock">
-              <button class="active" id="orbit-toggle" data-tip="自动环绕" aria-label="自动环绕"><svg><use href="#i-orbit"/></svg><span>自动环绕</span></button>
-              <button id="labels-toggle" data-tip="显示全部标签" aria-label="显示全部标签"><svg><use href="#i-tags"/></svg><span>全部标签</span></button>
+              <button class="active" id="orbit-toggle" data-tip="自动环绕" aria-label="自动环绕" type="button"><svg><use href="#i-orbit"/></svg><span>自动环绕</span></button>
+              <button id="labels-toggle" data-tip="显示全部标签" aria-label="显示全部标签" type="button"><svg><use href="#i-tags"/></svg><span>全部标签</span></button>
               <span id="surge-toggle" class="hidden" hidden role="button" tabindex="-1" data-tip="流量激增" aria-label="流量激增"><svg><use href="#i-surge"/></svg><span>流量激增</span></span>
-              <button id="reset-view" data-tip="核心复位" aria-label="核心复位"><svg><use href="#i-reset"/></svg><span>核心复位</span></button>
-              <button id="wallpaper-toggle" data-tip="壁纸沉浸模式 (快捷键 W)" aria-label="壁纸沉浸模式"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M21 15l-5-5L5 20"/></svg><span>壁纸沉浸</span></button>
+              <button id="reset-view" data-tip="核心复位" aria-label="核心复位" type="button"><svg><use href="#i-reset"/></svg><span>核心复位</span></button>
+              <button id="wallpaper-toggle" data-tip="壁纸沉浸模式 (快捷键 W)" aria-label="壁纸沉浸模式" type="button"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M21 15l-5-5L5 20"/></svg><span>壁纸沉浸</span></button>
               <span id="details-toggle" class="hidden" hidden role="button" tabindex="-1" data-tip="星系与黑洞详情" aria-label="星系与黑洞详情"><svg><use href="#i-details"/></svg><span>详情</span></span>
             </div>
 
@@ -212,7 +212,7 @@
         <section id="page-overview" class="page content-page">
           <div id="ov-core-offline-card" class="alert-banner danger hidden">
             <span>代理引擎当前处于离线状态，已自动切换为安全直连保护</span>
-            <button class="button primary compact" data-action="restart-core">重启代理内核</button>
+            <button class="button primary compact" data-action="restart-core" type="button">重启代理内核</button>
           </div>
           <!-- Unified Overview Hero Card (Shield/HomeLink Archetype: Unified #i-overview Icon + Moving Photon Track + Radial Glow) -->
           <article id="ov-egress-hero" class="dns-hero egress-hero page-hero glass-card">
@@ -236,10 +236,10 @@
             </div>
             <div class="hero-side-panel">
               <div class="hero-action-grid">
-                <button class="button ghost compact" data-action="matrix-test">12类全矩阵自检</button>
-                <button class="button ghost compact" data-action="refresh"><svg><use href="#i-refresh"/></svg>刷新遥测</button>
-                <button class="button secondary compact" data-action="probe-selected"><svg><use href="#i-probe"/></svg>测速主出口</button>
-                <button class="button primary compact" data-page-link="shunt">切换模式与选点</button>
+                <button class="button ghost compact" data-action="matrix-test" type="button">12类全矩阵自检</button>
+                <button class="button ghost compact" data-action="refresh" type="button"><svg><use href="#i-refresh"/></svg>刷新遥测</button>
+                <button class="button secondary compact" data-action="probe-selected" type="button"><svg><use href="#i-probe"/></svg>测速主出口</button>
+                <button class="button primary compact" data-page-link="shunt" type="button">切换模式与选点</button>
               </div>
             </div>
           </article>
@@ -252,9 +252,9 @@
                 <div><span>实时吞吐</span><h3>全息流量波形</h3></div>
                 <div class="u-flex-wrap-sp2">
                   <div class="segmented small">
-                    <button class="active" data-traffic-range="24h">24 小时</button>
-                    <button data-traffic-range="7d">7 天</button>
-                    <button data-traffic-range="30d">30 天</button>
+                    <button class="active" data-traffic-range="24h" type="button">24 小时</button>
+                    <button data-traffic-range="7d" type="button">7 天</button>
+                    <button data-traffic-range="30d" type="button">30 天</button>
                   </div>
                   <button type="button" class="button ghost compact" data-action="open-traffic-insights">三维流量洞察</button>
                 </div>
@@ -288,7 +288,7 @@
           <article class="glass-card u-mb-sp4">
             <div class="card-head">
               <div><span id="ov-shunt-count-badge">全部 13 个分流策略组已挂载</span><h3>全量分流策略实时状态矩阵</h3></div>
-              <button class="button ghost compact" data-page-link="shunt">前往分流编排中心 </button>
+              <button class="button ghost compact" data-page-link="shunt" type="button">前往分流编排中心 </button>
             </div>
             <div id="ov-shunt-preview-grid" class="ov-strategy-grid"></div>
           </article>
@@ -357,7 +357,7 @@
                     <span role="menuitem" tabindex="0" class="button ghost compact" data-action="matrix-test">12 类全矩阵自检</span>
                   </div>
                 </div>
-                <button class="button primary compact" data-action="trace"><svg><use href="#i-probe"/></svg>四阶链路透视</button>
+                <button class="button primary compact" data-action="trace" type="button"><svg><use href="#i-probe"/></svg>四阶链路透视</button>
               </div>
             </div>
           </div>
@@ -391,7 +391,7 @@
             <div class="card-head">
               <div><span>AUTO NODE POOLS · TACTICAL EGRESS CLUSTERS</span><h3>自动节点池 <button type="button" class="hud-help-btn" data-action="show-hud-help" data-help-topic="autopool" aria-label="自动节点池机制说明">?</button></h3></div>
               <div class="button-row">
-                <button class="button ghost compact" data-action="new-auto-pool"><svg><use href="#i-plus"/></svg>新建自动池</button>
+                <button class="button ghost compact" data-action="new-auto-pool" type="button"><svg><use href="#i-plus"/></svg>新建自动池</button>
                 <span role="button" tabindex="0" class="button secondary compact" data-action="optimize"><svg><use href="#i-probe"/></svg>全部自动池立即优选</span>
               </div>
             </div>
@@ -404,7 +404,7 @@
               <div class="card-head">
                 <div><span id="custom-rules-count-badge">支持域名后缀 / 关键词 / 目标 IP 网段 高优先级匹配</span><h3>精细分流策略矩阵</h3></div>
                 <div class="button-row">
-                  <button class="button primary compact" data-action="new-rule"><svg><use href="#i-plus"/></svg>添加自定义规则</button>
+                  <button class="button primary compact" data-action="new-rule" type="button"><svg><use href="#i-plus"/></svg>添加自定义规则</button>
                 </div>
               </div>
               <div class="group-list" id="group-list"></div>
@@ -436,7 +436,7 @@
                   <span role="button" tabindex="0" class="preset-chip" data-action="trace-preset" data-domain="www.bilibili.com:443">bilibili.com</span>
                 </div>
                 <div class="button-row u-mt-sp2">
-                  <button class="button primary u-flex-1" data-action="trace">开始 4 阶全链路透视</button>
+                  <button class="button primary u-flex-1" data-action="trace" type="button">开始 4 阶全链路透视</button>
                   
                 </div>
                 <div id="shunt-trace-result" class="trace-inline-box">
@@ -451,7 +451,7 @@
                 </div>
               </article>
 
-              <!-- v2.9.3: Real-Time Traffic Shunt Radar & Cloud GeoIP/Geosite 1-Click Assign -->
+              <!-- v2.9.4: Real-Time Traffic Shunt Radar & Cloud GeoIP/Geosite 1-Click Assign -->
               <article id="shunt-live-radar-card" data-shunt-obs-pane="radar" class="glass-card shunt-obs-hidden">
                 <div class="card-head u-mb-sp2">
                   <div>
@@ -493,7 +493,7 @@
               <article id="shunt-jitter-log-card" data-shunt-obs-pane="jitter" class="glass-card shunt-obs-hidden">
                 <div class="card-head">
                   <div><span>ANTI-JITTER LOGS</span><h3>节点切换与防抖分析记录</h3></div>
-                  <button class="button ghost compact" data-action="clear-switch-history">清空记录</button>
+                  <button class="button ghost compact" data-action="clear-switch-history" type="button">清空记录</button>
                 </div>
                 <div id="switch-history-list" class="trace-stages"></div>
               </article>
@@ -525,8 +525,8 @@
             <div class="hero-side-panel">
               <b class="secure-chip">VLESS-Reality / Hysteria2</b>
               <div class="hero-action-grid">
-                <button class="button ghost compact" data-action="view-ca-cert">TLS 根证书指纹</button>
-                <button class="button primary compact" data-action="new-homelink"><svg><use href="#i-plus"/></svg>创建回家节点</button>
+                <button class="button ghost compact" data-action="view-ca-cert" type="button">TLS 根证书指纹</button>
+                <button class="button primary compact" data-action="new-homelink" type="button"><svg><use href="#i-plus"/></svg>创建回家节点</button>
               </div>
             </div>
           </div>
@@ -534,7 +534,7 @@
           <article class="glass-card" id="homelink-monitor-card">
             <div class="card-head">
               <div><span>LIVE TELEMETRY & SESSIONS</span><h3>回家隧道实时监控与客户端接入明细</h3></div>
-              <button class="button secondary compact" data-action="refresh"><svg><use href="#i-refresh"/></svg>立即刷新监控</button>
+              <button class="button secondary compact" data-action="refresh" type="button"><svg><use href="#i-refresh"/></svg>立即刷新监控</button>
             </div>
             <div id="homelink-monitor-kpis" class="galaxy-kpi-grid u-mb-sp4"></div>
             <div class="table-wrap">
@@ -572,14 +572,14 @@
             <div class="hero-side-panel">
               <div class="shield-toggle">
                 <span>云端域名过滤护盾</span>
-                <button id="toggle-dns-filter" class="switch a-switch on" role="switch" aria-checked="true" data-action="dns-toggle" aria-label="切换云端域名过滤"><i></i></button>
+                <button id="toggle-dns-filter" class="switch a-switch on" role="switch" aria-checked="true" data-action="dns-toggle" aria-label="切换云端域名过滤" type="button"><i></i></button>
                 <small>内置隐私探针 + 广告联盟库已就绪</small>
               </div>
               <div class="hero-action-grid">
-                <button class="button ghost compact" data-action="dns-upstream-settings">DNS 上游设置</button>
-                <button class="button ghost compact" data-action="dns-flush">清空 DNS 缓存</button>
-                <button class="button secondary compact" data-action="dns-test">拦截规则测试</button>
-                <button class="button primary compact" data-action="dns-sync"><svg><use href="#i-refresh"/></svg>更新云端规则</button>
+                <button class="button ghost compact" data-action="dns-upstream-settings" type="button">DNS 上游设置</button>
+                <button class="button ghost compact" data-action="dns-flush" type="button">清空 DNS 缓存</button>
+                <button class="button secondary compact" data-action="dns-test" type="button">拦截规则测试</button>
+                <button class="button primary compact" data-action="dns-sync" type="button"><svg><use href="#i-refresh"/></svg>更新云端规则</button>
               </div>
             </div>
           </div>
@@ -613,7 +613,7 @@
                   <div><i class="violet"></i><span>双栈防漏：海外域名 AAAA 抑制保护</span><b>已启用</b></div>
                   <div class="u-flex-between-sp2">
                     <div class="u-flex-center-sp2"><i class="mint"></i><span aria-label="自动豁免 Google Play (clientservices/play.googleapis.com、gvt1~3)、Apple 推送与微软核心更新域名，防止广告黑洞误杀正常应用下载与登录">核心应用防误杀保护 (Google Play / Apple / MS)</span></div>
-                    <button id="toggle-dns-essential-protect" class="switch a-switch on" role="switch" aria-checked="true" data-action="dns-essential-protect-toggle" aria-label="切换核心应用防误杀白名单保护"><i></i></button>
+                    <button id="toggle-dns-essential-protect" class="switch a-switch on" role="switch" aria-checked="true" data-action="dns-essential-protect-toggle" aria-label="切换核心应用防误杀白名单保护" type="button"><i></i></button>
                   </div>
                 </div>
               </article>
@@ -622,13 +622,13 @@
               <article class="glass-card">
                 <div class="card-head">
                   <div><span>DOMAIN REWRITE</span><h3>DNS 域名防跳重写</h3></div>
-                  <button id="toggle-dns-rewrite" class="switch a-switch on" role="switch" aria-checked="true" data-action="dns-rewrite-toggle" aria-label="切换DNS重写"><i></i></button>
+                  <button id="toggle-dns-rewrite" class="switch a-switch on" role="switch" aria-checked="true" data-action="dns-rewrite-toggle" aria-label="切换DNS重写" type="button"><i></i></button>
                 </div>
                 <div id="dns-rewrite-list" class="trace-stages u-mb-sp3"></div>
                 <div class="input-row">
                   <input id="inp-rw-from" placeholder="原域名 (如 google.cn)" aria-label="DNS重写源域名">
                   <input id="inp-rw-to" placeholder="目标 (如 www.google.com)" aria-label="DNS重写目标域名">
-                  <button class="button secondary compact" data-action="add-dns-rewrite">添加</button>
+                  <button class="button secondary compact" data-action="add-dns-rewrite" type="button">添加</button>
                 </div>
               </article>
             </div>
@@ -658,10 +658,10 @@
             </div>
             <div class="hero-side-panel">
               <div class="hero-action-grid">
-                <button class="button ghost compact" data-action="open-schedules">定时测速计划</button>
-                <button class="button ghost compact" data-action="add-single-node"><svg><use href="#i-plus"/></svg>手动加节点</button>
-                <button class="button secondary compact" data-action="import">批量导入 URI</button>
-                <button class="button primary compact" data-action="new-sub"><svg><use href="#i-plus"/></svg>新增订阅</button>
+                <button class="button ghost compact" data-action="open-schedules" type="button">定时测速计划</button>
+                <button class="button ghost compact" data-action="add-single-node" type="button"><svg><use href="#i-plus"/></svg>手动加节点</button>
+                <button class="button secondary compact" data-action="import" type="button">批量导入 URI</button>
+                <button class="button primary compact" data-action="new-sub" type="button"><svg><use href="#i-plus"/></svg>新增订阅</button>
               </div>
             </div>
           </div>
@@ -674,10 +674,10 @@
               <!-- Row 1: Status Filter Chips + Search & Subscription Filter -->
               <div class="node-toolbar-row">
                 <div class="filter-chips">
-                  <button class="active" data-node-filter="all">全部 (6)</button>
-                  <button data-node-filter="ok">可用 (6)</button>
-                  <button data-node-filter="dead">不可达 (0)</button>
-                  <button data-node-filter="untested">⏳ 未测速 (0)</button>
+                  <button class="active" data-node-filter="all" type="button">全部 (6)</button>
+                  <button data-node-filter="ok" type="button">可用 (6)</button>
+                  <button data-node-filter="dead" type="button">不可达 (0)</button>
+                  <button data-node-filter="untested" type="button">⏳ 未测速 (0)</button>
                 </div>
                 <div class="u-flex-wrap-sp2">
                   <select id="node-sub-filter" aria-label="按订阅源筛选">
@@ -696,10 +696,10 @@
               <div class="node-toolbar-row">
                 <div id="region-filter-chips" class="region-chips"></div>
                 <div class="button-row">
-                  <button class="button secondary compact" data-action="probe-category"><svg><use href="#i-probe"/></svg>URL Ping 测速当前筛选</button>
-                  <button class="button ghost compact" data-action="open-chained-node-modal">链式落地节点</button>
-                  <button class="button ghost compact" data-action="test-real-delay-batch">真实握手测速</button>
-                  <button class="button ghost compact" data-action="ipv6-check">检测节点 IPv6</button>
+                  <button class="button secondary compact" data-action="probe-category" type="button"><svg><use href="#i-probe"/></svg>URL Ping 测速当前筛选</button>
+                  <button class="button ghost compact" data-action="open-chained-node-modal" type="button">链式落地节点</button>
+                  <button class="button ghost compact" data-action="test-real-delay-batch" type="button">真实握手测速</button>
+                  <button class="button ghost compact" data-action="ipv6-check" type="button">检测节点 IPv6</button>
                 </div>
               </div>
             </div>
@@ -744,7 +744,7 @@
             </div>
             <div class="hero-side-panel">
               <div class="hero-action-grid">
-                <button class="button primary compact" data-action="network-doctor"><svg><use href="#i-doctor"/></svg><span>网络健康医生</span></button>
+                <button class="button primary compact" data-action="network-doctor" type="button"><svg><use href="#i-doctor"/></svg><span>网络健康医生</span></button>
                 <details class="settings-diag-collapse">
                   <summary>高级排障与快照工具</summary>
                   <div class="button-row u-mt-sp2">
@@ -771,7 +771,7 @@
             <article class="glass-card system-card">
               <span class="card-index">01 / CORE LIFECYCLE</span>
               <div class="system-title">
-                <div><h3 id="sys-core-title">sing-box --</h3><p id="sys-core-sub">AI-LINK v2.9.3 · 单一真相源架构</p></div>
+                <div><h3 id="sys-core-title">sing-box --</h3><p id="sys-core-sub">AI-LINK v2.9.4 · 单一真相源架构</p></div>
                 <div class="core-head-right">
                   <span class="status-pill" id="settings-proxy-status-pill">运行正常</span>
                 </div>
@@ -787,19 +787,19 @@
                 <div><span>防黑洞看门狗</span><b id="sys-spec-reload">进程常驻自愈守护中 (5秒防抖拉起)</b></div>
               </div>
               <div class="button-row">
-                <button class="button primary compact" data-action="restart-core">重启代理内核</button>
-                <button class="button secondary compact" data-action="restart-service">重启守护进程</button>
+                <button class="button primary compact" data-action="restart-core" type="button">重启代理内核</button>
+                <button class="button secondary compact" data-action="restart-service" type="button">重启守护进程</button>
               </div>
             </article>
 
-            <!-- Card 2: Component & Rule Runtime Summary (Update buttons removed per v2.9.3 spec; rule updates managed directly in Shield/Shunt pages) -->
+            <!-- Card 2: Component & Rule Runtime Summary (Update buttons removed per v2.9.4 spec; rule updates managed directly in Shield/Shunt pages) -->
             <article class="glass-card">
               <span class="card-index">02 / COMPONENT & RULE STATUS</span>
               <h3>组件版本与规则运行概览</h3>
               <div class="update-row">
                 <div><b>AI-LINK 插件版本</b><span id="ota-sub">当前已运行最新稳定版全栈架构</span></div>
                 <div class="button-row u-gap-sp2-center">
-                  <span class="version-chip">v2.9.3</span>
+                  <span class="version-chip">v2.9.4</span>
                   <button type="button" id="btn-ota-check" class="button secondary compact" data-action="check-update">检测插件升级</button>
                   <button type="button" id="btn-ota-apply" class="button primary compact hidden" data-action="apply-update">立即升级插件</button>
                 </div>
@@ -824,8 +824,8 @@
               <h3>系统维护与归档备份</h3>
               <p>支持一键导出或浏览器直接上传恢复 <code>.tgz</code> 全量配置归档与 <code>.json</code> 快照。</p>
               <div class="button-row u-mt-sp3">
-                <button id="btn-export-tgz" class="button primary compact" data-action="backup"><svg><use href="#i-download"/></svg>导出 .tgz 归档</button>
-                <button id="btn-restore-backup" class="button secondary compact" data-action="restore">导入恢复 (.tgz/.json)</button>
+                <button id="btn-export-tgz" class="button primary compact" data-action="backup" type="button"><svg><use href="#i-download"/></svg>导出 .tgz 归档</button>
+                <button id="btn-restore-backup" class="button secondary compact" data-action="restore" type="button">导入恢复 (.tgz/.json)</button>
                 <span role="button" tabindex="0" class="button ghost compact" data-action="backup-json">导出 JSON</span>
               </div>
               <div class="backup-status">
@@ -845,15 +845,15 @@
                 <div>
                   <div class="setting-line">
                     <div><b>局域网访问鉴权 (require_lan_auth)</b><span>开启后局域网设备访问 API 同样强制校验令牌</span></div>
-                    <button id="toggle-require-lan-auth" aria-label="局域网API强制密码鉴权开关" class="switch a-switch" role="switch" aria-checked="false" data-action="auth-toggle"><i></i></button>
+                    <button id="toggle-require-lan-auth" aria-label="局域网API强制密码鉴权开关" class="switch a-switch" role="switch" aria-checked="false" data-action="auth-toggle" type="button"><i></i></button>
                   </div>
                   <div class="setting-line">
                     <div><b>国内流量不进内核 (硬件级旁路)</b><span>大陆 IP 在 nftables 入口直接直通，零内核开销</span></div>
-                    <button id="toggle-ops-entry-bypass" aria-label="国内流量不进内核开关" class="switch a-switch on" role="switch" aria-checked="true" data-action="entry-bypass-toggle"><i></i></button>
+                    <button id="toggle-ops-entry-bypass" aria-label="国内流量不进内核开关" class="switch a-switch on" role="switch" aria-checked="true" data-action="entry-bypass-toggle" type="button"><i></i></button>
                   </div>
                   <div class="setting-line">
                     <div><b>IPv6 透明代理接管 (ipv6_proxy) <span role="button" tabindex="0" class="button ghost compact ipv6-detail-inline-btn" data-action="ipv6-status-modal">状态明细</span></b><span>开启后海外 IPv6 流量同步进入 TProxy 策略路由</span></div>
-                    <button id="toggle-ipv6-proxy" aria-label="IPv6双栈透明代理开关" class="switch a-switch" role="switch" aria-checked="false" data-action="ipv6-proxy-toggle"><i></i></button>
+                    <button id="toggle-ipv6-proxy" aria-label="IPv6双栈透明代理开关" class="switch a-switch" role="switch" aria-checked="false" data-action="ipv6-proxy-toggle" type="button"><i></i></button>
                   </div>
                   <div class="setting-line">
                     <div><b>透明代理数据面模式 (Data Plane)</b><span>按需切换零拷贝 TProxy、游戏混合 TUN 或全量 TUN 虚拟网卡</span></div>
@@ -876,15 +876,15 @@
                   </div>
                   <div class="setting-line">
                     <div><b>并发代理冲突自动静默保护</b><span>自动检测并停用冲突的 OpenClash / PassWall 进程</span></div>
-                    <button id="toggle-conflict-guard" aria-label="冲突插件自动静默保护开关" class="switch a-switch on" role="switch" aria-checked="true" data-action="conflict-guard-toggle"><i></i></button>
+                    <button id="toggle-conflict-guard" aria-label="冲突插件自动静默保护开关" class="switch a-switch on" role="switch" aria-checked="true" data-action="conflict-guard-toggle" type="button"><i></i></button>
                   </div>
                   <div class="setting-line">
                     <div><b>独立管理密码</b><span>下线弱默认口令，UCI 仅存布尔状态位</span></div>
-                    <button id="btn-change-panel-pw" class="button secondary compact" data-action="password"><svg><use href="#i-key"/></svg>修改管理密码</button>
+                    <button id="btn-change-panel-pw" class="button secondary compact" data-action="password" type="button"><svg><use href="#i-key"/></svg>修改管理密码</button>
                   </div>
                   <div class="setting-line">
                     <div><b>面板监听地址、免密网段与更新源</b><span>0.0.0.0:9099 · 支持自定义 OTA 清单源</span></div>
-                    <button class="button ghost compact" data-action="binding">配置网络与加速镜像</button> <span role="button" tabindex="0" id="btn-open-config-history" class="button ghost compact" data-action="open-config-history">变更历史与回滚</span> <span role="button" tabindex="0" id="btn-open-alert-center" class="button ghost compact" data-action="open-alert-center">告警中心</span>
+                    <button class="button ghost compact" data-action="binding" type="button">配置网络与加速镜像</button> <span role="button" tabindex="0" id="btn-open-config-history" class="button ghost compact" data-action="open-config-history">变更历史与回滚</span> <span role="button" tabindex="0" id="btn-open-alert-center" class="button ghost compact" data-action="open-alert-center">告警中心</span>
                   </div>
                 </div>
               </div>
@@ -898,15 +898,15 @@
               <p>向局域网广播发送 Magic Packet 唤醒休眠 NAS 或台式机。</p>
               <div class="input-row u-mt-sp3">
                 <input id="input-wol-mac" class="mono" value="" placeholder="输入设备 MAC (如 00:11:22:33:44:55)" aria-label="设备 MAC 地址">
-                <button id="btn-send-wol" class="button primary compact" data-action="wol">立即唤醒</button>
+                <button id="btn-send-wol" class="button primary compact" data-action="wol" type="button">立即唤醒</button>
               </div>
               <div class="setting-line u-mt-sp3">
                 <div><b>拦截海外 QUIC (UDP 443)</b><span>消除 UDP 限速导致的视频卡顿</span></div>
-                <button id="toggle-block-quic" aria-label="屏蔽代理线路QUIC开关" class="switch a-switch on" role="switch" aria-checked="true" data-action="block-quic-toggle"><i></i></button>
+                <button id="toggle-block-quic" aria-label="屏蔽代理线路QUIC开关" class="switch a-switch on" role="switch" aria-checked="true" data-action="block-quic-toggle" type="button"><i></i></button>
               </div>
               <div class="setting-line">
                 <div><b>国服游戏 UDP 直连豁免</b><span>保障国内联机游戏超低延迟</span></div>
-                <button id="toggle-game-udp-direct" aria-label="国服游戏UDP直连开关" class="switch a-switch on" role="switch" aria-checked="true" data-action="game-udp-toggle"><i></i></button>
+                <button id="toggle-game-udp-direct" aria-label="国服游戏UDP直连开关" class="switch a-switch on" role="switch" aria-checked="true" data-action="game-udp-toggle" type="button"><i></i></button>
               </div>
             </article>
 
@@ -922,7 +922,7 @@
                     <select id="conn-device-filter" aria-label="按局域网设备筛选活跃连接"><option value="ALL">设备: 全部终端</option></select>
                     <label class="search-box"><svg><use href="#i-search"/></svg><input id="conn-search-input" placeholder="搜索域名、源 IP、规则或出口"></label>
                     <span role="button" tabindex="0" class="button ghost compact" data-action="refresh-connections"><svg><use href="#i-refresh"/></svg>刷新</span>
-                    <button class="button ghost danger-text compact" data-action="close-all-connections">断开全部</button>
+                    <button class="button ghost danger-text compact" data-action="close-all-connections" type="button">断开全部</button>
                   </div>
                 </div>
               </div>
@@ -984,22 +984,22 @@
   <div class="toast-stack" id="toast-stack" data-toast-wrap="toast-wrap" role="status" aria-live="polite" aria-atomic="false"></div>
   <div class="modal-backdrop" id="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" tabindex="-1" hidden>
     <div class="modal-panel">
-      <div class="modal-head"><div><span class="eyebrow" id="modal-kicker">AI-LINK NEXUS</span><h3 id="modal-title">详情</h3></div><button class="icon-button" aria-label="关闭或操作按钮" data-modal-close><svg><use href="#i-close"/></svg></button></div>
+      <div class="modal-head"><div><span class="eyebrow" id="modal-kicker">AI-LINK NEXUS</span><h3 id="modal-title">详情</h3></div><button class="icon-button" aria-label="关闭或操作按钮" data-modal-close type="button"><svg><use href="#i-close"/></svg></button></div>
       <div class="modal-body" id="modal-body"></div>
-      <div class="modal-foot"><span id="modal-foot-note">AI-LINK NEXUS 实时控制中心</span><div class="button-row"><button class="button ghost compact" data-modal-close>取消</button><button id="modal-confirm" class="button primary">完成</button></div></div>
+      <div class="modal-foot"><span id="modal-foot-note">AI-LINK NEXUS 实时控制中心</span><div class="button-row"><button class="button ghost compact" data-modal-close type="button">取消</button><button id="modal-confirm" class="button primary" type="button">完成</button></div></div>
     </div>
   </div>
 
-  <script id="lazy-qrcode-js" data-lazy-src="./static/qrcode.min.js?v=2.9.3-f8cf3403"></script>
-  <script id="lazy-three-js" data-lazy-src="./assets/three.min.js?v=2.9.3-eb854986"></script>
-  <script src="./nexus3d.js?v=2.9.3-e9338e77"></script>
-  <script src="./modules/storage.js?v=2.9.3-e1bc6ba6"></script>
-  <script src="./modules/api.js?v=2.9.3-384481fd"></script>
-  <script src="./modules/modals.js?v=2.9.3-1fccbc34"></script>
-  <script src="./modules/galaxy-hud.js?v=2.9.3-2b7cb85b"></script>
-  <script src="./modules/shunt-nodes.js?v=2.9.3-59828c0b"></script>
-  <script src="./modules/settings-panel.js?v=2.9.3-fc8e792a"></script>
-  <script src="./nexus.js?v=2.9.3-b3fc44c6"></script>
+  <script id="lazy-qrcode-js" data-lazy-src="./static/qrcode.min.js?v=2.9.4-f8cf3403"></script>
+  <script id="lazy-three-js" data-lazy-src="./assets/three.min.js?v=2.9.4-eb854986"></script>
+  <script src="./nexus3d.js?v=2.9.4-e9338e77"></script>
+  <script src="./modules/storage.js?v=2.9.4-e1bc6ba6"></script>
+  <script src="./modules/api.js?v=2.9.4-384481fd"></script>
+  <script src="./modules/modals.js?v=2.9.4-1fccbc34"></script>
+  <script src="./modules/galaxy-hud.js?v=2.9.4-2b7cb85b"></script>
+  <script src="./modules/shunt-nodes.js?v=2.9.4-59828c0b"></script>
+  <script src="./modules/settings-panel.js?v=2.9.4-fc8e792a"></script>
+  <script src="./nexus.js?v=2.9.4-30c9fcd2"></script>
 <!-- NEXUS-UI-CONTRACT: sub-health-box | 仅入池检测达标项 | 免测直接加入池 | delete-custom-group | sub-card-custom | 手动添加节点 | btn-an-auto-screen | btn-an-mode-ping | btn-an-mode-svc | 同步时间: -->
 </body>
 </html>

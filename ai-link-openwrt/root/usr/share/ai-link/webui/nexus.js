@@ -1,3 +1,20 @@
+
+/* OPT-294-05: Cancellable timer registry for view switch & modal close */
+const _trackedTimers = new Set();
+function trackTimeout(fn, delayMs) {
+    const id = setTimeout(() => {
+        _trackedTimers.delete(id);
+        fn();
+    }, delayMs);
+    _trackedTimers.add(id);
+    return id;
+}
+function clearTrackedTimers() {
+    for (const id of _trackedTimers) {
+        clearTimeout(id);
+    }
+    _trackedTimers.clear();
+}
 (function () {
   'use strict';
   if (window.__AILINK_NEXUS_BOOTED__) return;
@@ -826,6 +843,7 @@
 
   let _activeModalEventGroup = (typeof window.createAbortableEventGroup === 'function') ? window.createAbortableEventGroup() : null;
 function closeModal(forceCloseAll) {
+    clearTrackedTimers();
     const m = $('#modal');
     if (!forceCloseAll && _modalStack.length > 0 && m && !m.hidden) {
       const prev = _modalStack.pop();

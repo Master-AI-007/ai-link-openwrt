@@ -29,7 +29,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-DIAG_MODULE_VERSION = "2.9.3"
+DIAG_MODULE_VERSION = "2.9.4"
 
 SENSITIVE_CREDENTIAL_KEYS = (
     "panel_secret",
@@ -2200,3 +2200,110 @@ __all__ = [
     "cross_fs_atomic_move",
     "stream_file_hashes",
 ]
+
+
+# === OPT-294-02 / 03 / 04 / 09 / 10: v2.9.4 Diagnostic & Resilience Primitives ===
+import base64 as _b64_mod
+import ipaddress as _ip_mod
+import urllib.parse as _uparse_mod
+
+
+def safe_urlsplit(raw_url: str):
+    """OPT-294-02: Fault-tolerant urlsplit handling malformed IPv6 brackets and whitespace."""
+    s = (raw_url or "").strip()
+    try:
+        return _uparse_mod.urlsplit(s)
+    except ValueError:
+        cleaned = s.replace("[", "").replace("]", "")
+        try:
+            return _uparse_mod.urlsplit(cleaned)
+        except Exception:
+            return _uparse_mod.SplitResult("", "", "", "", "")
+
+
+def safe_b64_decode(raw, urlsafe: bool = True) -> bytes:
+    """OPT-294-03: Auto-pad '=' and decode standard or URL-safe base64 safely."""
+    if raw is None:
+        return b""
+    if isinstance(raw, bytes):
+        s = raw.decode("ascii", errors="ignore")
+    else:
+        s = str(raw)
+    s = "".join(s.split())
+    if not s:
+        return b""
+    pad = (-len(s)) % 4
+    if pad:
+        s = s + ("=" * pad)
+    try:
+        if urlsafe and ("-" in s or "_" in s):
+            return _b64_mod.urlsafe_b64decode(s.encode("ascii"))
+        return _b64_mod.b64decode(s.encode("ascii"), validate=False)
+    except Exception:
+        try:
+            return _b64_mod.urlsafe_b64decode(s.encode("ascii"))
+        except Exception:
+            return b""
+
+
+def safe_ip_address(raw: str):
+    """OPT-294-04: Parse IP address stripping whitespace and %iface link-local zone suffix."""
+    s = (raw or "").strip()
+    if "%" in s:
+        s = s.split("%", 1)[0].strip()
+    return _ip_mod.ip_address(s)
+
+
+def safe_ip_network(raw: str, strict: bool = False):
+    """OPT-294-04: Parse IP network stripping whitespace and %iface zone suffix."""
+    s = (raw or "").strip()
+    if "%" in s and "/" in s:
+        addr_part, prefix = s.split("/", 1)
+        s = f"{addr_part.split('%', 1)[0].strip()}/{prefix.strip()}"
+    elif "%" in s:
+        s = s.split("%", 1)[0].strip()
+    return _ip_mod.ip_network(s, strict=strict)
+
+
+def check_fakeip_cidr_conflict(fakeip_cidr: str = "198.18.0.0/15", local_cidrs=None) -> dict:
+    """OPT-294-09: Pre-check dns_fakeip CIDR overlap against local bridge/Docker subnets."""
+    conflicts = []
+    try:
+        fake_net = safe_ip_network(fakeip_cidr, strict=False)
+    except Exception as exc:
+        return {"ok": False, "fakeip_cidr": fakeip_cidr, "conflicts": [], "error": str(exc)}
+    candidates = local_cidrs if local_cidrs is not None else ["192.168.0.0/16", "172.17.0.0/16", "10.0.0.0/8"]
+    for c in candidates:
+        try:
+            net = safe_ip_network(str(c), strict=False)
+            if fake_net.overlaps(net):
+                conflicts.append(str(net))
+        except Exception:
+            continue
+    return {
+        "ok": len(conflicts) == 0,
+        "fakeip_cidr": str(fake_net),
+        "conflicts": conflicts,
+        "checked_count": len(candidates),
+    }
+
+
+def sanitize_cross_arch_backup_fields(backup_data: dict):
+    """OPT-294-10: Strip stale platform-specific interface names and cross-arch path leftovers."""
+    if not isinstance(backup_data, dict):
+        return {}, []
+    cleaned = dict(backup_data)
+    removed = []
+    arch_keys = ("arch_bin_path", "singbox_arch_override", "legacy_iface_binding", "platform_kmod_dir")
+    for k in arch_keys:
+        if k in cleaned:
+            cleaned.pop(k, None)
+            removed.append(k)
+    if isinstance(cleaned.get("ops_settings"), dict):
+        ops = dict(cleaned["ops_settings"])
+        for k in ("arch_bin_path", "platform_kmod_dir", "legacy_iface_binding"):
+            if k in ops:
+                ops.pop(k, None)
+                removed.append(f"ops_settings.{k}")
+        cleaned["ops_settings"] = ops
+    return cleaned, removed
