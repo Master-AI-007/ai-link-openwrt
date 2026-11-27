@@ -29,7 +29,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-DIAG_MODULE_VERSION = "2.9.5"
+DIAG_MODULE_VERSION = "2.9.6"
 
 SENSITIVE_CREDENTIAL_KEYS = (
     "panel_secret",
@@ -2354,3 +2354,66 @@ def compute_homelink_reconnect_backoff_s(attempt: int, port_alive: bool) -> int:
         return 60
     att = max(0, min(int(attempt or 0), 6))
     return min(300, 5 * (2 ** att))
+
+
+# === OPT-296-01 / 02 / 03 / 09 / 10: v2.9.6 Lifecycle, FD, L7 & IPv6 Primitives ===
+import signal as _sig_mod
+import subprocess as _sp_mod
+import tempfile as _tf_mod
+
+
+def register_graceful_shutdown_signals(stop_event=None, cleanup_cb=None) -> list:
+    """OPT-296-01: Register SIGTERM/SIGINT handlers to wake stop_event cleanly."""
+    registered = []
+
+    def _handler(_signum, _frame):
+        if stop_event is not None and hasattr(stop_event, "set"):
+            stop_event.set()
+        if callable(cleanup_cb):
+            try:
+                cleanup_cb()
+            except Exception:
+                pass
+
+    for sname in ("SIGTERM", "SIGINT"):
+        sig = getattr(_sig_mod, sname, None)
+        if sig is not None:
+            try:
+                _sig_mod.signal(sig, _handler)
+                registered.append(sname)
+            except Exception:
+                pass
+    return registered
+
+
+def resolve_tmp_path(*parts) -> Path:
+    """OPT-296-02: Centralize temporary paths via tempfile.gettempdir()."""
+    base = Path(_tf_mod.gettempdir())
+    for p in parts:
+        base = base / str(p).lstrip("/")
+    return base
+
+
+def spawn_isolated_popen(cmd, **kwargs):
+    """OPT-296-03: Spawn subprocess.Popen with close_fds=True to prevent FD inheritance."""
+    opts = dict(kwargs)
+    opts["close_fds"] = True
+    return _sp_mod.Popen(cmd, **opts)
+
+
+def classify_l7_challenge_status(http_code: int, body_snippet: str = "") -> dict:
+    """OPT-296-09: Isolate 403/429 challenge responses from hard node failure."""
+    code = int(http_code or 0)
+    body = (body_snippet or "").lower()
+    if code == 429 or "rate limit" in body or "too many requests" in body:
+        return {"state": "rate_limited", "is_challenge": True, "http_code": code}
+    if code == 403 and ("cloudflare" in body or "captcha" in body or "challenge" in body):
+        return {"state": "challenge_403", "is_challenge": True, "http_code": code}
+    if 200 <= code < 400:
+        return {"state": "ok", "is_challenge": False, "http_code": code}
+    return {"state": "error", "is_challenge": False, "http_code": code}
+
+
+def should_suppress_cn_aaaa(ipv6_proxy: bool, is_cn: bool) -> bool:
+    """OPT-296-10: Suppress CN AAAA latency when ipv6_proxy is disabled."""
+    return (not bool(ipv6_proxy)) and bool(is_cn)

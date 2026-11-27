@@ -40,3 +40,10 @@ resolve_lan_iface() {
 	[ -n "$dev" ] && printf '%s\n' "${dev%% *}" && return 0
 	printf 'br-lan\n'
 }
+
+# OPT-296-08: Unified syslog logger helper with consistent tag & priority
+ailink_log() {
+	local lvl="${1:-info}"
+	shift || true
+	logger -t ai-link -p "daemon.${lvl}" "$*" 2>/dev/null || true
+}

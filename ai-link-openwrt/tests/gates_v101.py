@@ -1024,7 +1024,6 @@ def opt293_release_gate():
 
 check("OPT-293-01~10 v2.9.3 secrets/POSIX-ash门禁/跨FS原子移动/流式哈希/3D对象复用门禁", opt293_release_gate)
 
-fails = [r for r in results if not r[1]]
 
 def opt294_release_gate():
     html = (ROOT / "root/usr/share/ai-link/webui/index.html").read_text(encoding="utf-8")
@@ -1082,6 +1081,34 @@ def opt295_release_gate():
 
 check("OPT-295-01~10 v2.9.5 动态接口/TLS1.2/常量比对/环形配额/DPR降采样/SVG门禁", opt295_release_gate)
 
+
+def opt296_release_gate():
+    html = (ROOT / "root/usr/share/ai-link/webui/index.html").read_text(encoding="utf-8")
+    ncss = (ROOT / "root/usr/share/ai-link/webui/nexus.css").read_text(encoding="utf-8")
+    njs = (ROOT / "root/usr/share/ai-link/webui/nexus.js").read_text(encoding="utf-8")
+    ov = (ROOT / "htdocs/luci-static/resources/view/ai-link/overview.js").read_text(encoding="utf-8")
+    lc = (ROOT / "root/usr/share/ai-link/lib_common.sh").read_text(encoding="utf-8")
+    dg = (ROOT / "root/usr/share/ai-link/ailink_diag.py").read_text(encoding="utf-8")
+    dm = DAEMON.read_text(encoding="utf-8")
+    _ok = (
+        'name="color-scheme"' in html
+        and 'name="referrer"' in html
+        and "prefers-reduced-motion" in ncss
+        and "_getBaseOriginPath" in njs
+        and "uci.unload('ai-link')" in ov
+        and "ailink_log" in lc
+        and all(s in dg and s in dm for s in [
+            "register_graceful_shutdown_signals", "resolve_tmp_path",
+            "spawn_isolated_popen", "classify_l7_challenge_status",
+            "should_suppress_cn_aaaa"
+        ])
+    )
+    return _ok, "opt296_static_contracts"
+
+check("OPT-296-01~10 v2.9.6 优雅停机/TMP收敛/close_fds/reduced-motion/Meta/UCI刷新门禁", opt296_release_gate)
+
+assert len(results) >= 42, f"Expected >=42 gates, got {len(results)}"
+fails = [r for r in results if not r[1]]
 print(f" 合计 {len(results)} 项，通过 {len(results) - len(fails)}，失败 {len(fails)}")
 if fails:
     for n, _, d in fails:

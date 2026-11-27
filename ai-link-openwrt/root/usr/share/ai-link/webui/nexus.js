@@ -1,4 +1,10 @@
 
+/* OPT-296-04: Reverse-proxy / subpath compatible base origin helper */
+function _getBaseOriginPath() {
+    if (typeof window === 'undefined' || !window.location) return '';
+    return String(window.location.origin || '');
+}
+
 /* OPT-295-06: Reusable Canvas 2D context & HiDPI buffer helper */
 const _canvasCtxCache = new WeakMap();
 function _getCachedCanvasCtx(canvas) {

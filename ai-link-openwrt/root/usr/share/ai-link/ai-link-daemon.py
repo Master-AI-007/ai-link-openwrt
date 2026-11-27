@@ -26642,9 +26642,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.9.5"
+APP_VERSION = "2.9.6"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.9.5-release-20261127-r72"
+APP_BUILD = "2.9.6-release-20261127-r74"
 if "_safe_json_loads" not in globals():
     def _safe_json_loads(raw, default=None):
         return getattr(json, "loads")(raw) if default is None else (getattr(json, "loads")(raw) if raw else default)
@@ -34344,6 +34344,11 @@ try:
         trim_history_ring_quota,
         should_force_dns_ipv4_only,
         compute_homelink_reconnect_backoff_s,
+        register_graceful_shutdown_signals,
+        resolve_tmp_path,
+        spawn_isolated_popen,
+        classify_l7_challenge_status,
+        should_suppress_cn_aaaa,
     )
 except ImportError:
     def validate_and_migrate_backup_schema(backup_data, target_version=APP_VERSION):
@@ -34485,6 +34490,7 @@ def build_status_api_response(conf_dir: Path = CONF_DIR, *args, **kwargs) -> dic
         res["diag_v294_primitives_ok"] = bool(callable(safe_urlsplit) and callable(safe_b64_decode) and callable(safe_ip_address) and callable(safe_ip_network) and callable(check_fakeip_cidr_conflict) and callable(sanitize_cross_arch_backup_fields))
         res["fakeip_conflict_check"] = check_fakeip_cidr_conflict("198.18.0.0/15")
         res["diag_v295_primitives_ok"] = bool(callable(create_strict_ssl_context) and callable(constant_time_token_equal) and callable(trim_history_ring_quota) and callable(should_force_dns_ipv4_only) and callable(compute_homelink_reconnect_backoff_s))
+        res["diag_v296_primitives_ok"] = bool(callable(register_graceful_shutdown_signals) and callable(resolve_tmp_path) and callable(spawn_isolated_popen) and callable(classify_l7_challenge_status) and callable(should_suppress_cn_aaaa))
         res["py_symbol_audit"] = audit_all_python_undefined_globals([str(Path(__file__).resolve().parent / "ailink_diag.py")])
         if isinstance(res.get("subscriptions"), list):
             for s in res["subscriptions"]:

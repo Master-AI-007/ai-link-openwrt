@@ -1,3 +1,7 @@
+## v2.9.6 (2026-11-27 · r74)
+- **LOCAL_QA-20261127-01/02 修复（r74）**：将 `tests/gates_v101.py` `fails` 统计移至全量 `check()` 执行完毕后并新增 `len(results) >= 42` 断言彻底根除假绿；在 `index.html` `<head>` 补齐 `<meta name="referrer" content="no-referrer">`。
+- **OPT-296-01~10 全量落地**：`ailink_diag.py` 新增 `register_graceful_shutdown_signals()`（SIGTERM/SIGINT 优雅停机）、`resolve_tmp_path()`（收敛 `/tmp/` 至 `gettempdir()`）、`spawn_isolated_popen()`（强制 `close_fds=True`）、`classify_l7_challenge_status()`（403/429 挑战容错隔离）与 `should_suppress_cn_aaaa()`（IPv6 关闭时国内 AAAA 抑制判定）；`nexus.js` 新增 `_getBaseOriginPath()`；`index.html` 补充 `color-scheme` 与 `referrer` 元数据；`overview.js` 增加 `uci.unload('ai-link')` 缓存刷新；`lib_common.sh` 新增统一日志前缀 `ailink_log()`；`gates_v101.py` 固化 `prefers-reduced-motion` 与全套门禁；`v242_deep_chaos_simulation.py` 新增 `Stage 7.69`。
+
 ## v2.9.5 (2026-11-27 · r72)
 - **OPT-295-01~10 全量落地**：`lib_common.sh` 新增动态 LAN 接口解析 `resolve_lan_iface()`；`ailink_diag.py` 新增 TLSv1.2+ 强制上下文 `create_strict_ssl_context()`、常量时间比对 `constant_time_token_equal()`、历史环形落盘配额裁剪 `trim_history_ring_quota()`、无公网 IPv6 DNS `ipv4_only` 判定 `should_force_dns_ipv4_only()` 与 HomeLink 指数退避 `compute_homelink_reconnect_backoff_s()`；`nexus3d.js` 新增低帧率动态 DPR 降采样 `_adaptiveDpr()`；`nexus.js` 新增 Canvas 2D 上下文缓存 `_getCachedCanvasCtx()`；`nexus.css` 统一动效时长至 `var(--dur-1)`；`gates_v101.py` 固化 51 处 SVG `<use>` 与 `<symbol>` 1:1 门禁；`v242_deep_chaos_simulation.py` 新增 `Stage 7.68`。
 
