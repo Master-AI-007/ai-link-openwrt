@@ -59,7 +59,7 @@ check("end_headers 仍设置 no-store", "no-store" in body)
 
 # ---------------- SEC-2 ----------------
 print("\n[SEC-2] /api/status 脱敏")
-ns = {"re": re, "copy": __import__("copy")}
+ns = {"re": re, "copy": __import__("copy"), "DAEMON_STATE": type("_DS", (), {"ensure_dict": staticmethod(lambda _: {})})()}
 exec(compile(slice_func(SRC, "def _mask_status_secrets", "def build_status_api_response"),
              "<mask>", "exec"), ns)
 mask = ns["_mask_status_secrets"]

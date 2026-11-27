@@ -723,12 +723,16 @@ function clearTrackedTimers() {
     }, stayMs);
   }
 
+  let _lastConfirmActionTs = 0;
   function confirmModal(title, message, onConfirm, confirmText) {
     openModal(
       title || '确认执行操作',
       '<div class="modal-form"><p style="line-height:1.65;color:var(--text)">' + esc(message || '请确认是否继续执行该操作？') + '</p></div>',
       'SECURITY CONFIRMATION',
       async () => {
+        const nowTs = Date.now();
+        if (nowTs - _lastConfirmActionTs < 500) return;
+        _lastConfirmActionTs = nowTs;
         closeModal();
         if (typeof onConfirm === 'function') await onConfirm();
       },

@@ -103,6 +103,18 @@ class DaemonState:
     """OPT-267-03: Singleton mutable state container replacing all scattered `global` declarations."""
     def __init__(self):
         self._store = {}
+        self._dicts = {}
+
+    def ensure_dict(self, name: str) -> dict:
+        """OPT-297-02: Register and return a named mutable dict inside DaemonState."""
+        d = self._dicts.get(name)
+        if d is None:
+            d = {}
+            self._dicts[name] = d
+        return d
+
+    def dict_registry(self) -> dict:
+        return dict(self._dicts)
 
     def get(self, key: str, default=None):
         return globals().get(key, self._store.get(key, default))
@@ -1630,8 +1642,7 @@ class NodeURIParser:
             ob["password"] = urllib.parse.unquote(parsed.password)
         return ob
 
-_NODE_REGION_OVERRIDES = {}
-
+_NODE_REGION_OVERRIDES = DAEMON_STATE.ensure_dict("_NODE_REGION_OVERRIDES")
 def _refresh_node_region_overrides(nodes: list) -> None:
     overrides = {}
     for n in nodes:
@@ -1954,8 +1965,7 @@ def count_user_nodes(nodes_or_dir=CONF_DIR) -> int:
     nodes_list = load_saved_nodes(nodes_or_dir) if isinstance(nodes_or_dir, Path) else (nodes_or_dir or [])
     return sum(1 for n in nodes_list if isinstance(n, dict) and not is_builtin_test_node(n.get("tag", "")))
 
-_SUB_PREVIEW_JACCARD_RING = {}
-
+_SUB_PREVIEW_JACCARD_RING = DAEMON_STATE.ensure_dict("_SUB_PREVIEW_JACCARD_RING")
 def preview_subscription_sync_impact(sub_id: str, incoming_nodes: list, sub_url: str = "", conf_dir: Path = CONF_DIR) -> dict:
     """v2.5.6 P1-4/P1-5 Full Identity Diff (`preserved`, `renamed`, `endpoint_changed`, `credential_changed`, `added`, `removed`),
     Jaccard dynamic subscription stability detector, and pool-scope-qualified replacement selector."""
@@ -2925,7 +2935,7 @@ def _get_min_singbox_proc_age() -> float:
 def _spawn_singbox_fallback_direct(conf_dir: Path = CONF_DIR) -> bool:
     return False
 
-_FAST_FILE_CACHE = {}
+_FAST_FILE_CACHE = DAEMON_STATE.ensure_dict("_FAST_FILE_CACHE")
 _FAST_CACHE_LOCK = threading.RLock()
 
 def _get_file_sig(p: Path) -> tuple:
@@ -2935,8 +2945,7 @@ def _get_file_sig(p: Path) -> tuple:
     except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         return (0, 0)
 
-_SYS_CMD_CACHE = {}
-
+_SYS_CMD_CACHE = DAEMON_STATE.ensure_dict("_SYS_CMD_CACHE")
 def _cached_Value(key: str, ttl_sec: float, fn):
     now = time.time()
     ent = _SYS_CMD_CACHE.get(key)
@@ -3972,8 +3981,8 @@ def compute_node_sliding_score(rec: dict, svc_checks: list = None) -> dict:
         "sparkline_20": [{"ok": h["state"] == "ok", "delay_ms": h["delay_ms"]} for h in hist[-20:]]
     }
 
-_EFF_PROBE_MEMO = {}
-_STORE_HAS_OK_MEMO = {}
+_EFF_PROBE_MEMO = DAEMON_STATE.ensure_dict("_EFF_PROBE_MEMO")
+_STORE_HAS_OK_MEMO = DAEMON_STATE.ensure_dict("_STORE_HAS_OK_MEMO")
 _LAST_PROBE_API_INVALIDATE_TS = 0.0
 
 def get_node_effective_probe(node_or_id, store: dict = None, now_ts: int = None, conf_dir: Path = CONF_DIR) -> dict:
@@ -5113,7 +5122,7 @@ AUTO_PROBE_INTERVALS = {
 
 LAST_DUAL_PROBE_LOG = {}
 
-_AUTO_POOL_RUNTIME_MAP = {}
+_AUTO_POOL_RUNTIME_MAP = DAEMON_STATE.ensure_dict("_AUTO_POOL_RUNTIME_MAP")
 _AUTO_POOL_RUNTIME_LOCK = threading.Lock()
 
 def _get_auto_pool_runtime_state(conf_dir: Path, pool_id: str) -> dict:
@@ -5153,8 +5162,7 @@ def _set_auto_pool_runtime_state(conf_dir: Path, pool_id: str, state_dict: dict)
             except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
                 globals().get("_record_internal_diag", str)(_e_diag)
 
-_PROBE_TUNING_MEMO = {}
-
+_PROBE_TUNING_MEMO = DAEMON_STATE.ensure_dict("_PROBE_TUNING_MEMO")
 def get_probe_tuning_params(conf_dir: Path = CONF_DIR) -> dict:
     ops_f = Path(conf_dir) / "ops_settings.json"
     uci_f = Path("/etc/config/ai-link")
@@ -10295,8 +10303,7 @@ PROBE_ENGINE = AIProbeEngine()
 def is_builtin_test_node(tag: str) -> bool:
     return 'Loopback' in (tag or '') or tag in ('SG-Hy2-Loopback-01', 'US-Mixed-Loopback-01')
 
-_NODE_REGION_MEMO = {}
-
+_NODE_REGION_MEMO = DAEMON_STATE.ensure_dict("_NODE_REGION_MEMO")
 def classify_node_region(tag: str, node_obj: dict = None) -> str:
     """Classifies a node tag into a standard country/region code: JP, US, SG, HK, TW, KR, OTHER, TEST (O(1) memoized)."""
     ro = (node_obj.get("region_override") or "").strip().upper() if isinstance(node_obj, dict) else ""
@@ -12315,8 +12322,7 @@ def probe_nodes_ipv6_capability(tags_or_ids: list = None, sub_id: str = "", regi
         "ipv6_governance": build_ipv6_governance_summary(conf_dir),
     }
 
-_IPV6_GOV_MEMO = {}
-
+_IPV6_GOV_MEMO = DAEMON_STATE.ensure_dict("_IPV6_GOV_MEMO")
 _HOST_IPV6_PROBE_CACHE = {"ts": 0.0, "ok": False, "rtt_ms": None, "target": "2400:3200::1", "reason": "untested"}
 
 def probe_host_ipv6_connectivity(force: bool = False, mock_ok: bool = None) -> dict:
@@ -12651,8 +12657,7 @@ def get_referenced_kernel_node_refs(conf_dir: Path = CONF_DIR, run_dir: Path = R
     refs.discard("block")
     return refs
 
-_TOP_N_OUTBOUNDS_MEMO = {}
-
+_TOP_N_OUTBOUNDS_MEMO = DAEMON_STATE.ensure_dict("_TOP_N_OUTBOUNDS_MEMO")
 def select_top_n_outbounds(saved_nodes: list, max_limit: int = 0, run_dir: Path = RUN_DIR, conf_dir: Path = CONF_DIR) -> list:
     _tn_sig = (
         str(conf_dir),
@@ -13051,8 +13056,7 @@ def sync_homelink_wan_firewall_rules(nodes: list) -> dict:
     except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning) as e:
         return {"ok": False, "reason": str(e)}
 
-_HOMELINK_API_MEMO = {}
-
+_HOMELINK_API_MEMO = DAEMON_STATE.ensure_dict("_HOMELINK_API_MEMO")
 def save_homelink_nodes(nodes: list, conf_dir: Path = CONF_DIR) -> list:
     _HOMELINK_API_MEMO.clear()
     conf_dir.mkdir(parents=True, exist_ok=True)
@@ -13851,8 +13855,7 @@ def _normalize_filter_domain_line(raw_line: str) -> str:
         return ""
     return cand
 
-_BLOCKED_DOMAINS_MEMO = {}
-
+_BLOCKED_DOMAINS_MEMO = DAEMON_STATE.ensure_dict("_BLOCKED_DOMAINS_MEMO")
 def _blocked_domains_cache_sig(conf_dir: Path = CONF_DIR) -> tuple:
     def _fsig(p: Path):
         try:
@@ -14272,8 +14275,7 @@ def _ingest_singbox_adblock_log(conf_dir: Path = CONF_DIR, log_path: Path = None
         _GALAXY_CACHE["ts"] = 0
     return new_hits
 
-_BLACKHOLE_TELEM_MEMO = {}
-
+_BLACKHOLE_TELEM_MEMO = DAEMON_STATE.ensure_dict("_BLACKHOLE_TELEM_MEMO")
 def build_blackhole_telemetry(conf_dir: Path = CONF_DIR) -> dict:
     """Builds the 3D Black Hole AdBlock & Privacy Sinkhole telemetry object for `/api/overview/galaxy` and `/api/dns/settings`."""
     bh_key = (
@@ -14423,8 +14425,7 @@ def _measure_real_dns_latency_ms(allow_network: bool = False):
     except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RuntimeError, LookupError, ArithmeticError, BufferError, EOFError, ImportError, StopIteration, AssertionError, MemoryError, NameError, ReferenceError, SyntaxError, SystemError, Warning):
         return cur_avg if (cur_avg and cur_avg > 0) else None
 
-_DNS_TELEM_MEMO = {}
-
+_DNS_TELEM_MEMO = DAEMON_STATE.ensure_dict("_DNS_TELEM_MEMO")
 def _verify_dns_shield_status(conf_dir: Path = CONF_DIR, flt_cfg: dict = None, rw_cfg: dict = None, total_rules: int = 0) -> dict:
     flt_cfg = flt_cfg or load_dns_filter_config(conf_dir)
     rw_cfg = rw_cfg or load_dns_rewrite_config(conf_dir)
@@ -15769,8 +15770,7 @@ def ensure_hy2_certs(certs_dir: Path) -> bool:
             globals().get("_record_internal_diag", str)(_e_diag)
     return crt.is_file() and key.is_file()
 
-_CA_CERT_INFO_MEMO = {}
-
+_CA_CERT_INFO_MEMO = DAEMON_STATE.ensure_dict("_CA_CERT_INFO_MEMO")
 def get_ca_cert_info(conf_dir: Path = CONF_DIR) -> dict:
     certs_dir = conf_dir / "certs"
     crt = certs_dir / "ca.crt"
@@ -16416,9 +16416,31 @@ def ensure_srs_rulesets(conf_dir: Path = CONF_DIR, timeout_per_file: float = 6.0
         "https://gh-proxy.com/https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo",
         "https://mirror.ghproxy.com/https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo",
     ])
+    _SRS_BACKOFF_STATE = DAEMON_STATE.ensure_dict("_SRS_BACKOFF_STATE")
+    _srs_sha_file = rules_dir / ".srs_checksums.json"
+    _srs_sha_map = {}
+    if _srs_sha_file.is_file():
+        try:
+            _loaded_sha = _safe_json_loads(_srs_sha_file.read_text(encoding="utf-8"), default={})
+            if isinstance(_loaded_sha, dict):
+                _srs_sha_map = dict(_loaded_sha)
+        except (OSError, ValueError, TypeError):
+            _srs_sha_map = {}
+    for _ef in existing:
+        if _ef not in _srs_sha_map:
+            try:
+                _srs_sha_map[_ef] = hashlib.sha256((rules_dir / _ef).read_bytes()).hexdigest()
+            except OSError as _e_srs_sha:
+                globals().get("_record_internal_diag", str)(_e_srs_sha)
+    _now_srs_ts = time.time()
     downloaded = []
     errors = []
+    backoff_skipped = []
     for fname in missing:
+        _b_info = _SRS_BACKOFF_STATE.get(fname) or {}
+        if float(_b_info.get("next_retry_ts", 0) or 0) > _now_srs_ts:
+            backoff_skipped.append(fname)
+            continue
         rel_path = SRS_CORE_MAP[fname]
         got = False
         for op in openers:
@@ -16431,6 +16453,8 @@ def ensure_srs_rulesets(conf_dir: Path = CONF_DIR, timeout_per_file: float = 6.0
                         data = resp.read()
                         if len(data) > 64 and data[:3] == b"SRS":
                             (rules_dir / fname).write_bytes(data)
+                            _srs_sha_map[fname] = hashlib.sha256(data).hexdigest()
+                            _SRS_BACKOFF_STATE.pop(fname, None)
                             downloaded.append(fname)
                             got = True
                             break
@@ -16444,16 +16468,28 @@ def ensure_srs_rulesets(conf_dir: Path = CONF_DIR, timeout_per_file: float = 6.0
             subprocess.run(["logger", "-t", "ai-link", f"WARN: {len(still_missing)} .srs rule-sets missing ({still_missing[:3]}); using built-in 80+ CN domain rules."], capture_output=True, timeout=2)
         except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError, RuntimeError, subprocess.SubprocessError) as _e_diag:
             globals().get("_record_internal_diag", str)(_e_diag)
+    for _mf in still_missing:
+        if _mf not in backoff_skipped:
+            _prev_b = _SRS_BACKOFF_STATE.get(_mf) or {}
+            _fail_cnt = int(_prev_b.get("failures", 0) or 0) + 1
+            _delay_s = min(3600, 15 * (2 ** min(_fail_cnt - 1, 8)))
+            _SRS_BACKOFF_STATE[_mf] = {"failures": _fail_cnt, "backoff_s": _delay_s, "next_retry_ts": time.time() + _delay_s}
+    if _srs_sha_map:
+        try:
+            _atomic_write_text(_srs_sha_file, json.dumps(_srs_sha_map, ensure_ascii=False, indent=2))
+        except OSError:
+            pass
     return {
         "ok": len(now_installed) > 0,
         "installed": now_installed,
         "downloaded": downloaded,
         "missing": still_missing,
+        "backoff_skipped": backoff_skipped,
+        "checksums": {k: v for k, v in _srs_sha_map.items() if k in now_installed},
         "errors": errors[:5]
     }
 
-_CORE_RT_INFO_MEMO = {}
-
+_CORE_RT_INFO_MEMO = DAEMON_STATE.ensure_dict("_CORE_RT_INFO_MEMO")
 def get_core_runtime_info(conf_dir: Path = CONF_DIR) -> dict:
     now = time.time()
     rt_sig = (
@@ -17461,8 +17497,7 @@ def sync_selections_from_clash(conf_dir: Path = CONF_DIR, force: bool = False) -
         globals().get("_record_internal_diag", str)(_e_diag)
     return PROBE_ENGINE.current_selections
 
-_SHUNT_API_MEMO = {}
-
+_SHUNT_API_MEMO = DAEMON_STATE.ensure_dict("_SHUNT_API_MEMO")
 _LAST_SYNCED_SHUNT_MTIME = 0
 
 def build_shunt_api_response(conf_dir: Path = CONF_DIR) -> dict:
@@ -17764,13 +17799,11 @@ def build_shunt_api_response(conf_dir: Path = CONF_DIR) -> dict:
     _SHUNT_API_MEMO[sh_key_final] = _sh_resp_obj
     return dict(_sh_resp_obj)
 
-_NODES_API_MEMO = {}
-_AUTO_NODES_API_MEMO = {}
-_STATUS_API_MEMO = {}
-_JSON_WIRE_MEMO = {}
-
-_MTIMES_FAST_CACHE = {}
-
+_NODES_API_MEMO = DAEMON_STATE.ensure_dict("_NODES_API_MEMO")
+_AUTO_NODES_API_MEMO = DAEMON_STATE.ensure_dict("_AUTO_NODES_API_MEMO")
+_STATUS_API_MEMO = DAEMON_STATE.ensure_dict("_STATUS_API_MEMO")
+_JSON_WIRE_MEMO = DAEMON_STATE.ensure_dict("_JSON_WIRE_MEMO")
+_MTIMES_FAST_CACHE = DAEMON_STATE.ensure_dict("_MTIMES_FAST_CACHE")
 def _conf_file_mtimes_sig(conf_dir: Path, filenames: tuple) -> tuple:
     res = []
     for fn in filenames:
@@ -18802,7 +18835,7 @@ _STATUS_COW_CACHE = {
 _SUB_SYNC_INFLIGHT = set()
 _SUB_SYNC_INFLIGHT_LOCK = threading.Lock()
 POOL_SWITCH_SMOOTH_DEBOUNCE_S = 15
-_POOL_LAST_SWITCH_TS_MAP = {}
+_POOL_LAST_SWITCH_TS_MAP = DAEMON_STATE.ensure_dict("_POOL_LAST_SWITCH_TS_MAP")
 _BOOT_STAGE_TIMINGS_MS = {
     "config_load_ms": 4.2,
     "cidr_index_ms": 6.8,
@@ -19449,8 +19482,7 @@ def _mask_status_secrets(payload: dict) -> dict:
 
 
 
-_LAST_SELECTIONS_FILE_SIG = {}
-
+_LAST_SELECTIONS_FILE_SIG = DAEMON_STATE.ensure_dict("_LAST_SELECTIONS_FILE_SIG")
 def build_status_api_response(conf_dir: Path = CONF_DIR, include_fields: set = None, lite: bool = False) -> dict:
     """v2.5.12 P0-1 (N1), P0-2 (N2) & P1-1 (N3) Fix:
     - Default (`lite=False`): returns 16/16 complete group `domains` (`status.shunt.groups[].domains == shunt.groups[].domains`), `< 0.50 * include_full`, `gzip <= 16KB`.
@@ -19792,8 +19824,7 @@ def flush_all_dns_caches() -> dict:
         globals().get("_record_internal_diag", str)(_e_diag)
     return {"ok": True, "singbox_dns_flushed": sb_flushed, "dnsmasq_sighup": dnsmasq_flushed}
 
-_SRS_MATCH_MEMO = {}
-
+_SRS_MATCH_MEMO = DAEMON_STATE.ensure_dict("_SRS_MATCH_MEMO")
 def match_srs_ruleset_target(srs_path: Path, target: str) -> bool:
     """Borrow 11 (NOLO api/penetration.mjs): sing-box rule-set match prints result to stderr on 1.13/1.14; check stdout+stderr.
     v2.5.14 Fix: Validates binary .srs header first, passes `-f binary` flag, and memoizes by (path, mtime_ns, target)."""
@@ -22431,8 +22462,7 @@ def is_bypass_active() -> bool:
             return True
     return False
 
-_UCI_VAL_MEMO = {}
-
+_UCI_VAL_MEMO = DAEMON_STATE.ensure_dict("_UCI_VAL_MEMO")
 def _uci_get_bool(key: str, default: bool = True) -> bool:
     now = time.time()
     uci_sig = _get_file_sig(Path("/etc/config/ai-link"))
@@ -22477,7 +22507,7 @@ def _uci_get_str(key: str, default: str = "") -> str:
     _UCI_VAL_MEMO[ckey] = (now, res)
     return res
 
-_OPS_SETTINGS_MEMO = {}
+_OPS_SETTINGS_MEMO = DAEMON_STATE.ensure_dict("_OPS_SETTINGS_MEMO")
 _OPS_SETTINGS_LOCK = threading.RLock()
 OPS_PERSIST_KEYS = (
     "enabled", "entry_bypass", "block_quic", "game_udp_direct",
@@ -23025,9 +23055,8 @@ def _update_ops_settings_locked(payload: dict, conf_dir: Path = CONF_DIR) -> dic
     latest = get_ops_settings(conf_dir)
     return {**latest, "ok": True, "settings": latest, "reloaded": True}
 
-_CIDR_V4_RANGE_MEMO = {}
-_CIDR_V6_NET_MEMO = {}
-
+_CIDR_V4_RANGE_MEMO = DAEMON_STATE.ensure_dict("_CIDR_V4_RANGE_MEMO")
+_CIDR_V6_NET_MEMO = DAEMON_STATE.ensure_dict("_CIDR_V6_NET_MEMO")
 def _ipv4_to_u32_fast(ip_s: str) -> int:
     parts = ip_s.split(".")
     if len(parts) != 4:
@@ -26642,9 +26671,9 @@ def check_all_updatable_items(conf_dir: Path = CONF_DIR) -> dict:
 #   4) 升级前自动备份「用户数据 + 旧代码」，健康检查失败自动回滚；
 #   5) 全程只写 /var/run/ai-link/update（tmpfs）与 /root/ai-link-final-backup。
 # ==============================================================================
-APP_VERSION = "2.9.6"
+APP_VERSION = "2.9.7"
 APP_CHANNEL = "stable"
-APP_BUILD = "2.9.6-release-20261127-r74"
+APP_BUILD = "2.9.7-release-20261127-r75"
 if "_safe_json_loads" not in globals():
     def _safe_json_loads(raw, default=None):
         return getattr(json, "loads")(raw) if default is None else (getattr(json, "loads")(raw) if raw else default)
@@ -27772,10 +27801,8 @@ _H3_APP_TARGETS = [
     ("github",   "https://github.com/"),
     ("telegram", "https://telegram.org/"),
 ]
-_H3_APP_MS = {}
-_H3_APP_TS = {}
-
-
+_H3_APP_MS = DAEMON_STATE.ensure_dict("_H3_APP_MS")
+_H3_APP_TS = DAEMON_STATE.ensure_dict("_H3_APP_TS")
 def app_probe_all():
     def _job(item):
         k, u = item
@@ -34329,6 +34356,7 @@ try:
         check_homelink_qr_topology_warning,
         check_ip_rule_pref_conflict,
         DIAG_DOMAIN_MAP_V293,
+        record_bypass_ra_and_gateway_drift,
         secure_token_hex,
         probe_tcp_socket_safe,
         cross_fs_atomic_move,

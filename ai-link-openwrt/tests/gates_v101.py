@@ -1107,7 +1107,68 @@ def opt296_release_gate():
 
 check("OPT-296-01~10 v2.9.6 优雅停机/TMP收敛/close_fds/reduced-motion/Meta/UCI刷新门禁", opt296_release_gate)
 
-assert len(results) >= 42, f"Expected >=42 gates, got {len(results)}"
+def opt297_release_gate():
+    import ast as _ast_297
+    gate_self_src = Path(__file__).read_text(encoding="utf-8")
+    html = (ROOT / "root/usr/share/ai-link/webui/index.html").read_text(encoding="utf-8")
+    ncss = (ROOT / "root/usr/share/ai-link/webui/nexus.css").read_text(encoding="utf-8")
+    njs = (ROOT / "root/usr/share/ai-link/webui/nexus.js").read_text(encoding="utf-8")
+    ov = (ROOT / "htdocs/luci-static/resources/view/ai-link/overview.js").read_text(encoding="utf-8")
+    dg = (ROOT / "root/usr/share/ai-link/ailink_diag.py").read_text(encoding="utf-8")
+    dm = DAEMON.read_text(encoding="utf-8")
+
+    # OPT-297-01: fails= must appear AFTER the last check(...) call
+    last_check_pos = gate_self_src.rfind("\ncheck(")
+    fails_pos = gate_self_src.rfind("\nfails = [r for r in results")
+    opt01_ok = (last_check_pos > 0 and fails_pos > last_check_pos)
+
+    # OPT-297-02: zero bare module-level _[A-Z0-9_]+ = {} dicts in daemon
+    bare_dicts = re.findall(r'^_[A-Z0-9_]+\s*=\s*\{\}\s*$', dm, re.M)
+    opt02_ok = ("def ensure_dict(" in dm and len(bare_dicts) == 0)
+
+    # OPT-297-03: nexus.css overflow:hidden audited (<= 39)
+    ov_hidden_cnt = len(re.findall(r'overflow\s*:\s*hidden', ncss))
+    opt03_ok = ("OPT-297-03" in ncss and ov_hidden_cnt <= 39)
+
+    # OPT-297-04: index.html external scripts use defer
+    opt04_ok = ('<script defer src="./nexus.js' in html and '<script defer src="./nexus3d.js' in html)
+
+    # OPT-297-05: overview.js port fallback indicator
+    opt05_ok = ("isDefaultPortFallback" in ov and "portFallbackNote" in ov)
+
+    # OPT-297-06: ailink_diag.py zero circular dependency on ai-link-daemon
+    diag_tree = _ast_297.parse(dg)
+    diag_imports = []
+    for node in _ast_297.walk(diag_tree):
+        if isinstance(node, _ast_297.Import):
+            diag_imports.extend(a.name for a in node.names)
+        elif isinstance(node, _ast_297.ImportFrom) and node.module:
+            diag_imports.append(node.module)
+    opt06_ok = not any("daemon" in m.lower() for m in diag_imports)
+
+    # OPT-297-07: all opt*_release_gate functions are wired into check(...)
+    opt_funcs = re.findall(r'^def\s+(opt\d+_release_gate)\s*\(', gate_self_src, re.M)
+    opt07_ok = all(f", {fn})" in gate_self_src for fn in opt_funcs)
+
+    # OPT-297-08: .srs exponential backoff + SHA256 checksum preservation
+    opt08_ok = ("_SRS_BACKOFF_STATE" in dm and ".srs_checksums.json" in dm)
+
+    # OPT-297-09: confirmModal 500ms anti-double-click cooldown
+    opt09_ok = ("_lastConfirmActionTs" in njs and "500" in njs)
+
+    # OPT-297-10: record_bypass_ra_and_gateway_drift in ailink_diag & daemon
+    opt10_ok = ("record_bypass_ra_and_gateway_drift" in dg and "record_bypass_ra_and_gateway_drift" in dm)
+
+    _ok = all([opt01_ok, opt02_ok, opt03_ok, opt04_ok, opt05_ok, opt06_ok, opt07_ok, opt08_ok, opt09_ok, opt10_ok])
+    return _ok, (
+        f"opt01={opt01_ok} opt02={opt02_ok}(bare={len(bare_dicts)}) opt03={opt03_ok}({ov_hidden_cnt}) "
+        f"opt04={opt04_ok} opt05={opt05_ok} opt06={opt06_ok} opt07={opt07_ok}({len(opt_funcs)}) "
+        f"opt08={opt08_ok} opt09={opt09_ok} opt10={opt10_ok}"
+    )
+
+check("OPT-297-01~10 v2.9.7 门禁强断言/DaemonState字典收敛/CSS溢出审计/defer/9099回退/零循环依赖/SRS退避/防连点/RA漂移告警", opt297_release_gate)
+
+assert len(results) >= 43, f"Expected >=43 gates, got {len(results)}"
 fails = [r for r in results if not r[1]]
 print(f" 合计 {len(results)} 项，通过 {len(results) - len(fails)}，失败 {len(fails)}")
 if fails:

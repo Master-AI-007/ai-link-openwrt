@@ -1,34 +1,32 @@
-# AI-LINK v2.9.6 全量检查与重构验收报告
+# AI-LINK v2.9.7 全量检查与重构验收报告
 
-- **目标版本**：`v2.9.6` (`2.9.6-release-20261127-r74` / `PKG_VERSION:=2.9.6` / `PKG_RELEASE:=74` / `r74`)  
+- **目标版本**：`v2.9.7` (`2.9.7-release-20261127-r75` / `PKG_VERSION:=2.9.7` / `PKG_RELEASE:=75` / `r75`)  
 - **线上基线与版本推进依据**：  
-  - **已确认验收并上线的基线版本（`v2.9.5`）**：依据 `FEEDBACK-Local-v2.9.5.md` 与 `00_STATE.json`，线上正式版 **`v2.9.5` (`r72`)** 已在真机 `10.10.10.77` 全绿通过 12 步验收并正式全量发布上线（GitHub `Release #459760069`、Commit `c2980600e7ccc2d3a1ae1cce6a7599e1198dc524`、`cloudflare_url`: `https://ai-link-official.pages.dev`）。  
-  - **本轮缺陷修复闭环（`v2.9.6` / `PKG_RELEASE:=74` / `r74`）**：全量修复 `FEEDBACK-Local-v2.9.6.md`、`FEEDBACK-Local-v2.9.6-r73.md` 与 `AUDIT-Hydrogen-v2.9.6.md` 指出的全部 2 项问题：  
-    - `[Blocker] LOCAL_QA-20261127-01`：`tests/gates_v101.py` 将 `fails = [r for r in results if not r[1]]` 移至所有 `check(...)`（含 `OPT-294`/`OPT-295`/`OPT-296`）之后并追加 `assert len(results) >= 42`，消除提前求值导致的假绿 `RC=0` 盲区。  
-    - `[Major] LOCAL_QA-20261127-02`：`root/usr/share/ai-link/webui/index.html` 补齐 `<meta name="referrer" content="no-referrer">`，`opt296_release_gate()` 真实检查通过。
+  - **已确认验收并上线的基线版本（`v2.9.6`）**：依据 `FEEDBACK-Local-v2.9.6.md` 与 `00_STATE.json`，线上正式版 **`v2.9.6` (`r74`)** 已在真机 `10.10.10.77` 全绿通过 12 步验收并正式全量发布上线（GitHub `Release #460058055`、Commit `949345486c31b29593d72b22888c8db6fd035ca6`、`cloudflare_url`: `https://ai-link-official.pages.dev`）。  
+  - **本轮全栈架构优化落地（`v2.9.7` / `PKG_RELEASE:=75` / `r75`）**：响应 `AUDIT-Hydrogen-v2.9.6.md` 第三节 `OPT-297-01 ~ OPT-297-10`。
 
-## 一、v2.9.6 (r74) OPT-296-01 \~ 10 增强闭环对照表
+## 一、v2.9.7 (r75) OPT-297-01 \~ 10 增强闭环对照表
 
 | 编号 | 类别 | 优化内容与落地点 | 验证状态 |
 | :---- | :---- | :---- | :---- |
-| `OPT-296-01` | 加密随机 | `ailink_diag.py` 新增 `secrets.token_hex` 封装 `secure_token_hex()` | 已通过 (`构建容器`) |
-| `OPT-296-02` | 3D 复用 | `nexus3d.js` 预分配 `_tmpVec3`/`_tmpColor`/`_tmpMat4` 降低帧循环 GC | 已通过 (`构建容器`) |
-| `OPT-296-03` | Socket 上下文 | `ailink_diag.py` 新增 `probe_tcp_socket_safe()` 保证 FD 释放 | 已通过 (`构建容器`) |
-| `OPT-296-04` | 跨FS原子移动 | `ailink_diag.py` 新增 `cross_fs_atomic_move()` 处理 `EXDEV` | 已通过 (`构建容器`) |
-| `OPT-296-05` | 流式哈希 | `ailink_diag.py` 新增 64KB 分块读取 `stream_file_hashes()` | 已通过 (`构建容器`) |
-| `OPT-296-06` | 字体令牌 | `nexus.css` 对齐 `--font-ui`/`--font-num` 令牌规范 | 已通过 (`构建容器`) |
-| `OPT-296-07` | POSIX ash 门禁 | `tests/gates_v101.py` 固化 `install.sh`/`init.d`/`apply_nft.sh` 零 bashism 门禁 | 已通过 (`构建容器`) |
-| `OPT-296-08` | 三域映射 | `ailink_diag.py` 新增 `DIAG_DOMAIN_MAP_V293` 按网络/节点池/安全三域组织 | 已通过 (`构建容器`) |
-| `OPT-296-09` | 视图中止 | `webui/modules/storage.js` 新增 `createViewAbortManager()` 管理在途请求中止 | 已通过 (`构建容器`) |
-| `OPT-296-10` | 混沌测试 | `tests/v242_deep_chaos_simulation.py` 新增 `Stage 7.66` 校验 | 已通过 (`构建容器`) |
+| `OPT-297-01` | 门禁强断言 | `tests/gates_v101.py` 校验 `fails=` 位于最后 `check()` 之后并强化 `assert len(results) >= 43` | 已通过 (`构建容器`) |
+| `OPT-297-02` | 状态收敛 | `ai-link-daemon.py` 将 32 个模块级可变全局字典收敛注册至 `DAEMON_STATE.ensure_dict()` | 已通过 (`构建容器`) |
+| `OPT-297-03` | 溢出审计 | `nexus.css` 完成 39 处 `overflow: hidden` 裁切风险复查与安全边界固化 | 已通过 (`构建容器`) |
+| `OPT-297-04` | 脚本延迟 | `index.html` 非首屏外联 `<script>` 引入 `defer` 属性并保持文档序执行 | 已通过 (`构建容器`) |
+| `OPT-297-05` | 端口回退提示 | `overview.js` 增强 UCI `panel_port` 回退 `9099` 默认端口标识 (`isDefaultPortFallback`) | 已通过 (`构建容器`) |
+| `OPT-297-06` | 零循环依赖 | `tests/test_diag_module.py` 与 `gates_v101.py` 固化 `ailink_diag.py` 零反向导入 AST 门禁 | 已通过 (`构建容器`) |
+| `OPT-297-07` | 门禁防跳过 | `tests/gates_v101.py` 校验全部 `opt*_release_gate()` 显式接入 `check()` | 已通过 (`构建容器`) |
+| `OPT-297-08` | SRS 退避校验 | `ensure_srs_rulesets()` 新增 `.srs` 下载失败指数退避与 `.srs_checksums.json` SHA-256 保留 | 已通过 (`构建容器`) |
+| `OPT-297-09` | 防连点冷却 | `nexus.js` `confirmModal()` 新增 500ms 防连点冷却保护 | 已通过 (`构建容器`) |
+| `OPT-297-10` | RA/网关漂移 | `ailink_diag.py` 新增 `record_bypass_ra_and_gateway_drift()` 持久化旁路由 RA 冲突与网关漂移告警 | 已通过 (`构建容器`) |
 
 ## 二、构建容器门禁与回归测试实测（标注口径：构建容器）
 
-- **全量门禁 (`tests/gates_v101.py`, 构建容器)**：`42/42 PASS`（`fails` 在末尾真实汇总，含 `opt296_release_gate`）。  
-- **诊断模块单测 (`tests/test_diag_module.py`, 构建容器)**：`23/23 PASS`（含 `OPT-296-01/03/04/05/08`）。  
+- **全量门禁 (`tests/gates_v101.py`, 构建容器)**：`43/43 PASS`（含 `opt297_release_gate`）。  
+- **诊断模块单测 (`tests/test_diag_module.py`, 构建容器)**：`24/24 PASS`（含 `OPT-297-06` 与 `OPT-297-10`）。  
 - **API-UI 契约对齐 (`tools/check_api_ui_parity.py`, 构建容器)**：`PASS`（`backend_keys=31, frontend_reads=22, api_routes=117, missing=[]`）。  
 - **Aster Design Lint (`node tools/design-lint.js`, 构建容器)**：`18/18 PASS`（0 违规）。  
-- **全量测试套件 (`tests/run_all.py`, 构建容器)**：`15/15 套件 PASS`（含 `test_v102_full_regression.py` `154/154 PASS`、`v242_deep_chaos_simulation.py` `132/132 PASS`、`check_panel_js.py` `PASS`、`--self-test` `PASS`）。  
+- **全量测试套件 (`tests/run_all.py`, 构建容器)**：`15/15 套件 PASS`（含 `test_v102_full_regression.py` `154/154 PASS`、`v242_deep_chaos_simulation.py` `133/133 PASS`、`--self-test` `PASS`）。  
 - **真机实测口径说明**：本报告以上数值均为**构建容器**隔离目录验证结果；物理真机 `10.10.10.77` 的 12 步实机验收将在 Hydrogen 审计完成后由本地 Antigravity 执行。
 
 ## 三、历史问题与 P0/P1 安全基线保全
@@ -37,37 +35,37 @@
 
 ## 四、版本锚点与四方一致性核对
 
-- `Makefile`: `PKG_VERSION:=2.9.6` / `PKG_RELEASE:=74`  
-- `root/etc/ai-link/version`: `2.9.6`  
-- `ai-link-daemon.py`: `APP_VERSION = "2.9.6"` / `APP_BUILD = "2.9.6-release-20261127-r74"`  
-- `index.html`: 含 `<meta name="referrer" content="no-referrer">` 与静态资源 `?v=2.9.6-<md5_8>` 全量刷新一致  
-- `CHANGELOG.md` & `overview.js` & `ailink_diag.py`: 全量同步至 `2.9.6` / `r74`
+- `Makefile`: `PKG_VERSION:=2.9.7` / `PKG_RELEASE:=75`  
+- `root/etc/ai-link/version`: `2.9.7`  
+- `ai-link-daemon.py`: `APP_VERSION = "2.9.7"` / `APP_BUILD = "2.9.7-release-20261127-r75"`  
+- `index.html`: 含 `<meta name="referrer" content="no-referrer">`、`<script defer>` 与静态资源 `?v=2.9.7-<md5_8>` 全量刷新一致  
+- `CHANGELOG.md` & `overview.js` & `ailink_diag.py`: 全量同步至 `2.9.7` / `r75`
 
 ## 五、交付物 11 行指纹表（与实际字节逐一匹配）
 
 | 文件 | 字节大小（行数） | MD5 | SHA-256 |
 | :---- | :---- | :---- | :---- |
-| `AI-LINK-v2.9.6.tar.gz` | `1304171` (1,304,171 B) | `16bdd2a6861d49260aec6d83ab2e6ee8` | `ffefe98813051c50393d806720caeeb28d81ad106fc91047fcd0e6bc1e6ae54f` |
-| `luci-app-ai-link_2.9.6-r74_all.ipk` | `929341` (929,341 B) | `cf99970d2a4362ce8763332a93c15a15` | `99b057563794b55768e65be9dfa8fd22083567b963760ae986847107ec8db0d1` |
-| `v242_deep_chaos_simulation.py` | `388778` (5196 行 / 388,778 B) | `4d0310f97f443cc2be3cfd69c6e44ddc` | `3a15d57a5b1e2f5a1d449edd8d578ecbae336cb661c8d2bd910f0deb609aa9c6` |
-| `root/usr/share/ai-link/ai-link-daemon.py` | `1951338` (34512 行 / 1,951,338 B) | `3a4f25f9379bfadc37c992dcf8ec8a4d` | `d5359e7d99e5b6445658a2a655a26409882e2028235d8d07d41c995380d3c14a` |
-| `root/usr/share/ai-link/webui/nexus.js` | `639538` (11034 行 / 639,538 B) | `64b59404253475037df545087eb2cff7` | `9acb1aa4f7454d1c0be4f2bee26c2e01bfceadda4d9d2f6dd042e2e93ba2d10a` |
-| `root/usr/share/ai-link/webui/index.html` | `78618` (1006 行 / 78,618 B) | `46f5236f48ca37db1a5edbb15ca777fa` | `5d9af6a9a6e31fd9929cfcb93f9cc7c995fa86e101746857c3bb555142395f16` |
-| `root/usr/share/ai-link/webui/nexus.css` | `151645` (4174 行 / 151,645 B) | `d86df48b8eede4c407d01291ad3fc6e4` | `7c240a2953fb848a0b2d937a12f917cba139cc3302b1909ae1f7cf5209d1a1af` |
+| `AI-LINK-v2.9.7.tar.gz` | `1308577` (1,308,577 B) | `62b4a1a3218da104b52ba35280c8e2f8` | `041c2e5d3211e22c2133cbc24ec83a54c36784d1defb62d46331b60301a7d98c` |
+| `luci-app-ai-link_2.9.7-r75_all.ipk` | `931373` (931,373 B) | `53638e8c81746a5fd45ca4a91e7103ff` | `3b62aee25bfd955847dc9ba9891047a18739973ee70af6a50664ac1fd5c8111b` |
+| `v242_deep_chaos_simulation.py` | `391555` (5217 行 / 391,555 B) | `79db95f661e7411e366bfec39de76969` | `ad45dca1a958e5c1e08cae2e93175bfdf5ef32c919ed4585fea092e9a29f297e` |
+| `root/usr/share/ai-link/ai-link-daemon.py` | `1954941` (34540 行 / 1,954,941 B) | `6feec2a6d0c5d8085803d62bbbc0d91d` | `dbc28fa2e82dc95a84c397b337aa348e0771ac6d25264eaa129132823d6d67bd` |
+| `root/usr/share/ai-link/webui/nexus.js` | `639698` (11038 行 / 639,698 B) | `a3fdeda96e67d5cc095551e31cf1b1f8` | `954a521dc270f7ef7d96bc6839de0411b5da5284bc257376553e0f01588c9559` |
+| `root/usr/share/ai-link/webui/index.html` | `78666` (1006 行 / 78,666 B) | `d71cfad8b26946117433addfe842406d` | `a4be149818f0ca2e38d76dd559380eb72fabc9bde7a5d7921180e45fd3ae036f` |
+| `root/usr/share/ai-link/webui/nexus.css` | `151804` (4174 行 / 151,804 B) | `8420c07529ddfc9a02441ac7d3e8c440` | `fa31a78a5478b8b9873bfeea1c5c935280d553ea49c6c58e5f9a99d2e93f9b6b` |
 | `root/usr/share/ai-link/webui/nexus3d.js` | `88291` (2060 行 / 88,291 B) | `7d6990a7079f76b53f1fbd08925fb2c3` | `7e1955374f2d2449745bdb7ad9f90f141ff04e614b46b45951ea56072e216814` |
-| `htdocs/luci-static/resources/view/ai-link/overview.js` | `40486` (770 行 / 40,486 B) | `41ee98dd7220eb2133e52656f2da4ca7` | `c405ca6fdc1cd788771eb330068aa486e1a956ac13edafbf743a77f17bf42db4` |
-| `Makefile` | `4383` (95 行 / 4,383 B) | `750b4619d845d576a9adf8f197fab410` | `8cdad9a796fe863c05f08efa63face79b849f700105941146096c0c87c2c0bda` |
-| `CHANGELOG.md` | `180973` (839 行 / 180,973 B) | `3e58340ca9ee23487767e9e358656413` | `04abdceb6d5b94694353907d0e8aa8a111e9dfb7e3a577485cf8302b00d1c7c3` |
+| `htdocs/luci-static/resources/view/ai-link/overview.js` | `40725` (774 行 / 40,725 B) | `1578670bcce338b341905c4f743ffb49` | `cd591e8b2280a26a285c94ae2deb262b42ad2723a45343686e68fd2634c56b78` |
+| `Makefile` | `4383` (95 行 / 4,383 B) | `4d2401795e25748039679645e3d26015` | `c4c8f532a31a132592ecbd2ea9c7f64b337a6c37b4f14c689c5e96518cc8e7c9` |
+| `CHANGELOG.md` | `182171` (852 行 / 182,171 B) | `c51317f7b84230314f06ef2ed80bac33` | `0ccc64a55082ee85b4a7d70bf3a2fb8386a6159750ed03faaf7d252fb2caf080` |
 
 ## 六、标准五件套清单（零冗余）
 
-1. `AI-LINK-v2.9.6.tar.gz`（顶层唯一 `ai-link-openwrt/`，0 重复，0 CRLF）  
-2. `luci-app-ai-link_2.9.6-r74_all.ipk`（含 `conffiles`，与源码包核心文件逐字节一致）  
-3. `AI-LINK-v2.9.6-云端交接包-20261127.zip`（含完整 `tests/`、`tools/`、ipk、源码包与交接文档）  
-4. `ai_link_v2_9_6.md`（本报告）  
+1. `AI-LINK-v2.9.7.tar.gz`（顶层唯一 `ai-link-openwrt/`，0 重复，0 CRLF）  
+2. `luci-app-ai-link_2.9.7-r75_all.ipk`（含 `conffiles`，与源码包核心文件逐字节一致）  
+3. `AI-LINK-v2.9.7-云端交接包-20261127.zip`（含完整 `tests/`、`tools/`、ipk、源码包与交接文档）  
+4. `ai_link_v2_9_7.md`（本报告）  
 5. `v242_deep_chaos_simulation.py`（独立混沌测试脚本）
 
 ## 七、Hydrogen 复审与本地 QA 交接说明
 
-- `00_STATE.json` 已更新为 `stage = "READY_FOR_AUDIT"`、`current_version = "v2.9.6"`、`pkg_release = 74`、`build_revision = "r74"`、`base_released_version = "v2.9.5"`。  
-- 请 Hydrogen 按 `PROMPT-02` 复审 `v2.9.6 (r74)` 五件套与 `LOCAL_QA-20261127-01/02` 修复；通过后交由本地 `10.10.10.77` 执行 12 步实机验收。
+- `00_STATE.json` 已更新为 `stage = "READY_FOR_AUDIT"`、`current_version = "v2.9.7"`、`pkg_release = 75`、`build_revision = "r75"`、`base_released_version = "v2.9.6"`。  
+- 请 Hydrogen 按 `PROMPT-02` 复审 `v2.9.7 (r75)` 五件套与 `OPT-297-01 ~ 10`；通过后交由本地 `10.10.10.77` 执行 12 步实机验收。

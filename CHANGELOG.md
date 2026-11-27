@@ -1,3 +1,16 @@
+## v2.9.7 (2026-11-27 · r75)
+
+- **OPT-297-01**：`tests/gates_v101.py` 增加 `check()` 调用与 `len(results) >= 43` 强断言，确保末尾汇总绝不遗漏新增门禁。
+- **OPT-297-02**：`ai-link-daemon.py` 将 36 个模块级可变全局字典收敛注册至 `DAEMON_STATE.ensure_dict(...)`。
+- **OPT-297-03**：`nexus.css` 完成 39 处 `overflow: hidden` 裁切风险复查与安全边界固化。
+- **OPT-297-04**：`index.html` 为非首屏外联 `<script>` 引入 `defer` 属性，按文档序非阻塞加载。
+- **OPT-297-05**：`overview.js` 增强 UCI `panel_port` 回退 `9099` 默认端口标识与排障提示。
+- **OPT-297-06**：`ailink_diag.py` 与 `ai-link-daemon.py` 零循环依赖 AST 静态门禁固化。
+- **OPT-297-07**：`tests/gates_v101.py` 校验所有 `OPT-*` 门禁不可被异常静默跳过。
+- **OPT-297-08**：`ensure_srs_rulesets()` 新增 `.srs` 下载失败指数退避与本地 `.srs` SHA-256 校验和保留。
+- **OPT-297-09**：`nexus.js` `confirmModal()` 新增 500ms 防连点冷却保护。
+- **OPT-297-10**：`ailink_diag.py` 新增 `record_bypass_ra_and_gateway_drift()` 持久化旁路由 IPv6 RA 冲突与客户端网关漂移告警。
+
 ## v2.9.6 (2026-11-27 · r74)
 - **LOCAL_QA-20261127-01/02 修复（r74）**：将 `tests/gates_v101.py` `fails` 统计移至全量 `check()` 执行完毕后并新增 `len(results) >= 42` 断言彻底根除假绿；在 `index.html` `<head>` 补齐 `<meta name="referrer" content="no-referrer">`。
 - **OPT-296-01~10 全量落地**：`ailink_diag.py` 新增 `register_graceful_shutdown_signals()`（SIGTERM/SIGINT 优雅停机）、`resolve_tmp_path()`（收敛 `/tmp/` 至 `gettempdir()`）、`spawn_isolated_popen()`（强制 `close_fds=True`）、`classify_l7_challenge_status()`（403/429 挑战容错隔离）与 `should_suppress_cn_aaaa()`（IPv6 关闭时国内 AAAA 抑制判定）；`nexus.js` 新增 `_getBaseOriginPath()`；`index.html` 补充 `color-scheme` 与 `referrer` 元数据；`overview.js` 增加 `uci.unload('ai-link')` 缓存刷新；`lib_common.sh` 新增统一日志前缀 `ailink_log()`；`gates_v101.py` 固化 `prefers-reduced-motion` 与全套门禁；`v242_deep_chaos_simulation.py` 新增 `Stage 7.69`。

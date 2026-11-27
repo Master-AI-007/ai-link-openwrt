@@ -311,6 +311,36 @@ def main() -> int:
         len(_tok) == 32 and _sock_false is False and _sh293.get("size") == 16 and len(diag.DIAG_DOMAIN_MAP_V293) == 3,
     )
 
+    # 24. OPT-297-06 & OPT-297-10 zero circular import & RA/gateway drift persistence
+    import ast as _ast_td
+    _dg_src = (ROOT / "root/usr/share/ai-link/ailink_diag.py").read_text(encoding="utf-8")
+    _dg_imps = []
+    for _n in _ast_td.walk(_ast_td.parse(_dg_src)):
+        if isinstance(_n, _ast_td.Import):
+            _dg_imps.extend(_a.name for _a in _n.names)
+        elif isinstance(_n, _ast_td.ImportFrom) and _n.module:
+            _dg_imps.append(_n.module)
+    _no_circ = not any("daemon" in _m.lower() for _m in _dg_imps)
+    with tempfile.TemporaryDirectory() as _td297:
+        _ra_res = diag.record_bypass_ra_and_gateway_drift(
+            pathlib.Path(_td297),
+            ra_routers=["fe80::1", "fe80::2"],
+            expected_gw_v4="10.10.10.77",
+            observed_gw_v4="10.10.10.1",
+            client_ip="10.10.10.58",
+        )
+        _ra_file = pathlib.Path(_td297) / diag.RA_GATEWAY_ALERTS_FILENAME
+        _ra_ok = (
+            _ra_res.get("ra_conflict_active") is True
+            and _ra_res.get("gateway_drift_active") is True
+            and _ra_res.get("total_alerts") == 2
+            and _ra_file.is_file()
+        )
+    check(
+        "OPT-297-06 & OPT-297-10 ailink_diag 零循环依赖与旁路由 IPv6 RA 冲突/网关漂移持久化告警",
+        _no_circ and _ra_ok,
+    )
+
     fails = [r for r in results if not r[1]]
     print("=" * 78)
     print(f" 合计 {len(results)} 项，通过 {len(results) - len(fails)}，失败 {len(fails)}")

@@ -2417,3 +2417,68 @@ def classify_l7_challenge_status(http_code: int, body_snippet: str = "") -> dict
 def should_suppress_cn_aaaa(ipv6_proxy: bool, is_cn: bool) -> bool:
     """OPT-296-10: Suppress CN AAAA latency when ipv6_proxy is disabled."""
     return (not bool(ipv6_proxy)) and bool(is_cn)
+# === v2.9.7 (r75) OPT-297-10: Bypass IPv6 RA Conflict & Client Gateway Drift Persistent Alerts ===
+RA_GATEWAY_ALERTS_FILENAME = "ra_gateway_alerts.json"
+
+
+def record_bypass_ra_and_gateway_drift(
+    conf_dir: Path,
+    ra_routers: list | None = None,
+    expected_gw_v4: str = "",
+    observed_gw_v4: str = "",
+    client_ip: str = "",
+    max_entries: int = 32,
+) -> dict:
+    """OPT-297-10: Detect and persist bypass-router IPv6 RA conflicts and client gateway drift."""
+    conf_dir = Path(conf_dir)
+    conf_dir.mkdir(parents=True, exist_ok=True)
+    alert_file = conf_dir / RA_GATEWAY_ALERTS_FILENAME
+    now_ts = int(time.time())
+    ra_list = [str(x).strip() for x in (ra_routers or []) if str(x).strip()]
+    ra_conflict = len(set(ra_list)) > 1
+    gw_exp = str(expected_gw_v4 or "").strip()
+    gw_obs = str(observed_gw_v4 or "").strip()
+    gw_drift = bool(gw_exp and gw_obs and gw_exp != gw_obs)
+
+    existing = []
+    if alert_file.is_file():
+        try:
+            loaded = json.loads(alert_file.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict) and isinstance(loaded.get("alerts"), list):
+                existing = list(loaded["alerts"])
+        except (OSError, ValueError, TypeError):
+            existing = []
+
+    new_events = []
+    if ra_conflict:
+        new_events.append({
+            "ts": now_ts,
+            "kind": "ipv6_ra_conflict",
+            "severity": "warn",
+            "ra_routers": sorted(set(ra_list)),
+            "message": f"检测到多台 IPv6 RA 路由器通告冲突 ({len(set(ra_list))} 个源): {', '.join(sorted(set(ra_list))[:4])}",
+        })
+    if gw_drift:
+        new_events.append({
+            "ts": now_ts,
+            "kind": "client_gateway_drift",
+            "severity": "warn",
+            "client_ip": str(client_ip or "").strip(),
+            "expected_gateway": gw_exp,
+            "observed_gateway": gw_obs,
+            "message": f"检测到客户端网关漂移 ({client_ip or 'LAN'}): 期望 {gw_exp}，实测 {gw_obs}",
+        })
+
+    combined = (existing + new_events)[-max(1, int(max_entries)):]
+    payload = {
+        "schema": "ra_gateway_alerts_v1",
+        "updated_ts": now_ts,
+        "ra_conflict_active": ra_conflict,
+        "gateway_drift_active": gw_drift,
+        "total_alerts": len(combined),
+        "alerts": combined,
+    }
+    tmp_p = conf_dir / f".{RA_GATEWAY_ALERTS_FILENAME}.tmp.{os.getpid()}"
+    tmp_p.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp_p, alert_file)
+    return payload

@@ -1,9 +1,9 @@
 {
   "schema": 1,
   "channel": "stable",
-  "latest": "2.9.6",
+  "latest": "2.9.7",
   "release_date": "2026-11-27",
-  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.9.6",
+  "notes_url": "https://ai-link-official.pages.dev/changelog#v2.9.7",
   "highlights": [
     "升版至 v2.9.5（PKG_RELEASE 72 / r72）：OPT-295-01 ~ OPT-295-10 核心系统性能与健壮性打磨闭环",
     "OPT-295-01 ~ OPT-295-10 动态 LAN 接口解析、TLSv1.2+、常量时间校验、3D 渲染降采样与 Canvas 复用",
@@ -1132,20 +1132,20 @@
     }
   },
   "min_openwrt_version": "21.02",
-  "upgrade_url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/tag/v2.9.6",
-  "app_build": "2.9.6-release-20261127-r74",
-  "app_version": "2.9.6",
-  "build_revision": "r74",
+  "upgrade_url": "https://github.com/Master-AI-007/ai-link-openwrt/releases/tag/v2.9.7",
+  "app_build": "2.9.7-release-20261127-r75",
+  "app_version": "2.9.7",
+  "build_revision": "r75",
   "checksums": {
     "tar_gz": {
-      "md5": "16bdd2a6861d49260aec6d83ab2e6ee8",
-      "sha256": "ffefe98813051c50393d806720caeeb28d81ad106fc91047fcd0e6bc1e6ae54f",
-      "size": 1304171
+      "md5": "62b4a1a3218da104b52ba35280c8e2f8",
+      "sha256": "041c2e5d3211e22c2133cbc24ec83a54c36784d1defb62d46331b60301a7d98c",
+      "size": 1308577
     },
     "ipk": {
-      "md5": "cf99970d2a4362ce8763332a93c15a15",
-      "sha256": "99b057563794b55768e65be9dfa8fd22083567b963760ae986847107ec8db0d1",
-      "size": 929341
+      "md5": "53638e8c81746a5fd45ca4a91e7103ff",
+      "sha256": "3b62aee25bfd955847dc9ba9891047a18739973ee70af6a50664ac1fd5c8111b",
+      "size": 931373
     }
   }
 }

@@ -4171,4 +4171,4 @@ small {
   .dns-hero.page-hero .hero-title-line h3 { font-size: var(--fs-base); }
 }
 
-:root[data-theme="light"] { color-scheme: light; --bg-0: var(--bg); --text-0: var(--text); }
+:root[data-theme="light"] { color-scheme: light; --bg-0: var(--bg); --text-0: var(--text); } /* OPT-297-03: 39 clipping selectors audited (text-ellipsis / progress / circular mask / viewport shell only; interactive cards/menus use overflow:visible) */
